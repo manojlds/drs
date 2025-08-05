@@ -1,0 +1,15 @@
+[project]
+name = "drs"
+version = "0.1.0"
+description = "Diff Review System - AI-powered GitLab merge request code reviewer"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "claude-code-sdk",
+]
+
+[project.scripts]
+drs = "drs.main:cli_main"
+
+[tool.uv]
+package = true
