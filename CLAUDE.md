@@ -1,15 +1,20 @@
 # DRS - Diff Review System
 
 ## Project Overview
-DRS is an AI-powered code review system that integrates with GitLab merge requests and local git workflows using Claude Code SDK.
+DRS is an AI-powered code review system that integrates with GitLab merge requests and local git workflows using Claude Code SDK. It provides context-aware code analysis with intelligent git command generation and supports multiple output formats for seamless CI/CD integration.
 
 ## Key Features
-- **Dual Context Support**: Works in both GitLab CI/CD and local development environments
+- **Triple Context Support**: 
+  - Local development (staged, unstaged, untracked files)
+  - GitLab MR review via local `glab` CLI
+  - GitLab CI/CD with proper MR branch diffing
 - **Multiple Output Formats**: 
   - Human-readable text format for local development
   - GitLab Code Quality JSON format for CI/CD integration
-- **Intelligent Context Detection**: Automatically detects CI/CD vs local environment
+- **Context-Aware Git Commands**: Generates appropriate git commands based on review context
+- **Intelligent Context Detection**: Auto-detects CI/CD vs local vs MR environments
 - **Claude Code Subagent Integration**: Uses specialized code-reviewer subagent for consistent reviews
+- **Modular Architecture**: Clean separation of concerns across focused modules
 
 ## Setup & Installation
 
@@ -59,15 +64,47 @@ When running in GitLab CI/CD with merge request context, DRS automatically:
 - Uses `CI_MERGE_REQUEST_ID` for MR context
 - Outputs GitLab JSON format when `--format auto` (default)
 
-## Project Structure
-- `drs/main.py`: Main CLI application with context detection and output formatting
-- `.claude/agents/code-reviewer.md`: Claude Code subagent for comprehensive code review
-- `.claude/settings.local.json`: Local Claude Code permissions
+## Architecture
+
+### Modular Design
+DRS uses a clean modular architecture with separation of concerns:
+
+- **`drs/main.py`** (~45 lines): CLI entry point and argument parsing
+- **`drs/context.py`** (~130 lines): Context detection and git command generation
+- **`drs/claude_integration.py`** (~110 lines): Claude Code SDK integration and formatting
+- **`drs/reviewer.py`** (~65 lines): Main review orchestration and workflow
+- **`.claude/agents/code-reviewer.md`**: Specialized code review subagent
+- **`.claude/settings.local.json`**: Local Claude Code permissions
+
+### Context-Aware Git Commands
+DRS intelligently generates different git commands based on review context:
+
+**Local Development**:
+```bash
+git status
+git diff --cached    # staged changes
+git diff            # unstaged changes  
+git ls-files --others --exclude-standard  # untracked files
+```
+
+**GitLab CI/CD (Proper MR Scope)**:
+```bash
+git status
+git diff origin/main...HEAD    # ALL commits in MR vs target branch
+```
+
+**Local MR Review**:
+```bash
+git status
+glab mr diff 123    # Full MR diff via GitLab API
+```
 
 ## Dependencies
-- `claude-code-sdk`: For AI-powered code analysis
-- Python 3.12+ required
-- `glab` CLI tool for GitLab integration (when using MR mode)
+- **`claude-code-sdk`**: For AI-powered code analysis
+- **`ruff`**: Code linting and formatting (dev)
+- **`mypy`**: Type checking (dev)
+- **Python 3.12+** required
+- **`glab` CLI tool** for GitLab integration (when using MR mode)
 
 ## Development Commands
 ```bash
@@ -83,10 +120,19 @@ uv run drs --mr-id 123 --format gitlab-json
 ```
 
 ## Code Review Process
-1. **Context Detection**: Determines if running in CI/CD or locally
-2. **Diff Retrieval**: Gets changes from GitLab MR or local git diff
-3. **Subagent Analysis**: Invokes @code-reviewer subagent via Claude Code SDK
-4. **Output Formatting**: Converts to requested format (text/JSON)
+1. **Context Detection**: Determines review environment (local/MR-local/MR-CI)
+2. **Git Command Generation**: Creates context-specific git commands for subagent
+3. **Format-Aware Prompting**: Instructs subagent to output in requested format
+4. **Subagent Analysis**: Invokes @code-reviewer subagent with generated commands
+5. **Output Processing**: Validates JSON format or passes through text format
+6. **File Output**: Supports writing to files for CI/CD integration
+
+## Key Improvements Over Traditional Tools
+- **No Redundant Git Operations**: Single source of truth for git commands
+- **Proper MR Scope**: Reviews all commits in MR, not just latest
+- **Context Awareness**: Different strategies for different environments  
+- **Direct JSON Generation**: AI outputs GitLab format directly, no fragile parsing
+- **Modular & Testable**: Clean architecture for easy maintenance
 
 ## CI/CD Integration Example
 ```yaml
