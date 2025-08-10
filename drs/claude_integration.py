@@ -49,22 +49,34 @@ def create_claude_options():
 
 def create_review_prompt(context_description, git_commands, output_format):
     """Create the review prompt for the code-reviewer subagent."""
-    if output_format == "gitlab-json":
-        return (
-            f"@code-reviewer please review the current repository changes "
-            f"using the provided git commands.\n\n"
+    # Check if this is a full review mode
+    is_full_review = "Full codebase review" in git_commands
+
+    if is_full_review:
+        base_prompt = (
+            f"@code-reviewer please perform a comprehensive review of the entire "
+            f"codebase for code quality, security, and best practices.\n\n"
             f"Context: {context_description}\n\n"
-            f"Git Commands to Execute:\n{git_commands}\n\n"
-            f"{GITLAB_JSON_FORMAT_INSTRUCTION}"
+            f"Instructions: {git_commands}\n\n"
+            f"Use your tools (Read, Grep, Glob, Bash) to analyze the codebase "
+            f"comprehensively. Focus on architecture, security patterns, code quality, "
+            f"and adherence to best practices.\n\n"
         )
     else:
-        return (
+        base_prompt = (
             f"@code-reviewer please review the current repository changes "
             f"using the provided git commands.\n\n"
             f"Context: {context_description}\n\n"
             f"Git Commands to Execute:\n{git_commands}\n\n"
-            f"Please provide a comprehensive text review in markdown format "
-            f"suitable for human reading."
+        )
+
+    if output_format == "gitlab-json":
+        return base_prompt + GITLAB_JSON_FORMAT_INSTRUCTION
+    else:
+        return (
+            base_prompt +
+            "Please provide a comprehensive text review in markdown format "
+            "suitable for human reading."
         )
 
 

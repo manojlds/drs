@@ -45,6 +45,10 @@ uv run drs --local --format text
 # Output to file
 uv run drs --local --format gitlab-json --output code-quality-report.json
 uv run drs --local --format text -o review.md
+
+# Full codebase review (when no changes detected)
+uv run drs --full-review --format text
+uv run drs --full-review --format gitlab-json -o full-review.json
 ```
 
 ### CLI Arguments
@@ -52,6 +56,7 @@ uv run drs --local --format text -o review.md
 - `--local`: Force local git diff mode (includes staged, unstaged, and untracked files)
 - `--format <FORMAT>`: Output format - `text`, `gitlab-json`, or `auto` (default)
 - `-o, --output <FILE>`: Write output to file instead of stdout
+- `--full-review`: Perform comprehensive codebase review even when no changes detected
 
 ### Output Format Options
 - `text` (default for local): Human-readable markdown format

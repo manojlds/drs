@@ -26,6 +26,11 @@ def parse_cli_args():
     parser.add_argument(
         "-o", "--output", type=str, help="Output file path (default: stdout)"
     )
+    parser.add_argument(
+        "--full-review",
+        action="store_true",
+        help="Perform full codebase review even when no changes detected",
+    )
     return parser.parse_args()
 
 

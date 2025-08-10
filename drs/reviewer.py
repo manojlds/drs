@@ -7,11 +7,13 @@ from .claude_integration import (
     validate_and_format_json,
 )
 from .context import (
+    check_for_changes,
     detect_context,
     determine_review_context,
     get_context_description,
     get_detailed_context_info,
     get_git_commands_for_context,
+    get_no_changes_message,
 )
 
 
@@ -33,13 +35,34 @@ async def run_review(args):
 
     print(f"Output format: {output_format}")
 
+    # Check for changes unless --full-review is specified
+    if not args.full_review:
+        has_changes = check_for_changes(context_type, context_info)
+        if not has_changes:
+            print("No changes detected.")
+            no_changes_output = get_no_changes_message(
+                context_type, context_info, output_format
+            )
+
+            # Write to file or stdout
+            if args.output:
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(no_changes_output)
+                print(f"No changes message written to: {args.output}")
+            else:
+                print(no_changes_output)
+            return
+
     # Get context description and git commands
     context_description = get_context_description(context_type, context_info)
-    git_commands = get_git_commands_for_context(context_type, context_info)
+    git_commands = get_git_commands_for_context(
+        context_type, context_info, args.full_review
+    )
 
-    print(f"Review context: {context_description}")
+    review_mode = "Full codebase review" if args.full_review else context_description
+    print(f"Review context: {review_mode}")
     print("\n" + "=" * 60)
-    print(f"STARTING CODE REVIEW - {context_description}")
+    print(f"STARTING CODE REVIEW - {review_mode}")
     print("=" * 60 + "\n")
 
     # Create review prompt and run code review
