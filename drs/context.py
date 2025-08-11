@@ -7,6 +7,7 @@ from enum import Enum
 
 class OutputFormat(Enum):
     """Available output formats for code review."""
+
     TEXT = "text"
     GITLAB_JSON = "gitlab-json"
     AUTO = "auto"

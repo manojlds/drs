@@ -74,8 +74,8 @@ def create_review_prompt(context_description, git_commands, output_format):
         return base_prompt + GITLAB_JSON_FORMAT_INSTRUCTION
     else:
         return (
-            base_prompt +
-            "Please provide a comprehensive text review in markdown format "
+            base_prompt
+            + "Please provide a comprehensive text review in markdown format "
             "suitable for human reading."
         )
 
