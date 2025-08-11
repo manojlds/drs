@@ -15,6 +15,7 @@ jobs:
     environment: pypi  # Use your PyPI environment
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
