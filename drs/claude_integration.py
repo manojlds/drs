@@ -57,12 +57,55 @@ be valid and parseable.
 
 def create_claude_options():
     """Create Claude Code options for code review."""
-    return ClaudeCodeOptions(
+    # Look for Claude settings files
+    cwd = Path.cwd()
+    settings_path = None
+    
+    # Check for settings files in order of precedence
+    potential_settings = [
+        cwd / ".claude" / "settings.local.json",
+        cwd / ".claude" / "settings.json", 
+        Path.home() / ".config" / "claude" / "settings.json",
+    ]
+    
+    for settings_file in potential_settings:
+        if settings_file.exists():
+            settings_path = str(settings_file)
+            break
+    
+    options = ClaudeCodeOptions(
         max_turns=3,
-        cwd=Path.cwd(),
+        cwd=cwd,
         allowed_tools=["Read", "Grep", "Glob", "Bash"],
         permission_mode="acceptEdits",
+        settings=settings_path,  # Pass settings file if found
     )
+    
+    return options
+
+
+def log_claude_settings(options, debug=False):
+    """Log the Claude settings being used."""
+    logger = logging.getLogger(__name__)
+    
+    if debug:
+        logger.debug("Claude Code Options:")
+        logger.debug("  Working directory: %s", options.cwd)
+        logger.debug("  Max turns: %s", options.max_turns)
+        logger.debug("  Permission mode: %s", options.permission_mode)
+        logger.debug("  Allowed tools: %s", options.allowed_tools)
+        logger.debug("  Settings file: %s", options.settings or "None")
+        logger.debug("  Model: %s", options.model or "Default")
+        
+        if options.settings:
+            try:
+                import json
+                with open(options.settings) as f:
+                    settings_content = json.load(f)
+                logger.debug("  Settings content preview: %s", 
+                           {k: v for k, v in list(settings_content.items())[:5]})
+            except Exception as e:
+                logger.debug("  Could not read settings file: %s", e)
 
 
 def create_review_prompt(context_description, git_commands, output_format):
@@ -180,8 +223,11 @@ async def run_code_review(review_prompt, debug: bool = False):
     """Run the code review using Claude Code SDK and return all messages."""
     logger = logging.getLogger(__name__)
     options = create_claude_options()
+    
+    # Log settings being used
+    log_claude_settings(options, debug)
+    
     if debug:
-        logger.debug("Starting Claude Code query with options: %s", options)
         logger.debug("Review prompt (truncated to 500 chars): %s", review_prompt[:500])
 
     all_messages = []
