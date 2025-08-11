@@ -93,7 +93,7 @@ You MUST provide findings in structured format with severity levels:
 ## Positive Observations
 [Highlight good practices, improvements, or well-written code]
 
-## Summary Statistics  
+## Summary Statistics
 - Files reviewed: X
 - Critical issues: X
 - Major issues: X
@@ -103,7 +103,7 @@ You MUST provide findings in structured format with severity levels:
 
 **SEVERITY GUIDELINES:**
 - **CRITICAL**: Code that will cause runtime errors, security vulnerabilities, or data loss
-- **MAJOR**: Significant code quality issues, performance problems, or maintainability concerns  
+- **MAJOR**: Significant code quality issues, performance problems, or maintainability concerns
 - **MINOR**: Style inconsistencies, minor optimization opportunities
 - **SUGGESTION**: Best practice recommendations, refactoring opportunities
 

@@ -25,7 +25,7 @@ license = { text = "MIT" }
 [project.optional-dependencies]
 dev = [
     "ruff",
-    "ty",
+    "pre-commit",
 ]
 
 [project.scripts]
@@ -44,7 +44,7 @@ exclude = [
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "/drs.egg-info", 
+    "/drs.egg-info",
     "/uv.lock",
     "/.python-version",
 ]
@@ -59,3 +59,7 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+]

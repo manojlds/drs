@@ -4,11 +4,11 @@
 DRS is an AI-powered code review system that integrates with GitLab merge requests and local git workflows using Claude Code SDK. It provides context-aware code analysis with intelligent git command generation and supports multiple output formats for seamless CI/CD integration.
 
 ## Key Features
-- **Triple Context Support**: 
+- **Triple Context Support**:
   - Local development (staged, unstaged, untracked files)
   - GitLab MR review via local `glab` CLI
   - GitLab CI/CD with proper MR branch diffing
-- **Multiple Output Formats**: 
+- **Multiple Output Formats**:
   - Human-readable text format for local development
   - GitLab Code Quality JSON format for CI/CD integration
 - **Context-Aware Git Commands**: Generates appropriate git commands based on review context
@@ -88,7 +88,7 @@ DRS intelligently generates different git commands based on review context:
 ```bash
 git status
 git diff --cached    # staged changes
-git diff            # unstaged changes  
+git diff            # unstaged changes
 git ls-files --others --exclude-standard  # untracked files
 ```
 
@@ -116,12 +116,22 @@ glab mr diff 123    # Full MR diff via GitLab API
 # Install in development mode
 uv sync
 
+# Set up pre-commit hooks (recommended)
+uv run pre-commit install
+
+# Run pre-commit on all files
+uv run pre-commit run --all-files
+
 # Test CLI functionality
 uv run drs --help
 uv run drs --local --format text
 
 # Test with specific MR (requires glab CLI)
 uv run drs --mr-id 123 --format gitlab-json
+
+# Manual linting and formatting
+uv run ruff check --fix
+uv run ruff format
 ```
 
 ## Code Review Process
@@ -135,7 +145,7 @@ uv run drs --mr-id 123 --format gitlab-json
 ## Key Improvements Over Traditional Tools
 - **No Redundant Git Operations**: Single source of truth for git commands
 - **Proper MR Scope**: Reviews all commits in MR, not just latest
-- **Context Awareness**: Different strategies for different environments  
+- **Context Awareness**: Different strategies for different environments
 - **Direct JSON Generation**: AI outputs GitLab format directly, no fragile parsing
 - **Modular & Testable**: Clean architecture for easy maintenance
 

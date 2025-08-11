@@ -13,11 +13,13 @@ def get_version():
     """Get version from package metadata."""
     try:
         from importlib.metadata import version
+
         return version("diff-review-system")
     except Exception:
         # Fallback for development mode - read from pyproject.toml
         try:
             import tomllib
+
             pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
             with open(pyproject_path, "rb") as f:
                 data = tomllib.load(f)
@@ -30,14 +32,9 @@ def parse_cli_args():
     """Parse command line arguments."""
     version = get_version()
     parser = argparse.ArgumentParser(
-        description=f"DRS - Diff Review System v{version}",
-        prog="drs"
+        description=f"DRS - Diff Review System v{version}", prog="drs"
     )
-    parser.add_argument(
-        "--version", 
-        action="version", 
-        version=f"drs {version}"
-    )
+    parser.add_argument("--version", action="version", version=f"drs {version}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Review command (default behavior)
