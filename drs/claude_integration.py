@@ -10,6 +10,9 @@ from claude_code_sdk import (
     ClaudeCodeOptions,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
     query,
 )
 
@@ -188,23 +191,69 @@ async def run_code_review(review_prompt, debug: bool = False):
             try:
                 msg_type = message.__class__.__name__
                 preview = ""
-                if isinstance(message, AssistantMessage) and message.content:
-                    block = message.content[0]
-                    if isinstance(block, TextBlock):
-                        preview = block.text[:200]
-                if isinstance(message, ResultMessage):
+
+                if isinstance(message, AssistantMessage | UserMessage):
+                    if hasattr(message, "content") and message.content:
+                        block = message.content[0]
+                        if isinstance(block, TextBlock):
+                            preview = block.text[:300]
+                        elif isinstance(block, ToolUseBlock):
+                            tool_name = getattr(block, "name", "unknown")
+                            tool_input = getattr(block, "input", {})
+                            # Show tool name and key parameters
+                            if "file_path" in tool_input:
+                                preview = (
+                                    f"Tool:{tool_name}(file={tool_input['file_path']})"
+                                )
+                            elif "pattern" in tool_input:
+                                preview = (
+                                    f"Tool:{tool_name}(pattern={tool_input['pattern']})"
+                                )
+                            elif "command" in tool_input:
+                                cmd = tool_input['command'][:50]
+                                preview = f"Tool:{tool_name}(cmd={cmd})"
+                            else:
+                                preview = f"Tool:{tool_name}({str(tool_input)[:100]})"
+                        elif isinstance(block, ToolResultBlock):
+                            tool_id = getattr(block, "tool_use_id", "unknown")
+                            is_error = getattr(block, "is_error", False)
+                            content = getattr(block, "content", "")
+                            if is_error:
+                                preview = f"ToolResult:ERROR({tool_id})"
+                            else:
+                                # Show first line of result
+                                first_line = (
+                                    str(content)[:200].split("\n")[0]
+                                    if content
+                                    else "empty"
+                                )
+                                preview = f"ToolResult:OK({tool_id}) - {first_line}"
+                        else:
+                            preview = f"content_type={type(block)}"
+                    else:
+                        preview = "no_content"
+                elif isinstance(message, ResultMessage):
                     preview = (
-                        "result: error="
-                        f"{message.is_error} cost={message.total_cost_usd} "
-                        f"turns={message.num_turns}"
+                        f"result: error={message.is_error} "
+                        f"cost={message.total_cost_usd} turns={message.num_turns}"
                     )
+                elif hasattr(message, "content"):
+                    # Handle other message types with content
+                    try:
+                        preview = str(message.content)[:300]
+                    except Exception:
+                        preview = f"content_type={type(message.content)}"
+                else:
+                    preview = "no_content_attr"
+
+                logger.debug("Received %s - %s", msg_type, preview)
+
+            except Exception as e:  # best-effort debug logging
                 logger.debug(
-                    "Received %s %s",
-                    msg_type,
-                    f"- {preview}" if preview else "",
+                    "Received message (error in debug): %s - %r",
+                    message.__class__.__name__,
+                    str(e),
                 )
-            except Exception:  # best-effort debug logging
-                logger.debug("Received message: %r", message)
 
     if debug:
         logger.debug(
