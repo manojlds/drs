@@ -91,5 +91,9 @@ async def run_review(args):
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(output_content)
         print(f"Review output written to: {args.output}")
+        if output_format == "gitlab-json":
+            print("GitLab Code Quality JSON format generated successfully.")
     else:
+        if output_format == "gitlab-json":
+            print("GitLab Code Quality JSON:")
         print(output_content)

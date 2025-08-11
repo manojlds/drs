@@ -13,35 +13,43 @@ from claude_code_sdk import (
     query,
 )
 
-# GitLab JSON format instruction template
+# GitLab JSON format instruction template for main agent
 GITLAB_JSON_FORMAT_INSTRUCTION = """
-        IMPORTANT: Output your findings as valid GitLab Code Quality JSON format only.
+After the @code-reviewer subagent completes its analysis, you must:
+1. Review the subagent's findings
+2. Convert them into valid GitLab Code Quality JSON format
+3. Provide the JSON within a code block for reliable parsing
 
-        Return a JSON array where each finding is an object with these exact fields:
-        - "description": Brief issue description with recommendation
-        - "check_name": Category like "naming", "performance", "maintainability", etc.
-        - "fingerprint": Use MD5 hash of "filepath:line:description"
-        - "severity": One of "blocker", "major", "minor", "info"
-        - "location": Object with "path" (file path) and "lines" with "begin" (line num)
+GitLab JSON format requirements:
+- Return a JSON array where each finding is an object with these exact fields:
+- "description": Brief issue description with recommendation
+- "check_name": Category like "naming", "performance", "maintainability", etc.
+- "fingerprint": Use MD5 hash of "filepath:line:description"
+- "severity": One of "blocker", "major", "minor", "info"
+- "location": Object with "path" (file path) and "lines" with "begin" (line num)
 
-        Example format:
-        [
-          {
-            "description": "Variable uses camelCase instead of snake_case.",
-            "check_name": "naming",
-            "fingerprint": "abc123def456",
-            "severity": "minor",
-            "location": {
-              "path": "drs/main.py",
-              "lines": {
-                "begin": 42
-              }
-            }
-          }
-        ]
+Example format:
+```json
+[
+  {
+    "description": "Variable uses camelCase instead of snake_case.",
+    "check_name": "naming",
+    "fingerprint": "abc123def456",
+    "severity": "minor",
+    "location": {
+      "path": "drs/main.py",
+      "lines": {
+        "begin": 42
+      }
+    }
+  }
+]
+```
 
-        Output ONLY the JSON array, no other text.
-        """
+CRITICAL: You may provide explanatory text, but the JSON must be enclosed in a
+```json code block exactly as shown above. The JSON within the code block must
+be valid and parseable.
+"""
 
 
 def create_claude_options():
@@ -77,22 +85,27 @@ def create_review_prompt(context_description, git_commands, output_format):
             f"Git Commands to Execute:\n{git_commands}\n\n"
         )
 
-    # Add instruction to return full output without summarizing
-    full_output_instruction = (
-        "\n\nIMPORTANT: Once the @code-reviewer subagent completes its analysis, "
-        "you MUST return the subagent's complete output exactly as provided, "
-        "without any summarization, modification, or additional commentary. "
-        "The user needs the full detailed review output from the subagent.\n\n"
-    )
-    
     if output_format == "gitlab-json":
-        return base_prompt + full_output_instruction + GITLAB_JSON_FORMAT_INSTRUCTION
+        # For JSON mode, let main agent process subagent output and format as JSON
+        json_instruction = (
+            "\n\nFirst, have the @code-reviewer subagent analyze the code and provide "
+            "detailed findings. Then, you will process those findings and format them "
+            "according to the GitLab JSON requirements below:\n\n"
+        )
+        return base_prompt + json_instruction + GITLAB_JSON_FORMAT_INSTRUCTION
     else:
+        # For text mode, return full output without summarizing
+        full_output_instruction = (
+            "\n\nIMPORTANT: Once the @code-reviewer subagent completes its analysis, "
+            "you MUST return the subagent's complete output exactly as provided, "
+            "without any summarization, modification, or additional commentary. "
+            "The user needs the full detailed review output from the subagent.\n\n"
+        )
         return (
             base_prompt
             + full_output_instruction
-            + "The subagent should provide a comprehensive text review in markdown format "
-            "suitable for human reading. Return its complete output."
+            + "The subagent should provide a comprehensive text review in "
+            "markdown format suitable for human reading. Return its complete output."
         )
 
 
@@ -113,18 +126,50 @@ def extract_final_assistant_message(all_messages):
     return final_review
 
 
+def extract_json_from_response(response_text):
+    """Extract JSON from code block or raw response."""
+    import re
+
+    # First, try to find JSON within ```json code blocks
+    json_pattern = r"```json\s*\n(.*?)\n```"
+    match = re.search(json_pattern, response_text, re.DOTALL)
+
+    if match:
+        return match.group(1).strip()
+
+    # If no code block found, try to find JSON by looking for array brackets
+    # This handles cases where agent outputs JSON without code blocks
+    array_pattern = r"(\[.*\])"
+    match = re.search(array_pattern, response_text, re.DOTALL)
+
+    if match:
+        return match.group(1).strip()
+
+    # Last resort - return the original text stripped
+    return response_text.strip()
+
+
 def validate_and_format_json(final_review):
-    """Validate and format JSON output from the subagent."""
+    """Validate and format JSON output from the agent response."""
     try:
-        # Try to parse the response as JSON
-        findings = json.loads(final_review.strip())
+        # Extract JSON from the response (handles code blocks or raw JSON)
+        json_content = extract_json_from_response(final_review)
+
+        # Try to parse the extracted JSON
+        findings = json.loads(json_content)
         if not isinstance(findings, list):
             raise ValueError("JSON response is not an array")
         return json.dumps(findings, indent=2)
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"Error: Subagent did not return valid JSON: {e}")
+        print(f"Error: Agent did not return valid JSON: {e}")
         print("Raw response:")
         print(final_review)
+        print("\nExtracted JSON attempt:")
+        try:
+            extracted = extract_json_from_response(final_review)
+            print(extracted)
+        except Exception:
+            print("Could not extract JSON content")
         sys.exit(1)
 
 
@@ -143,10 +188,7 @@ async def run_code_review(review_prompt, debug: bool = False):
             try:
                 msg_type = message.__class__.__name__
                 preview = ""
-                if (
-                    isinstance(message, AssistantMessage)
-                    and message.content
-                ):
+                if isinstance(message, AssistantMessage) and message.content:
                     block = message.content[0]
                     if isinstance(block, TextBlock):
                         preview = block.text[:200]

@@ -52,7 +52,7 @@ def parse_cli_args():
     init_parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite existing code-reviewer.md if it exists"
+        help="Overwrite existing code-reviewer.md if it exists",
     )
 
     # For backward compatibility, also add review args to main parser
@@ -92,35 +92,37 @@ def init_command(force=False):
     drs_package_dir = Path(__file__).parent.parent
     source_claude_dir = drs_package_dir / ".claude"
     source_agent_file = source_claude_dir / "agents" / "code-reviewer.md"
-    
+
     target_claude_dir = Path.cwd() / ".claude"
     target_agents_dir = target_claude_dir / "agents"
     target_agent_file = target_agents_dir / "code-reviewer.md"
-    
+
     if not source_agent_file.exists():
         print(f"Error: Source code-reviewer.md not found at {source_agent_file}")
         return 1
-    
+
     # Create .claude directory if it doesn't exist
     if not target_claude_dir.exists():
         target_claude_dir.mkdir()
         print(f"✓ Created .claude directory at {target_claude_dir}")
     else:
         print(f"✓ .claude directory already exists at {target_claude_dir}")
-    
+
     # Create agents directory if it doesn't exist
     if not target_agents_dir.exists():
         target_agents_dir.mkdir()
         print(f"✓ Created agents directory at {target_agents_dir}")
-    
+
     # Check if code-reviewer.md already exists
     if target_agent_file.exists() and not force:
         print(f"Warning: code-reviewer.md already exists at {target_agent_file}")
         response = input("Do you want to overwrite it? (y/N): ").lower().strip()
-        if response != 'y':
-            print("Initialization cancelled. Use --force to overwrite without prompting.")
+        if response != "y":
+            print(
+                "Initialization cancelled. Use --force to overwrite without prompting."
+            )
             return 0
-    
+
     try:
         shutil.copy2(source_agent_file, target_agent_file)
         print(f"✓ Copied code-reviewer.md to {target_agent_file}")
@@ -137,12 +139,13 @@ def init_command(force=False):
 async def main():
     """Main async function that orchestrates the code review."""
     args = parse_cli_args()
-    
+
     # Handle init command
     if args.command == "init":
         import sys
+
         sys.exit(init_command(getattr(args, "force", False)))
-    
+
     # Enable SDK and CLI debug/verbose output when requested
     if getattr(args, "debug", False):
         import logging
