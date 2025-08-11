@@ -32,6 +32,13 @@ jobs:
           uv run ruff check
           uv run ty check
 
+      - name: Set version from tag
+        run: |
+          # Extract version from tag (remove 'v' prefix if present)
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting version to: $VERSION"
+          uv version "$VERSION"
+
       - name: Build package (sdist and wheel)
         run: uv build
 
