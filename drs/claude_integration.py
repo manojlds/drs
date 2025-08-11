@@ -77,13 +77,22 @@ def create_review_prompt(context_description, git_commands, output_format):
             f"Git Commands to Execute:\n{git_commands}\n\n"
         )
 
+    # Add instruction to return full output without summarizing
+    full_output_instruction = (
+        "\n\nIMPORTANT: Once the @code-reviewer subagent completes its analysis, "
+        "you MUST return the subagent's complete output exactly as provided, "
+        "without any summarization, modification, or additional commentary. "
+        "The user needs the full detailed review output from the subagent.\n\n"
+    )
+    
     if output_format == "gitlab-json":
-        return base_prompt + GITLAB_JSON_FORMAT_INSTRUCTION
+        return base_prompt + full_output_instruction + GITLAB_JSON_FORMAT_INSTRUCTION
     else:
         return (
             base_prompt
-            + "Please provide a comprehensive text review in markdown format "
-            "suitable for human reading."
+            + full_output_instruction
+            + "The subagent should provide a comprehensive text review in markdown format "
+            "suitable for human reading. Return its complete output."
         )
 
 
