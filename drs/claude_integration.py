@@ -1,10 +1,17 @@
 """Claude Code SDK integration for DRS."""
 
 import json
+import logging
 import sys
 from pathlib import Path
 
-from claude_code_sdk import ClaudeCodeOptions, query
+from claude_code_sdk import (
+    AssistantMessage,
+    ClaudeCodeOptions,
+    ResultMessage,
+    TextBlock,
+    query,
+)
 
 # GitLab JSON format instruction template
 GITLAB_JSON_FORMAT_INSTRUCTION = """
@@ -112,11 +119,46 @@ def validate_and_format_json(final_review):
         sys.exit(1)
 
 
-async def run_code_review(review_prompt):
+async def run_code_review(review_prompt, debug: bool = False):
     """Run the code review using Claude Code SDK and return all messages."""
+    logger = logging.getLogger(__name__)
     options = create_claude_options()
+    if debug:
+        logger.debug("Starting Claude Code query with options: %s", options)
+        logger.debug("Review prompt (truncated to 500 chars): %s", review_prompt[:500])
+
     all_messages = []
     async for message in query(prompt=review_prompt, options=options):
         all_messages.append(message)
+        if debug:
+            try:
+                msg_type = message.__class__.__name__
+                preview = ""
+                if (
+                    isinstance(message, AssistantMessage)
+                    and message.content
+                ):
+                    block = message.content[0]
+                    if isinstance(block, TextBlock):
+                        preview = block.text[:200]
+                if isinstance(message, ResultMessage):
+                    preview = (
+                        "result: error="
+                        f"{message.is_error} cost={message.total_cost_usd} "
+                        f"turns={message.num_turns}"
+                    )
+                logger.debug(
+                    "Received %s %s",
+                    msg_type,
+                    f"- {preview}" if preview else "",
+                )
+            except Exception:  # best-effort debug logging
+                logger.debug("Received message: %r", message)
+
+    if debug:
+        logger.debug(
+            "Completed Claude Code query; total messages: %d",
+            len(all_messages),
+        )
 
     return all_messages

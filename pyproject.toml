@@ -1,6 +1,6 @@
 [project]
 name = "diff-review-system"
-version = "0.1.0"
+version = "0.2.0"
 description = "Diff Review System - AI-powered code reviewer based on Claude Code"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -37,12 +37,14 @@ requires = ["hatchling>=1.18"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["drs"]
+packages = ["drs", ".claude"]
+exclude = [
+    ".claude/settings.local.json",
+]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "/drs.egg-info",
-    "/.claude",
+    "/drs.egg-info", 
     "/uv.lock",
     "/.python-version",
 ]

@@ -34,6 +34,8 @@ async def run_review(args):
         output_format = "gitlab-json" if context["is_ci"] else "text"
 
     print(f"Output format: {output_format}")
+    if getattr(args, "debug", False):
+        print("Debug mode: enabled")
 
     # Check for changes unless --full-review is specified
     if not args.full_review:
@@ -69,7 +71,10 @@ async def run_review(args):
     review_prompt = create_review_prompt(
         context_description, git_commands, output_format
     )
-    all_messages = await run_code_review(review_prompt)
+
+    all_messages = await run_code_review(
+        review_prompt, debug=getattr(args, "debug", False)
+    )
 
     # Extract final review content
     final_review = extract_final_assistant_message(all_messages)
