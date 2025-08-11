@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Install dependencies
+      run: uv sync --extra dev
+
+    - name: Run linting
+      run: |
+        uv run ruff check
+        uv run ty check
+
+    - name: Test CLI functionality
+      run: |
+        uv run drs --help
+        # Test that both CLI commands work
+        uv run python -c "from drs.main import cli_main; print('CLI import successful')"
+
+    - name: Build package (verification)
+      run: uv build

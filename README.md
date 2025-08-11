@@ -42,14 +42,18 @@ DRS is a modern code review system that leverages the Claude Code SDK to provide
 ### Installation ⚡
 
 ```bash
-# Clone the repository
+# From PyPI (recommended)
+pip install diff-review-system
+
+# Use the CLI
+drs --help
+# or
+diff-review-system --help
+
+# From source (dev)
 git clone <repository-url>
 cd drs
-
-# Install dependencies
 uv sync
-
-# Verify installation
 uv run drs --help
 ```
 
