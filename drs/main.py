@@ -1,10 +1,12 @@
 """DRS - Diff Review System CLI entry point."""
 
 import argparse
+import os
 import shutil
 from pathlib import Path
 
 import anyio
+from dotenv import load_dotenv
 
 from .reviewer import run_review
 
@@ -161,6 +163,8 @@ def init_command(force=False):
 
 async def main():
     """Main async function that orchestrates the code review."""
+    # Load environment variables from .env file
+    load_dotenv()
     args = parse_cli_args()
 
     # Handle init command
@@ -172,7 +176,6 @@ async def main():
     # Enable SDK and CLI debug/verbose output when requested
     if getattr(args, "debug", False):
         import logging
-        import os
 
         logging.basicConfig(level=logging.DEBUG)
         # Common Node-style debug env and a generic VERBOSE toggle; harmless if unused
