@@ -33,7 +33,7 @@ export interface DRSConfig {
 
 const DEFAULT_CONFIG: DRSConfig = {
   opencode: {
-    serverUrl: process.env.OPENCODE_SERVER || 'http://localhost:3000',
+    serverUrl: process.env.OPENCODE_SERVER || '', // Empty string means use in-process server
   },
   gitlab: {
     url: process.env.GITLAB_URL || 'https://gitlab.com',
@@ -134,10 +134,9 @@ export function validateConfig(config: DRSConfig): void {
     );
   }
 
+  // OPENCODE_SERVER is now optional - we'll start in-process if not provided
   if (!config.opencode.serverUrl) {
-    throw new Error(
-      'OpenCode server URL is required. Set OPENCODE_SERVER environment variable or configure in .drs/drs.config.yaml'
-    );
+    console.log('ℹ️  OPENCODE_SERVER not set. Will start OpenCode server in-process.');
   }
 
   if (config.review.agents.length === 0) {

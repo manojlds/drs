@@ -13,8 +13,8 @@
     - npm install -g @drs/gitlab-review-bot
     - drs review-mr --mr $CI_MERGE_REQUEST_IID --project $CI_PROJECT_ID --post-comments
   variables:
-    # OpenCode Server URL (required)
-    OPENCODE_SERVER: "${OPENCODE_SERVER}"
+    # OpenCode Server URL (optional - will start in-process if not set)
+    # OPENCODE_SERVER: "${OPENCODE_SERVER}"
 
     # GitLab Token (use CI_JOB_TOKEN for automatic auth)
     GITLAB_TOKEN: "${CI_JOB_TOKEN}"

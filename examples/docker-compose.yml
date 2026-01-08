@@ -1,9 +1,13 @@
 # Docker Compose setup for DRS webhook server
+#
+# This configuration runs a dedicated OpenCode server alongside DRS.
+# For local/CLI usage, you can omit OPENCODE_SERVER and DRS will start
+# an in-process server automatically.
 
 version: '3.8'
 
 services:
-  # OpenCode Server
+  # OpenCode Server (optional - can be removed to use in-process server)
   opencode:
     image: anomalyco/opencode:latest
     ports:
