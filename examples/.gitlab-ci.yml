@@ -14,7 +14,9 @@ include:
 ai_review:
   extends: .drs_review
   variables:
-    OPENCODE_SERVER: "http://opencode.internal:3000"
+    # OPENCODE_SERVER is optional - omit to use in-process server
+    # Uncomment the line below if you have a dedicated OpenCode server
+    # OPENCODE_SERVER: "http://opencode.internal:3000"
     REVIEW_AGENTS: "security,quality,style,performance"
 
 # Run tests

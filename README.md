@@ -32,9 +32,11 @@ drs init
 cp .env.example .env
 
 # Edit .env and set:
-# - OPENCODE_SERVER: URL of your OpenCode instance
-# - GITLAB_TOKEN: Your GitLab access token
+# - GITLAB_TOKEN: Your GitLab access token (required)
+# - OPENCODE_SERVER: URL of your OpenCode instance (optional - will start in-process if not set)
 ```
+
+**Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
 
 ### 4. Review Local Changes
 
@@ -90,6 +92,50 @@ docker-compose up -d
 # URL: http://your-server:8080/webhook/gitlab
 # Events: Merge request events, Comments
 ```
+
+## OpenCode Server Configuration
+
+DRS supports two modes of OpenCode server operation:
+
+### In-Process Server (Default)
+
+If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server within the same process:
+
+```bash
+# No server configuration needed
+drs review-local
+```
+
+**Pros:**
+- Zero configuration required
+- Automatic startup/shutdown
+- Simpler deployment
+- Lower latency
+
+**Cons:**
+- Server lifetime tied to CLI process
+- Cannot share across multiple tools
+- Uses process resources
+
+### Remote Server (Optional)
+
+For production deployments or when sharing across multiple tools, run a dedicated OpenCode server:
+
+```bash
+# Set the server URL
+export OPENCODE_SERVER=http://opencode.internal:3000
+drs review-local
+```
+
+**Pros:**
+- Persistent server
+- Shared across multiple tools
+- Better for CI/CD pipelines
+- Can be scaled separately
+
+**Cons:**
+- Requires separate service setup
+- Additional infrastructure
 
 ## Architecture
 
@@ -188,10 +234,10 @@ Analyzes:
 
 ```bash
 # Required
-OPENCODE_SERVER=http://localhost:3000
 GITLAB_TOKEN=glpat-xxx
 
 # Optional
+OPENCODE_SERVER=http://localhost:3000  # Leave empty to start in-process server
 GITLAB_URL=https://gitlab.com
 REVIEW_AGENTS=security,quality,style,performance
 ```
@@ -229,9 +275,9 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
-- OpenCode server instance
 - GitLab access token
 - Git 2.30+ (for local mode)
+- OpenCode server instance (optional - will start in-process if not provided)
 
 ## License
 

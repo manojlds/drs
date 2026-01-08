@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
-import { createOpencodeClient } from '../opencode/client.js';
+import { createOpencodeClientInstance } from '../opencode/client.js';
 import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import {
   formatSummaryComment,
@@ -45,11 +45,11 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   const diffs = changes.map(change => parseDiff(change.diff)).flat();
   const changedFiles = getChangedFiles(diffs);
 
-  // Connect to OpenCode
+  // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
-  const opencode = createOpencodeClient({
-    baseUrl: config.opencode.serverUrl,
+  const opencode = await createOpencodeClientInstance({
+    baseUrl: config.opencode.serverUrl || undefined,
   });
 
   // Create review session
@@ -165,7 +165,8 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
       console.log(chalk.green('✓ No issues found! MR looks good.\n'));
     }
   } finally {
-    // Clean up session
+    // Clean up session and shutdown in-process server if applicable
     await opencode.closeSession(session.id);
+    await opencode.shutdown();
   }
 }

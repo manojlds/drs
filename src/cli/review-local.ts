@@ -1,7 +1,7 @@
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
-import { createOpencodeClient } from '../opencode/client.js';
+import { createOpencodeClientInstance } from '../opencode/client.js';
 import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import { formatTerminalIssue, calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
 
@@ -47,11 +47,11 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
 
   console.log(chalk.gray(`Found ${changedFiles.length} changed file(s)\n`));
 
-  // Connect to OpenCode
+  // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
-  const opencode = createOpencodeClient({
-    baseUrl: config.opencode.serverUrl,
+  const opencode = await createOpencodeClientInstance({
+    baseUrl: config.opencode.serverUrl || undefined,
     directory: cwd,
   });
 
@@ -123,7 +123,8 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
       console.log(chalk.green('\n✓ No issues found! Code looks good.\n'));
     }
   } finally {
-    // Clean up session
+    // Clean up session and shutdown in-process server if applicable
     await opencode.closeSession(session.id);
+    await opencode.shutdown();
   }
 }

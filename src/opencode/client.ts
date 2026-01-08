@@ -1,15 +1,18 @@
 /**
- * OpenCode SDK client wrapper for DRS
+ * OpenCode SDK client wrapper for DRS with in-process server support
  *
- * Note: This is a placeholder implementation as @opencode-ai/sdk is still in development.
- * The actual implementation will use the OpenCode SDK once it's available.
- *
- * For now, this provides the interface that we'll implement against.
+ * This client can either:
+ * 1. Connect to an existing remote OpenCode server (when baseUrl is provided)
+ * 2. Start an OpenCode server in-process (when baseUrl is not provided)
  */
 
+import { createOpencode, createOpencodeClient } from '@opencode-ai/sdk';
+
 export interface OpencodeConfig {
-  baseUrl: string;
+  baseUrl?: string; // Optional - will start in-process if not provided
   directory?: string;
+  serverPort?: number;
+  serverHostname?: string;
 }
 
 export interface SessionCreateOptions {
@@ -32,73 +35,99 @@ export interface Session {
 }
 
 /**
- * OpenCode client for interacting with OpenCode server
+ * OpenCode client that can start a server in-process or connect to remote
  */
 export class OpencodeClient {
-  private baseUrl: string;
+  private baseUrl?: string;
   private directory?: string;
+  private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
+  private client?: ReturnType<typeof createOpencodeClient>;
+  private config: OpencodeConfig;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
     this.directory = config.directory;
+    this.config = config;
+  }
+
+  /**
+   * Initialize - either connect to remote server or start in-process
+   */
+  async initialize(): Promise<void> {
+    if (this.baseUrl) {
+      // Connect to existing remote server
+      this.client = createOpencodeClient({
+        baseUrl: this.baseUrl,
+      });
+      console.log(`Connected to OpenCode server at ${this.baseUrl}`);
+    } else {
+      // Start server in-process
+      console.log('Starting OpenCode server in-process...');
+      this.inProcessServer = await createOpencode({
+        hostname: this.config.serverHostname || '127.0.0.1',
+        port: this.config.serverPort || 4096,
+        timeout: 5000,
+        config: {
+          model: 'anthropic/claude-opus-4-5',
+        },
+      });
+
+      this.client = this.inProcessServer.client;
+      this.baseUrl = this.inProcessServer.server.url;
+      console.log(`OpenCode server started at ${this.baseUrl}`);
+    }
   }
 
   /**
    * Create a new session with an agent
    */
   async createSession(options: SessionCreateOptions): Promise<Session> {
-    // TODO: Implement actual OpenCode SDK call
-    // This is a placeholder that will be replaced with:
-    // const session = await opencode.session.create(options)
-
-    const response = await fetch(`${this.baseUrl}/api/sessions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        agent: options.agent,
-        message: options.message,
-        directory: this.directory,
-        context: options.context,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to create session: ${response.statusText}`);
+    if (!this.client) {
+      throw new Error('OpenCode client not initialized. Call initialize() first.');
     }
 
-    const data = await response.json();
-    return {
-      id: data.id,
-      agent: data.agent,
-      createdAt: new Date(data.createdAt),
-    };
+    try {
+      const response = await this.client.session.create({
+        message: options.message,
+      });
+
+      return {
+        id: response.data.id,
+        agent: options.agent,
+        createdAt: new Date(response.data.createdAt),
+      };
+    } catch (error) {
+      throw new Error(
+        `Failed to create session: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
    * Stream messages from a session
    */
   async *streamMessages(sessionId: string): AsyncGenerator<SessionMessage> {
-    // TODO: Implement actual OpenCode SDK call with streaming
-    // This is a placeholder that will be replaced with:
-    // for await (const message of opencode.session.messages(sessionId))
-
-    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/messages`);
-
-    if (!response.ok) {
-      throw new Error(`Failed to get messages: ${response.statusText}`);
+    if (!this.client) {
+      throw new Error('OpenCode client not initialized. Call initialize() first.');
     }
 
-    const data = await response.json();
+    try {
+      const response = await this.client.session.messages({
+        path: { id: sessionId },
+      });
 
-    for (const msg of data.messages) {
-      yield {
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(msg.timestamp),
-      };
+      for (const msg of response.data.messages) {
+        yield {
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+        };
+      }
+    } catch (error) {
+      throw new Error(
+        `Failed to get messages: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -107,11 +136,9 @@ export class OpencodeClient {
    */
   async waitForCompletion(sessionId: string): Promise<SessionMessage[]> {
     const messages: SessionMessage[] = [];
-
     for await (const message of this.streamMessages(sessionId)) {
       messages.push(message);
     }
-
     return messages;
   }
 
@@ -119,16 +146,19 @@ export class OpencodeClient {
    * Send a message to an existing session
    */
   async sendMessage(sessionId: string, content: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ content }),
-    });
+    if (!this.client) {
+      throw new Error('OpenCode client not initialized. Call initialize() first.');
+    }
 
-    if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+    try {
+      await this.client.session.messages.create({
+        path: { id: sessionId },
+        body: { content },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to send message: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -136,19 +166,57 @@ export class OpencodeClient {
    * Close a session
    */
   async closeSession(sessionId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to close session: ${response.statusText}`);
+    if (!this.client) {
+      throw new Error('OpenCode client not initialized. Call initialize() first.');
     }
+
+    try {
+      await this.client.session.delete({
+        path: { id: sessionId },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to close session: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Shutdown - close in-process server if applicable
+   */
+  async shutdown(): Promise<void> {
+    if (this.inProcessServer) {
+      this.inProcessServer.server.close();
+      console.log('OpenCode server stopped');
+    }
+  }
+
+  /**
+   * Get server URL
+   */
+  getServerUrl(): string {
+    if (!this.baseUrl) {
+      throw new Error('Server not initialized');
+    }
+    return this.baseUrl;
   }
 }
 
 /**
  * Create an OpenCode client with the given configuration
+ * @deprecated Use createOpencodeClientInstance instead, which properly initializes the client
  */
 export function createOpencodeClient(config: OpencodeConfig): OpencodeClient {
   return new OpencodeClient(config);
+}
+
+/**
+ * Create and initialize an OpenCode client with the given configuration
+ */
+export async function createOpencodeClientInstance(
+  config: OpencodeConfig
+): Promise<OpencodeClient> {
+  const client = new OpencodeClient(config);
+  await client.initialize();
+  return client;
 }
