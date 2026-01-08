@@ -1,0 +1,37 @@
+# Example GitLab CI/CD configuration with DRS
+
+stages:
+  - review
+  - test
+  - build
+  - deploy
+
+# Include DRS template
+include:
+  - remote: 'https://raw.githubusercontent.com/your-org/drs/main/templates/gitlab-ci.yml'
+
+# Use the full review configuration
+ai_review:
+  extends: .drs_review
+  variables:
+    OPENCODE_SERVER: "http://opencode.internal:3000"
+    REVIEW_AGENTS: "security,quality,style,performance"
+
+# Run tests
+test:
+  stage: test
+  image: node:20
+  script:
+    - npm install
+    - npm test
+
+# Build application
+build:
+  stage: build
+  image: node:20
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - dist/

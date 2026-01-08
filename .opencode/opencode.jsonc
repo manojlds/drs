@@ -1,0 +1,48 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Global instructions for DRS review behavior
+  "instructions": [
+    ".gitlab-review.md"
+  ],
+
+  // LLM provider configuration
+  "provider": {
+    "opencode": {
+      "options": {}
+    }
+  },
+
+  // Custom tools configuration
+  "tools": {
+    "gitlab-api": true,
+    "Bash": true,
+    "Read": true,
+    "Glob": true,
+    "Grep": true,
+    "Write": false,
+    "Edit": false
+  },
+
+  // Agent model configuration
+  "agent": {
+    "gitlab-reviewer": {
+      "model": "opencode/claude-opus-4-5"
+    },
+    "local-reviewer": {
+      "model": "opencode/claude-sonnet-4-5"
+    },
+    "review/security": {
+      "model": "opencode/claude-sonnet-4-5"
+    },
+    "review/quality": {
+      "model": "opencode/claude-sonnet-4-5"
+    },
+    "review/style": {
+      "model": "opencode/claude-haiku-4-5"
+    },
+    "review/performance": {
+      "model": "opencode/claude-sonnet-4-5"
+    }
+  }
+}
