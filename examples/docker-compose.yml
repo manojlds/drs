@@ -1,0 +1,53 @@
+# Docker Compose setup for DRS webhook server
+
+version: '3.8'
+
+services:
+  # OpenCode Server
+  opencode:
+    image: anomalyco/opencode:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENCODE_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - opencode-config:/root/.config/opencode
+      - ./custom-agents:/workspace/.opencode/agent
+    restart: unless-stopped
+
+  # DRS Webhook Server
+  drs-webhook:
+    build: ..
+    ports:
+      - "8080:8080"
+    environment:
+      - OPENCODE_SERVER=http://opencode:3000
+      - GITLAB_URL=${GITLAB_URL:-https://gitlab.com}
+      - GITLAB_TOKEN=${GITLAB_TOKEN}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - opencode
+      - redis
+    restart: unless-stopped
+
+  # Redis for job queue
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  # Redis Commander (optional - for monitoring)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
+volumes:
+  opencode-config:
+  redis-data:
