@@ -1,7 +1,7 @@
 ---
 description: Performance and optimization expert
 color: "#DD6B20"
-model: opencode/claude-sonnet-4-5
+model: anthropic/claude-sonnet-4-5-20250929
 hidden: false
 tools:
   Read: true

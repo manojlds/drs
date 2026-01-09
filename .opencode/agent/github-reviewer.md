@@ -1,7 +1,7 @@
 ---
 description: Main GitHub PR review orchestrator
 color: "#24292e"
-model: opencode/claude-opus-4-5
+model: anthropic/claude-opus-4-5-20251101
 tools:
   Read: true
   Glob: true
