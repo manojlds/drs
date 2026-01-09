@@ -124,7 +124,7 @@ export class OpencodeClient {
     }
 
     try {
-      // Poll session status until it's done (idle or error)
+      // Poll messages until agent completes
       let lastMessageCount = 0;
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
@@ -132,25 +132,13 @@ export class OpencodeClient {
       while (attempts < maxAttempts) {
         attempts++;
 
-        // Check session status
-        const statusResponse: any = await this.client.session.get({
-          path: { id: sessionId },
-        });
-
-        const status = statusResponse.data?.status || 'unknown';
-        console.log(`Session ${sessionId} status: ${status} (attempt ${attempts})`);
-
-        // If session has error, stop
-        if (status === 'error') {
-          throw new Error('Session ended with error');
-        }
-
         // Get current messages
         const messagesResponse: any = await this.client.session.messages({
           path: { id: sessionId },
         });
 
         const messages = messagesResponse.data || [];
+        console.log(`Session ${sessionId}: ${messages.length} messages (attempt ${attempts})`);
 
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
@@ -165,10 +153,24 @@ export class OpencodeClient {
 
         lastMessageCount = messages.length;
 
-        // If session is idle/complete, we're done
-        if (status === 'idle' || status === 'complete') {
-          console.log(`Session ${sessionId} complete with ${messages.length} messages`);
-          break;
+        // Check if the last assistant message has completed
+        // Find the last assistant message (without mutating messages array)
+        const lastAssistantMsg = [...messages].reverse().find((m: any) => m.info?.role === 'assistant');
+
+        if (lastAssistantMsg) {
+          const isComplete = lastAssistantMsg.info?.time?.completed !== undefined;
+          const hasError = lastAssistantMsg.info?.error !== undefined;
+
+          console.log(`Last assistant message: completed=${isComplete}, error=${hasError}`);
+
+          if (hasError) {
+            throw new Error(`Agent error: ${JSON.stringify(lastAssistantMsg.info.error)}`);
+          }
+
+          if (isComplete) {
+            console.log(`Session ${sessionId} complete with ${messages.length} messages`);
+            break;
+          }
         }
 
         // Wait before polling again
