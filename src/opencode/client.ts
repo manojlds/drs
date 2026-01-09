@@ -63,12 +63,19 @@ export class OpencodeClient {
     } else {
       // Start server in-process
       console.log('Starting OpenCode server in-process...');
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
+      }
+
+      // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
       this.inProcessServer = await createOpencode({
         hostname: this.config.serverHostname || '127.0.0.1',
         port: this.config.serverPort || 4096,
-        timeout: 5000,
+        timeout: 10000,
         config: {
-          model: 'anthropic/claude-opus-4-5',
+          model: 'anthropic/claude-opus-4-20250514',
         },
       });
 

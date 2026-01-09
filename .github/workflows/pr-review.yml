@@ -30,14 +30,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_SERVER: ${{ secrets.OPENCODE_SERVER }}
         run: |
-          if [ -z "$OPENCODE_SERVER" ]; then
-            echo "❌ OPENCODE_SERVER secret is not set"
-            echo "To enable PR reviews, add OPENCODE_SERVER secret with your OpenCode server URL"
-            echo "Example: http://your-opencode-server.com:3000"
-            exit 1
-          fi
+          echo "🚀 Starting PR review with OpenCode (in-process mode)..."
 
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
