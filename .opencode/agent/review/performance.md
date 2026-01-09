@@ -50,20 +50,30 @@ You are a performance engineer identifying optimization opportunities.
 
 ## Review Format
 
+**IMPORTANT**: You MUST output your findings in structured JSON format for automated processing.
+
+After your analysis, provide a JSON code block with all issues found:
+
+```json
+{
+  "issues": [
+    {
+      "category": "PERFORMANCE",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Brief title of the performance issue",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Description of the performance problem and estimated impact",
+      "solution": "Improved approach with code example",
+      "references": ["https://web.dev/...", "https://optimization-guide/..."],
+      "agent": "performance"
+    }
+  ]
+}
 ```
-⚡ PERFORMANCE - [Issue Type]
-File: [path]:[line]
-Impact: HIGH | MEDIUM | LOW
 
-Issue:
-[Performance problem]
-
-Current Cost:
-[Estimated complexity or impact]
-
-Optimization:
-[Improved approach with code example]
-```
+**Required fields**: category, severity, title, file, problem, solution
+**Optional fields**: line (line number), references (array of URLs)
 
 ## Examples
 

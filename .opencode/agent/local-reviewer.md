@@ -38,34 +38,27 @@ Use the Task tool to invoke these agents based on the changed files:
 
 ## Output Format
 
-Terminal output with color coding:
+**IMPORTANT**: Specialized agents will output JSON-formatted findings. You MUST preserve and pass through their JSON output exactly as received.
 
-```
-🔍 Local Diff Review
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📊 Summary
-Files reviewed: X
-Issues found: Y
-  🔴 Critical: N
-  🟡 High: N
-  🟠 Medium: N
-  ⚪ Low: N
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[Severity] [Type]: [Issue Title]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📁 [file]:[line]
-
-[Detailed explanation]
-
-✅ Fix: [Suggested solution]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ Recommendation: Fix critical issues before pushing
+The specialized agents output findings in this JSON format:
+```json
+{
+  "issues": [
+    {
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Issue title",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Description",
+      "solution": "Fix description",
+      "references": ["https://..."],
+      "agent": "security"
+    }
+  ]
+}
 ```
 
-Use colored output for terminal visibility. Be concise but actionable.
+When you receive JSON output from specialized agents, include it in your response so it can be parsed and displayed in the terminal with color coding.
 
-Prioritize critical security issues and blocking quality problems.
+Be concise but actionable. Prioritize critical security issues and blocking quality problems.

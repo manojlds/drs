@@ -41,12 +41,28 @@ Use the Task tool to invoke these specialized review agents:
 
 ## Output Format
 
-Post findings as GitLab MR discussion threads with:
-- File path and line number references
-- Issue severity (CRITICAL, HIGH, MEDIUM, LOW)
-- Clear explanation of the problem
-- Suggested fix with code example
-- References to documentation when applicable
+**IMPORTANT**: Specialized agents will output JSON-formatted findings. You MUST preserve and pass through their JSON output exactly as received.
+
+The specialized agents output findings in this JSON format:
+```json
+{
+  "issues": [
+    {
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Issue title",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Description",
+      "solution": "Fix description",
+      "references": ["https://..."],
+      "agent": "security"
+    }
+  ]
+}
+```
+
+When you receive JSON output from specialized agents, include it in your response so it can be parsed for posting inline comments on GitLab MR discussion threads.
 
 ## Example Agent Invocation
 

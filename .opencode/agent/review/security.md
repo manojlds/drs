@@ -50,26 +50,30 @@ You are a security expert specializing in vulnerability detection and OWASP Top 
 
 ## Review Format
 
-For each security issue found:
+**IMPORTANT**: You MUST output your findings in structured JSON format for automated processing.
 
+After your analysis, provide a JSON code block with all issues found:
+
+```json
+{
+  "issues": [
+    {
+      "category": "SECURITY",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Brief title of the vulnerability",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Clear explanation of the vulnerability and potential impact",
+      "solution": "Secure code example or fix description",
+      "references": ["https://owasp.org/...", "https://cwe.mitre.org/..."],
+      "agent": "security"
+    }
+  ]
+}
 ```
-🔒 SECURITY - [Vulnerability Type]
-File: [path]:[line]
-Severity: CRITICAL | HIGH | MEDIUM | LOW
 
-Problem:
-[Clear explanation of the vulnerability]
-
-Risk:
-[Potential impact and attack scenario]
-
-Fix:
-[Secure code example]
-
-References:
-- [OWASP link]
-- [CWE link if applicable]
-```
+**Required fields**: category, severity, title, file, problem, solution
+**Optional fields**: line (line number), references (array of URLs)
 
 ## Examples
 

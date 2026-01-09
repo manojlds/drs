@@ -2,13 +2,13 @@ import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
-import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import {
   formatSummaryComment,
   formatIssueComment,
   calculateSummary,
   type ReviewIssue,
 } from '../gitlab/comment-formatter.js';
+import { parseReviewIssues } from '../lib/issue-parser.js';
 
 export interface ReviewPROptions {
   owner: string;
@@ -42,13 +42,10 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     return;
   }
 
-  // Parse diffs
-  const diffs = files
-    .filter(file => file.patch) // Only files with diffs
-    .map(file => parseDiff(file.patch || ''))
-    .flat();
-
-  const changedFiles = getChangedFiles(diffs);
+  // Get list of changed files (excluding deleted files)
+  const changedFiles = files
+    .filter(file => file.status !== 'removed')
+    .map(file => file.filename);
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
@@ -86,12 +83,15 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   try {
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
-        // Parse issues from assistant messages
-        // TODO: Implement structured output parsing once OpenCode SDK supports it
+        // Display message content
         console.log(message.content);
 
-        // For now, we'll display raw output
-        // In production, parse structured JSON responses from agents
+        // Parse structured issues from agent responses
+        const parsedIssues = parseReviewIssues(message.content);
+        if (parsedIssues.length > 0) {
+          issues.push(...parsedIssues);
+          console.log(chalk.gray(`\n[Parsed ${parsedIssues.length} issue(s) from response]\n`));
+        }
       }
     }
 
