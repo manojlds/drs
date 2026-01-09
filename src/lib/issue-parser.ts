@@ -29,7 +29,6 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
     // Try to find JSON blocks in the content
     // Look for code blocks with ```json or raw JSON objects
     const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/g;
-    const rawJsonRegex = /\{[\s\S]*?"issues"[\s\S]*?\}/g;
 
     let match;
 
@@ -54,21 +53,38 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
 
     // If no code blocks found, try to find raw JSON objects
     if (issues.length === 0) {
-      while ((match = rawJsonRegex.exec(content)) !== null) {
-        try {
-          const parsed = JSON.parse(match[0]);
-          if (parsed.issues && Array.isArray(parsed.issues)) {
-            for (const issue of parsed.issues) {
-              if (isValidIssue(issue)) {
-                issues.push({
-                  ...issue,
-                  agent: issue.agent || agentName,
-                });
-              }
+      // Try to parse the entire content as JSON
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.issues && Array.isArray(parsed.issues)) {
+          for (const issue of parsed.issues) {
+            if (isValidIssue(issue)) {
+              issues.push({
+                ...issue,
+                agent: issue.agent || agentName,
+              });
             }
           }
-        } catch (e) {
-          // Continue to next match
+        }
+      } catch (e) {
+        // Not valid JSON, try to find JSON objects with better bracket matching
+        const jsonObjects = extractJsonObjects(content);
+        for (const jsonStr of jsonObjects) {
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.issues && Array.isArray(parsed.issues)) {
+              for (const issue of parsed.issues) {
+                if (isValidIssue(issue)) {
+                  issues.push({
+                    ...issue,
+                    agent: issue.agent || agentName,
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            // Continue to next object
+          }
         }
       }
     }
@@ -77,6 +93,36 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
   }
 
   return issues;
+}
+
+/**
+ * Extract JSON objects from text by matching brackets
+ */
+function extractJsonObjects(text: string): string[] {
+  const objects: string[] = [];
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (depth === 0) {
+        start = i;
+      }
+      depth++;
+    } else if (text[i] === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const obj = text.substring(start, i + 1);
+        // Only consider objects that contain "issues"
+        if (obj.includes('"issues"')) {
+          objects.push(obj);
+        }
+        start = -1;
+      }
+    }
+  }
+
+  return objects;
 }
 
 /**
