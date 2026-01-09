@@ -19,7 +19,7 @@ describe('Config', () => {
     const config = loadConfig(process.cwd(), {
       review: {
         agents: ['security'],
-      },
+      } as any,
     });
 
     expect(config.review.agents).toEqual(['security']);
