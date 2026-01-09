@@ -69,14 +69,36 @@ export class OpencodeClient {
         throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
       }
 
+      // Load OpenCode configuration from .opencode/opencode.jsonc
+      let opencodeConfig: any = {
+        model: 'anthropic/claude-opus-4-20250514',
+      };
+
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const configPath = path.join(this.directory || process.cwd(), '.opencode', 'opencode.jsonc');
+
+        if (fs.existsSync(configPath)) {
+          console.log(`Loading OpenCode config from ${configPath}`);
+          const configContent = fs.readFileSync(configPath, 'utf-8');
+          // Remove comments and parse JSON
+          const jsonContent = configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//gm, '');
+          opencodeConfig = JSON.parse(jsonContent);
+          console.log(`Loaded agent configurations: ${Object.keys(opencodeConfig.agent || {}).join(', ')}`);
+        } else {
+          console.warn(`OpenCode config not found at ${configPath}`);
+        }
+      } catch (error) {
+        console.warn(`Failed to load OpenCode config: ${error}`);
+      }
+
       // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
       this.inProcessServer = await createOpencode({
         hostname: this.config.serverHostname || '127.0.0.1',
         port: this.config.serverPort || 4096,
         timeout: 10000,
-        config: {
-          model: 'anthropic/claude-opus-4-20250514',
-        },
+        config: opencodeConfig,
       });
 
       this.client = this.inProcessServer.client;
