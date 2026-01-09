@@ -1,15 +1,17 @@
-# DRS - AI Code Review Bot
+# DRS - Diff Review System
 
-An automated code review bot for GitLab Merge Requests and GitHub Pull Requests powered by OpenCode SDK and Claude AI.
+**Intelligent Code Review Platform for GitLab and GitHub**
+
+Enterprise-grade automated code review for Merge Requests and Pull Requests, powered by OpenCode SDK and Claude.
 
 ## Features
 
-- **AI-Powered Reviews**: Comprehensive code analysis using Claude's latest models
-- **Specialized Agents**: Security, quality, style, and performance review experts
-- **Multi-Platform Support**: Works with both GitLab MRs and GitHub PRs
-- **Multiple Deployment Modes**: CI/CD pipelines, webhook server, or local CLI
-- **Customizable**: Override agents with project-specific rules
-- **Native Integration**: Full API integration for both GitLab and GitHub
+- **Comprehensive Analysis**: Advanced code review using Claude's latest models
+- **Specialized Review Domains**: Security, quality, style, and performance analysis
+- **Multi-Platform Support**: Native integration with GitLab and GitHub
+- **Flexible Deployment**: CI/CD pipelines, webhook server, or local CLI
+- **Highly Customizable**: Configure review agents with project-specific rules
+- **Deep Integration**: Full API support for both GitLab and GitHub platforms
 
 ## Quick Start
 
@@ -259,9 +261,9 @@ review:
     - "*.md"
 ```
 
-## Review Agents
+## Review Domains
 
-### Security Agent
+### Security Analysis
 
 Focuses on:
 - OWASP Top 10 vulnerabilities
@@ -270,7 +272,7 @@ Focuses on:
 - Sensitive data exposure
 - Security misconfigurations
 
-### Quality Agent
+### Quality Analysis
 
 Reviews:
 - Design patterns and anti-patterns
@@ -279,7 +281,7 @@ Reviews:
 - Error handling
 - Code smells
 
-### Style Agent
+### Style Analysis
 
 Checks:
 - Naming conventions
@@ -288,7 +290,7 @@ Checks:
 - Type safety (TypeScript)
 - Unused code
 
-### Performance Agent
+### Performance Analysis
 
 Analyzes:
 - Algorithmic complexity

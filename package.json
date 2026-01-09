@@ -1,7 +1,7 @@
 {
   "name": "@diff-review-system/drs",
   "version": "1.0.0",
-  "description": "AI-powered code review bot for GitLab MRs and GitHub PRs using OpenCode SDK",
+  "description": "Intelligent code review platform for GitLab and GitHub - Enterprise-grade automated analysis",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -34,9 +34,11 @@
     "github",
     "code-review",
     "opencode",
-    "ai",
+    "diff-review",
     "merge-request",
-    "pull-request"
+    "pull-request",
+    "code-analysis",
+    "static-analysis"
   ],
   "author": "",
   "license": "Apache-2.0",

@@ -21,7 +21,7 @@ export interface ReviewMROptions {
  * Review a GitLab merge request
  */
 export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Promise<void> {
-  console.log(chalk.bold.cyan('\n🔍 DRS GitLab MR Review\n'));
+  console.log(chalk.bold.cyan('\n📋 DRS | GitLab MR Analysis\n'));
 
   // Initialize GitLab client
   const gitlab = createGitLabClient();
@@ -54,7 +54,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   });
 
   // Create review session
-  console.log(chalk.gray('Starting AI review...\n'));
+  console.log(chalk.gray('Starting code analysis...\n'));
 
   const agentsList = config.review.agents.join(',');
   const session = await opencode.createSession({
