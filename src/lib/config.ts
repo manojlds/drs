@@ -124,16 +124,34 @@ export function loadConfig(
 }
 
 /**
- * Deep merge two config objects
+ * Deep merge two config objects, skipping undefined values
  */
 function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
-    opencode: { ...base.opencode, ...override.opencode },
-    gitlab: { ...base.gitlab, ...override.gitlab },
-    github: { ...base.github, ...override.github },
-    review: { ...base.review, ...override.review },
-    output: { ...base.output, ...override.output },
+    opencode: mergeSection(base.opencode, override.opencode),
+    gitlab: mergeSection(base.gitlab, override.gitlab),
+    github: mergeSection(base.github, override.github),
+    review: mergeSection(base.review, override.review),
+    output: mergeSection(base.output, override.output),
   };
+}
+
+/**
+ * Merge a config section, skipping undefined values
+ */
+function mergeSection<T extends Record<string, any>>(
+  base: T,
+  override?: Partial<T>
+): T {
+  if (!override) return base;
+
+  const result = { ...base };
+  for (const key in override) {
+    if (override[key] !== undefined) {
+      result[key] = override[key] as any;
+    }
+  }
+  return result;
 }
 
 /**
