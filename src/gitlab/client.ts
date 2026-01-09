@@ -1,5 +1,4 @@
 import { Gitlab } from '@gitbeaker/node';
-import type { MergeRequestSchema, MergeRequestDiffSchema } from '@gitbeaker/core';
 
 export interface GitLabConfig {
   url: string;
@@ -36,15 +35,17 @@ export class GitLabClient {
    * Get merge request changes (diffs)
    */
   async getMRChanges(projectId: string, mrIid: number): Promise<MRChange[]> {
-    const mr = await this.client.MergeRequests.changes(projectId, mrIid);
-    return mr.changes as MRChange[];
-  }
+    const mr: any = await this.client.MergeRequests.changes(projectId, mrIid);
+    if (!mr.changes) return [];
 
-  /**
-   * Get merge request diff versions
-   */
-  async getMRDiffVersions(projectId: string, mrIid: number) {
-    return await this.client.MergeRequests.allDiffs(projectId, mrIid);
+    return mr.changes.map((change: any) => ({
+      oldPath: change.old_path,
+      newPath: change.new_path,
+      newFile: change.new_file,
+      renamedFile: change.renamed_file,
+      deletedFile: change.deleted_file,
+      diff: change.diff,
+    }));
   }
 
   /**
