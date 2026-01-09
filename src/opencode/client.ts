@@ -106,11 +106,16 @@ export class OpencodeClient {
         throw new Error('Failed to get session ID from create response');
       }
 
-      console.log(`Created session ${sessionId}`);
+      console.log(`Created session ${sessionId} in directory: ${this.directory || 'default'}`);
 
       // Step 2: Send initial message to start the agent
-      await this.client.session.prompt({
+      console.log(`Attempting to invoke agent: ${options.agent}`);
+
+      const promptResponse: any = await this.client.session.prompt({
         path: { id: sessionId },
+        query: {
+          directory: this.directory,
+        },
         body: {
           agent: options.agent,
           parts: [
@@ -122,6 +127,7 @@ export class OpencodeClient {
         },
       });
 
+      console.log(`Prompt response:`, JSON.stringify(promptResponse, null, 2));
       console.log(`Sent initial message to session ${sessionId} with agent ${options.agent}`);
 
       return {
