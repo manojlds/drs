@@ -119,6 +119,15 @@ export class OpencodeClient {
         console.error(`✗ Failed to load OpenCode config: ${error}`);
       }
 
+      // Change to project directory so OpenCode can discover agents
+      const originalCwd = process.cwd();
+      const projectDir = this.directory || originalCwd;
+
+      if (projectDir !== originalCwd) {
+        console.log(`Changing to project directory: ${projectDir}`);
+        process.chdir(projectDir);
+      }
+
       // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
       this.inProcessServer = await createOpencode({
         hostname: this.config.serverHostname || '127.0.0.1',
@@ -126,6 +135,12 @@ export class OpencodeClient {
         timeout: 10000,
         config: opencodeConfig,
       });
+
+      // Restore original working directory
+      if (projectDir !== originalCwd) {
+        process.chdir(originalCwd);
+        console.log(`Restored working directory: ${originalCwd}`);
+      }
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
