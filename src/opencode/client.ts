@@ -7,6 +7,8 @@
  */
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -75,22 +77,21 @@ export class OpencodeClient {
       };
 
       try {
-        const fs = await import('fs');
-        const path = await import('path');
         const configPath = path.join(this.directory || process.cwd(), '.opencode', 'opencode.jsonc');
+        console.log(`Checking for OpenCode config at: ${configPath}`);
 
         if (fs.existsSync(configPath)) {
-          console.log(`Loading OpenCode config from ${configPath}`);
+          console.log(`✓ Found config file, loading...`);
           const configContent = fs.readFileSync(configPath, 'utf-8');
           // Remove comments and parse JSON
           const jsonContent = configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//gm, '');
           opencodeConfig = JSON.parse(jsonContent);
-          console.log(`Loaded agent configurations: ${Object.keys(opencodeConfig.agent || {}).join(', ')}`);
+          console.log(`✓ Loaded agent configurations: ${Object.keys(opencodeConfig.agent || {}).join(', ')}`);
         } else {
-          console.warn(`OpenCode config not found at ${configPath}`);
+          console.warn(`⚠ OpenCode config not found at ${configPath}`);
         }
       } catch (error) {
-        console.warn(`Failed to load OpenCode config: ${error}`);
+        console.error(`✗ Failed to load OpenCode config: ${error}`);
       }
 
       // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
