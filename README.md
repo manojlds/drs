@@ -18,7 +18,7 @@ An automated code review bot for GitLab Merge Requests and GitHub Pull Requests 
 Install OpenCode CLI (required for in-process server mode):
 
 ```bash
-npm install -g opencode
+npm install -g opencode-ai
 ```
 
 ### 2. Install DRS
@@ -118,7 +118,7 @@ jobs:
           node-version: '20'
 
       - name: Install OpenCode CLI
-        run: npm install -g opencode
+        run: npm install -g opencode-ai
 
       - name: Build from source
         run: |
@@ -167,7 +167,7 @@ If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server
 
 ```bash
 # Install OpenCode CLI first (required)
-npm install -g opencode
+npm install -g opencode-ai
 
 # Then run DRS (server starts automatically)
 drs review-local
@@ -346,7 +346,7 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
-- OpenCode CLI (`npm install -g opencode`) - Required even for in-process mode
+- OpenCode CLI (`npm install -g opencode-ai`) - Required even for in-process mode
 - Anthropic API key (for Claude AI)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)
