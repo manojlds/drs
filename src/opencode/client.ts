@@ -116,7 +116,7 @@ export class OpencodeClient {
   }
 
   /**
-   * Stream messages from a session
+   * Stream messages from a session (polls until agent completes)
    */
   async *streamMessages(sessionId: string): AsyncGenerator<SessionMessage> {
     if (!this.client) {
@@ -124,18 +124,59 @@ export class OpencodeClient {
     }
 
     try {
-      const response: any = await this.client.session.messages({
-        path: { id: sessionId },
-      });
+      // Poll session status until it's done (idle or error)
+      let lastMessageCount = 0;
+      let attempts = 0;
+      const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
 
-      const messages = response.data || [];
-      for (const msg of messages) {
-        yield {
-          id: msg.info?.id || 'msg-' + Date.now(),
-          role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
-          content: msg.parts?.map((p: any) => p.text || '').join('') || '',
-          timestamp: new Date(),
-        };
+      while (attempts < maxAttempts) {
+        attempts++;
+
+        // Check session status
+        const statusResponse: any = await this.client.session.get({
+          path: { id: sessionId },
+        });
+
+        const status = statusResponse.data?.status || 'unknown';
+        console.log(`Session ${sessionId} status: ${status} (attempt ${attempts})`);
+
+        // If session has error, stop
+        if (status === 'error') {
+          throw new Error('Session ended with error');
+        }
+
+        // Get current messages
+        const messagesResponse: any = await this.client.session.messages({
+          path: { id: sessionId },
+        });
+
+        const messages = messagesResponse.data || [];
+
+        // Yield any new messages
+        for (let i = lastMessageCount; i < messages.length; i++) {
+          const msg = messages[i];
+          yield {
+            id: msg.info?.id || 'msg-' + Date.now(),
+            role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
+            content: msg.parts?.map((p: any) => p.text || '').join('') || '',
+            timestamp: new Date(),
+          };
+        }
+
+        lastMessageCount = messages.length;
+
+        // If session is idle/complete, we're done
+        if (status === 'idle' || status === 'complete') {
+          console.log(`Session ${sessionId} complete with ${messages.length} messages`);
+          break;
+        }
+
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      if (attempts >= maxAttempts) {
+        console.warn(`Session ${sessionId} timeout after ${maxAttempts} attempts`);
       }
     } catch (error) {
       throw new Error(

@@ -105,18 +105,29 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       });
 
       // Collect results from this agent
+      let messageCount = 0;
       for await (const message of opencode.streamMessages(session.id)) {
+        messageCount++;
+        console.log(chalk.gray(`[${agentType}] Received message ${messageCount} (role: ${message.role})`));
+
         if (message.role === 'assistant') {
-          console.log(chalk.gray(`[${agentType}] ${message.content.substring(0, 100)}...\n`));
+          // Log full agent response for debugging
+          console.log(chalk.gray(`\n[${agentType} Response]:`));
+          console.log(message.content);
+          console.log(chalk.gray(`[End ${agentType} Response]\n`));
 
           // Parse issues from response
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
             issues.push(...parsedIssues);
-            console.log(chalk.gray(`[${agentType}] Found ${parsedIssues.length} issue(s)\n`));
+            console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)\n`));
+          } else {
+            console.log(chalk.yellow(`⚠ [${agentType}] No issues parsed from response\n`));
           }
         }
       }
+
+      console.log(chalk.gray(`[${agentType}] Finished. Total messages: ${messageCount}\n`));
 
       await opencode.closeSession(session.id);
     } catch (error) {
