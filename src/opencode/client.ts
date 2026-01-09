@@ -86,7 +86,7 @@ export class OpencodeClient {
   }
 
   /**
-   * Create a new session with an agent
+   * Create a new session with an agent and send initial message
    */
   async createSession(options: SessionCreateOptions): Promise<Session> {
     if (!this.client) {
@@ -94,17 +94,38 @@ export class OpencodeClient {
     }
 
     try {
-      // Create session using OpenCode SDK
-      // Note: This is a simplified implementation that needs to be adapted to the actual SDK API
-      const response: any = await (this.client.session as any).create({
-        body: {
-          agent: options.agent,
-          userMessage: options.message,
+      // Step 1: Create empty session
+      const createResponse: any = await this.client.session.create({
+        query: {
+          directory: this.directory,
         },
       });
 
+      const sessionId = createResponse.data?.id;
+      if (!sessionId) {
+        throw new Error('Failed to get session ID from create response');
+      }
+
+      console.log(`Created session ${sessionId}`);
+
+      // Step 2: Send initial message to start the agent
+      await this.client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          agent: options.agent,
+          parts: [
+            {
+              type: 'text',
+              text: options.message,
+            },
+          ],
+        },
+      });
+
+      console.log(`Sent initial message to session ${sessionId} with agent ${options.agent}`);
+
       return {
-        id: response.data?.id || 'session-' + Date.now(),
+        id: sessionId,
         agent: options.agent,
         createdAt: new Date(),
       };
