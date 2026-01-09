@@ -1,5 +1,5 @@
 {
-  "name": "@drs/gitlab-review-bot",
+  "name": "@diff-review-system/drs",
   "version": "1.0.0",
   "description": "AI-powered code review bot for GitLab MRs and GitHub PRs using OpenCode SDK",
   "type": "module",
@@ -12,8 +12,23 @@
     "dev": "tsx watch src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "prepublishOnly": "npm run build"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".opencode"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manojlds/drs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/manojlds/drs/issues"
+  },
+  "homepage": "https://github.com/manojlds/drs#readme",
   "keywords": [
     "gitlab",
     "github",
@@ -28,7 +43,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
     "@opencode-ai/sdk": "^1.1.7",
-    "@gitbeaker/node": "^35.8.0",
+    "@gitbeaker/node": "^35.8.1",
     "@octokit/rest": "^21.0.0",
     "hono": "^4.0.0",
     "commander": "^12.0.0",

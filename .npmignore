@@ -1,0 +1,53 @@
+# Source files (we only want to publish the built dist/)
+src/
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+.eslintrc.*
+.prettierrc.*
+vitest.config.*
+
+# Development files
+*.test.ts
+*.spec.ts
+**/__tests__/
+**/__mocks__/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation
+DESIGN.md
+ARCHITECTURE.md
+examples/
+
+# Environment
+.env
+.env.*
+.env.example
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Misc
+.DS_Store
+Thumbs.db

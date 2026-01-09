@@ -55,7 +55,7 @@ ai_review:
   only:
     - merge_requests
   script:
-    - npm install -g @drs/gitlab-review-bot
+    - npm install -g @diff-review-system/drs
     - drs review-mr --mr $CI_MERGE_REQUEST_IID --project $CI_PROJECT_ID --post-comments
   variables:
     OPENCODE_SERVER: "http://opencode.internal:3000"
