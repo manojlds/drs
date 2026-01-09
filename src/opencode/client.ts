@@ -83,8 +83,33 @@ export class OpencodeClient {
         if (fs.existsSync(configPath)) {
           console.log(`✓ Found config file, loading...`);
           const configContent = fs.readFileSync(configPath, 'utf-8');
-          // Remove comments and parse JSON
-          const jsonContent = configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//gm, '');
+
+          // Strip JSONC to valid JSON
+          // This is a simple approach that handles most JSONC features
+          const lines = configContent.split('\n');
+          const cleanedLines = lines
+            .map(line => {
+              // Remove single-line comments
+              const commentIndex = line.indexOf('//');
+              if (commentIndex !== -1) {
+                // Check if // is inside a string
+                const beforeComment = line.substring(0, commentIndex);
+                const quoteCount = (beforeComment.match(/"/g) || []).length;
+                // If odd number of quotes, // is inside a string, keep it
+                if (quoteCount % 2 === 0) {
+                  line = line.substring(0, commentIndex);
+                }
+              }
+              return line;
+            })
+            .filter(line => line.trim().length > 0); // Remove empty lines
+
+          let jsonContent = cleanedLines.join('\n');
+          // Remove multi-line comments
+          jsonContent = jsonContent.replace(/\/\*[\s\S]*?\*\//g, '');
+          // Remove trailing commas
+          jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+
           opencodeConfig = JSON.parse(jsonContent);
           console.log(`✓ Loaded agent configurations: ${Object.keys(opencodeConfig.agent || {}).join(', ')}`);
         } else {
