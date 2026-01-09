@@ -1,5 +1,5 @@
 {
-  "name": "@drs/gitlab-review-bot",
+  "name": "@diff-review-system/drs",
   "version": "1.0.0",
   "description": "AI-powered code review bot for GitLab MRs and GitHub PRs using OpenCode SDK",
   "type": "module",

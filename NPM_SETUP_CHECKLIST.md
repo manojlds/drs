@@ -12,14 +12,14 @@ Use this checklist to set up npm publishing for the first time.
 - [ ] Enable 2FA (recommended for security)
 
 ### 2. NPM Scope/Package Name
-- [ ] Package name is: `@drs/gitlab-review-bot`
-- [ ] Verify you have publish access to the `@drs` scope:
+- [ ] Package name is: `@diff-review-system/drs`
+- [ ] Verify you have publish access to the `@diff-review-system` scope:
   ```bash
   npm login
   npm access ls-packages
   ```
 - [ ] If no access: Either:
-  - Request access to `@drs` scope from owner
+  - Request access to `@diff-review-system` scope from owner
   - OR change package name in `package.json` to your own scope (e.g., `@yourname/gitlab-review-bot`)
 
 ### 3. ~~GitHub Repository Setup~~ ❌ NOT NEEDED!
@@ -63,7 +63,7 @@ After the first manual publish:
 
 ```bash
 # 1. Go to your package page on npm
-open https://www.npmjs.com/package/@drs/gitlab-review-bot/access
+open https://www.npmjs.com/package/@diff-review-system/drs/access
 
 # 2. Under "Publishing access", find "Trusted publishers"
 
@@ -97,7 +97,7 @@ git push --follow-tags
 # The "Publish to npm" workflow will publish automatically!
 
 # 5. Verify publication
-npm view @drs/gitlab-review-bot
+npm view @diff-review-system/drs
 
 # You should see provenance information showing it was published from GitHub Actions
 ```
@@ -128,10 +128,10 @@ npm run lint
 ### Can't Publish to @drs Scope
 ```bash
 # Option 1: Change package name to your scope
-# Edit package.json, change: "@drs/gitlab-review-bot" to "@yourname/gitlab-review-bot"
+# Edit package.json, change: "@diff-review-system/drs" to "@yourname/gitlab-review-bot"
 
 # Option 2: Publish without scope (if name is available)
-# Edit package.json, change: "@drs/gitlab-review-bot" to "gitlab-review-bot"
+# Edit package.json, change: "@diff-review-system/drs" to "gitlab-review-bot"
 ```
 
 ### GitHub Actions Workflow Fails with 403
@@ -143,7 +143,7 @@ npm run lint
 ### Want to see provenance information?
 ```bash
 # After publishing with trusted publishing, view the package
-npm view @drs/gitlab-review-bot
+npm view @diff-review-system/drs
 
 # You'll see attestations showing:
 # - Which GitHub Actions workflow published it
@@ -154,7 +154,7 @@ npm view @drs/gitlab-review-bot
 ## 📚 Next Steps After First Publish
 
 - [ ] Update README badges with npm version badge
-- [ ] Test installation: `npm install -g @drs/gitlab-review-bot`
+- [ ] Test installation: `npm install -g @diff-review-system/drs`
 - [ ] Create GitHub release notes for the version
 - [ ] Announce the release!
 

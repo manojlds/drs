@@ -24,7 +24,7 @@ jobs:
           node-version: '20'
 
       - name: Install DRS
-        run: npm install -g @drs/gitlab-review-bot
+        run: npm install -g @diff-review-system/drs
 
       - name: Review Pull Request
         env:

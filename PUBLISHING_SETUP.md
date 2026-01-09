@@ -8,7 +8,7 @@ This document describes the npm publishing setup for this project.
 - Added `prepublishOnly` script to ensure build runs before publishing
 - Added `files` field to explicitly control what gets published (dist/, README.md, LICENSE, .opencode/)
 - Added repository, bugs, and homepage URLs
-- Package name: `@drs/gitlab-review-bot`
+- Package name: `@diff-review-system/drs`
 - Version: `1.0.0` (ready for initial release)
 
 ### 2. .npmignore
@@ -54,7 +54,7 @@ npm login
 npm publish --access public
 
 # 3. Configure trusted publishing on npm
-#    - Go to https://www.npmjs.com/package/@drs/gitlab-review-bot/access
+#    - Go to https://www.npmjs.com/package/@diff-review-system/drs/access
 #    - Under "Publishing access", click "Configure trusted publishers"
 #    - Add GitHub Actions publisher:
 #      * Provider: GitHub Actions
@@ -66,13 +66,13 @@ npm publish --access public
 
 **Option B: Configure before first publish (if you have npm organization admin rights)**
 ```bash
-# 1. Go to https://www.npmjs.com/package/@drs/gitlab-review-bot
+# 1. Go to https://www.npmjs.com/package/@diff-review-system/drs
 # 2. If package doesn't exist yet, you'll need to publish manually first (see Option A)
 ```
 
 #### 2. Verify NPM Scope Access
-The package is scoped as `@drs/gitlab-review-bot`. Ensure:
-- You have publish access to the `@drs` scope on npm
+The package is scoped as `@diff-review-system/drs`. Ensure:
+- You have publish access to the `@diff-review-system` scope on npm
 - Or update the package name in `package.json` to use your own scope
 
 #### 3. That's It!
@@ -149,12 +149,12 @@ npm pack --dry-run
 
 # 4. Create actual tarball for inspection
 npm pack
-tar -tzf drs-gitlab-review-bot-*.tgz | less
+tar -tzf diff-review-system-drs-*.tgz | less
 
 # 5. Test installation locally
-npm install -g ./drs-gitlab-review-bot-*.tgz
+npm install -g ./diff-review-system-drs-*.tgz
 drs --help
-npm uninstall -g @drs/gitlab-review-bot
+npm uninstall -g @diff-review-system/drs
 ```
 
 ## 🔍 Verification After Publishing
@@ -163,15 +163,15 @@ After publishing, verify the package:
 
 ```bash
 # View package info on npm
-npm view @drs/gitlab-review-bot
+npm view @diff-review-system/drs
 
 # Test installation from npm
-npm install -g @drs/gitlab-review-bot
+npm install -g @diff-review-system/drs
 drs --help
 drs init
 
 # Check specific version
-npm view @drs/gitlab-review-bot versions
+npm view @diff-review-system/drs versions
 ```
 
 ## 🎯 Quick Reference
@@ -227,7 +227,7 @@ git push --follow-tags
 ## ❗ Troubleshooting
 
 ### "npm publish failed with 403"
-- **Cause**: Trusted publishing not configured or no access to `@drs` scope
+- **Cause**: Trusted publishing not configured or no access to `@diff-review-system` scope
 - **Fix**:
   1. Verify trusted publisher is configured on npmjs.com package page
   2. Check you have publish rights: `npm access ls-packages`
@@ -246,7 +246,7 @@ git push --follow-tags
 
 ### "Package not found after publishing"
 - **Wait**: NPM registry can take 1-2 minutes to propagate
-- **Check**: Visit https://www.npmjs.com/package/@drs/gitlab-review-bot
+- **Check**: Visit https://www.npmjs.com/package/@diff-review-system/drs
 
 ## 📚 Resources
 

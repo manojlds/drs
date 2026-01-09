@@ -16,7 +16,7 @@ An automated code review bot for GitLab Merge Requests and GitHub Pull Requests 
 ### 1. Install
 
 ```bash
-npm install -g @drs/gitlab-review-bot
+npm install -g @diff-review-system/drs
 ```
 
 ### 2. Initialize Project
