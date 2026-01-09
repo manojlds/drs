@@ -47,20 +47,6 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     .filter(file => file.status !== 'removed')
     .map(file => file.filename);
 
-  // Build diff content for review
-  const diffContent = files
-    .filter(file => file.status !== 'removed' && file.patch)
-    .map(file => `
-## File: ${file.filename}
-Status: ${file.status}
-Changes: +${file.additions} -${file.deletions}
-
-\`\`\`diff
-${file.patch}
-\`\`\`
-`)
-    .join('\n---\n');
-
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
