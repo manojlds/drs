@@ -329,6 +329,10 @@ See the `examples/` directory for:
 
 ## Development
 
+For comprehensive local development and testing instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+Quick start:
+
 ```bash
 # Install dependencies
 npm install
@@ -359,6 +363,7 @@ Apache-2.0
 
 ## Documentation
 
+- [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Design Document](DESIGN.md) - Original design using Claude Agent SDK
 - [Architecture Document](ARCHITECTURE.md) - OpenCode SDK architecture
 - [OpenCode Documentation](https://opencode.ai/docs)
