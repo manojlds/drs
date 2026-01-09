@@ -50,20 +50,30 @@ You are a senior software engineer reviewing code quality and maintainability.
 
 ## Review Format
 
+**IMPORTANT**: You MUST output your findings in structured JSON format for automated processing.
+
+After your analysis, provide a JSON code block with all issues found:
+
+```json
+{
+  "issues": [
+    {
+      "category": "QUALITY",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Brief title of the issue",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Explanation of the issue and why it matters for maintainability",
+      "solution": "Better approach with code example",
+      "references": ["https://refactoring.guru/...", "https://martinfowler.com/..."],
+      "agent": "quality"
+    }
+  ]
+}
 ```
-📊 QUALITY - [Issue Type]
-File: [path]:[line]
-Importance: HIGH | MEDIUM | LOW
 
-Problem:
-[Explanation of the issue]
-
-Impact:
-[Why this matters for maintainability]
-
-Suggestion:
-[Better approach with code example]
-```
+**Required fields**: category, severity, title, file, problem, solution
+**Optional fields**: line (line number), references (array of URLs)
 
 ## Examples
 

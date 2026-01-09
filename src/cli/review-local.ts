@@ -4,6 +4,7 @@ import type { DRSConfig } from '../lib/config.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import { formatTerminalIssue, calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
+import { parseReviewIssues } from '../lib/issue-parser.js';
 
 export interface ReviewLocalOptions {
   staged: boolean;
@@ -75,12 +76,15 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   try {
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
-        // Parse issues from assistant messages
-        // TODO: Implement structured output parsing once OpenCode SDK supports it
+        // Display message content
         console.log(message.content);
 
-        // For now, we'll display raw output
-        // In production, parse structured JSON responses from agents
+        // Parse structured issues from agent responses
+        const parsedIssues = parseReviewIssues(message.content);
+        if (parsedIssues.length > 0) {
+          issues.push(...parsedIssues);
+          console.log(chalk.gray(`\n[Parsed ${parsedIssues.length} issue(s) from response]\n`));
+        }
       }
     }
 

@@ -9,6 +9,7 @@ import {
   calculateSummary,
   type ReviewIssue,
 } from '../gitlab/comment-formatter.js';
+import { parseReviewIssues } from '../lib/issue-parser.js';
 
 export interface ReviewPROptions {
   owner: string;
@@ -86,12 +87,15 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   try {
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
-        // Parse issues from assistant messages
-        // TODO: Implement structured output parsing once OpenCode SDK supports it
+        // Display message content
         console.log(message.content);
 
-        // For now, we'll display raw output
-        // In production, parse structured JSON responses from agents
+        // Parse structured issues from agent responses
+        const parsedIssues = parseReviewIssues(message.content);
+        if (parsedIssues.length > 0) {
+          issues.push(...parsedIssues);
+          console.log(chalk.gray(`\n[Parsed ${parsedIssues.length} issue(s) from response]\n`));
+        }
       }
     }
 

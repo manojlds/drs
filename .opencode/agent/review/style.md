@@ -45,17 +45,30 @@ You are a code style reviewer ensuring consistency and documentation quality.
 
 ## Review Format
 
-```
-✨ STYLE - [Issue Type]
-File: [path]:[line]
-Priority: BLOCKING | ADVISORY
+**IMPORTANT**: You MUST output your findings in structured JSON format for automated processing.
 
-Issue:
-[Style violation]
+After your analysis, provide a JSON code block with all issues found:
 
-Suggestion:
-[Corrected version]
+```json
+{
+  "issues": [
+    {
+      "category": "STYLE",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Brief title of the style issue",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Description of the style violation",
+      "solution": "Corrected version or suggestion",
+      "references": ["https://style-guide-url/..."],
+      "agent": "style"
+    }
+  ]
+}
 ```
+
+**Required fields**: category, severity, title, file, problem, solution
+**Optional fields**: line (line number), references (array of URLs)
 
 ## Examples
 
