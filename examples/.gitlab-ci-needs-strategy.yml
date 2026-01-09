@@ -1,0 +1,87 @@
+# Example: GitLab CI with Needs/DAG Strategy
+#
+# This approach uses GitLab's "needs" keyword to create a Directed Acyclic Graph (DAG)
+# that runs AI review in parallel without blocking your main workflow.
+#
+# Benefits:
+# - Explicit dependency management
+# - Jobs run as soon as dependencies are met
+# - No artificial stage delays
+# - Clear visualization in GitLab UI
+
+# No stages needed! GitLab will automatically parallelize based on needs
+
+# Include DRS template
+include:
+  - remote: 'https://raw.githubusercontent.com/manojlds/drs/main/src/ci/gitlab-ci.template.yml'
+
+# =============================================================================
+# AI Review Jobs (no dependencies, start immediately)
+# =============================================================================
+
+ai_review_security:
+  extends: .drs_review
+  variables:
+    REVIEW_AGENTS: "security"
+  allow_failure: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # No needs: runs immediately in parallel
+
+ai_review_quality:
+  extends: .drs_review
+  variables:
+    REVIEW_AGENTS: "quality,style"
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # No needs: runs immediately in parallel
+
+# =============================================================================
+# Your main pipeline (explicit dependencies only)
+# =============================================================================
+
+# Runs immediately in parallel with AI reviews
+test:
+  image: node:20
+  script:
+    - npm install
+    - npm test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Runs immediately after tests pass (doesn't wait for AI review)
+build:
+  image: node:20
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+  needs:
+    - test
+  # Explicitly depends only on test, not AI review
+
+# Runs immediately after build (doesn't wait for AI review)
+deploy_staging:
+  image: alpine:latest
+  script:
+    - echo "Deploying to staging..."
+  needs:
+    - build
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Production deploy requires both build AND security review to pass
+deploy_production:
+  image: alpine:latest
+  script:
+    - echo "Deploying to production..."
+  needs:
+    - build
+    - ai_review_security  # Explicitly requires security review
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
