@@ -1,0 +1,62 @@
+# Example: GitLab CI with Child Pipeline for Complete Isolation
+#
+# This approach uses GitLab's child pipelines feature to run AI reviews
+# in a completely separate pipeline that doesn't affect your main workflow at all.
+#
+# Benefits:
+# - AI review pipeline is completely isolated
+# - Main pipeline is never blocked or delayed
+# - Review results appear as separate pipeline in MR
+# - Better for resource-constrained runners
+
+stages:
+  - trigger    # Trigger child pipeline
+  - test
+  - build
+  - deploy
+
+# =============================================================================
+# Trigger AI Review Child Pipeline (doesn't block main pipeline)
+# =============================================================================
+
+trigger_ai_review:
+  stage: trigger
+  trigger:
+    include:
+      - local: .gitlab-ci-review.yml
+    strategy: depend  # Use 'depend' to fail if review fails, or remove to ignore
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  # This job just triggers the child pipeline and returns immediately
+
+# =============================================================================
+# Your main pipeline (runs independently)
+# =============================================================================
+
+test:
+  stage: test
+  image: node:20
+  script:
+    - npm install
+    - npm test
+  # Runs immediately without waiting for AI review
+
+build:
+  stage: build
+  image: node:20
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+  needs: ["test"]
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "Deploying..."
+  needs: ["build"]
+  only:
+    - main

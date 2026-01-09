@@ -11,7 +11,7 @@ const program = new Command();
 
 program
   .name('drs')
-  .description('AI-powered code review bot for GitLab MRs and GitHub PRs using OpenCode SDK')
+  .description('Intelligent code review platform for GitLab and GitHub - Enterprise-grade analysis')
   .version('1.0.0');
 
 program

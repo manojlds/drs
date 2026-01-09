@@ -14,7 +14,7 @@ export interface ReviewLocalOptions {
  * Review local git diff before pushing
  */
 export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions): Promise<void> {
-  console.log(chalk.bold.cyan('\n🔍 DRS Local Diff Review\n'));
+  console.log(chalk.bold.cyan('\n📋 DRS | Local Diff Analysis\n'));
 
   const git = simpleGit();
   const cwd = process.cwd();
@@ -57,7 +57,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   });
 
   // Create review session
-  console.log(chalk.gray('Starting AI review...\n'));
+  console.log(chalk.gray('Starting code analysis...\n'));
 
   const agentsList = config.review.agents.join(',');
   const session = await opencode.createSession({

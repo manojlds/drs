@@ -2,27 +2,31 @@
 # Include this in your .gitlab-ci.yml:
 #
 # include:
-#   - remote: 'https://raw.githubusercontent.com/your-org/drs/main/templates/gitlab-ci.yml'
+#   - remote: 'https://raw.githubusercontent.com/manojlds/drs/main/src/ci/gitlab-ci.template.yml'
 
+# Base template using official OpenCode container (includes opencode CLI pre-installed)
 .drs_review:
-  stage: review
-  image: node:20
+  image: ghcr.io/anomalyco/opencode:latest
   only:
     - merge_requests
   script:
     - npm install -g @diff-review-system/drs
     - drs review-mr --mr $CI_MERGE_REQUEST_IID --project $CI_PROJECT_ID --post-comments
   variables:
-    # OpenCode Server URL (optional - will start in-process if not set)
-    # OPENCODE_SERVER: "${OPENCODE_SERVER}"
-
     # GitLab Token (use CI_JOB_TOKEN for automatic auth)
     GITLAB_TOKEN: "${CI_JOB_TOKEN}"
 
     # GitLab URL (optional, defaults to https://gitlab.com)
     GITLAB_URL: "${CI_SERVER_URL}"
 
-    # Review agents to use (optional)
+    # Anthropic API Key (required for AI reviews)
+    # Set this as a CI/CD variable in GitLab: Settings → CI/CD → Variables
+    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+    # OpenCode Server URL (optional - leave unset to use in-process server)
+    # OPENCODE_SERVER: "http://opencode.internal:3000"
+
+    # Review agents to use (optional, defaults to all)
     # REVIEW_AGENTS: "security,quality,style,performance"
 
   # Allow job to fail without blocking pipeline
@@ -35,15 +39,17 @@
   #   when: always
   #   expire_in: 1 week
 
-# Full review with all agents
+# Full review with all agents (runs in review stage)
 ai_review_full:
   extends: .drs_review
+  stage: review
   variables:
     REVIEW_AGENTS: "security,quality,style,performance"
 
-# Quick security-only review
+# Quick security-only review (can block pipeline if issues found)
 ai_review_security:
   extends: .drs_review
+  stage: review
   variables:
     REVIEW_AGENTS: "security"
   allow_failure: false  # Block on security issues

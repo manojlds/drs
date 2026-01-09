@@ -80,7 +80,7 @@ REVIEW_AGENTS=security,quality,style,performance
  * Initialize DRS configuration in a project
  */
 export async function initProject(projectPath: string): Promise<void> {
-  console.log(chalk.bold.cyan('\n🚀 Initializing DRS Configuration\n'));
+  console.log(chalk.bold.cyan('\n📋 DRS | Configuration Setup\n'));
 
   // Create .drs directory
   const drsDir = join(projectPath, '.drs');

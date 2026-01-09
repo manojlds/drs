@@ -21,7 +21,7 @@ export interface ReviewPROptions {
  * Review a GitHub pull request
  */
 export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Promise<void> {
-  console.log(chalk.bold.cyan('\n🔍 DRS GitHub PR Review\n'));
+  console.log(chalk.bold.cyan('\n📋 DRS | GitHub PR Analysis\n'));
 
   // Initialize GitHub client
   const github = createGitHubClient();
@@ -56,7 +56,7 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   });
 
   // Directly invoke each specialized review agent
-  console.log(chalk.gray('Starting AI review...\n'));
+  console.log(chalk.gray('Starting code analysis...\n'));
 
   const issues: ReviewIssue[] = [];
 
