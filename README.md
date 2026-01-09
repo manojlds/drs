@@ -13,20 +13,28 @@ An automated code review bot for GitLab Merge Requests and GitHub Pull Requests 
 
 ## Quick Start
 
-### 1. Install
+### 1. Prerequisites
+
+Install OpenCode CLI (required for in-process server mode):
+
+```bash
+npm install -g opencode
+```
+
+### 2. Install DRS
 
 ```bash
 npm install -g @diff-review-system/drs
 ```
 
-### 2. Initialize Project
+### 3. Initialize Project
 
 ```bash
 cd your-project
 drs init
 ```
 
-### 3. Configure Environment
+### 4. Configure Environment
 
 ```bash
 # Copy example env file
@@ -41,7 +49,7 @@ cp .env.example .env
 
 **Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
 
-### 4. Review Local Changes
+### 5. Review Local Changes
 
 ```bash
 # Review unstaged changes
@@ -87,10 +95,6 @@ ai_review:
 
 ### Mode 3: GitHub Actions
 
-**Note**: GitHub Actions requires an OpenCode server to be accessible. You must either:
-- Set up a remote OpenCode server and configure `OPENCODE_SERVER` secret
-- Or install OpenCode CLI in the workflow (see below)
-
 Add to `.github/workflows/pr-review.yml`:
 
 ```yaml
@@ -113,6 +117,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install OpenCode CLI
+        run: npm install -g opencode
+
       - name: Build from source
         run: |
           npm ci
@@ -122,7 +129,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_SERVER: ${{ secrets.OPENCODE_SERVER }}  # Required: Set this in repository secrets
         run: |
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
@@ -133,7 +139,9 @@ jobs:
 
 **Required Secrets**:
 - `ANTHROPIC_API_KEY`: Your Anthropic API key
-- `OPENCODE_SERVER`: URL of your OpenCode server (e.g., `http://opencode.yourcompany.com:3000`)
+
+**Optional Configuration**:
+- Set `OPENCODE_SERVER` secret if you want to use a remote OpenCode server instead of in-process mode
 
 ### Mode 4: Webhook Server
 
@@ -155,20 +163,24 @@ DRS supports two modes of OpenCode server operation:
 
 ### In-Process Server (Default)
 
-If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server within the same process:
+If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server within the same process. **Note**: This still requires the OpenCode CLI to be installed globally.
 
 ```bash
-# No server configuration needed
+# Install OpenCode CLI first (required)
+npm install -g opencode
+
+# Then run DRS (server starts automatically)
 drs review-local
 ```
 
 **Pros:**
-- Zero configuration required
+- Minimal configuration required (just install CLI)
 - Automatic startup/shutdown
 - Simpler deployment
 - Lower latency
 
 **Cons:**
+- Requires OpenCode CLI installation
 - Server lifetime tied to CLI process
 - Cannot share across multiple tools
 - Uses process resources
@@ -334,6 +346,7 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
+- OpenCode CLI (`npm install -g opencode`) - Required even for in-process mode
 - Anthropic API key (for Claude AI)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)
