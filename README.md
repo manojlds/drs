@@ -87,6 +87,10 @@ ai_review:
 
 ### Mode 3: GitHub Actions
 
+**Note**: GitHub Actions requires an OpenCode server to be accessible. You must either:
+- Set up a remote OpenCode server and configure `OPENCODE_SERVER` secret
+- Or install OpenCode CLI in the workflow (see below)
+
 Add to `.github/workflows/pr-review.yml`:
 
 ```yaml
@@ -109,20 +113,27 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install DRS
-        run: npm install -g @drs/gitlab-review-bot
+      - name: Build from source
+        run: |
+          npm ci
+          npm run build
 
       - name: Review Pull Request
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENCODE_SERVER: ${{ secrets.OPENCODE_SERVER }}  # Required: Set this in repository secrets
         run: |
-          drs review-pr \
+          node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
             --repo ${{ github.event.repository.name }} \
             --pr ${{ github.event.pull_request.number }} \
             --post-comments
 ```
+
+**Required Secrets**:
+- `ANTHROPIC_API_KEY`: Your Anthropic API key
+- `OPENCODE_SERVER`: URL of your OpenCode server (e.g., `http://opencode.yourcompany.com:3000`)
 
 ### Mode 4: Webhook Server
 

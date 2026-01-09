@@ -30,9 +30,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENCODE_SERVER: ${{ secrets.OPENCODE_SERVER }}
         run: |
-          node dist/cli/index.js review-pr \
-            --owner ${{ github.event.repository.owner.login }} \
-            --repo ${{ github.event.repository.name }} \
-            --pr ${{ github.event.pull_request.number }} \
-            --post-comments
+          echo "⚠️  Note: This workflow requires OPENCODE_SERVER secret to be set"
+          echo "⚠️  Or OpenCode CLI to be installed for in-process mode"
+          echo "⚠️  For now, this is a placeholder workflow - full integration pending"
+
+          # Uncomment when OpenCode server is available:
+          # node dist/cli/index.js review-pr \
+          #   --owner ${{ github.event.repository.owner.login }} \
+          #   --repo ${{ github.event.repository.name }} \
+          #   --pr ${{ github.event.pull_request.number }} \
+          #   --post-comments
+
+          echo "✅ Workflow setup complete - awaiting OpenCode server configuration"
