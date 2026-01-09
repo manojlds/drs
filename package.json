@@ -11,8 +11,8 @@
     "build": "tsc",
     "dev": "tsx watch src/cli/index.ts",
     "start": "node dist/cli/index.js",
-    "test": "vitest",
-    "lint": "eslint src/**/*.ts",
+    "test": "vitest run",
+    "lint": "eslint 'src/**/*.ts'",
     "prepublishOnly": "npm run build"
   },
   "files": [
