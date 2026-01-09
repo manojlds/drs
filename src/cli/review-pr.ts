@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
-import { createGitLabClient } from '../gitlab/client.js';
+import { createGitHubClient } from '../github/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import {
@@ -10,39 +10,44 @@ import {
   type ReviewIssue,
 } from '../gitlab/comment-formatter.js';
 
-export interface ReviewMROptions {
-  projectId: string;
-  mrIid: number;
+export interface ReviewPROptions {
+  owner: string;
+  repo: string;
+  prNumber: number;
   postComments: boolean;
 }
 
 /**
- * Review a GitLab merge request
+ * Review a GitHub pull request
  */
-export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Promise<void> {
-  console.log(chalk.bold.cyan('\n🔍 DRS GitLab MR Review\n'));
+export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Promise<void> {
+  console.log(chalk.bold.cyan('\n🔍 DRS GitHub PR Review\n'));
 
-  // Initialize GitLab client
-  const gitlab = createGitLabClient();
+  // Initialize GitHub client
+  const github = createGitHubClient();
 
-  // Fetch MR details
-  console.log(chalk.gray(`Fetching MR !${options.mrIid} from project ${options.projectId}...\n`));
+  // Fetch PR details
+  console.log(chalk.gray(`Fetching PR #${options.prNumber} from ${options.owner}/${options.repo}...\n`));
 
-  const mr = await gitlab.getMergeRequest(options.projectId, options.mrIid);
-  const changes = await gitlab.getMRChanges(options.projectId, options.mrIid);
+  const pr = await github.getPullRequest(options.owner, options.repo, options.prNumber);
+  const files = await github.getPRFiles(options.owner, options.repo, options.prNumber);
 
-  console.log(chalk.bold(`MR: ${mr.title}`));
-  console.log(chalk.gray(`Author: ${mr.author?.name || 'Unknown'}`));
-  console.log(chalk.gray(`Branch: ${mr.source_branch} → ${mr.target_branch}`));
-  console.log(chalk.gray(`Files changed: ${changes.length}\n`));
+  console.log(chalk.bold(`PR: ${pr.title}`));
+  console.log(chalk.gray(`Author: ${pr.user?.login || 'Unknown'}`));
+  console.log(chalk.gray(`Branch: ${pr.head.ref} → ${pr.base.ref}`));
+  console.log(chalk.gray(`Files changed: ${files.length}\n`));
 
-  if (changes.length === 0) {
+  if (files.length === 0) {
     console.log(chalk.yellow('✓ No changes to review\n'));
     return;
   }
 
   // Parse diffs
-  const diffs = changes.map(change => parseDiff(change.diff)).flat();
+  const diffs = files
+    .filter(file => file.patch) // Only files with diffs
+    .map(file => parseDiff(file.patch || ''))
+    .flat();
+
   const changedFiles = getChangedFiles(diffs);
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
@@ -57,19 +62,20 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
 
   const agentsList = config.review.agents.join(',');
   const session = await opencode.createSession({
-    agent: 'gitlab-reviewer',
-    message: `Review MR !${options.mrIid} in project ${options.projectId}. Agents: ${agentsList}. Files: ${changedFiles.join(', ')}`,
+    agent: 'github-reviewer',
+    message: `Review PR #${options.prNumber} in ${options.owner}/${options.repo}. Agents: ${agentsList}. Files: ${changedFiles.join(', ')}`,
     context: {
-      projectId: options.projectId,
-      mrIid: options.mrIid,
+      owner: options.owner,
+      repo: options.repo,
+      prNumber: options.prNumber,
       files: changedFiles,
       agents: config.review.agents,
-      mr: {
-        title: mr.title,
-        description: mr.description,
-        author: mr.author?.name,
-        sourceBranch: mr.source_branch,
-        targetBranch: mr.target_branch,
+      pr: {
+        title: pr.title,
+        description: pr.body,
+        author: pr.user?.login,
+        headRef: pr.head.ref,
+        baseRef: pr.base.ref,
       },
     },
   });
@@ -108,54 +114,52 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
 
     console.log('');
 
-    // Post comments to GitLab if requested
+    // Post comments to GitHub if requested
     if (options.postComments) {
-      console.log(chalk.gray('Posting review comments to GitLab...\n'));
+      console.log(chalk.gray('Posting review comments to GitHub...\n'));
 
       // Post summary comment
       const summaryComment = formatSummaryComment(summary, issues);
-      await gitlab.createMRComment(options.projectId, options.mrIid, summaryComment);
+      await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
 
-      // Post individual issue comments as discussion threads
+      // Post individual issue comments as review comments
       for (const issue of issues) {
-        const diffRefs: any = mr.diff_refs;
-        if (issue.line && diffRefs && diffRefs.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
+        if (issue.line && pr.head.sha) {
           try {
-            await gitlab.createMRDiscussionThread(
-              options.projectId,
-              options.mrIid,
+            await github.createPRReviewComment(
+              options.owner,
+              options.repo,
+              options.prNumber,
               formatIssueComment(issue),
-              {
-                baseSha: diffRefs.base_sha,
-                headSha: diffRefs.head_sha,
-                startSha: diffRefs.start_sha,
-                newPath: issue.file,
-                newLine: issue.line,
-              }
+              pr.head.sha,
+              issue.file,
+              issue.line
             );
           } catch (error) {
             // If line-specific comment fails, post as general comment
             console.warn(chalk.yellow(`Warning: Could not post line comment for ${issue.file}:${issue.line}`));
-            await gitlab.createMRComment(
-              options.projectId,
-              options.mrIid,
+            await github.createPRComment(
+              options.owner,
+              options.repo,
+              options.prNumber,
               formatIssueComment(issue)
             );
           }
         } else {
           // Post as general comment if no line number
-          await gitlab.createMRComment(
-            options.projectId,
-            options.mrIid,
+          await github.createPRComment(
+            options.owner,
+            options.repo,
+            options.prNumber,
             formatIssueComment(issue)
           );
         }
       }
 
       // Add ai-reviewed label
-      await gitlab.addLabel(options.projectId, options.mrIid, ['ai-reviewed']);
+      await github.addLabels(options.owner, options.repo, options.prNumber, ['ai-reviewed']);
 
-      console.log(chalk.green('✓ Review posted to GitLab MR\n'));
+      console.log(chalk.green('✓ Review posted to GitHub PR\n'));
     }
 
     // Exit with error code if critical issues found
@@ -163,7 +167,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
       process.exit(1);
     } else if (summary.issuesFound === 0) {
-      console.log(chalk.green('✓ No issues found! MR looks good.\n'));
+      console.log(chalk.green('✓ No issues found! PR looks good.\n'));
     }
   } finally {
     // Clean up session and shutdown in-process server if applicable

@@ -16,6 +16,7 @@
   // Custom tools configuration
   "tools": {
     "gitlab-api": true,
+    "github-api": true,
     "Bash": true,
     "Read": true,
     "Glob": true,
@@ -27,6 +28,9 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
+      "model": "opencode/claude-opus-4-5"
+    },
+    "github-reviewer": {
       "model": "opencode/claude-opus-4-5"
     },
     "local-reviewer": {

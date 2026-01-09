@@ -4,13 +4,14 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { reviewLocal } from './review-local.js';
 import { reviewMR } from './review-mr.js';
+import { reviewPR } from './review-pr.js';
 import { loadConfig } from '../lib/config.js';
 
 const program = new Command();
 
 program
   .name('drs')
-  .description('GitLab MR review bot powered by OpenCode SDK')
+  .description('AI-powered code review bot for GitLab MRs and GitHub PRs using OpenCode SDK')
   .version('1.0.0');
 
 program
@@ -63,6 +64,38 @@ program
       await reviewMR(config, {
         projectId: options.project,
         mrIid: parseInt(options.mr, 10),
+        postComments: options.postComments || false,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('review-pr')
+  .description('Review a GitHub pull request')
+  .requiredOption('--pr <number>', 'Pull request number')
+  .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
+  .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
+  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('--verbose', 'Verbose output')
+  .action(async (options) => {
+    try {
+      const config = loadConfig(process.cwd(), {
+        review: {
+          agents: options.agents ? options.agents.split(',').map((a: string) => a.trim()) : undefined,
+        },
+        output: {
+          verbosity: options.verbose ? 'detailed' : 'normal',
+        },
+      } as any);
+
+      await reviewPR(config, {
+        owner: options.owner,
+        repo: options.repo,
+        prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
       });
     } catch (error) {
