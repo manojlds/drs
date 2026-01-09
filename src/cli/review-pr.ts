@@ -2,7 +2,6 @@ import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
-import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
 import {
   formatSummaryComment,
   formatIssueComment,
@@ -43,13 +42,10 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     return;
   }
 
-  // Parse diffs
-  const diffs = files
-    .filter(file => file.patch) // Only files with diffs
-    .map(file => parseDiff(file.patch || ''))
-    .flat();
-
-  const changedFiles = getChangedFiles(diffs);
+  // Get list of changed files (excluding deleted files)
+  const changedFiles = files
+    .filter(file => file.status !== 'removed')
+    .map(file => file.filename);
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
