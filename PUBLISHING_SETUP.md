@@ -37,30 +37,46 @@ Created `.npmignore` file to exclude:
 
 ### One-Time Setup (Do This First!)
 
-#### 1. Create NPM Access Token
+This project uses **npm Trusted Publishing** (via OIDC) - a more secure method that doesn't require long-lived tokens!
+
+#### 1. Configure Trusted Publishing on npm
+
+On your **first publish**, you need to configure the package for trusted publishing:
+
+**Option A: First-time publish with manual token (one-time only)**
 ```bash
-# Go to npmjs.com and create a token:
-# 1. Log in to https://www.npmjs.com
-# 2. Click your profile → Access Tokens
-# 3. Click "Generate New Token" → "Classic Token"
-# 4. Select "Automation" type
-# 5. Copy the token (starts with npm_...)
+# 1. Create a temporary token on npmjs.com
+#    - Go to https://www.npmjs.com → Profile → Access Tokens
+#    - Create "Publish" token (short-lived)
+
+# 2. Publish first version manually
+npm login
+npm publish --access public
+
+# 3. Configure trusted publishing on npm
+#    - Go to https://www.npmjs.com/package/@drs/gitlab-review-bot/access
+#    - Under "Publishing access", click "Configure trusted publishers"
+#    - Add GitHub Actions publisher:
+#      * Provider: GitHub Actions
+#      * Repository owner: manojlds
+#      * Repository name: drs
+#      * Workflow name: publish.yml
+#      * Environment (optional): leave empty
 ```
 
-#### 2. Add Token to GitHub Secrets
+**Option B: Configure before first publish (if you have npm organization admin rights)**
 ```bash
-# In your GitHub repository:
-# 1. Go to Settings → Secrets and variables → Actions
-# 2. Click "New repository secret"
-# 3. Name: NPM_TOKEN
-# 4. Value: [paste your npm token]
-# 5. Click "Add secret"
+# 1. Go to https://www.npmjs.com/package/@drs/gitlab-review-bot
+# 2. If package doesn't exist yet, you'll need to publish manually first (see Option A)
 ```
 
-#### 3. Verify NPM Scope Access
+#### 2. Verify NPM Scope Access
 The package is scoped as `@drs/gitlab-review-bot`. Ensure:
-- You have access to publish to the `@drs` scope on npm
+- You have publish access to the `@drs` scope on npm
 - Or update the package name in `package.json` to use your own scope
+
+#### 3. That's It!
+No GitHub secrets needed! Trusted publishing uses OIDC tokens automatically.
 
 ### Publishing a New Version (Every Release)
 
@@ -193,14 +209,29 @@ npm version 1.2.3
 git push --follow-tags
 ```
 
+## 🔐 Why Trusted Publishing?
+
+**Security Benefits:**
+- ✅ No long-lived tokens to manage or rotate
+- ✅ No secrets stored in GitHub
+- ✅ Automatic provenance generation (supply chain security)
+- ✅ Each publish is cryptographically linked to the exact commit
+- ✅ Impossible to publish from outside the configured repository
+
+**How it works:**
+1. GitHub Actions generates a short-lived OIDC token
+2. npm verifies the token came from your configured repository
+3. Publish succeeds only if the OIDC token is valid
+4. Provenance metadata is automatically added to the package
+
 ## ❗ Troubleshooting
 
 ### "npm publish failed with 403"
-- **Cause**: No access to `@drs` scope or invalid NPM_TOKEN
+- **Cause**: Trusted publishing not configured or no access to `@drs` scope
 - **Fix**:
-  1. Verify you have publish rights: `npm access ls-packages`
-  2. Check token has publish permissions
-  3. Update GitHub secret with fresh token
+  1. Verify trusted publisher is configured on npmjs.com package page
+  2. Check you have publish rights: `npm access ls-packages`
+  3. Ensure repository owner/name match exactly in npm config
 
 ### "No matching version found"
 - **Cause**: Dependency version doesn't exist
