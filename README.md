@@ -87,13 +87,17 @@ Add to your `.gitlab-ci.yml`:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/your-org/drs/main/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/manojlds/drs/main/src/ci/gitlab-ci.template.yml'
 
 ai_review:
   extends: .drs_review
-  variables:
-    OPENCODE_SERVER: "http://opencode.internal:3000"
+  stage: review
 ```
+
+**See [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md)** for:
+- Using the official OpenCode container (`ghcr.io/anomalyco/opencode`)
+- Parallel pipeline strategies (child pipelines, DAG with needs)
+- Complete examples that don't block your main pipeline
 
 ### Mode 3: GitHub Actions
 
@@ -365,9 +369,11 @@ Apache-2.0
 
 ## Documentation
 
+- [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Design Document](DESIGN.md) - Original design using Claude Agent SDK
 - [Architecture Document](ARCHITECTURE.md) - OpenCode SDK architecture
+- [Publishing Guide](PUBLISHING_SETUP.md) - How to publish to npm
 - [OpenCode Documentation](https://opencode.ai/docs)
 - [GitLab API](https://docs.gitlab.com/ee/api/)
 
