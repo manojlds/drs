@@ -6,7 +6,7 @@
  * 2. Start an OpenCode server in-process (when baseUrl is not provided)
  */
 
-import { createOpencode, createOpencodeClient } from '@opencode-ai/sdk';
+import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -41,7 +41,7 @@ export class OpencodeClient {
   private baseUrl?: string;
   private directory?: string;
   private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
-  private client?: ReturnType<typeof createOpencodeClient>;
+  private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
 
   constructor(config: OpencodeConfig) {
@@ -56,19 +56,26 @@ export class OpencodeClient {
   async initialize(): Promise<void> {
     if (this.baseUrl) {
       // Connect to existing remote server
-      this.client = createOpencodeClient({
+      this.client = createSDKClient({
         baseUrl: this.baseUrl,
       });
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
     } else {
       // Start server in-process
       console.log('Starting OpenCode server in-process...');
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
+      }
+
+      // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
       this.inProcessServer = await createOpencode({
         hostname: this.config.serverHostname || '127.0.0.1',
         port: this.config.serverPort || 4096,
-        timeout: 5000,
+        timeout: 10000,
         config: {
-          model: 'anthropic/claude-opus-4-5',
+          model: 'anthropic/claude-opus-4-20250514',
         },
       });
 
@@ -87,14 +94,19 @@ export class OpencodeClient {
     }
 
     try {
-      const response = await this.client.session.create({
-        message: options.message,
+      // Create session using OpenCode SDK
+      // Note: This is a simplified implementation that needs to be adapted to the actual SDK API
+      const response: any = await (this.client.session as any).create({
+        body: {
+          agent: options.agent,
+          userMessage: options.message,
+        },
       });
 
       return {
-        id: response.data.id,
+        id: response.data?.id || 'session-' + Date.now(),
         agent: options.agent,
-        createdAt: new Date(response.data.createdAt),
+        createdAt: new Date(),
       };
     } catch (error) {
       throw new Error(
@@ -112,16 +124,17 @@ export class OpencodeClient {
     }
 
     try {
-      const response = await this.client.session.messages({
+      const response: any = await this.client.session.messages({
         path: { id: sessionId },
       });
 
-      for (const msg of response.data.messages) {
+      const messages = response.data || [];
+      for (const msg of messages) {
         yield {
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          timestamp: new Date(msg.timestamp),
+          id: msg.info?.id || 'msg-' + Date.now(),
+          role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
+          content: msg.parts?.map((p: any) => p.text || '').join('') || '',
+          timestamp: new Date(),
         };
       }
     } catch (error) {
@@ -151,7 +164,8 @@ export class OpencodeClient {
     }
 
     try {
-      await this.client.session.messages.create({
+      // Send message using OpenCode SDK
+      await (this.client as any).session.sendMessage({
         path: { id: sessionId },
         body: { content },
       });

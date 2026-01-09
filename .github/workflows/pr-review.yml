@@ -1,0 +1,40 @@
+name: DRS PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build DRS
+        run: npm run build
+
+      - name: Review Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🚀 Starting PR review with OpenCode (in-process mode)..."
+
+          node dist/cli/index.js review-pr \
+            --owner ${{ github.event.repository.owner.login }} \
+            --repo ${{ github.event.repository.name }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --post-comments

@@ -14,6 +14,11 @@ export interface DRSConfig {
     token: string;
   };
 
+  // GitHub configuration
+  github: {
+    token: string;
+  };
+
   // Review behavior
   review: {
     agents: string[];
@@ -26,7 +31,7 @@ export interface DRSConfig {
 
   // Output configuration
   output: {
-    format: 'gitlab' | 'terminal' | 'json' | 'markdown';
+    format: 'gitlab' | 'github' | 'terminal' | 'json' | 'markdown';
     verbosity: 'minimal' | 'normal' | 'detailed';
   };
 }
@@ -38,6 +43,9 @@ const DEFAULT_CONFIG: DRSConfig = {
   gitlab: {
     url: process.env.GITLAB_URL || 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN || '',
+  },
+  github: {
+    token: process.env.GITHUB_TOKEN || '',
   },
   review: {
     agents: ['security', 'quality', 'style', 'performance'],
@@ -100,6 +108,9 @@ export function loadConfig(
   if (process.env.GITLAB_TOKEN) {
     config.gitlab.token = process.env.GITLAB_TOKEN;
   }
+  if (process.env.GITHUB_TOKEN) {
+    config.github.token = process.env.GITHUB_TOKEN;
+  }
   if (process.env.REVIEW_AGENTS) {
     config.review.agents = process.env.REVIEW_AGENTS.split(',').map(a => a.trim());
   }
@@ -119,6 +130,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
     opencode: { ...base.opencode, ...override.opencode },
     gitlab: { ...base.gitlab, ...override.gitlab },
+    github: { ...base.github, ...override.github },
     review: { ...base.review, ...override.review },
     output: { ...base.output, ...override.output },
   };
@@ -127,10 +139,17 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
 /**
  * Validate that required configuration is present
  */
-export function validateConfig(config: DRSConfig): void {
-  if (!config.gitlab.token) {
+export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'): void {
+  // Validate platform-specific tokens if a platform is specified
+  if (platform === 'gitlab' && !config.gitlab.token) {
     throw new Error(
-      'GitLab token is required. Set GITLAB_TOKEN environment variable or configure in .gitlab-review.yml'
+      'GitLab token is required. Set GITLAB_TOKEN environment variable or configure in config file'
+    );
+  }
+
+  if (platform === 'github' && !config.github.token) {
+    throw new Error(
+      'GitHub token is required. Set GITHUB_TOKEN environment variable or configure in config file'
     );
   }
 

@@ -1,14 +1,15 @@
-# DRS - GitLab Review Bot
+# DRS - AI Code Review Bot
 
-An automated code review bot for GitLab Merge Requests powered by OpenCode SDK and Claude AI.
+An automated code review bot for GitLab Merge Requests and GitHub Pull Requests powered by OpenCode SDK and Claude AI.
 
 ## Features
 
 - **AI-Powered Reviews**: Comprehensive code analysis using Claude's latest models
 - **Specialized Agents**: Security, quality, style, and performance review experts
-- **Multiple Deployment Modes**: GitLab CI/CD, webhook server, or local CLI
+- **Multi-Platform Support**: Works with both GitLab MRs and GitHub PRs
+- **Multiple Deployment Modes**: CI/CD pipelines, webhook server, or local CLI
 - **Customizable**: Override agents with project-specific rules
-- **GitLab Native**: Built specifically for GitLab MRs with full API integration
+- **Native Integration**: Full API integration for both GitLab and GitHub
 
 ## Quick Start
 
@@ -32,8 +33,10 @@ drs init
 cp .env.example .env
 
 # Edit .env and set:
-# - GITLAB_TOKEN: Your GitLab access token (required)
+# - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
+# - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
 # - OPENCODE_SERVER: URL of your OpenCode instance (optional - will start in-process if not set)
+# - ANTHROPIC_API_KEY: Your Anthropic API key for Claude
 ```
 
 **Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
@@ -61,8 +64,11 @@ Review code locally before pushing:
 # Review local changes
 drs review-local
 
-# Review specific MR
+# Review specific GitLab MR
 drs review-mr --project my-org/my-repo --mr 123 --post-comments
+
+# Review specific GitHub PR
+drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
 ```
 
 ### Mode 2: GitLab CI/CD
@@ -79,7 +85,57 @@ ai_review:
     OPENCODE_SERVER: "http://opencode.internal:3000"
 ```
 
-### Mode 3: Webhook Server
+### Mode 3: GitHub Actions
+
+**Note**: GitHub Actions requires an OpenCode server to be accessible. You must either:
+- Set up a remote OpenCode server and configure `OPENCODE_SERVER` secret
+- Or install OpenCode CLI in the workflow (see below)
+
+Add to `.github/workflows/pr-review.yml`:
+
+```yaml
+name: DRS PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build from source
+        run: |
+          npm ci
+          npm run build
+
+      - name: Review Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENCODE_SERVER: ${{ secrets.OPENCODE_SERVER }}  # Required: Set this in repository secrets
+        run: |
+          node dist/cli/index.js review-pr \
+            --owner ${{ github.event.repository.owner.login }} \
+            --repo ${{ github.event.repository.name }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --post-comments
+```
+
+**Required Secrets**:
+- `ANTHROPIC_API_KEY`: Your Anthropic API key
+- `OPENCODE_SERVER`: URL of your OpenCode server (e.g., `http://opencode.yourcompany.com:3000`)
+
+### Mode 4: Webhook Server
 
 Deploy as a standalone service:
 
@@ -88,9 +144,9 @@ Deploy as a standalone service:
 cd examples
 docker-compose up -d
 
-# Configure GitLab webhook:
-# URL: http://your-server:8080/webhook/gitlab
-# Events: Merge request events, Comments
+# Configure webhooks:
+# GitLab: http://your-server:8080/webhook/gitlab (Merge request events, Comments)
+# GitHub: http://your-server:8080/webhook/github (Pull request events)
 ```
 
 ## OpenCode Server Configuration
@@ -144,7 +200,8 @@ DRS uses OpenCode SDK with markdown-based agent definitions:
 ```
 .opencode/
 ├── agent/
-│   ├── gitlab-reviewer.md       # Main orchestrator
+│   ├── gitlab-reviewer.md       # GitLab MR orchestrator
+│   ├── github-reviewer.md       # GitHub PR orchestrator
 │   ├── local-reviewer.md        # Local diff reviewer
 │   └── review/
 │       ├── security.md          # Security specialist
@@ -233,8 +290,10 @@ Analyzes:
 ### Environment Variables
 
 ```bash
-# Required
-GITLAB_TOKEN=glpat-xxx
+# Required (depending on platform)
+GITLAB_TOKEN=glpat-xxx              # For GitLab MR reviews
+GITHUB_TOKEN=ghp-xxx                # For GitHub PR reviews
+ANTHROPIC_API_KEY=sk-ant-xxx        # For Claude AI
 
 # Optional
 OPENCODE_SERVER=http://localhost:3000  # Leave empty to start in-process server
@@ -275,7 +334,9 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
-- GitLab access token
+- Anthropic API key (for Claude AI)
+- GitLab access token (for GitLab MR reviews)
+- GitHub access token (for GitHub PR reviews)
 - Git 2.30+ (for local mode)
 - OpenCode server instance (optional - will start in-process if not provided)
 
