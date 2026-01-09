@@ -44,7 +44,7 @@ export function formatIssueComment(issue: ReviewIssue): string {
   let comment = `## ${emoji} ${issue.category} - ${issue.title}\n\n`;
   comment += `**File**: \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`\n`;
   comment += `**Severity**: ${severityEmoji} ${issue.severity}\n`;
-  comment += `**Reviewer**: ${issue.agent}\n\n`;
+  comment += `**Analysis by**: ${issue.agent}\n\n`;
 
   comment += `### Problem\n${issue.problem}\n\n`;
   comment += `### Solution\n${issue.solution}\n`;
@@ -63,7 +63,7 @@ export function formatIssueComment(issue: ReviewIssue): string {
  * Format a review summary as a GitLab comment
  */
 export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue[]): string {
-  let comment = `# 🤖 AI Code Review Summary\n\n`;
+  let comment = `# 📋 Code Review Analysis\n\n`;
 
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
@@ -108,7 +108,7 @@ export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue
     comment += `✅ **No issues found!** The code looks good.\n`;
   }
 
-  comment += `\n*Powered by DRS - GitLab Review Bot*\n`;
+  comment += `\n---\n\n*Analyzed by **DRS** | Diff Review System*\n`;
 
   return comment;
 }

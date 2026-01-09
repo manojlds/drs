@@ -36,7 +36,7 @@ export function detectCIEnvironment(): CIEnvironment {
  * Run review in CI/CD environment
  */
 export async function runCIReview(): Promise<void> {
-  console.log(chalk.bold.cyan('\n🤖 DRS CI/CD Review Runner\n'));
+  console.log(chalk.bold.cyan('\n📋 DRS | CI/CD Analysis Runner\n'));
 
   // Detect environment
   const env = detectCIEnvironment();
