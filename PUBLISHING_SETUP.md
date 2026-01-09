@@ -2,132 +2,224 @@
 
 This document describes the npm publishing setup for this project.
 
-## What's Been Configured
+## ✅ What's Been Configured
 
 ### 1. Package.json Updates
 - Added `prepublishOnly` script to ensure build runs before publishing
-- Added `files` field to explicitly control what gets published
+- Added `files` field to explicitly control what gets published (dist/, README.md, LICENSE, .opencode/)
 - Added repository, bugs, and homepage URLs
-- Fixed `@gitbeaker/node` version (changed from 39.0.0 to 35.8.1)
+- Package name: `@drs/gitlab-review-bot`
+- Version: `1.0.0` (ready for initial release)
 
 ### 2. .npmignore
 Created `.npmignore` file to exclude:
 - Source TypeScript files (only dist/ is published)
-- Test files
-- Config files
-- Development files
-- CI/CD files
-- Documentation that shouldn't be published
+- Test files and development configs
+- CI/CD files and documentation
+- Environment files and IDE settings
 
 ### 3. GitHub Actions Workflows
 
-#### publish.yml
-- Triggers on version tags (v*)
-- Can be manually triggered
-- Runs linter and tests before publishing
-- Publishes to npm with provenance
-- Requires `NPM_TOKEN` secret to be set in GitHub
+#### 📦 publish.yml - Automated Publishing
+- **Triggers**: When you push a version tag (e.g., `v1.0.0`, `v1.0.1`)
+- **Process**: Runs linter → tests → build → publish to npm
+- **Features**:
+  - Publishes with provenance for supply chain security
+  - Sets package to public access automatically
+  - Can also be manually triggered via GitHub Actions UI
 
-#### ci.yml
-- Runs on push to main and pull requests
-- Tests on Node.js 20 and 22
-- Runs linter, tests, and build
-- Validates package can be packed
+#### 🧪 ci.yml - Continuous Integration
+- **Triggers**: Push to main or any pull request
+- **Tests**: Node.js versions 20 and 22
+- **Validates**: Linting, tests, build, and package integrity
 
-## How to Publish
+## 🚀 How to Publish (Step-by-Step)
 
-### Method 1: Automated (Recommended)
+### One-Time Setup (Do This First!)
 
-1. Update version in package.json:
-   ```bash
-   npm version patch  # or minor, or major
-   ```
-
-2. Push the tag:
-   ```bash
-   git push origin v1.0.1  # Use the version created
-   ```
-
-3. GitHub Actions will automatically publish to npm
-
-### Method 2: Manual
-
-1. Ensure you're logged into npm:
-   ```bash
-   npm login
-   ```
-
-2. Run the build:
-   ```bash
-   npm run build
-   ```
-
-3. Publish:
-   ```bash
-   npm publish --access public
-   ```
-
-## Setup Requirements
-
-### GitHub Secrets
-Add `NPM_TOKEN` to GitHub repository secrets:
-1. Go to GitHub repository → Settings → Secrets and variables → Actions
-2. Click "New repository secret"
-3. Name: `NPM_TOKEN`
-4. Value: Your npm access token (create at https://www.npmjs.com/settings/{username}/tokens)
-   - Token type: "Automation" or "Publish"
-   - Make sure it has publish permissions
-
-### NPM Package Access
-The package is scoped (`@drs/gitlab-review-bot`), so you need to ensure:
-- You have access to publish to the `@drs` scope on npm
-- The package is set to public access (handled by `--access public` flag)
-
-## Known Issues to Fix
-
-The following TypeScript compilation errors need to be fixed before the package can be published:
-
-1. **Missing YAML dependency**: Add `yaml` package to dependencies
-2. **@gitbeaker API changes**: The codebase uses old @gitbeaker APIs that don't exist in v35
-   - `MergeRequestSchema` doesn't exist
-   - `MergeRequestDiffSchema` doesn't exist
-   - `allDiffs` method doesn't exist
-3. **Type mismatches**: Several type conversion issues in gitlab/client.ts
-4. **OpenCode client type issues**: Type conflicts in opencode/client.ts
-
-### Suggested Fixes
-
+#### 1. Create NPM Access Token
 ```bash
-# Add missing dependency
-npm install yaml
-
-# Consider upgrading to @gitbeaker/rest (the successor package)
-npm install @gitbeaker/rest
+# Go to npmjs.com and create a token:
+# 1. Log in to https://www.npmjs.com
+# 2. Click your profile → Access Tokens
+# 3. Click "Generate New Token" → "Classic Token"
+# 4. Select "Automation" type
+# 5. Copy the token (starts with npm_...)
 ```
 
-Then update the import statements and API calls to match the new @gitbeaker API.
+#### 2. Add Token to GitHub Secrets
+```bash
+# In your GitHub repository:
+# 1. Go to Settings → Secrets and variables → Actions
+# 2. Click "New repository secret"
+# 3. Name: NPM_TOKEN
+# 4. Value: [paste your npm token]
+# 5. Click "Add secret"
+```
 
-## Package Contents
+#### 3. Verify NPM Scope Access
+The package is scoped as `@drs/gitlab-review-bot`. Ensure:
+- You have access to publish to the `@drs` scope on npm
+- Or update the package name in `package.json` to use your own scope
 
-When published, the package will include:
-- `dist/` - Compiled JavaScript and TypeScript declarations
-- `README.md` - Project documentation
-- `LICENSE` - Apache-2.0 license
-- `.opencode/` - OpenCode agent definitions
-- `package.json` - Package metadata
+### Publishing a New Version (Every Release)
 
-## Testing Before Publishing
+#### Automated Publishing (Recommended)
+```bash
+# 1. Ensure you're on main branch and it's clean
+git checkout main
+git pull origin main
 
-Always test the package before publishing:
+# 2. Bump version and create a git tag
+npm version patch   # 1.0.0 → 1.0.1 (bug fixes)
+# or
+npm version minor   # 1.0.0 → 1.1.0 (new features)
+# or
+npm version major   # 1.0.0 → 2.0.0 (breaking changes)
+
+# 3. Push the tag (this triggers automated publishing!)
+git push --follow-tags
+
+# 4. Watch the GitHub Actions run
+# Go to: https://github.com/manojlds/drs/actions
+# The publish workflow will automatically run and publish to npm
+```
+
+**Yes, publishing happens automatically when you push a version tag!** The tag format is `vX.Y.Z` (e.g., `v1.0.1`).
+
+#### Manual Publishing (Alternative)
+```bash
+# 1. Login to npm
+npm login
+
+# 2. Update version
+npm version patch
+
+# 3. Build and publish
+npm run build
+npm publish --access public
+
+# 4. Push the tag to GitHub
+git push --follow-tags
+```
+
+## 📦 Package Contents
+
+When published to npm, the package will include:
+- ✅ `dist/` - Compiled JavaScript and TypeScript declarations (~44 KB)
+- ✅ `README.md` - Project documentation
+- ✅ `LICENSE` - Apache-2.0 license
+- ✅ `.opencode/` - OpenCode agent definitions
+- ✅ `package.json` - Package metadata
+
+**Total package size**: ~44 KB (220 KB unpacked)
+
+## 🧪 Testing Before Publishing
+
+Always test the package locally before publishing:
 
 ```bash
-# Build the project
+# 1. Clean build
+rm -rf dist node_modules
+npm install
 npm run build
 
-# Create a test pack (doesn't publish)
+# 2. Run tests and linter
+npm test
+npm run lint
+
+# 3. Dry-run pack to see what will be published
 npm pack --dry-run
 
-# Or create actual tarball to inspect
+# 4. Create actual tarball for inspection
 npm pack
-tar -tzf drs-gitlab-review-bot-*.tgz
+tar -tzf drs-gitlab-review-bot-*.tgz | less
+
+# 5. Test installation locally
+npm install -g ./drs-gitlab-review-bot-*.tgz
+drs --help
+npm uninstall -g @drs/gitlab-review-bot
 ```
+
+## 🔍 Verification After Publishing
+
+After publishing, verify the package:
+
+```bash
+# View package info on npm
+npm view @drs/gitlab-review-bot
+
+# Test installation from npm
+npm install -g @drs/gitlab-review-bot
+drs --help
+drs init
+
+# Check specific version
+npm view @drs/gitlab-review-bot versions
+```
+
+## 🎯 Quick Reference
+
+### When Does Publishing Happen?
+
+**Automatic Publishing**: When you push a git tag starting with `v`
+```bash
+npm version patch        # Creates tag like v1.0.1
+git push --follow-tags   # Triggers GitHub Actions workflow
+```
+
+**Manual Trigger**: Via GitHub Actions UI
+1. Go to Actions tab → "Publish to npm" workflow
+2. Click "Run workflow"
+3. Select branch and optionally specify version
+
+### Common Commands
+
+```bash
+# Version bumps (also creates git tag)
+npm version patch    # 1.0.0 → 1.0.1 (bug fixes)
+npm version minor    # 1.0.0 → 1.1.0 (new features)
+npm version major    # 1.0.0 → 2.0.0 (breaking changes)
+
+# Pre-release versions
+npm version prepatch # 1.0.0 → 1.0.1-0
+npm version preminor # 1.0.0 → 1.1.0-0
+npm version premajor # 1.0.0 → 2.0.0-0
+
+# Custom version
+npm version 1.2.3
+
+# Push with tags
+git push --follow-tags
+```
+
+## ❗ Troubleshooting
+
+### "npm publish failed with 403"
+- **Cause**: No access to `@drs` scope or invalid NPM_TOKEN
+- **Fix**:
+  1. Verify you have publish rights: `npm access ls-packages`
+  2. Check token has publish permissions
+  3. Update GitHub secret with fresh token
+
+### "No matching version found"
+- **Cause**: Dependency version doesn't exist
+- **Fix**: Run `npm install` to update package-lock.json
+
+### "Build failed in GitHub Actions"
+- **Cause**: Tests or linter failing
+- **Fix**:
+  1. Run locally: `npm test && npm run lint`
+  2. Fix any errors
+  3. Push fixes before tagging
+
+### "Package not found after publishing"
+- **Wait**: NPM registry can take 1-2 minutes to propagate
+- **Check**: Visit https://www.npmjs.com/package/@drs/gitlab-review-bot
+
+## 📚 Resources
+
+- [NPM Publishing Docs](https://docs.npmjs.com/cli/v9/commands/npm-publish)
+- [GitHub Actions Docs](https://docs.github.com/en/actions)
+- [Semantic Versioning](https://semver.org/)
+- [Package Provenance](https://docs.npmjs.com/generating-provenance-statements)
