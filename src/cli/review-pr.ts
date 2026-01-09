@@ -47,6 +47,20 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     .filter(file => file.status !== 'removed')
     .map(file => file.filename);
 
+  // Build diff content for review
+  const diffContent = files
+    .filter(file => file.status !== 'removed' && file.patch)
+    .map(file => `
+## File: ${file.filename}
+Status: ${file.status}
+Changes: +${file.additions} -${file.deletions}
+
+\`\`\`diff
+${file.patch}
+\`\`\`
+`)
+    .join('\n---\n');
+
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
@@ -58,9 +72,26 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   console.log(chalk.gray('Starting AI review...\n'));
 
   const agentsList = config.review.agents.join(',');
+  const reviewMessage = `Review the following code changes from PR #${options.prNumber} in ${options.owner}/${options.repo}.
+
+**PR Title:** ${pr.title}
+**Author:** ${pr.user?.login || 'Unknown'}
+**Branch:** ${pr.head.ref} → ${pr.base.ref}
+**Files Changed:** ${files.length}
+
+**Review Agents to Use:** ${agentsList}
+
+Please analyze the code changes below and invoke the specialized review agents (${config.review.agents.map(a => `review/${a}`).join(', ')}) using the Task tool to get comprehensive feedback on security, quality, style, and performance issues.
+
+# Code Changes
+
+${diffContent}
+
+After all review agents complete, consolidate their findings and output the issues in the structured JSON format so they can be posted as PR comments.`;
+
   const session = await opencode.createSession({
     agent: 'github-reviewer',
-    message: `Review PR #${options.prNumber} in ${options.owner}/${options.repo}. Agents: ${agentsList}. Files: ${changedFiles.join(', ')}`,
+    message: reviewMessage,
     context: {
       owner: options.owner,
       repo: options.repo,
@@ -73,6 +104,7 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
         author: pr.user?.login,
         headRef: pr.head.ref,
         baseRef: pr.base.ref,
+        headSha: pr.head.sha,
       },
     },
   });
