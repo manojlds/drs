@@ -46,7 +46,11 @@ cp .env.example .env
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
 # - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
 # - OPENCODE_SERVER: URL of your OpenCode instance (optional - will start in-process if not set)
-# - ANTHROPIC_API_KEY: Your Anthropic API key for Claude
+# - Provider API Key: Set the API key for your chosen model provider
+#   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
+#   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
+#   - OPENAI_API_KEY for OpenAI models (e.g., openai/gpt-4)
+#   - See .env.example for all supported providers
 ```
 
 **Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
@@ -144,7 +148,11 @@ jobs:
 ```
 
 **Required Secrets**:
-- `ANTHROPIC_API_KEY`: Your Anthropic API key
+- Provider API Key - set one based on your model choice:
+  - `ANTHROPIC_API_KEY`: For Claude models
+  - `ZHIPU_API_KEY`: For ZhipuAI GLM models
+  - `OPENAI_API_KEY`: For OpenAI models
+  - See [OpenCode providers](https://opencode.ai/docs/providers/) for other options
 
 **Optional Configuration**:
 - Set `OPENCODE_SERVER` secret if you want to use a remote OpenCode server instead of in-process mode
@@ -311,7 +319,11 @@ Analyzes:
 # Required (depending on platform)
 GITLAB_TOKEN=glpat-xxx              # For GitLab MR reviews
 GITHUB_TOKEN=ghp-xxx                # For GitHub PR reviews
-ANTHROPIC_API_KEY=sk-ant-xxx        # For Claude AI
+
+# Provider API Keys (set the one for your chosen model provider)
+ANTHROPIC_API_KEY=sk-ant-xxx        # For Anthropic Claude models
+ZHIPU_API_KEY=xxx                   # For ZhipuAI GLM models
+OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
 OPENCODE_SERVER=http://localhost:3000  # Leave empty to start in-process server

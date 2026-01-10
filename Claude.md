@@ -194,7 +194,11 @@ See: `src/gitlab/comment-formatter.ts`
 ```bash
 GITLAB_TOKEN=glpat-xxx          # For GitLab MR reviews
 GITHUB_TOKEN=ghp-xxx            # For GitHub PR reviews
-ANTHROPIC_API_KEY=sk-ant-xxx    # For Claude AI
+
+# Provider API Keys (set the one for your chosen model provider)
+ANTHROPIC_API_KEY=sk-ant-xxx    # For Anthropic Claude models
+ZHIPU_API_KEY=xxx               # For ZhipuAI GLM models
+OPENAI_API_KEY=sk-xxx           # For OpenAI models
 ```
 
 ### Optional
