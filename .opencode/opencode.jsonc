@@ -16,25 +16,25 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "github-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "local-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "review/security": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "review/quality": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "review/style": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     },
     "review/performance": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/claude-opus-4-20250514"
     }
   }
 }
