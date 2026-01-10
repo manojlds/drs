@@ -159,11 +159,45 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     console.log(chalk.gray('Posting review comments to GitHub...\n'));
 
     // Post comprehensive summary comment with all issues
-    // This avoids GitHub's secondary rate limit by posting once instead of many individual comments
     const summaryComment = formatSummaryComment(summary, issues);
     await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
+    console.log(chalk.green('✓ Posted review summary to PR'));
 
-    console.log(chalk.green('✓ Posted review summary to PR\n'));
+    // Post inline comments for Critical and High severity issues only
+    // This provides line-specific context for important issues while avoiding rate limits
+    const criticalAndHigh = issues.filter(i => i.severity === 'CRITICAL' || i.severity === 'HIGH');
+
+    if (criticalAndHigh.length > 0 && pr.head.sha) {
+      console.log(chalk.gray(`\nPosting ${criticalAndHigh.length} inline comment(s) for Critical/High issues...\n`));
+
+      for (let i = 0; i < criticalAndHigh.length; i++) {
+        const issue = criticalAndHigh[i];
+
+        if (issue.line) {
+          try {
+            await github.createPRReviewComment(
+              options.owner,
+              options.repo,
+              options.prNumber,
+              formatIssueComment(issue),
+              pr.head.sha,
+              issue.file,
+              issue.line
+            );
+            console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
+
+            // Add delay between posts to avoid rate limits (only if not the last one)
+            if (i < criticalAndHigh.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } catch (error: any) {
+            console.warn(chalk.yellow(`  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${error.message}`));
+          }
+        }
+      }
+
+      console.log(chalk.green('\n✓ Finished posting inline comments\n'));
+    }
 
     // Add ai-reviewed label
     await github.addLabels(options.owner, options.repo, options.prNumber, ['ai-reviewed']);
