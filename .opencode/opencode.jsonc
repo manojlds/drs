@@ -16,25 +16,25 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "github-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "local-reviewer": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "review/security": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "review/quality": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "review/style": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     },
     "review/performance": {
-      "model": "zhipuai/glm-4.7"
+      "model": "opencode/glm-4.7-free"
     }
   }
 }
