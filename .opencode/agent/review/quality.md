@@ -1,7 +1,6 @@
 ---
 description: Code quality, patterns, and maintainability expert
 color: "#3182CE"
-model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

@@ -1,7 +1,6 @@
 ---
 description: Code style, formatting, and documentation specialist
 color: "#805AD5"
-model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

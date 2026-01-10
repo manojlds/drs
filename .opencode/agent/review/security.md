@@ -1,7 +1,6 @@
 ---
 description: Security vulnerability and OWASP Top 10 specialist
 color: "#E53E3E"
-model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

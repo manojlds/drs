@@ -1,7 +1,6 @@
 ---
 description: Performance and optimization expert
 color: "#DD6B20"
-model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

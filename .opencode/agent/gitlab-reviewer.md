@@ -1,7 +1,6 @@
 ---
 description: Main GitLab MR review orchestrator
 color: "#FC6D26"
-model: zhipuai/glm-4.7
 tools:
   Read: true
   Glob: true

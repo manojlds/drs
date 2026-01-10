@@ -1,7 +1,6 @@
 ---
 description: Main GitHub PR review orchestrator
 color: "#24292e"
-model: zhipuai/glm-4.7
 tools:
   Read: true
   Glob: true
