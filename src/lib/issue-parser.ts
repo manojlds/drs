@@ -1,4 +1,4 @@
-import type { ReviewIssue } from '../gitlab/comment-formatter.js';
+import type { ReviewIssue } from './comment-formatter.js';
 
 /**
  * Parse review issues from agent response messages

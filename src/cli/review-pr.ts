@@ -3,7 +3,7 @@ import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { executeUnifiedReview } from '../lib/unified-review-executor.js';
 import type { LineValidator, InlineCommentPosition } from '../lib/platform-client.js';
-import type { ReviewIssue } from '../gitlab/comment-formatter.js';
+import type { ReviewIssue } from '../lib/comment-formatter.js';
 
 export interface ReviewPROptions {
   owner: string;

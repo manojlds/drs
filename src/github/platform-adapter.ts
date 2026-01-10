@@ -11,11 +11,14 @@ import type {
   Comment,
   InlineCommentPosition,
 } from '../lib/platform-client.js';
+import { GitHubPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
 /**
  * Adapter that wraps GitHubClient to implement PlatformClient interface
  */
 export class GitHubPlatformAdapter implements PlatformClient {
+  private readonly positionValidator = new GitHubPositionValidator();
+
   constructor(private client: GitHubClient) {}
 
   async getPullRequest(projectId: string, prNumber: number): Promise<PullRequest> {
@@ -91,16 +94,15 @@ export class GitHubPlatformAdapter implements PlatformClient {
   ): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
 
-    if (!position.commitSha) {
-      throw new Error('GitHub requires commitSha for inline comments');
-    }
+    // Validate position requirements for GitHub
+    validatePositionOrThrow(position, this.positionValidator);
 
     await this.client.createPRReviewComment(
       owner,
       repo,
       prNumber,
       body,
-      position.commitSha,
+      position.commitSha!,
       position.path,
       position.line
     );
@@ -115,11 +117,13 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
     if (comments.length === 0) return;
 
-    // Use GitHub's bulk review API
-    const commitSha = comments[0]?.position.commitSha;
-    if (!commitSha) {
-      throw new Error('GitHub requires commitSha for inline comments');
+    // Validate the first comment's position (all should have the same commitSha)
+    const firstPosition = comments[0]?.position;
+    if (firstPosition) {
+      validatePositionOrThrow(firstPosition, this.positionValidator);
     }
+
+    const commitSha = firstPosition!.commitSha!;
 
     const reviewComments = comments.map((c) => ({
       path: c.position.path,

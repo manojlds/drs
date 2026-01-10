@@ -1,4 +1,4 @@
-import type { ReviewIssue } from '../gitlab/comment-formatter.js';
+import type { ReviewIssue } from './comment-formatter.js';
 
 /**
  * Platform-agnostic comment management for deduplication and updates
