@@ -65,16 +65,55 @@ defaultModel: opencode/gpt-5.1-codex
 
 For more details on model configuration, see [MODEL_OVERRIDES.md](./MODEL_OVERRIDES.md).
 
+### 4. External PR Security Setup (Important!)
+
+DRS includes built-in protection against cost abuse and security risks from external pull requests. To enable this protection, you must configure a GitHub Environment for approval gates.
+
+**Quick Setup:**
+
+1. Go to **Settings → Environments** → **New environment**
+2. Name it: `external-pr-review`
+3. Add **Required reviewers** (maintainers who can approve external PR reviews)
+4. Create a `safe-to-review` label in your repository
+
+**What This Does:**
+
+- ✅ **Trusted contributors** (repository members): Reviews run automatically
+- ⏸️ **External contributors**: Reviews require maintainer approval
+- 🔒 **Protection**: Prevents cost abuse from spam PRs and malicious code execution
+
+**For detailed setup instructions and security considerations, see [EXTERNAL_PR_SECURITY.md](./EXTERNAL_PR_SECURITY.md).**
+
+> **Important:** Without this setup, external PRs will be notified that they need approval, but the approval mechanism will not work. Complete this setup to enable secure external PR reviews.
+
 ## Workflow Details
 
 The workflow is triggered on:
-- Pull request opened
-- Pull request synchronized (new commits pushed)
-- Pull request reopened
+- `pull_request_target`: When PRs are opened, synchronized (new commits), or reopened
+- `pull_request`: When labels are added (to detect `safe-to-review` label)
 
-### Workflow Steps
+### Workflow Jobs
 
-1. **Checkout code** - Checks out the PR branch
+The workflow includes multiple jobs for security:
+
+1. **verify-contributor** - Checks if PR author is a repository collaborator
+   - Outputs: `is-trusted` (true/false), `has-review-label` (true/false)
+
+2. **review-trusted** - Runs for trusted contributors (automatic)
+   - Executes immediately for repository members/collaborators
+   - No approval needed
+
+3. **review-external** - Runs for external contributors (requires approval)
+   - Requires `safe-to-review` label OR environment approval
+   - Uses `external-pr-review` environment for protection
+
+4. **notify-external** - Notifies when external PR is waiting
+   - Posts instructions for maintainers
+   - Explains how to approve the review
+
+### Review Steps (for both trusted and external)
+
+1. **Checkout code** - Checks out the PR commit (using specific SHA for security)
 2. **Setup Node.js** - Installs Node.js 20
 3. **Install OpenCode CLI** - Installs the OpenCode CLI globally
 4. **Install dependencies** - Runs `npm ci`
@@ -208,9 +247,17 @@ You can add custom steps before or after the review:
 3. **Use organization secrets** for shared keys across repositories
 4. **Rotate API keys regularly**
 5. **Limit workflow permissions** to minimum required (already configured in workflow)
+6. **Configure external PR protection** - Set up the `external-pr-review` environment with required reviewers
+7. **Review external PRs manually** - Always inspect code from external contributors before approving automated reviews
+8. **Monitor API usage** - Set up billing alerts in your provider dashboards to detect abuse
+9. **Use the `safe-to-review` label** - Only add this label to PRs you've manually reviewed and trust
+10. **Enable branch protection** - Require reviews and status checks before merging
+
+**For comprehensive external PR security setup, see [EXTERNAL_PR_SECURITY.md](./EXTERNAL_PR_SECURITY.md).**
 
 ## See Also
 
+- [EXTERNAL_PR_SECURITY.md](./EXTERNAL_PR_SECURITY.md) - **External PR security setup and protection**
 - [MODEL_OVERRIDES.md](./MODEL_OVERRIDES.md) - Detailed model configuration guide
 - [GitLab CI Integration](./GITLAB_CI_INTEGRATION.md) - GitLab equivalent setup
 - [OpenCode Zen Documentation](https://opencode.ai/docs/zen/)

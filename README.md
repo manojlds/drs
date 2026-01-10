@@ -105,57 +105,38 @@ ai_review:
 
 ### Mode 3: GitHub Actions
 
-Add to `.github/workflows/pr-review.yml`:
+DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-review.yml` with built-in protection against external PR abuse.
 
-```yaml
-name: DRS PR Review
+**Security Features**:
+- ✅ **Auto-review for trusted contributors** (repository members/collaborators)
+- ⏸️ **Manual approval required** for external contributors
+- 🔒 **Cost protection** prevents spam PRs from draining API credits
+- 🏷️ **Label-based approval** with `safe-to-review` label
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+**Quick Setup**:
 
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
+1. **Configure API Keys** in repository Settings → Secrets:
+   - `ANTHROPIC_API_KEY` (for Claude models), or
+   - `OPENCODE_ZEN_API_KEY` (for OpenCode Zen), or
+   - `ZHIPU_API_KEY` (for ZhipuAI GLM models), or
+   - `OPENAI_API_KEY` (for OpenAI models)
 
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+2. **Set up External PR Protection** (Important!):
+   - Create GitHub Environment: `external-pr-review`
+   - Add required reviewers (maintainers)
+   - Create `safe-to-review` label
 
-      - name: Install OpenCode CLI
-        run: npm install -g opencode-ai
+**See [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md)** for:
+- Complete setup instructions
+- External PR security configuration
+- Model configuration options
+- Troubleshooting tips
 
-      - name: Build from source
-        run: |
-          npm ci
-          npm run build
-
-      - name: Review Pull Request
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          node dist/cli/index.js review-pr \
-            --owner ${{ github.event.repository.owner.login }} \
-            --repo ${{ github.event.repository.name }} \
-            --pr ${{ github.event.pull_request.number }} \
-            --post-comments
-```
-
-**Required Secrets**:
-- Provider API Key - set one based on your model choice:
-  - `ANTHROPIC_API_KEY`: For Claude models
-  - `ZHIPU_API_KEY`: For ZhipuAI GLM models
-  - `OPENAI_API_KEY`: For OpenAI models
-  - See [OpenCode providers](https://opencode.ai/docs/providers/) for other options
-
-**Optional Configuration**:
-- Set `OPENCODE_SERVER` secret if you want to use a remote OpenCode server instead of in-process mode
+**See [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md)** for:
+- Detailed security setup
+- Cost protection mechanisms
+- Maintainer workflow
+- Attack prevention strategies
 
 ### Mode 4: Webhook Server
 
