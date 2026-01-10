@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
-import { shouldIgnoreFile } from './config.js';
+import { shouldIgnoreFile, getModelOverrides, getAgentNames } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
@@ -45,9 +45,13 @@ async function connectToOpenCode(config: DRSConfig, workingDir?: string): Promis
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
   try {
+    // Get model overrides from DRS config
+    const modelOverrides = getModelOverrides(config);
+
     return await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,
       directory: workingDir || process.cwd(),
+      modelOverrides,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to OpenCode server'));
@@ -106,14 +110,15 @@ export async function executeReview(
     // Create review session
     console.log(chalk.gray('Starting code analysis...\n'));
 
-    const agentsList = config.review.agents.join(',');
+    const agentNames = getAgentNames(config);
+    const agentsList = agentNames.join(',');
     const session = await opencode.createSession({
-      agent: 'code-reviewer',
+      agent: 'local-reviewer',
       message: `Review ${source.name}. Agents: ${agentsList}. Files: ${filteredFiles.join(', ')}`,
       context: {
         ...source.context,
         files: filteredFiles,
-        agents: config.review.agents,
+        agents: agentNames,
       },
     });
 

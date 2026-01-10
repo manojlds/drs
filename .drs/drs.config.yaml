@@ -2,12 +2,26 @@
 # Documentation: https://github.com/your-org/drs
 
 review:
-  # Review agents to use (mix of built-in and custom)
+  # Review agents to use
+  # Simple format: just list agent names (uses models from .opencode/opencode.jsonc)
   agents:
     - security
     - quality
     - style
     - performance
+
+  # OR use detailed format with model overrides:
+  # agents:
+  #   - name: security
+  #     model: zhipuai/glm-4.7
+  #   - name: quality
+  #     model: anthropic/claude-sonnet-4-5-20250929
+  #   - style  # Can mix simple and detailed format
+  #   - name: performance
+  #     model: zhipuai/glm-4.7
+
+  # Optional: Set a default model for all agents (can be overridden per-agent)
+  # defaultModel: zhipuai/glm-4.7
 
   # Automatically review new PRs/MRs
   autoReview: true

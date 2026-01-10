@@ -1,7 +1,6 @@
 ---
 description: Local git diff reviewer for pre-push analysis
 color: "#38A169"
-model: anthropic/claude-sonnet-4-5-20250929
 tools:
   Read: true
   Glob: true

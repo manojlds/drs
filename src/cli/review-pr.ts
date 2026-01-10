@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
+import { getAgentNames, getModelOverrides } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import {
@@ -127,9 +128,11 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
 
   let opencode;
   try {
+    const modelOverrides = getModelOverrides(config);
     opencode = await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,
       directory: process.cwd(), // Give agents access to working directory to read files
+      modelOverrides,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to OpenCode server'));
@@ -175,7 +178,8 @@ ${changedFiles.map((f) => `- ${f}`).join('\n')}
 Be thorough and identify all issues. Include line numbers when possible.`;
 
   // Invoke all configured review agents in parallel for faster execution
-  const agentPromises = config.review.agents.map(async (agentType) => {
+  const agentNames = getAgentNames(config);
+  const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 
@@ -212,18 +216,45 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       }
 
       await opencode.closeSession(session.id);
-      return agentIssues;
+      return { agentType, success: true, issues: agentIssues };
     } catch (error) {
-      console.error(chalk.yellow(`Warning: ${agentType} agent failed: ${error}`));
-      return [];
+      console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+      return { agentType, success: false, issues: [] };
     }
   });
 
   // Wait for all agents to complete in parallel
   const agentResults = await Promise.all(agentPromises);
 
-  // Flatten all issues from all agents
-  agentResults.forEach((agentIssues) => issues.push(...agentIssues));
+  // Check if all agents failed
+  const successfulAgents = agentResults.filter((r) => r.success);
+  const failedAgents = agentResults.filter((r) => !r.success);
+
+  if (successfulAgents.length === 0) {
+    console.error(chalk.red('\n✗ All review agents failed!\n'));
+    console.error(
+      chalk.yellow(
+        'This usually means:\n' +
+          '  1. Model configuration is incorrect or missing\n' +
+          '  2. API credentials are invalid or missing\n' +
+          '  3. Models are not accessible or timed out\n' +
+          '  4. Agents cannot find files to review\n'
+      )
+    );
+    await opencode.shutdown();
+    process.exit(1);
+  }
+
+  if (failedAgents.length > 0) {
+    console.log(
+      chalk.yellow(
+        `\n⚠️  ${failedAgents.length} of ${agentResults.length} agents failed: ${failedAgents.map((r) => r.agentType).join(', ')}\n`
+      )
+    );
+  }
+
+  // Flatten all issues from successful agents
+  agentResults.forEach((result) => issues.push(...result.issues));
 
   // Display and post summary
   const summary = calculateSummary(changedFiles.length, issues);

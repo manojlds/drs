@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
+import { getModelOverrides } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
@@ -74,8 +75,10 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
+  const modelOverrides = getModelOverrides(config);
   const opencode = await createOpencodeClientInstance({
     baseUrl: config.opencode.serverUrl || undefined,
+    modelOverrides,
   });
 
   // Create review session

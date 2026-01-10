@@ -1,11 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  // Global instructions for DRS review behavior
-  "instructions": [
-    ".gitlab-review.md"
-  ],
-
   // Custom tools configuration
   "tools": {
     "gitlab-api": true,
@@ -21,25 +16,25 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
-      "model": "anthropic/claude-opus-4-5-20251101"
+      "model": "zhipuai/glm-4.7"
     },
     "github-reviewer": {
-      "model": "anthropic/claude-opus-4-5-20251101"
+      "model": "zhipuai/glm-4.7"
     },
     "local-reviewer": {
-      "model": "anthropic/claude-sonnet-4-5-20250929"
+      "model": "zhipuai/glm-4.7"
     },
     "review/security": {
-      "model": "anthropic/claude-sonnet-4-5-20250929"
+      "model": "zhipuai/glm-4.7"
     },
     "review/quality": {
-      "model": "anthropic/claude-sonnet-4-5-20250929"
+      "model": "zhipuai/glm-4.7"
     },
     "review/style": {
-      "model": "anthropic/claude-haiku-4-5-20251001"
+      "model": "zhipuai/glm-4.7"
     },
     "review/performance": {
-      "model": "anthropic/claude-sonnet-4-5-20250929"
+      "model": "zhipuai/glm-4.7"
     }
   }
 }
