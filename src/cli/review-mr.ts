@@ -10,6 +10,7 @@ import {
   type ReviewIssue,
 } from '../gitlab/comment-formatter.js';
 import { parseReviewIssues } from '../lib/issue-parser.js';
+import { filterIgnoredFiles } from '../lib/review-orchestrator.js';
 
 export interface ReviewMROptions {
   projectId: string;
@@ -44,7 +45,20 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
 
   // Parse diffs
   const diffs = changes.map((change) => parseDiff(change.diff)).flat();
-  const changedFiles = getChangedFiles(diffs);
+  const allChangedFiles = getChangedFiles(diffs);
+
+  // Filter files based on ignore patterns
+  const changedFiles = filterIgnoredFiles(allChangedFiles, config);
+  const ignoredCount = allChangedFiles.length - changedFiles.length;
+
+  if (ignoredCount > 0) {
+    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`));
+  }
+
+  if (changedFiles.length === 0) {
+    console.log(chalk.yellow('✓ No files to review after filtering\n'));
+    return;
+  }
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));

@@ -10,6 +10,7 @@ import {
 } from '../gitlab/comment-formatter.js';
 import { parseReviewIssues } from '../lib/issue-parser.js';
 import { buildReviewPrompt } from '../lib/context-loader.js';
+import { filterIgnoredFiles } from '../lib/review-orchestrator.js';
 
 export interface ReviewPROptions {
   owner: string;
@@ -115,14 +116,27 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   }
 
   // Get list of changed files (excluding deleted files)
-  const changedFiles = files
+  const allChangedFiles = files
     .filter((file) => file.status !== 'removed')
     .map((file) => file.filename);
+
+  // Filter files based on ignore patterns
+  const changedFiles = filterIgnoredFiles(allChangedFiles, config);
+  const ignoredCount = allChangedFiles.length - changedFiles.length;
+
+  if (ignoredCount > 0) {
+    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`));
+  }
+
+  if (changedFiles.length === 0) {
+    console.log(chalk.yellow('✓ No files to review after filtering\n'));
+    return;
+  }
 
   // Build a map of file -> valid line numbers (lines that are in the diff)
   const validLinesMap = new Map<string, Set<number>>();
   for (const file of files) {
-    if (file.patch && file.status !== 'removed') {
+    if (file.patch && file.status !== 'removed' && changedFiles.includes(file.filename)) {
       const validLines = parseValidLinesFromPatch(file.patch);
       validLinesMap.set(file.filename, validLines);
     }
