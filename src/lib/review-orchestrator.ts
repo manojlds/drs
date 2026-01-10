@@ -3,7 +3,7 @@ import type { DRSConfig } from './config.js';
 import { shouldIgnoreFile, getModelOverrides, getAgentNames } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { parseReviewIssues } from './issue-parser.js';
-import { calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
+import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 
 /**
  * Source information for a review (platform-agnostic)

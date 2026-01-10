@@ -11,11 +11,14 @@ import type {
   Comment,
   InlineCommentPosition,
 } from '../lib/platform-client.js';
+import { GitLabPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
 /**
  * Adapter that wraps GitLabClient to implement PlatformClient interface
  */
 export class GitLabPlatformAdapter implements PlatformClient {
+  private readonly positionValidator = new GitLabPositionValidator();
+
   constructor(private client: GitLabClient) {}
 
   async getPullRequest(projectId: string, prNumber: number): Promise<PullRequest> {
@@ -100,15 +103,14 @@ export class GitLabPlatformAdapter implements PlatformClient {
     body: string,
     position: InlineCommentPosition
   ): Promise<void> {
-    if (!position.baseSha || !position.headSha || !position.startSha) {
-      throw new Error('GitLab requires baseSha, headSha, and startSha for inline comments');
-    }
+    // Validate position requirements for GitLab
+    validatePositionOrThrow(position, this.positionValidator);
 
     try {
       await this.client.createMRDiscussionThread(projectId, prNumber, body, {
-        baseSha: position.baseSha,
-        headSha: position.headSha,
-        startSha: position.startSha,
+        baseSha: position.baseSha!,
+        headSha: position.headSha!,
+        startSha: position.startSha!,
         newPath: position.path,
         newLine: position.line,
       });

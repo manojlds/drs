@@ -3,7 +3,7 @@ import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { executeUnifiedReview } from '../lib/unified-review-executor.js';
 import type { LineValidator, InlineCommentPosition } from '../lib/platform-client.js';
-import type { ReviewIssue } from '../gitlab/comment-formatter.js';
+import type { ReviewIssue } from '../lib/comment-formatter.js';
 
 export interface ReviewMROptions {
   projectId: string;

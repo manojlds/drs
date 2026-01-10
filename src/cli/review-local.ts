@@ -1,8 +1,8 @@
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
-import { parseDiff, getChangedFiles } from '../gitlab/diff-parser.js';
-import { formatTerminalIssue } from '../gitlab/comment-formatter.js';
+import { parseDiff, getChangedFiles } from '../lib/diff-parser.js';
+import { formatTerminalIssue } from '../lib/comment-formatter.js';
 import {
   executeReview,
   displayReviewSummary,

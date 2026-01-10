@@ -15,7 +15,7 @@ import {
   formatIssueComment,
   calculateSummary,
   type ReviewIssue,
-} from '../gitlab/comment-formatter.js';
+} from './comment-formatter.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
