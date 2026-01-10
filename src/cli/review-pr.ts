@@ -223,16 +223,14 @@ Be thorough and identify all issues. Include line numbers when possible.`;
   if (options.postComments) {
     console.log(chalk.gray('Fetching existing comments from PR...\n'));
 
-    // Get authenticated bot user
-    const botUser = await github.getAuthenticatedUser();
-
     // Fetch existing comments to prevent duplicates
     const existingPRComments = await github.listPRComments(options.owner, options.repo, options.prNumber);
     const existingReviewComments = await github.listPRReviewComments(options.owner, options.repo, options.prNumber);
 
-    // Find our existing summary comment
+    // Find our existing summary comment using the hidden marker
+    // This works with both personal access tokens and GitHub Apps
     const existingSummary = existingPRComments.find(
-      c => c.user?.login === botUser.login && extractCommentId(c.body || '') === BOT_COMMENT_ID
+      c => extractCommentId(c.body || '') === BOT_COMMENT_ID
     );
 
     // Post or update summary comment
@@ -261,12 +259,11 @@ Be thorough and identify all issues. Include line numbers when possible.`;
 
       if (validInlineIssues.length > 0) {
         // Build set of existing issue fingerprints from review comments
+        // We check all comments, but only our comments have the fingerprint markers
         const existingFingerprints = new Set<string>();
         for (const comment of existingReviewComments) {
-          if (comment.user?.login === botUser.login) {
-            const fingerprints = extractIssueFingerprints(comment.body);
-            fingerprints.forEach(fp => existingFingerprints.add(fp));
-          }
+          const fingerprints = extractIssueFingerprints(comment.body || '');
+          fingerprints.forEach(fp => existingFingerprints.add(fp));
         }
 
         // Filter out issues that already have comments
