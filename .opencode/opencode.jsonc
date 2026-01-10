@@ -1,11 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  // Global instructions for DRS review behavior
-  "instructions": [
-    ".gitlab-review.md"
-  ],
-
   // Custom tools configuration
   "tools": {
     "gitlab-api": true,
