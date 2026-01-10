@@ -1,0 +1,36 @@
+# DRS Configuration
+# Documentation: https://github.com/your-org/drs
+
+review:
+  # Review agents to use (mix of built-in and custom)
+  agents:
+    - security
+    - quality
+    - style
+    - performance
+
+  # Automatically review new PRs/MRs
+  autoReview: true
+
+  # Review when bot is mentioned
+  reviewOnMention: true
+
+  # Review when these labels are added
+  reviewOnLabel:
+    - needs-review
+    - security-review
+
+  # Files to ignore during review
+  ignorePatterns:
+    - "*.test.ts"
+    - "*.spec.ts"
+    - "**/__tests__/**"
+    - "**/__mocks__/**"
+    - "*.md"
+    - "package-lock.json"
+    - "yarn.lock"
+    - "pnpm-lock.yaml"
+
+output:
+  format: terminal
+  verbosity: normal

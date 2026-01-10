@@ -36,12 +36,19 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
 
 /**
  * Format a single review issue as a GitLab comment
+ * @param fingerprint Optional fingerprint to embed in comment for deduplication
  */
-export function formatIssueComment(issue: ReviewIssue): string {
+export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): string {
   const emoji = CATEGORY_EMOJI[issue.category];
   const severityEmoji = SEVERITY_EMOJI[issue.severity];
 
-  let comment = `## ${emoji} ${issue.category} - ${issue.title}\n\n`;
+  // Add hidden fingerprint for deduplication
+  let comment = '';
+  if (fingerprint) {
+    comment += `<!-- issue-fp: ${fingerprint} -->\n`;
+  }
+
+  comment += `## ${emoji} ${issue.category} - ${issue.title}\n\n`;
   comment += `**File**: \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`\n`;
   comment += `**Severity**: ${severityEmoji} ${issue.severity}\n`;
   comment += `**Analysis by**: ${issue.agent}\n\n`;
@@ -61,9 +68,16 @@ export function formatIssueComment(issue: ReviewIssue): string {
 
 /**
  * Format a review summary as a GitLab comment
+ * @param commentId Optional comment ID to embed for update identification
  */
-export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue[]): string {
-  let comment = `# 📋 Code Review Analysis\n\n`;
+export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue[], commentId?: string): string {
+  // Add hidden identifier for update-or-create logic
+  let comment = '';
+  if (commentId) {
+    comment += `<!-- drs-comment-id: ${commentId} -->\n`;
+  }
+
+  comment += `# 📋 Code Review Analysis\n\n`;
 
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
