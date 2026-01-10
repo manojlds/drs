@@ -158,43 +158,12 @@ Be thorough and identify all issues. Include line numbers when possible.`;
   if (options.postComments) {
     console.log(chalk.gray('Posting review comments to GitHub...\n'));
 
-    // Post summary comment
+    // Post comprehensive summary comment with all issues
+    // This avoids GitHub's secondary rate limit by posting once instead of many individual comments
     const summaryComment = formatSummaryComment(summary, issues);
     await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
 
-    // Post individual issue comments as review comments
-    for (const issue of issues) {
-      if (issue.line && pr.head.sha) {
-        try {
-          await github.createPRReviewComment(
-            options.owner,
-            options.repo,
-            options.prNumber,
-            formatIssueComment(issue),
-            pr.head.sha,
-            issue.file,
-            issue.line
-          );
-        } catch (error) {
-          // If line-specific comment fails, post as general comment
-          console.warn(chalk.yellow(`Warning: Could not post line comment for ${issue.file}:${issue.line}`));
-          await github.createPRComment(
-            options.owner,
-            options.repo,
-            options.prNumber,
-            formatIssueComment(issue)
-          );
-        }
-      } else {
-        // Post as general comment if no line number
-        await github.createPRComment(
-          options.owner,
-          options.repo,
-          options.prNumber,
-          formatIssueComment(issue)
-        );
-      }
-    }
+    console.log(chalk.green('✓ Posted review summary to PR\n'));
 
     // Add ai-reviewed label
     await github.addLabels(options.owner, options.repo, options.prNumber, ['ai-reviewed']);
