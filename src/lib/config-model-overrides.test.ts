@@ -10,7 +10,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getModelOverrides, normalizeAgentConfig, getAgentNames, type DRSConfig } from './config.js';
+import {
+  getModelOverrides,
+  normalizeAgentConfig,
+  getAgentNames,
+  type DRSConfig,
+} from './config.js';
 
 describe('Model Override Precedence', () => {
   const originalEnv = process.env;
@@ -174,11 +179,7 @@ describe('Model Override Precedence', () => {
 
       const config = createMockConfig({
         defaultModel: 'zhipuai/default-config',
-        agents: [
-          { name: 'security', model: 'anthropic/security-config' },
-          'quality',
-          'style',
-        ],
+        agents: [{ name: 'security', model: 'anthropic/security-config' }, 'quality', 'style'],
       });
 
       const overrides = getModelOverrides(config);
@@ -221,34 +222,21 @@ describe('Model Override Precedence', () => {
       const agents = ['security', 'quality'];
       const normalized = normalizeAgentConfig(agents);
 
-      expect(normalized).toEqual([
-        { name: 'security' },
-        { name: 'quality' },
-      ]);
+      expect(normalized).toEqual([{ name: 'security' }, { name: 'quality' }]);
     });
 
     it('should preserve object agents', () => {
-      const agents = [
-        { name: 'security', model: 'test/model' },
-        'quality',
-      ];
+      const agents = [{ name: 'security', model: 'test/model' }, 'quality'];
       const normalized = normalizeAgentConfig(agents);
 
-      expect(normalized).toEqual([
-        { name: 'security', model: 'test/model' },
-        { name: 'quality' },
-      ]);
+      expect(normalized).toEqual([{ name: 'security', model: 'test/model' }, { name: 'quality' }]);
     });
   });
 
   describe('Agent name extraction', () => {
     it('should extract agent names from mixed config', () => {
       const config = createMockConfig({
-        agents: [
-          'security',
-          { name: 'quality', model: 'test/model' },
-          { name: 'style' },
-        ],
+        agents: ['security', { name: 'quality', model: 'test/model' }, { name: 'style' }],
       });
 
       const names = getAgentNames(config);

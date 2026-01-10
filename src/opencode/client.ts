@@ -124,16 +124,25 @@ export class OpencodeClient {
           opencodeConfig.agent = {};
         }
 
+        console.log('📋 Applying model overrides from DRS config:');
+
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
           if (!opencodeConfig.agent[agentName]) {
             opencodeConfig.agent[agentName] = {};
           }
           opencodeConfig.agent[agentName].model = model;
+
+          // Log each agent's model (only show review/* agents to avoid duplication)
+          if (agentName.startsWith('review/')) {
+            console.log(`  - ${agentName}: ${model}`);
+          }
         }
 
+        console.log('');
+      } else {
         console.log(
-          `Applied model overrides for agents: ${Object.keys(this.config.modelOverrides).join(', ')}`
+          'ℹ️  No model overrides from DRS config. Using models from .opencode/opencode.jsonc\n'
         );
       }
 
