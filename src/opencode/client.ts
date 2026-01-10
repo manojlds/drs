@@ -64,8 +64,6 @@ export class OpencodeClient {
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
     } else {
       // Start server in-process
-      console.log('Starting OpenCode server in-process...');
-
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
@@ -78,14 +76,11 @@ export class OpencodeClient {
 
       try {
         const configPath = path.join(this.directory || process.cwd(), '.opencode', 'opencode.jsonc');
-        console.log(`Checking for OpenCode config at: ${configPath}`);
 
         if (fs.existsSync(configPath)) {
-          console.log(`✓ Found config file, loading...`);
           const configContent = fs.readFileSync(configPath, 'utf-8');
 
           // Strip JSONC to valid JSON
-          // This is a simple approach that handles most JSONC features
           const lines = configContent.split('\n');
           const cleanedLines = lines
             .map(line => {
@@ -111,12 +106,9 @@ export class OpencodeClient {
           jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
 
           opencodeConfig = JSON.parse(jsonContent);
-          console.log(`✓ Loaded agent configurations: ${Object.keys(opencodeConfig.agent || {}).join(', ')}`);
-        } else {
-          console.warn(`⚠ OpenCode config not found at ${configPath}`);
         }
       } catch (error) {
-        console.error(`✗ Failed to load OpenCode config: ${error}`);
+        console.error(`Failed to load OpenCode config: ${error}`);
       }
 
       // Change to project directory so OpenCode can discover agents
@@ -124,7 +116,6 @@ export class OpencodeClient {
       const projectDir = this.directory || originalCwd;
 
       if (projectDir !== originalCwd) {
-        console.log(`Changing to project directory: ${projectDir}`);
         process.chdir(projectDir);
       }
 
@@ -139,12 +130,10 @@ export class OpencodeClient {
       // Restore original working directory
       if (projectDir !== originalCwd) {
         process.chdir(originalCwd);
-        console.log(`Restored working directory: ${originalCwd}`);
       }
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
-      console.log(`OpenCode server started at ${this.baseUrl}`);
     }
   }
 
@@ -169,12 +158,8 @@ export class OpencodeClient {
         throw new Error('Failed to get session ID from create response');
       }
 
-      console.log(`Created session ${sessionId} in directory: ${this.directory || 'default'}`);
-
       // Step 2: Send initial message to start the agent
-      console.log(`Attempting to invoke agent: ${options.agent}`);
-
-      const promptResponse: any = await this.client.session.prompt({
+      await this.client.session.prompt({
         path: { id: sessionId },
         query: {
           directory: this.directory,
@@ -189,9 +174,6 @@ export class OpencodeClient {
           ],
         },
       });
-
-      console.log(`Prompt response:`, JSON.stringify(promptResponse, null, 2));
-      console.log(`Sent initial message to session ${sessionId} with agent ${options.agent}`);
 
       return {
         id: sessionId,
@@ -228,7 +210,6 @@ export class OpencodeClient {
         });
 
         const messages = messagesResponse.data || [];
-        console.log(`Session ${sessionId}: ${messages.length} messages (attempt ${attempts})`);
 
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
@@ -244,21 +225,17 @@ export class OpencodeClient {
         lastMessageCount = messages.length;
 
         // Check if the last assistant message has completed
-        // Find the last assistant message (without mutating messages array)
         const lastAssistantMsg = [...messages].reverse().find((m: any) => m.info?.role === 'assistant');
 
         if (lastAssistantMsg) {
           const isComplete = lastAssistantMsg.info?.time?.completed !== undefined;
           const hasError = lastAssistantMsg.info?.error !== undefined;
 
-          console.log(`Last assistant message: completed=${isComplete}, error=${hasError}`);
-
           if (hasError) {
             throw new Error(`Agent error: ${JSON.stringify(lastAssistantMsg.info.error)}`);
           }
 
           if (isComplete) {
-            console.log(`Session ${sessionId} complete with ${messages.length} messages`);
             break;
           }
         }
@@ -268,7 +245,7 @@ export class OpencodeClient {
       }
 
       if (attempts >= maxAttempts) {
-        console.warn(`Session ${sessionId} timeout after ${maxAttempts} attempts`);
+        throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
       }
     } catch (error) {
       throw new Error(
@@ -334,7 +311,6 @@ export class OpencodeClient {
   async shutdown(): Promise<void> {
     if (this.inProcessServer) {
       this.inProcessServer.server.close();
-      console.log('OpenCode server stopped');
     }
   }
 
