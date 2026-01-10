@@ -82,28 +82,51 @@ export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue
     comment += `- ${CATEGORY_EMOJI.STYLE} **Style**: ${summary.byCategory.STYLE}\n`;
     comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n\n`;
 
-    // List critical and high issues
+    // Group issues by severity
     const criticalIssues = issues.filter(i => i.severity === 'CRITICAL');
     const highIssues = issues.filter(i => i.severity === 'HIGH');
+    const mediumIssues = issues.filter(i => i.severity === 'MEDIUM');
+    const lowIssues = issues.filter(i => i.severity === 'LOW');
+
+    // Helper function to format issue details
+    const formatIssueDetails = (issue: ReviewIssue) => {
+      let details = `### ${CATEGORY_EMOJI[issue.category]} ${issue.title}\n\n`;
+      details += `**File**: \`${issue.file}${issue.line ? `:${issue.line}` : ''}\` | **Category**: ${issue.category}\n\n`;
+      details += `**Problem**: ${issue.problem}\n\n`;
+      details += `**Solution**: ${issue.solution}\n`;
+      if (issue.references && issue.references.length > 0) {
+        details += `\n**References**: ${issue.references.join(', ')}\n`;
+      }
+      return details + '\n';
+    };
 
     if (criticalIssues.length > 0) {
       comment += `## 🔴 Critical Issues\n\n`;
       for (const issue of criticalIssues) {
-        comment += `- **${issue.title}** in \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`\n`;
+        comment += formatIssueDetails(issue);
       }
-      comment += `\n`;
     }
 
     if (highIssues.length > 0) {
       comment += `## 🟡 High Priority Issues\n\n`;
       for (const issue of highIssues) {
-        comment += `- **${issue.title}** in \`${issue.file}${issue.line ? `:${issue.line}` : ''}\`\n`;
+        comment += formatIssueDetails(issue);
       }
-      comment += `\n`;
     }
 
-    comment += `\n---\n`;
-    comment += `*Detailed findings have been posted as individual discussion threads on the affected lines.*\n`;
+    if (mediumIssues.length > 0) {
+      comment += `## 🟠 Medium Priority Issues\n\n`;
+      for (const issue of mediumIssues) {
+        comment += formatIssueDetails(issue);
+      }
+    }
+
+    if (lowIssues.length > 0) {
+      comment += `## ⚪ Low Priority Issues\n\n`;
+      for (const issue of lowIssues) {
+        comment += formatIssueDetails(issue);
+      }
+    }
   } else {
     comment += `✅ **No issues found!** The code looks good.\n`;
   }

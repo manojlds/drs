@@ -6,13 +6,6 @@
     ".gitlab-review.md"
   ],
 
-  // LLM provider configuration
-  "provider": {
-    "opencode": {
-      "options": {}
-    }
-  },
-
   // Custom tools configuration
   "tools": {
     "gitlab-api": true,
@@ -28,25 +21,25 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
-      "model": "opencode/claude-opus-4-5"
+      "model": "anthropic/claude-opus-4-5-20251101"
     },
     "github-reviewer": {
-      "model": "opencode/claude-opus-4-5"
+      "model": "anthropic/claude-opus-4-5-20251101"
     },
     "local-reviewer": {
-      "model": "opencode/claude-sonnet-4-5"
+      "model": "anthropic/claude-sonnet-4-5-20250929"
     },
     "review/security": {
-      "model": "opencode/claude-sonnet-4-5"
+      "model": "anthropic/claude-sonnet-4-5-20250929"
     },
     "review/quality": {
-      "model": "opencode/claude-sonnet-4-5"
+      "model": "anthropic/claude-sonnet-4-5-20250929"
     },
     "review/style": {
-      "model": "opencode/claude-haiku-4-5"
+      "model": "anthropic/claude-haiku-4-5-20251001"
     },
     "review/performance": {
-      "model": "opencode/claude-sonnet-4-5"
+      "model": "anthropic/claude-sonnet-4-5-20250929"
     }
   }
 }

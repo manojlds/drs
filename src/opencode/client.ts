@@ -7,6 +7,8 @@
  */
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -62,11 +64,59 @@ export class OpencodeClient {
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
     } else {
       // Start server in-process
-      console.log('Starting OpenCode server in-process...');
-
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
+      }
+
+      // Load OpenCode configuration from .opencode/opencode.jsonc
+      let opencodeConfig: any = {
+        model: 'anthropic/claude-opus-4-20250514',
+      };
+
+      try {
+        const configPath = path.join(this.directory || process.cwd(), '.opencode', 'opencode.jsonc');
+
+        if (fs.existsSync(configPath)) {
+          const configContent = fs.readFileSync(configPath, 'utf-8');
+
+          // Strip JSONC to valid JSON
+          const lines = configContent.split('\n');
+          const cleanedLines = lines
+            .map(line => {
+              // Remove single-line comments
+              const commentIndex = line.indexOf('//');
+              if (commentIndex !== -1) {
+                // Check if // is inside a string
+                const beforeComment = line.substring(0, commentIndex);
+                const quoteCount = (beforeComment.match(/"/g) || []).length;
+                // If odd number of quotes, // is inside a string, keep it
+                if (quoteCount % 2 === 0) {
+                  line = line.substring(0, commentIndex);
+                }
+              }
+              return line;
+            })
+            .filter(line => line.trim().length > 0); // Remove empty lines
+
+          let jsonContent = cleanedLines.join('\n');
+          // Remove multi-line comments
+          jsonContent = jsonContent.replace(/\/\*[\s\S]*?\*\//g, '');
+          // Remove trailing commas
+          jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+
+          opencodeConfig = JSON.parse(jsonContent);
+        }
+      } catch (error) {
+        console.error(`Failed to load OpenCode config: ${error}`);
+      }
+
+      // Change to project directory so OpenCode can discover agents
+      const originalCwd = process.cwd();
+      const projectDir = this.directory || originalCwd;
+
+      if (projectDir !== originalCwd) {
+        process.chdir(projectDir);
       }
 
       // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
@@ -74,19 +124,21 @@ export class OpencodeClient {
         hostname: this.config.serverHostname || '127.0.0.1',
         port: this.config.serverPort || 4096,
         timeout: 10000,
-        config: {
-          model: 'anthropic/claude-opus-4-20250514',
-        },
+        config: opencodeConfig,
       });
+
+      // Restore original working directory
+      if (projectDir !== originalCwd) {
+        process.chdir(originalCwd);
+      }
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
-      console.log(`OpenCode server started at ${this.baseUrl}`);
     }
   }
 
   /**
-   * Create a new session with an agent
+   * Create a new session with an agent and send initial message
    */
   async createSession(options: SessionCreateOptions): Promise<Session> {
     if (!this.client) {
@@ -94,17 +146,37 @@ export class OpencodeClient {
     }
 
     try {
-      // Create session using OpenCode SDK
-      // Note: This is a simplified implementation that needs to be adapted to the actual SDK API
-      const response: any = await (this.client.session as any).create({
+      // Step 1: Create empty session
+      const createResponse: any = await this.client.session.create({
+        query: {
+          directory: this.directory,
+        },
+      });
+
+      const sessionId = createResponse.data?.id;
+      if (!sessionId) {
+        throw new Error('Failed to get session ID from create response');
+      }
+
+      // Step 2: Send initial message to start the agent
+      await this.client.session.prompt({
+        path: { id: sessionId },
+        query: {
+          directory: this.directory,
+        },
         body: {
           agent: options.agent,
-          userMessage: options.message,
+          parts: [
+            {
+              type: 'text',
+              text: options.message,
+            },
+          ],
         },
       });
 
       return {
-        id: response.data?.id || 'session-' + Date.now(),
+        id: sessionId,
         agent: options.agent,
         createdAt: new Date(),
       };
@@ -116,7 +188,7 @@ export class OpencodeClient {
   }
 
   /**
-   * Stream messages from a session
+   * Stream messages from a session (polls until agent completes)
    */
   async *streamMessages(sessionId: string): AsyncGenerator<SessionMessage> {
     if (!this.client) {
@@ -124,18 +196,56 @@ export class OpencodeClient {
     }
 
     try {
-      const response: any = await this.client.session.messages({
-        path: { id: sessionId },
-      });
+      // Poll messages until agent completes
+      let lastMessageCount = 0;
+      let attempts = 0;
+      const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
 
-      const messages = response.data || [];
-      for (const msg of messages) {
-        yield {
-          id: msg.info?.id || 'msg-' + Date.now(),
-          role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
-          content: msg.parts?.map((p: any) => p.text || '').join('') || '',
-          timestamp: new Date(),
-        };
+      while (attempts < maxAttempts) {
+        attempts++;
+
+        // Get current messages
+        const messagesResponse: any = await this.client.session.messages({
+          path: { id: sessionId },
+        });
+
+        const messages = messagesResponse.data || [];
+
+        // Yield any new messages
+        for (let i = lastMessageCount; i < messages.length; i++) {
+          const msg = messages[i];
+          yield {
+            id: msg.info?.id || 'msg-' + Date.now(),
+            role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
+            content: msg.parts?.map((p: any) => p.text || '').join('') || '',
+            timestamp: new Date(),
+          };
+        }
+
+        lastMessageCount = messages.length;
+
+        // Check if the last assistant message has completed
+        const lastAssistantMsg = [...messages].reverse().find((m: any) => m.info?.role === 'assistant');
+
+        if (lastAssistantMsg) {
+          const isComplete = lastAssistantMsg.info?.time?.completed !== undefined;
+          const hasError = lastAssistantMsg.info?.error !== undefined;
+
+          if (hasError) {
+            throw new Error(`Agent error: ${JSON.stringify(lastAssistantMsg.info.error)}`);
+          }
+
+          if (isComplete) {
+            break;
+          }
+        }
+
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
       }
     } catch (error) {
       throw new Error(
@@ -201,7 +311,6 @@ export class OpencodeClient {
   async shutdown(): Promise<void> {
     if (this.inProcessServer) {
       this.inProcessServer.server.close();
-      console.log('OpenCode server stopped');
     }
   }
 

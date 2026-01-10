@@ -1,7 +1,7 @@
 ---
 description: Code quality, patterns, and maintainability expert
 color: "#3182CE"
-model: opencode/claude-sonnet-4-5
+model: anthropic/claude-sonnet-4-5-20250929
 hidden: false
 tools:
   Read: true
