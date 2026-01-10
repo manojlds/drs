@@ -9,6 +9,7 @@ import {
   type ReviewIssue,
 } from '../gitlab/comment-formatter.js';
 import { parseReviewIssues } from '../lib/issue-parser.js';
+import { buildReviewPrompt } from '../lib/context-loader.js';
 
 export interface ReviewPROptions {
   owner: string;
@@ -146,8 +147,8 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
 
   const issues: ReviewIssue[] = [];
 
-  // Create review message for specialized agents
-  const reviewPrompt = `Review the following files from PR #${options.prNumber}:
+  // Base instructions for review agents (used if no override)
+  const baseInstructions = `Review the following files from PR #${options.prNumber}:
 
 ${changedFiles.map(f => `- ${f}`).join('\n')}
 
@@ -181,6 +182,14 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 
     try {
+      // Build prompt with global and agent-specific context
+      const reviewPrompt = buildReviewPrompt(
+        agentType,
+        baseInstructions,
+        options.prNumber,
+        changedFiles
+      );
+
       const session = await opencode.createSession({
         agent: agentName,
         message: reviewPrompt,
