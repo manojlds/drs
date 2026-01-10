@@ -8,8 +8,13 @@ This guide explains different strategies for integrating DRS AI code reviews int
 
 Go to your GitLab project: **Settings → CI/CD → Variables**
 
-Add the following variable:
-- `ANTHROPIC_API_KEY`: Your Anthropic API key for Claude AI
+Add the API key for your chosen model provider:
+- For Anthropic Claude models: `ANTHROPIC_API_KEY`
+- For ZhipuAI GLM models: `ZHIPU_API_KEY`
+- For OpenAI models: `OPENAI_API_KEY`
+- See [OpenCode providers](https://opencode.ai/docs/providers/) for other options
+
+For each variable:
   - Type: Variable
   - Protected: Yes (recommended)
   - Masked: Yes (recommended)

@@ -35,8 +35,10 @@ cp .env.example .env
 Edit `.env` and configure the following:
 
 ```bash
-# Required: Anthropic API key for Claude AI
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+# Required: Provider API Key (set the one for your chosen model provider)
+ANTHROPIC_API_KEY=sk-ant-your-key-here  # For Anthropic Claude models
+# ZHIPU_API_KEY=your-key-here           # For ZhipuAI GLM models
+# OPENAI_API_KEY=sk-your-key-here       # For OpenAI models
 
 # Optional: Leave empty to use in-process OpenCode server
 # OPENCODE_SERVER=http://localhost:3000
@@ -398,15 +400,19 @@ npm install -g opencode-ai
 which opencode  # Verify installation
 ```
 
-### Issue: "ANTHROPIC_API_KEY not set"
+### Issue: "Provider API key not set"
 
 **Solution:**
 ```bash
-# Check if .env file exists and has the key
-cat .env | grep ANTHROPIC_API_KEY
+# Check if .env file exists and has the appropriate API key for your provider
+cat .env | grep API_KEY
 
-# Or set it directly
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
+# Set the API key for your chosen provider:
+export ANTHROPIC_API_KEY=sk-ant-your-key-here  # For Claude models
+# OR
+export ZHIPU_API_KEY=your-key-here             # For GLM models
+# OR
+export OPENAI_API_KEY=sk-your-key-here         # For OpenAI models
 ```
 
 ### Issue: "Build fails with TypeScript errors"

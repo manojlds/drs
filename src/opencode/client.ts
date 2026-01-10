@@ -65,12 +65,8 @@ export class OpencodeClient {
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
     } else {
       // Start server in-process
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new Error(
-          'ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server'
-        );
-      }
+      // OpenCode SDK handles provider authentication automatically via environment variables
+      // (e.g., ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
 
       // Load OpenCode configuration from .opencode/opencode.jsonc
       let opencodeConfig: any = {
@@ -154,7 +150,8 @@ export class OpencodeClient {
         process.chdir(projectDir);
       }
 
-      // OpenCode SDK reads ANTHROPIC_API_KEY from environment automatically
+      // OpenCode SDK reads provider-specific API keys from environment automatically
+      // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
       this.inProcessServer = await createOpencode({
         hostname: this.config.serverHostname || '127.0.0.1',
         port: this.config.serverPort || 4096,
