@@ -167,6 +167,44 @@ export class GitHubClient {
     const response = await this.octokit.users.getAuthenticated();
     return response.data;
   }
+
+  /**
+   * List all issue comments on a PR
+   */
+  async listPRComments(owner: string, repo: string, prNumber: number) {
+    const response = await this.octokit.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: 100,
+    });
+    return response.data;
+  }
+
+  /**
+   * List all review comments on a PR
+   */
+  async listPRReviewComments(owner: string, repo: string, prNumber: number) {
+    const response = await this.octokit.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+    });
+    return response.data;
+  }
+
+  /**
+   * Update an existing comment
+   */
+  async updateComment(owner: string, repo: string, commentId: number, body: string): Promise<any> {
+    return await this.octokit.issues.updateComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      body,
+    });
+  }
 }
 
 /**

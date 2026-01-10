@@ -17,6 +17,37 @@ export interface ReviewPROptions {
   postComments: boolean;
 }
 
+// Bot identifier for tracking our comments
+const BOT_COMMENT_ID = 'drs-review-summary';
+
+/**
+ * Create a unique fingerprint for an issue to detect duplicates
+ */
+function createIssueFingerprint(issue: ReviewIssue): string {
+  return `${issue.file}:${issue.line || 'general'}:${issue.category}:${issue.title}`;
+}
+
+/**
+ * Extract bot comment ID from comment body
+ */
+function extractCommentId(body: string): string | null {
+  const match = body.match(/<!-- drs-comment-id: (.*?) -->/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Extract issue fingerprints from comment body
+ */
+function extractIssueFingerprints(body: string): Set<string> {
+  const fingerprints = new Set<string>();
+  const regex = /<!-- issue-fp: (.*?) -->/g;
+  let match;
+  while ((match = regex.exec(body)) !== null) {
+    fingerprints.add(match[1]);
+  }
+  return fingerprints;
+}
+
 /**
  * Parse a GitHub diff patch to extract valid line numbers for review comments
  * GitHub only allows comments on lines that are in the diff (added, removed, or context)
@@ -190,12 +221,31 @@ Be thorough and identify all issues. Include line numbers when possible.`;
 
   // Post comments to GitHub if requested
   if (options.postComments) {
-    console.log(chalk.gray('Posting review comments to GitHub...\n'));
+    console.log(chalk.gray('Fetching existing comments from PR...\n'));
 
-    // Post comprehensive summary comment with all issues
-    const summaryComment = formatSummaryComment(summary, issues);
-    await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
-    console.log(chalk.green('✓ Posted review summary to PR'));
+    // Get authenticated bot user
+    const botUser = await github.getAuthenticatedUser();
+
+    // Fetch existing comments to prevent duplicates
+    const existingPRComments = await github.listPRComments(options.owner, options.repo, options.prNumber);
+    const existingReviewComments = await github.listPRReviewComments(options.owner, options.repo, options.prNumber);
+
+    // Find our existing summary comment
+    const existingSummary = existingPRComments.find(
+      c => c.user?.login === botUser.login && extractCommentId(c.body || '') === BOT_COMMENT_ID
+    );
+
+    // Post or update summary comment
+    console.log(chalk.gray('Posting review summary to GitHub...\n'));
+    const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID);
+
+    if (existingSummary) {
+      await github.updateComment(options.owner, options.repo, existingSummary.id, summaryComment);
+      console.log(chalk.green('✓ Updated existing review summary'));
+    } else {
+      await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
+      console.log(chalk.green('✓ Posted new review summary to PR'));
+    }
 
     // Post inline comments for Critical and High severity issues only
     // This provides line-specific context for important issues while avoiding rate limits
@@ -210,33 +260,73 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       });
 
       if (validInlineIssues.length > 0) {
-        console.log(chalk.gray(`\nPosting ${validInlineIssues.length} inline comment(s) for Critical/High issues...\n`));
-
-        for (let i = 0; i < validInlineIssues.length; i++) {
-          const issue = validInlineIssues[i];
-
-          try {
-            await github.createPRReviewComment(
-              options.owner,
-              options.repo,
-              options.prNumber,
-              formatIssueComment(issue),
-              pr.head.sha,
-              issue.file,
-              issue.line!
-            );
-            console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
-
-            // Add delay between posts to avoid rate limits (only if not the last one)
-            if (i < validInlineIssues.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          } catch (error: any) {
-            console.warn(chalk.yellow(`  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${error.message}`));
+        // Build set of existing issue fingerprints from review comments
+        const existingFingerprints = new Set<string>();
+        for (const comment of existingReviewComments) {
+          if (comment.user?.login === botUser.login) {
+            const fingerprints = extractIssueFingerprints(comment.body);
+            fingerprints.forEach(fp => existingFingerprints.add(fp));
           }
         }
 
-        console.log(chalk.green('\n✓ Finished posting inline comments\n'));
+        // Filter out issues that already have comments
+        const newInlineIssues = validInlineIssues.filter(issue => {
+          const fingerprint = createIssueFingerprint(issue);
+          return !existingFingerprints.has(fingerprint);
+        });
+
+        if (newInlineIssues.length > 0) {
+          console.log(chalk.gray(`\nPosting ${newInlineIssues.length} new inline comment(s) using bulk review API...\n`));
+
+          // Use bulk review API to post all inline comments at once
+          const reviewComments = newInlineIssues.map(issue => ({
+            path: issue.file,
+            line: issue.line!,
+            body: formatIssueComment(issue, createIssueFingerprint(issue)),
+          }));
+
+          try {
+            await github.createPRReview(
+              options.owner,
+              options.repo,
+              options.prNumber,
+              pr.head.sha,
+              `Found ${newInlineIssues.length} critical/high priority issue(s) that need attention.`,
+              'COMMENT',
+              reviewComments
+            );
+            console.log(chalk.green(`✓ Posted ${newInlineIssues.length} inline comment(s) in a single review`));
+          } catch (error: any) {
+            console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
+            console.log(chalk.gray('Falling back to individual comment posting...\n'));
+
+            // Fallback to individual comments if bulk fails
+            for (const issue of newInlineIssues) {
+              try {
+                await github.createPRReviewComment(
+                  options.owner,
+                  options.repo,
+                  options.prNumber,
+                  formatIssueComment(issue, createIssueFingerprint(issue)),
+                  pr.head.sha,
+                  issue.file,
+                  issue.line!
+                );
+                console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
+              } catch (err: any) {
+                console.warn(chalk.yellow(`  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${err.message}`));
+              }
+            }
+          }
+        } else {
+          console.log(chalk.gray('\nAll inline comments already exist - no new comments to post\n'));
+        }
+
+        // Log skipped duplicates
+        const skippedDuplicates = validInlineIssues.length - newInlineIssues.length;
+        if (skippedDuplicates > 0) {
+          console.log(chalk.gray(`(Skipped ${skippedDuplicates} duplicate inline comment(s))\n`));
+        }
       }
 
       // Log skipped issues
