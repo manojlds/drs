@@ -16,25 +16,25 @@
   // Agent model configuration
   "agent": {
     "gitlab-reviewer": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "github-reviewer": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "local-reviewer": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "review/security": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "review/quality": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "review/style": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     },
     "review/performance": {
-      "model": "opencode/claude-opus-4-20250514"
+      "model": "opencode/glm-4.7-free"
     }
   }
 }
