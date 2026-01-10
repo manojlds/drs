@@ -25,7 +25,9 @@ program
     try {
       const config = loadConfig(process.cwd(), {
         review: {
-          agents: options.agents ? options.agents.split(',').map((a: string) => a.trim()) : undefined,
+          agents: options.agents
+            ? options.agents.split(',').map((a: string) => a.trim())
+            : undefined,
         },
         output: {
           format: options.format,
@@ -54,7 +56,9 @@ program
     try {
       const config = loadConfig(process.cwd(), {
         review: {
-          agents: options.agents ? options.agents.split(',').map((a: string) => a.trim()) : undefined,
+          agents: options.agents
+            ? options.agents.split(',').map((a: string) => a.trim())
+            : undefined,
         },
         output: {
           verbosity: options.verbose ? 'detailed' : 'normal',
@@ -85,7 +89,9 @@ program
     try {
       const config = loadConfig(process.cwd(), {
         review: {
-          agents: options.agents ? options.agents.split(',').map((a: string) => a.trim()) : undefined,
+          agents: options.agents
+            ? options.agents.split(',').map((a: string) => a.trim())
+            : undefined,
         },
         output: {
           verbosity: options.verbose ? 'detailed' : 'normal',

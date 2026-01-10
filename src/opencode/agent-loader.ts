@@ -24,10 +24,7 @@ export function loadReviewAgents(projectPath: string): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
   // Define search paths in priority order
-  const agentPaths = [
-    join(projectPath, '.drs/agents'),
-    join(projectPath, '.opencode/agent'),
-  ];
+  const agentPaths = [join(projectPath, '.drs/agents'), join(projectPath, '.opencode/agent')];
 
   const discovered = new Set<string>();
 
@@ -100,9 +97,7 @@ function parseAgentFile(filePath: string, basePath: string): AgentDefinition | n
 
     // Generate agent name from relative path
     const relativePath = relative(basePath, filePath);
-    const agentName = relativePath
-      .replace(/\.md$/, '')
-      .replace(/\\/g, '/');
+    const agentName = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
 
     return {
       name: agentName,
@@ -124,7 +119,7 @@ function parseAgentFile(filePath: string, basePath: string): AgentDefinition | n
  */
 export function getAgent(projectPath: string, agentName: string): AgentDefinition | null {
   const agents = loadReviewAgents(projectPath);
-  return agents.find(a => a.name === agentName) || null;
+  return agents.find((a) => a.name === agentName) || null;
 }
 
 /**
@@ -132,7 +127,7 @@ export function getAgent(projectPath: string, agentName: string): AgentDefinitio
  */
 export function getReviewAgents(projectPath: string): AgentDefinition[] {
   const agents = loadReviewAgents(projectPath);
-  return agents.filter(a => a.name.startsWith('review/'));
+  return agents.filter((a) => a.name.startsWith('review/'));
 }
 
 /**
@@ -140,5 +135,5 @@ export function getReviewAgents(projectPath: string): AgentDefinition[] {
  */
 export function listAgents(projectPath: string): string[] {
   const agents = loadReviewAgents(projectPath);
-  return agents.map(a => a.name);
+  return agents.map((a) => a.name);
 }

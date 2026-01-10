@@ -70,7 +70,11 @@ export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): st
  * Format a review summary as a GitLab comment
  * @param commentId Optional comment ID to embed for update identification
  */
-export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue[], commentId?: string): string {
+export function formatSummaryComment(
+  summary: ReviewSummary,
+  issues: ReviewIssue[],
+  commentId?: string
+): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
   if (commentId) {
@@ -97,10 +101,10 @@ export function formatSummaryComment(summary: ReviewSummary, issues: ReviewIssue
     comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n\n`;
 
     // Group issues by severity
-    const criticalIssues = issues.filter(i => i.severity === 'CRITICAL');
-    const highIssues = issues.filter(i => i.severity === 'HIGH');
-    const mediumIssues = issues.filter(i => i.severity === 'MEDIUM');
-    const lowIssues = issues.filter(i => i.severity === 'LOW');
+    const criticalIssues = issues.filter((i) => i.severity === 'CRITICAL');
+    const highIssues = issues.filter((i) => i.severity === 'HIGH');
+    const mediumIssues = issues.filter((i) => i.severity === 'MEDIUM');
+    const lowIssues = issues.filter((i) => i.severity === 'LOW');
 
     // Helper function to format issue details
     const formatIssueDetails = (issue: ReviewIssue) => {
@@ -170,10 +174,7 @@ export function formatTerminalIssue(issue: ReviewIssue): string {
 /**
  * Calculate review summary from issues
  */
-export function calculateSummary(
-  filesReviewed: number,
-  issues: ReviewIssue[]
-): ReviewSummary {
+export function calculateSummary(filesReviewed: number, issues: ReviewIssue[]): ReviewSummary {
   const summary: ReviewSummary = {
     filesReviewed,
     issuesFound: issues.length,

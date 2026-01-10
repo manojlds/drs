@@ -33,8 +33,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual(['src/app.ts', 'src/utils.ts']);
   });
@@ -59,8 +59,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual(['src/new.ts']);
   });
@@ -78,8 +78,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual(['src/new-name.ts']);
   });
@@ -105,8 +105,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     // Should include both files, even binary ones
     expect(changedFiles).toEqual(['binary-file.png', 'src/code.ts']);
@@ -116,8 +116,8 @@ describe('GitHub PR File Detection', () => {
     const files: MockPRFile[] = [];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual([]);
   });
@@ -155,8 +155,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual(['added.ts', 'modified.ts', 'renamed.ts']);
     expect(changedFiles).not.toContain('removed.ts');
@@ -188,8 +188,8 @@ describe('GitHub PR File Detection', () => {
     ];
 
     const changedFiles = files
-      .filter(file => file.status !== 'removed')
-      .map(file => file.filename);
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
 
     expect(changedFiles).toEqual([
       'src/components/Button.tsx',

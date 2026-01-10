@@ -53,7 +53,7 @@ export class GitHubClient {
       per_page: 100,
     });
 
-    return response.data.map(file => ({
+    return response.data.map((file) => ({
       filename: file.filename,
       status: file.status as PRChange['status'],
       additions: file.additions,
@@ -157,7 +157,7 @@ export class GitHubClient {
       repo,
       issue_number: prNumber,
     });
-    return response.data.some(l => l.name === label);
+    return response.data.some((l) => l.name === label);
   }
 
   /**

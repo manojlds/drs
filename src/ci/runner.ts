@@ -68,7 +68,10 @@ export async function runCIReview(): Promise<void> {
   try {
     validateConfig(config);
   } catch (error) {
-    console.error(chalk.red('Configuration error:'), error instanceof Error ? error.message : String(error));
+    console.error(
+      chalk.red('Configuration error:'),
+      error instanceof Error ? error.message : String(error)
+    );
     process.exit(1);
   }
 
@@ -96,9 +99,5 @@ export async function runCIReview(): Promise<void> {
  * Check if running in CI environment
  */
 export function isCI(): boolean {
-  return !!(
-    process.env.CI ||
-    process.env.GITLAB_CI ||
-    process.env.GITHUB_ACTIONS
-  );
+  return !!(process.env.CI || process.env.GITLAB_CI || process.env.GITHUB_ACTIONS);
 }

@@ -43,7 +43,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   }
 
   // Parse diffs
-  const diffs = changes.map(change => parseDiff(change.diff)).flat();
+  const diffs = changes.map((change) => parseDiff(change.diff)).flat();
   const changedFiles = getChangedFiles(diffs);
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
@@ -123,7 +123,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
       // Post individual issue comments as discussion threads
       for (const issue of issues) {
         const diffRefs: any = mr.diff_refs;
-        if (issue.line && diffRefs && diffRefs.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
+        if (issue.line && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
           try {
             await gitlab.createMRDiscussionThread(
               options.projectId,
@@ -139,7 +139,9 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
             );
           } catch (error) {
             // If line-specific comment fails, post as general comment
-            console.warn(chalk.yellow(`Warning: Could not post line comment for ${issue.file}:${issue.line}`));
+            console.warn(
+              chalk.yellow(`Warning: Could not post line comment for ${issue.file}:${issue.line}`)
+            );
             await gitlab.createMRComment(
               options.projectId,
               options.mrIid,
@@ -148,11 +150,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
           }
         } else {
           // Post as general comment if no line number
-          await gitlab.createMRComment(
-            options.projectId,
-            options.mrIid,
-            formatIssueComment(issue)
-          );
+          await gitlab.createMRComment(options.projectId, options.mrIid, formatIssueComment(issue));
         }
       }
 
