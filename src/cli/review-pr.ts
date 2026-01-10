@@ -18,6 +18,44 @@ export interface ReviewPROptions {
 }
 
 /**
+ * Parse a GitHub diff patch to extract valid line numbers for review comments
+ * GitHub only allows comments on lines that are in the diff (added, removed, or context)
+ */
+function parseValidLinesFromPatch(patch: string): Set<number> {
+  const validLines = new Set<number>();
+  const lines = patch.split('\n');
+  let currentLine = 0;
+
+  for (const line of lines) {
+    // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      currentLine = parseInt(hunkMatch[1], 10);
+      continue;
+    }
+
+    // Skip empty lines or lines without proper diff prefix
+    if (!line || line.length === 0) continue;
+
+    const prefix = line[0];
+    if (prefix === '+') {
+      // Added line - can comment on this
+      validLines.add(currentLine);
+      currentLine++;
+    } else if (prefix === ' ') {
+      // Context line - can comment on this
+      validLines.add(currentLine);
+      currentLine++;
+    } else if (prefix === '-') {
+      // Removed line - cannot comment on "new" version, skip
+      continue;
+    }
+  }
+
+  return validLines;
+}
+
+/**
  * Review a GitHub pull request
  */
 export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Promise<void> {
@@ -46,6 +84,15 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   const changedFiles = files
     .filter(file => file.status !== 'removed')
     .map(file => file.filename);
+
+  // Build a map of file -> valid line numbers (lines that are in the diff)
+  const validLinesMap = new Map<string, Set<number>>();
+  for (const file of files) {
+    if (file.patch && file.status !== 'removed') {
+      const validLines = parseValidLinesFromPatch(file.patch);
+      validLinesMap.set(file.filename, validLines);
+    }
+  }
 
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
@@ -168,12 +215,19 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     const criticalAndHigh = issues.filter(i => i.severity === 'CRITICAL' || i.severity === 'HIGH');
 
     if (criticalAndHigh.length > 0 && pr.head.sha) {
-      console.log(chalk.gray(`\nPosting ${criticalAndHigh.length} inline comment(s) for Critical/High issues...\n`));
+      // Filter to only issues on lines that are in the diff
+      const validInlineIssues = criticalAndHigh.filter(issue => {
+        if (!issue.line) return false;
+        const validLines = validLinesMap.get(issue.file);
+        return validLines && validLines.has(issue.line);
+      });
 
-      for (let i = 0; i < criticalAndHigh.length; i++) {
-        const issue = criticalAndHigh[i];
+      if (validInlineIssues.length > 0) {
+        console.log(chalk.gray(`\nPosting ${validInlineIssues.length} inline comment(s) for Critical/High issues...\n`));
 
-        if (issue.line) {
+        for (let i = 0; i < validInlineIssues.length; i++) {
+          const issue = validInlineIssues[i];
+
           try {
             await github.createPRReviewComment(
               options.owner,
@@ -182,21 +236,27 @@ Be thorough and identify all issues. Include line numbers when possible.`;
               formatIssueComment(issue),
               pr.head.sha,
               issue.file,
-              issue.line
+              issue.line!
             );
             console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
 
             // Add delay between posts to avoid rate limits (only if not the last one)
-            if (i < criticalAndHigh.length - 1) {
+            if (i < validInlineIssues.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           } catch (error: any) {
             console.warn(chalk.yellow(`  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${error.message}`));
           }
         }
+
+        console.log(chalk.green('\n✓ Finished posting inline comments\n'));
       }
 
-      console.log(chalk.green('\n✓ Finished posting inline comments\n'));
+      // Log skipped issues
+      const skippedCount = criticalAndHigh.length - validInlineIssues.length;
+      if (skippedCount > 0) {
+        console.log(chalk.gray(`(Skipped ${skippedCount} inline comment(s) for lines not in the diff - they're in the summary)\n`));
+      }
     }
 
     // Add ai-reviewed label
