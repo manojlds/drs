@@ -2,6 +2,19 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import * as yaml from 'yaml';
 
+/**
+ * Agent configuration - supports both simple string and detailed object format
+ */
+export interface AgentConfig {
+  name: string;
+  model?: string;
+}
+
+/**
+ * Model override mapping from agent name to model identifier
+ */
+export type ModelOverrides = Record<string, string>;
+
 export interface DRSConfig {
   // OpenCode configuration
   opencode: {
@@ -21,7 +34,8 @@ export interface DRSConfig {
 
   // Review behavior
   review: {
-    agents: string[];
+    agents: (string | AgentConfig)[];
+    defaultModel?: string;
     autoReview: boolean;
     reviewOnMention: boolean;
     reviewOnLabel: string[];
@@ -109,7 +123,11 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     config.github.token = process.env.GITHUB_TOKEN;
   }
   if (process.env.REVIEW_AGENTS) {
+    // Environment variable is always simple string format (comma-separated)
     config.review.agents = process.env.REVIEW_AGENTS.split(',').map((a) => a.trim());
+  }
+  if (process.env.REVIEW_DEFAULT_MODEL) {
+    config.review.defaultModel = process.env.REVIEW_DEFAULT_MODEL;
   }
 
   // Apply CLI overrides
@@ -207,4 +225,56 @@ function minimatch(path: string, pattern: string): boolean {
 
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(path);
+}
+
+/**
+ * Normalize agent configuration from mixed format to AgentConfig array
+ */
+export function normalizeAgentConfig(agents: (string | AgentConfig)[]): AgentConfig[] {
+  return agents.map((agent) => {
+    if (typeof agent === 'string') {
+      return { name: agent };
+    }
+    return agent;
+  });
+}
+
+/**
+ * Extract agent names from configuration
+ */
+export function getAgentNames(config: DRSConfig): string[] {
+  return normalizeAgentConfig(config.review.agents).map((agent) => agent.name);
+}
+
+/**
+ * Build model overrides from config and environment variables
+ * Precedence:
+ * 1. Per-agent model in config
+ * 2. Environment variable REVIEW_AGENT_<NAME>_MODEL (e.g., REVIEW_AGENT_SECURITY_MODEL)
+ * 3. defaultModel in config
+ * 4. Environment variable REVIEW_DEFAULT_MODEL
+ */
+export function getModelOverrides(config: DRSConfig): ModelOverrides {
+  const overrides: ModelOverrides = {};
+  const normalizedAgents = normalizeAgentConfig(config.review.agents);
+
+  // Get default model from config or environment
+  const defaultModel = config.review.defaultModel || process.env.REVIEW_DEFAULT_MODEL || undefined;
+
+  for (const agent of normalizedAgents) {
+    // Check per-agent environment variable (e.g., REVIEW_AGENT_SECURITY_MODEL)
+    const envVarName = `REVIEW_AGENT_${agent.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
+    const envModel = process.env[envVarName];
+
+    // Precedence: agent.model > env var > defaultModel
+    const model = agent.model || envModel || defaultModel;
+
+    if (model) {
+      // Map both the agent name and the review/<agent> format
+      overrides[agent.name] = model;
+      overrides[`review/${agent.name}`] = model;
+    }
+  }
+
+  return overrides;
 }

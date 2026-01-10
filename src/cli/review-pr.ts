@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
+import { getAgentNames } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import {
@@ -175,7 +176,8 @@ ${changedFiles.map((f) => `- ${f}`).join('\n')}
 Be thorough and identify all issues. Include line numbers when possible.`;
 
   // Invoke all configured review agents in parallel for faster execution
-  const agentPromises = config.review.agents.map(async (agentType) => {
+  const agentNames = getAgentNames(config);
+  const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 

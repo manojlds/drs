@@ -15,6 +15,7 @@ export interface OpencodeConfig {
   directory?: string;
   serverPort?: number;
   serverHostname?: string;
+  modelOverrides?: Record<string, string>; // Model overrides from DRS config
 }
 
 export interface SessionCreateOptions {
@@ -115,6 +116,25 @@ export class OpencodeClient {
         }
       } catch (error) {
         console.error(`Failed to load OpenCode config: ${error}`);
+      }
+
+      // Apply model overrides from DRS config
+      if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
+        if (!opencodeConfig.agent) {
+          opencodeConfig.agent = {};
+        }
+
+        // Merge model overrides into agent configuration
+        for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
+          if (!opencodeConfig.agent[agentName]) {
+            opencodeConfig.agent[agentName] = {};
+          }
+          opencodeConfig.agent[agentName].model = model;
+        }
+
+        console.log(
+          `Applied model overrides for agents: ${Object.keys(this.config.modelOverrides).join(', ')}`
+        );
       }
 
       // Change to project directory so OpenCode can discover agents
