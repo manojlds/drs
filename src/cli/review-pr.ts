@@ -14,7 +14,6 @@ import { filterIgnoredFiles } from '../lib/review-orchestrator.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
-  extractCommentId,
   findExistingSummaryComment,
   prepareIssuesForPosting,
   type PlatformComment,
@@ -102,7 +101,11 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   const ignoredCount = allChangedFiles.length - changedFiles.length;
 
   if (ignoredCount > 0) {
-    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`));
+    console.log(
+      chalk.gray(
+        `Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`
+      )
+    );
   }
 
   if (changedFiles.length === 0) {
@@ -262,7 +265,12 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID);
 
     if (existingSummary) {
-      await github.updateComment(options.owner, options.repo, Number(existingSummary.id), summaryComment);
+      await github.updateComment(
+        options.owner,
+        options.repo,
+        Number(existingSummary.id),
+        summaryComment
+      );
       console.log(chalk.green('✓ Updated existing review summary'));
     } else {
       await github.createPRComment(options.owner, options.repo, options.prNumber, summaryComment);
@@ -312,7 +320,9 @@ Be thorough and identify all issues. Include line numbers when possible.`;
           reviewComments
         );
         console.log(
-          chalk.green(`✓ Posted ${prepared.inlineIssues.length} inline comment(s) in a single review`)
+          chalk.green(
+            `✓ Posted ${prepared.inlineIssues.length} inline comment(s) in a single review`
+          )
         );
       } catch (error: any) {
         console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
@@ -320,29 +330,27 @@ Be thorough and identify all issues. Include line numbers when possible.`;
 
         // Fallback to individual comments if bulk fails
         for (const issue of prepared.inlineIssues) {
-              try {
-                await github.createPRReviewComment(
-                  options.owner,
-                  options.repo,
-                  options.prNumber,
-                  formatIssueComment(issue, createIssueFingerprint(issue)),
-                  pr.head.sha,
-                  issue.file,
-                  issue.line!
-                );
-                console.log(
-                  chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`)
-                );
-              } catch (err: any) {
-                console.warn(
-                  chalk.yellow(
-                    `  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${err.message}`
-                  )
-                );
-              }
-            }
+          try {
+            await github.createPRReviewComment(
+              options.owner,
+              options.repo,
+              options.prNumber,
+              formatIssueComment(issue, createIssueFingerprint(issue)),
+              pr.head.sha,
+              issue.file,
+              issue.line!
+            );
+            console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
+          } catch (err: any) {
+            console.warn(
+              chalk.yellow(
+                `  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${err.message}`
+              )
+            );
           }
         }
+      }
+    }
 
     // Add ai-reviewed label
     await github.addLabels(options.owner, options.repo, options.prNumber, ['ai-reviewed']);

@@ -67,9 +67,7 @@ export interface PlatformComment {
 /**
  * Find existing summary comment using bot marker
  */
-export function findExistingSummaryComment(
-  comments: PlatformComment[]
-): PlatformComment | null {
+export function findExistingSummaryComment(comments: PlatformComment[]): PlatformComment | null {
   return comments.find((c) => extractCommentId(c.body) === BOT_COMMENT_ID) || null;
 }
 

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { DRSConfig, shouldIgnoreFile } from './config.js';
+import type { DRSConfig } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
@@ -35,6 +35,7 @@ export interface ReviewResult {
  */
 export function filterIgnoredFiles(files: string[], config: DRSConfig): string[] {
   // Import shouldIgnoreFile dynamically to avoid circular dependency
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { shouldIgnoreFile } = require('./config.js');
 
   return files.filter((file) => !shouldIgnoreFile(file, config));
@@ -43,10 +44,7 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
 /**
  * Connect to OpenCode server (or start in-process)
  */
-async function connectToOpenCode(
-  config: DRSConfig,
-  workingDir?: string
-): Promise<OpencodeClient> {
+async function connectToOpenCode(config: DRSConfig, workingDir?: string): Promise<OpencodeClient> {
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
   try {

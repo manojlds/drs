@@ -59,7 +59,11 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   const ignoredCount = allChangedFiles.length - changedFiles.length;
 
   if (ignoredCount > 0) {
-    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`));
+    console.log(
+      chalk.gray(
+        `Ignoring ${ignoredCount} file(s) based on patterns (${config.review.ignorePatterns.join(', ')})\n`
+      )
+    );
   }
 
   if (changedFiles.length === 0) {
@@ -176,10 +180,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
       const prepared = prepareIssuesForPosting(issues, allExistingComments, (issue) => {
         // For GitLab, we can post on any line with valid diff_refs
         return (
-          issue.line !== undefined &&
-          diffRefs?.base_sha &&
-          diffRefs.head_sha &&
-          diffRefs.start_sha
+          issue.line !== undefined && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha
         );
       });
 
@@ -190,7 +191,12 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
       }
 
       // Post inline comments for new CRITICAL/HIGH issues
-      if (prepared.inlineIssues.length > 0 && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
+      if (
+        prepared.inlineIssues.length > 0 &&
+        diffRefs?.base_sha &&
+        diffRefs.head_sha &&
+        diffRefs.start_sha
+      ) {
         console.log(
           chalk.gray(
             `\nPosting ${prepared.inlineIssues.length} new inline comment(s) as discussion threads...\n`
