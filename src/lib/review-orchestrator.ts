@@ -41,7 +41,7 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
 /**
  * Connect to OpenCode server (or start in-process)
  */
-async function connectToOpenCode(config: DRSConfig, workingDir?: string): Promise<OpencodeClient> {
+export async function connectToOpenCode(config: DRSConfig, workingDir?: string): Promise<OpencodeClient> {
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
   try {
