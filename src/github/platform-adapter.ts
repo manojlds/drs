@@ -137,9 +137,7 @@ export class GitHubPlatformAdapter implements PlatformClient {
         'COMMENT',
         reviewComments
       );
-      console.log(
-        chalk.green(`✓ Posted ${comments.length} inline comment(s) in a single review`)
-      );
+      console.log(chalk.green(`✓ Posted ${comments.length} inline comment(s) in a single review`));
     } catch (error: any) {
       console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
       console.log(chalk.gray('Falling back to individual comment posting...\n'));
@@ -149,7 +147,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
         try {
           await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
           console.log(
-            chalk.gray(`  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`)
+            chalk.gray(
+              `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
+            )
           );
         } catch (err: any) {
           console.warn(

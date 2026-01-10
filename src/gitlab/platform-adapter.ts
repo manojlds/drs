@@ -129,9 +129,7 @@ export class GitLabPlatformAdapter implements PlatformClient {
     if (comments.length === 0) return;
 
     console.log(
-      chalk.gray(
-        `\nPosting ${comments.length} new inline comment(s) as discussion threads...\n`
-      )
+      chalk.gray(`\nPosting ${comments.length} new inline comment(s) as discussion threads...\n`)
     );
 
     // GitLab doesn't have a bulk API, post individually
@@ -139,7 +137,9 @@ export class GitLabPlatformAdapter implements PlatformClient {
       try {
         await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
         console.log(
-          chalk.gray(`  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`)
+          chalk.gray(
+            `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
+          )
         );
       } catch (error: any) {
         console.warn(

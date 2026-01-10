@@ -24,11 +24,7 @@ import {
   type PlatformComment,
 } from './comment-manager.js';
 import { connectToOpenCode, displayReviewSummary } from './review-orchestrator.js';
-import type {
-  PlatformClient,
-  LineValidator,
-  InlineCommentPosition,
-} from './platform-client.js';
+import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */

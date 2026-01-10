@@ -27,12 +27,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   const diffRefs: any = mr.diff_refs;
   const lineValidator: LineValidator = {
     isValidLine(file: string, line: number): boolean {
-      return (
-        line !== undefined &&
-        diffRefs?.base_sha &&
-        diffRefs.head_sha &&
-        diffRefs.start_sha
-      );
+      return line !== undefined && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha;
     },
   };
 

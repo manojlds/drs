@@ -102,7 +102,12 @@ export interface PlatformClient {
   /**
    * Update an existing comment
    */
-  updateComment(projectId: string, prNumber: number, commentId: number | string, body: string): Promise<void>;
+  updateComment(
+    projectId: string,
+    prNumber: number,
+    commentId: number | string,
+    body: string
+  ): Promise<void>;
 
   /**
    * Create an inline comment at a specific line

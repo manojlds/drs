@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
