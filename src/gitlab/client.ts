@@ -49,10 +49,31 @@ export class GitLabClient {
   }
 
   /**
+   * Get all notes (comments) on an MR
+   */
+  async getMRNotes(projectId: string, mrIid: number) {
+    return await this.client.MergeRequestNotes.all(projectId, mrIid);
+  }
+
+  /**
+   * Get all discussion threads on an MR
+   */
+  async getMRDiscussions(projectId: string, mrIid: number) {
+    return await this.client.MergeRequestDiscussions.all(projectId, mrIid);
+  }
+
+  /**
    * Post a comment to the MR
    */
   async createMRComment(projectId: string, mrIid: number, body: string) {
     return await this.client.MergeRequestNotes.create(projectId, mrIid, body);
+  }
+
+  /**
+   * Update an existing note (comment) on an MR
+   */
+  async updateMRNote(projectId: string, mrIid: number, noteId: number, body: string) {
+    return await this.client.MergeRequestNotes.edit(projectId, mrIid, noteId, body);
   }
 
   /**

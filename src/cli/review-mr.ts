@@ -11,6 +11,13 @@ import {
 } from '../gitlab/comment-formatter.js';
 import { parseReviewIssues } from '../lib/issue-parser.js';
 import { filterIgnoredFiles } from '../lib/review-orchestrator.js';
+import {
+  BOT_COMMENT_ID,
+  createIssueFingerprint,
+  findExistingSummaryComment,
+  prepareIssuesForPosting,
+  type PlatformComment,
+} from '../lib/comment-manager.js';
 
 export interface ReviewMROptions {
   projectId: string;
@@ -128,44 +135,97 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
 
     // Post comments to GitLab if requested
     if (options.postComments) {
-      console.log(chalk.gray('Posting review comments to GitLab...\n'));
+      console.log(chalk.gray('Fetching existing comments from MR...\n'));
 
-      // Post summary comment
-      const summaryComment = formatSummaryComment(summary, issues);
-      await gitlab.createMRComment(options.projectId, options.mrIid, summaryComment);
+      // Fetch existing comments to prevent duplicates
+      const [existingNotes, existingDiscussions] = await Promise.all([
+        gitlab.getMRNotes(options.projectId, options.mrIid),
+        gitlab.getMRDiscussions(options.projectId, options.mrIid),
+      ]);
 
-      // Post individual issue comments as discussion threads
-      for (const issue of issues) {
-        const diffRefs: any = mr.diff_refs;
-        if (issue.line && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
+      // Convert to platform-agnostic format
+      const allExistingComments: PlatformComment[] = [
+        ...existingNotes.map((n) => ({ id: n.id, body: n.body })),
+        ...existingDiscussions.flatMap((d) =>
+          (d.notes || []).map((n) => ({ id: n.id, body: n.body }))
+        ),
+      ];
+
+      // Find existing summary comment
+      const existingSummary = findExistingSummaryComment(allExistingComments);
+
+      // Post or update summary comment
+      console.log(chalk.gray('Posting review summary to GitLab...\n'));
+      const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID);
+
+      if (existingSummary) {
+        await gitlab.updateMRNote(
+          options.projectId,
+          options.mrIid,
+          Number(existingSummary.id),
+          summaryComment
+        );
+        console.log(chalk.green('✓ Updated existing review summary'));
+      } else {
+        await gitlab.createMRComment(options.projectId, options.mrIid, summaryComment);
+        console.log(chalk.green('✓ Posted new review summary to MR'));
+      }
+
+      // Prepare issues for posting: filter to CRITICAL/HIGH, deduplicate
+      const diffRefs: any = mr.diff_refs;
+      const prepared = prepareIssuesForPosting(issues, allExistingComments, (issue) => {
+        // For GitLab, we can post on any line with valid diff_refs
+        return (
+          issue.line !== undefined &&
+          diffRefs?.base_sha &&
+          diffRefs.head_sha &&
+          diffRefs.start_sha
+        );
+      });
+
+      if (prepared.deduplicatedCount > 0) {
+        console.log(
+          chalk.gray(`Skipped ${prepared.deduplicatedCount} duplicate issue(s) already commented\n`)
+        );
+      }
+
+      // Post inline comments for new CRITICAL/HIGH issues
+      if (prepared.inlineIssues.length > 0 && diffRefs?.base_sha && diffRefs.head_sha && diffRefs.start_sha) {
+        console.log(
+          chalk.gray(
+            `\nPosting ${prepared.inlineIssues.length} new inline comment(s) as discussion threads...\n`
+          )
+        );
+
+        for (const issue of prepared.inlineIssues) {
           try {
             await gitlab.createMRDiscussionThread(
               options.projectId,
               options.mrIid,
-              formatIssueComment(issue),
+              formatIssueComment(issue, createIssueFingerprint(issue)),
               {
                 baseSha: diffRefs.base_sha,
                 headSha: diffRefs.head_sha,
                 startSha: diffRefs.start_sha,
                 newPath: issue.file,
-                newLine: issue.line,
+                newLine: issue.line!,
               }
             );
+            console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
           } catch (error) {
             // If line-specific comment fails, post as general comment
             console.warn(
-              chalk.yellow(`Warning: Could not post line comment for ${issue.file}:${issue.line}`)
+              chalk.yellow(`  ⚠ Could not post line comment for ${issue.file}:${issue.line}`)
             );
             await gitlab.createMRComment(
               options.projectId,
               options.mrIid,
-              formatIssueComment(issue)
+              formatIssueComment(issue, createIssueFingerprint(issue))
             );
           }
-        } else {
-          // Post as general comment if no line number
-          await gitlab.createMRComment(options.projectId, options.mrIid, formatIssueComment(issue));
         }
+
+        console.log(chalk.green(`✓ Posted ${prepared.inlineIssues.length} inline comment(s)`));
       }
 
       // Add ai-reviewed label
