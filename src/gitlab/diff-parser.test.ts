@@ -115,7 +115,7 @@ diff --git a/src/file2.ts b/src/file2.ts
 
     expect(parsed[0].hunks[0].lines).toHaveLength(5);
 
-    const addedLines = parsed[0].hunks[0].lines.filter(l => l.type === 'add');
+    const addedLines = parsed[0].hunks[0].lines.filter((l) => l.type === 'add');
     expect(addedLines).toHaveLength(2);
     expect(addedLines[0].newLineNumber).toBe(2);
     expect(addedLines[1].newLineNumber).toBe(3);
@@ -134,7 +134,7 @@ diff --git a/src/file2.ts b/src/file2.ts
 
     const parsed = parseDiff(diff);
 
-    const deletedLines = parsed[0].hunks[0].lines.filter(l => l.type === 'delete');
+    const deletedLines = parsed[0].hunks[0].lines.filter((l) => l.type === 'delete');
     expect(deletedLines).toHaveLength(2);
     expect(deletedLines[0].oldLineNumber).toBe(2);
     expect(deletedLines[1].oldLineNumber).toBe(3);
@@ -154,7 +154,7 @@ diff --git a/src/file2.ts b/src/file2.ts
 
     const parsed = parseDiff(diff);
 
-    const contextLines = parsed[0].hunks[0].lines.filter(l => l.type === 'context');
+    const contextLines = parsed[0].hunks[0].lines.filter((l) => l.type === 'context');
     expect(contextLines).toHaveLength(4);
 
     // Context lines should have both old and new line numbers

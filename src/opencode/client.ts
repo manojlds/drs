@@ -66,7 +66,9 @@ export class OpencodeClient {
       // Start server in-process
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        throw new Error('ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server');
+        throw new Error(
+          'ANTHROPIC_API_KEY environment variable is required for in-process OpenCode server'
+        );
       }
 
       // Load OpenCode configuration from .opencode/opencode.jsonc
@@ -75,7 +77,11 @@ export class OpencodeClient {
       };
 
       try {
-        const configPath = path.join(this.directory || process.cwd(), '.opencode', 'opencode.jsonc');
+        const configPath = path.join(
+          this.directory || process.cwd(),
+          '.opencode',
+          'opencode.jsonc'
+        );
 
         if (fs.existsSync(configPath)) {
           const configContent = fs.readFileSync(configPath, 'utf-8');
@@ -83,7 +89,7 @@ export class OpencodeClient {
           // Strip JSONC to valid JSON
           const lines = configContent.split('\n');
           const cleanedLines = lines
-            .map(line => {
+            .map((line) => {
               // Remove single-line comments
               const commentIndex = line.indexOf('//');
               if (commentIndex !== -1) {
@@ -97,7 +103,7 @@ export class OpencodeClient {
               }
               return line;
             })
-            .filter(line => line.trim().length > 0); // Remove empty lines
+            .filter((line) => line.trim().length > 0); // Remove empty lines
 
           let jsonContent = cleanedLines.join('\n');
           // Remove multi-line comments
@@ -225,7 +231,9 @@ export class OpencodeClient {
         lastMessageCount = messages.length;
 
         // Check if the last assistant message has completed
-        const lastAssistantMsg = [...messages].reverse().find((m: any) => m.info?.role === 'assistant');
+        const lastAssistantMsg = [...messages]
+          .reverse()
+          .find((m: any) => m.info?.role === 'assistant');
 
         if (lastAssistantMsg) {
           const isComplete = lastAssistantMsg.info?.time?.completed !== undefined;
@@ -241,7 +249,7 @@ export class OpencodeClient {
         }
 
         // Wait before polling again
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       if (attempts >= maxAttempts) {

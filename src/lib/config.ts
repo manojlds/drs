@@ -77,10 +77,7 @@ const DEFAULT_CONFIG: DRSConfig = {
  * 4. .gitlab-review.yml
  * 5. Default values
  */
-export function loadConfig(
-  projectPath?: string,
-  overrides?: Partial<DRSConfig>
-): DRSConfig {
+export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>): DRSConfig {
   const basePath = projectPath || process.cwd();
   let config = { ...DEFAULT_CONFIG };
 
@@ -112,7 +109,7 @@ export function loadConfig(
     config.github.token = process.env.GITHUB_TOKEN;
   }
   if (process.env.REVIEW_AGENTS) {
-    config.review.agents = process.env.REVIEW_AGENTS.split(',').map(a => a.trim());
+    config.review.agents = process.env.REVIEW_AGENTS.split(',').map((a) => a.trim());
   }
 
   // Apply CLI overrides
@@ -139,10 +136,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
 /**
  * Merge a config section, skipping undefined values
  */
-function mergeSection<T extends Record<string, any>>(
-  base: T,
-  override?: Partial<T>
-): T {
+function mergeSection<T extends Record<string, any>>(base: T, override?: Partial<T>): T {
   if (!override) return base;
 
   const result = { ...base };
@@ -209,10 +203,7 @@ export function shouldIgnoreFile(filePath: string, config: DRSConfig): boolean {
 
 // Simple minimatch implementation for pattern matching
 function minimatch(path: string, pattern: string): boolean {
-  const regexPattern = pattern
-    .replace(/\./g, '\\.')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
+  const regexPattern = pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.');
 
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(path);

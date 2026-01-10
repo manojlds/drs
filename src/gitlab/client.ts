@@ -70,17 +70,12 @@ export class GitLabClient {
       newLine: number;
     }
   ) {
-    return await this.client.MergeRequestDiscussions.create(
-      projectId,
-      mrIid,
-      body,
-      {
-        position: {
-          position_type: 'text',
-          ...position,
-        },
-      }
-    );
+    return await this.client.MergeRequestDiscussions.create(projectId, mrIid, body, {
+      position: {
+        position_type: 'text',
+        ...position,
+      },
+    });
   }
 
   /**

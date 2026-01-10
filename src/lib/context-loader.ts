@@ -36,7 +36,10 @@ export function loadGlobalContext(projectRoot: string = process.cwd()): string |
 /**
  * Load agent-specific context and check for overrides
  */
-export function loadAgentContext(agentName: string, projectRoot: string = process.cwd()): AgentContext {
+export function loadAgentContext(
+  agentName: string,
+  projectRoot: string = process.cwd()
+): AgentContext {
   const agentDir = join(projectRoot, '.drs', 'agents', agentName);
 
   // Check for full agent override
@@ -84,7 +87,7 @@ export function buildReviewPrompt(
 
     // Add task details
     prompt += `\n\nReview the following files from PR #${prNumber}:\n\n`;
-    prompt += changedFiles.map(f => `- ${f}`).join('\n');
+    prompt += changedFiles.map((f) => `- ${f}`).join('\n');
 
     return prompt;
   }

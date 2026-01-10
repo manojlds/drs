@@ -148,11 +148,17 @@ export async function initProject(projectPath: string): Promise<void> {
 
       // Create context.md template
       const agentContextPath = join(agentDir, 'context.md');
-      writeFileSync(agentContextPath, EXAMPLE_AGENT_CONTEXT.replace('Security', agentName.charAt(0).toUpperCase() + agentName.slice(1)), 'utf-8');
+      writeFileSync(
+        agentContextPath,
+        EXAMPLE_AGENT_CONTEXT.replace(
+          'Security',
+          agentName.charAt(0).toUpperCase() + agentName.slice(1)
+        ),
+        'utf-8'
+      );
     }
   }
   console.log(chalk.green('✓'), 'Created agent context templates in', chalk.cyan('.drs/agents/'));
-
 
   // Create drs.config.yaml
   const configPath = join(drsDir, 'drs.config.yaml');
@@ -169,20 +175,16 @@ export async function initProject(projectPath: string): Promise<void> {
     mkdirSync(examplesDir, { recursive: true });
 
     // Write example GitLab CI config
-    writeFileSync(
-      join(examplesDir, 'gitlab-ci.example.yml'),
-      EXAMPLE_GITLAB_CI,
-      'utf-8'
-    );
+    writeFileSync(join(examplesDir, 'gitlab-ci.example.yml'), EXAMPLE_GITLAB_CI, 'utf-8');
 
     // Write example .env file
-    writeFileSync(
-      join(examplesDir, '.env.example'),
-      EXAMPLE_ENV,
-      'utf-8'
-    );
+    writeFileSync(join(examplesDir, '.env.example'), EXAMPLE_ENV, 'utf-8');
 
-    console.log(chalk.green('✓'), 'Created example configurations in', chalk.cyan('.drs/examples/'));
+    console.log(
+      chalk.green('✓'),
+      'Created example configurations in',
+      chalk.cyan('.drs/examples/')
+    );
   }
 
   // Create custom agents info
@@ -274,7 +276,10 @@ Skills will be auto-loaded based on detected languages.
   console.log('  1. Edit', chalk.cyan('.drs/context.md'), 'with your project context');
   console.log('  2. Customize agent behavior in', chalk.cyan('.drs/agents/{name}/context.md'));
   console.log('  3. Configure review settings in', chalk.cyan('.drs/drs.config.yaml'));
-  console.log('  4. Set environment variables (see', chalk.cyan('.drs/examples/.env.example') + ')');
+  console.log(
+    '  4. Set environment variables (see',
+    chalk.cyan('.drs/examples/.env.example') + ')'
+  );
   console.log('  5. Run', chalk.cyan('drs review-pr'), 'to test on a PR\n');
   console.log(chalk.gray('See', chalk.cyan('.drs/agents/README.md'), 'for customization guide\n'));
 }

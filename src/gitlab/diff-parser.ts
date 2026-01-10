@@ -143,9 +143,9 @@ export function parseDiff(diffText: string): ParsedDiff[] {
  */
 export function getChangedFiles(diffs: ParsedDiff[]): string[] {
   return diffs
-    .filter(d => !d.isDeleted)
-    .map(d => d.newPath)
-    .filter(path => path !== '/dev/null');
+    .filter((d) => !d.isDeleted)
+    .map((d) => d.newPath)
+    .filter((path) => path !== '/dev/null');
 }
 
 /**

@@ -97,7 +97,9 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   const github = createGitHubClient();
 
   // Fetch PR details
-  console.log(chalk.gray(`Fetching PR #${options.prNumber} from ${options.owner}/${options.repo}...\n`));
+  console.log(
+    chalk.gray(`Fetching PR #${options.prNumber} from ${options.owner}/${options.repo}...\n`)
+  );
 
   const pr = await github.getPullRequest(options.owner, options.repo, options.prNumber);
   const files = await github.getPRFiles(options.owner, options.repo, options.prNumber);
@@ -114,8 +116,8 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
 
   // Get list of changed files (excluding deleted files)
   const changedFiles = files
-    .filter(file => file.status !== 'removed')
-    .map(file => file.filename);
+    .filter((file) => file.status !== 'removed')
+    .map((file) => file.filename);
 
   // Build a map of file -> valid line numbers (lines that are in the diff)
   const validLinesMap = new Map<string, Set<number>>();
@@ -138,7 +140,9 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to OpenCode server'));
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
-    console.log(chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n'));
+    console.log(
+      chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n')
+    );
     process.exit(1);
   }
 
@@ -150,7 +154,7 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   // Base instructions for review agents (used if no override)
   const baseInstructions = `Review the following files from PR #${options.prNumber}:
 
-${changedFiles.map(f => `- ${f}`).join('\n')}
+${changedFiles.map((f) => `- ${f}`).join('\n')}
 
 **Instructions:**
 1. Use the Read tool to examine each changed file
@@ -225,7 +229,7 @@ Be thorough and identify all issues. Include line numbers when possible.`;
   const agentResults = await Promise.all(agentPromises);
 
   // Flatten all issues from all agents
-  agentResults.forEach(agentIssues => issues.push(...agentIssues));
+  agentResults.forEach((agentIssues) => issues.push(...agentIssues));
 
   // Display and post summary
   const summary = calculateSummary(changedFiles.length, issues);
@@ -259,7 +263,7 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     // Find our existing summary comment using the hidden marker
     // This works with both personal access tokens and GitHub Apps
     const existingSummary = existingPRComments.find(
-      c => extractCommentId(c.body || '') === BOT_COMMENT_ID
+      (c) => extractCommentId(c.body || '') === BOT_COMMENT_ID
     );
 
     // Post or update summary comment
@@ -276,11 +280,13 @@ Be thorough and identify all issues. Include line numbers when possible.`;
 
     // Post inline comments for Critical and High severity issues only
     // This provides line-specific context for important issues while avoiding rate limits
-    const criticalAndHigh = issues.filter(i => i.severity === 'CRITICAL' || i.severity === 'HIGH');
+    const criticalAndHigh = issues.filter(
+      (i) => i.severity === 'CRITICAL' || i.severity === 'HIGH'
+    );
 
     if (criticalAndHigh.length > 0 && pr.head.sha) {
       // Filter to only issues on lines that are in the diff
-      const validInlineIssues = criticalAndHigh.filter(issue => {
+      const validInlineIssues = criticalAndHigh.filter((issue) => {
         if (!issue.line) return false;
         const validLines = validLinesMap.get(issue.file);
         return validLines && validLines.has(issue.line);
@@ -292,20 +298,24 @@ Be thorough and identify all issues. Include line numbers when possible.`;
         const existingFingerprints = new Set<string>();
         for (const comment of existingReviewComments) {
           const fingerprints = extractIssueFingerprints(comment.body || '');
-          fingerprints.forEach(fp => existingFingerprints.add(fp));
+          fingerprints.forEach((fp) => existingFingerprints.add(fp));
         }
 
         // Filter out issues that already have comments
-        const newInlineIssues = validInlineIssues.filter(issue => {
+        const newInlineIssues = validInlineIssues.filter((issue) => {
           const fingerprint = createIssueFingerprint(issue);
           return !existingFingerprints.has(fingerprint);
         });
 
         if (newInlineIssues.length > 0) {
-          console.log(chalk.gray(`\nPosting ${newInlineIssues.length} new inline comment(s) using bulk review API...\n`));
+          console.log(
+            chalk.gray(
+              `\nPosting ${newInlineIssues.length} new inline comment(s) using bulk review API...\n`
+            )
+          );
 
           // Use bulk review API to post all inline comments at once
-          const reviewComments = newInlineIssues.map(issue => ({
+          const reviewComments = newInlineIssues.map((issue) => ({
             path: issue.file,
             line: issue.line!,
             body: formatIssueComment(issue, createIssueFingerprint(issue)),
@@ -321,7 +331,9 @@ Be thorough and identify all issues. Include line numbers when possible.`;
               'COMMENT',
               reviewComments
             );
-            console.log(chalk.green(`✓ Posted ${newInlineIssues.length} inline comment(s) in a single review`));
+            console.log(
+              chalk.green(`✓ Posted ${newInlineIssues.length} inline comment(s) in a single review`)
+            );
           } catch (error: any) {
             console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
             console.log(chalk.gray('Falling back to individual comment posting...\n'));
@@ -338,14 +350,22 @@ Be thorough and identify all issues. Include line numbers when possible.`;
                   issue.file,
                   issue.line!
                 );
-                console.log(chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`));
+                console.log(
+                  chalk.gray(`  ✓ Posted inline comment for ${issue.file}:${issue.line}`)
+                );
               } catch (err: any) {
-                console.warn(chalk.yellow(`  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${err.message}`));
+                console.warn(
+                  chalk.yellow(
+                    `  ⚠ Could not post inline comment for ${issue.file}:${issue.line} - ${err.message}`
+                  )
+                );
               }
             }
           }
         } else {
-          console.log(chalk.gray('\nAll inline comments already exist - no new comments to post\n'));
+          console.log(
+            chalk.gray('\nAll inline comments already exist - no new comments to post\n')
+          );
         }
 
         // Log skipped duplicates
@@ -358,7 +378,11 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       // Log skipped issues
       const skippedCount = criticalAndHigh.length - validInlineIssues.length;
       if (skippedCount > 0) {
-        console.log(chalk.gray(`(Skipped ${skippedCount} inline comment(s) for lines not in the diff - they're in the summary)\n`));
+        console.log(
+          chalk.gray(
+            `(Skipped ${skippedCount} inline comment(s) for lines not in the diff - they're in the summary)\n`
+          )
+        );
       }
     }
 
