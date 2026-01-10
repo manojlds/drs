@@ -113,7 +113,7 @@ export async function executeReview(
     const agentNames = getAgentNames(config);
     const agentsList = agentNames.join(',');
     const session = await opencode.createSession({
-      agent: 'code-reviewer',
+      agent: 'local-reviewer',
       message: `Review ${source.name}. Agents: ${agentsList}. Files: ${filteredFiles.join(', ')}`,
       context: {
         ...source.context,

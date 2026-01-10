@@ -1,7 +1,7 @@
 ---
 description: Security vulnerability and OWASP Top 10 specialist
 color: "#E53E3E"
-model: anthropic/claude-sonnet-4-5-20250929
+model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

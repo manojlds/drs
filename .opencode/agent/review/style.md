@@ -1,7 +1,7 @@
 ---
 description: Code style, formatting, and documentation specialist
 color: "#805AD5"
-model: anthropic/claude-haiku-4-5-20251001
+model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

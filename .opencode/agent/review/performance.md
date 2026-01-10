@@ -1,7 +1,7 @@
 ---
 description: Performance and optimization expert
 color: "#DD6B20"
-model: anthropic/claude-sonnet-4-5-20250929
+model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

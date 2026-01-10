@@ -1,7 +1,7 @@
 ---
 description: Code quality, patterns, and maintainability expert
 color: "#3182CE"
-model: anthropic/claude-sonnet-4-5-20250929
+model: zhipuai/glm-4.7
 hidden: false
 tools:
   Read: true

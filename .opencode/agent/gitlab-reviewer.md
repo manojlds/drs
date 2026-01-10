@@ -1,7 +1,7 @@
 ---
 description: Main GitLab MR review orchestrator
 color: "#FC6D26"
-model: anthropic/claude-opus-4-5-20251101
+model: zhipuai/glm-4.7
 tools:
   Read: true
   Glob: true
