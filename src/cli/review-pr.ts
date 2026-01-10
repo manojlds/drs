@@ -128,10 +128,18 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   // Connect to OpenCode (or start in-process if serverUrl is empty)
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
-  const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl || undefined,
-    directory: process.cwd(), // Give agents access to working directory to read files
-  });
+  let opencode;
+  try {
+    opencode = await createOpencodeClientInstance({
+      baseUrl: config.opencode.serverUrl || undefined,
+      directory: process.cwd(), // Give agents access to working directory to read files
+    });
+  } catch (error) {
+    console.error(chalk.red('✗ Failed to connect to OpenCode server'));
+    console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
+    console.log(chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n'));
+    process.exit(1);
+  }
 
   // Directly invoke each specialized review agent
   console.log(chalk.gray('Starting code analysis...\n'));
@@ -167,8 +175,8 @@ ${changedFiles.map(f => `- ${f}`).join('\n')}
 
 Be thorough and identify all issues. Include line numbers when possible.`;
 
-  // Invoke each configured review agent
-  for (const agentType of config.review.agents) {
+  // Invoke all configured review agents in parallel for faster execution
+  const agentPromises = config.review.agents.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 
@@ -182,23 +190,33 @@ Be thorough and identify all issues. Include line numbers when possible.`;
         },
       });
 
+      const agentIssues: ReviewIssue[] = [];
+
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
           // Parse issues from response
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
-            issues.push(...parsedIssues);
+            agentIssues.push(...parsedIssues);
             console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
           }
         }
       }
 
       await opencode.closeSession(session.id);
+      return agentIssues;
     } catch (error) {
       console.error(chalk.yellow(`Warning: ${agentType} agent failed: ${error}`));
+      return [];
     }
-  }
+  });
+
+  // Wait for all agents to complete in parallel
+  const agentResults = await Promise.all(agentPromises);
+
+  // Flatten all issues from all agents
+  agentResults.forEach(agentIssues => issues.push(...agentIssues));
 
   // Display and post summary
   const summary = calculateSummary(changedFiles.length, issues);
@@ -223,9 +241,11 @@ Be thorough and identify all issues. Include line numbers when possible.`;
   if (options.postComments) {
     console.log(chalk.gray('Fetching existing comments from PR...\n'));
 
-    // Fetch existing comments to prevent duplicates
-    const existingPRComments = await github.listPRComments(options.owner, options.repo, options.prNumber);
-    const existingReviewComments = await github.listPRReviewComments(options.owner, options.repo, options.prNumber);
+    // Fetch existing comments to prevent duplicates (parallel for better performance)
+    const [existingPRComments, existingReviewComments] = await Promise.all([
+      github.listPRComments(options.owner, options.repo, options.prNumber),
+      github.listPRReviewComments(options.owner, options.repo, options.prNumber),
+    ]);
 
     // Find our existing summary comment using the hidden marker
     // This works with both personal access tokens and GitHub Apps
@@ -348,5 +368,5 @@ Be thorough and identify all issues. Include line numbers when possible.`;
   }
 
   // Shutdown in-process OpenCode server if applicable
-  await opencode.shutdown();
+  await opencode?.shutdown();
 }

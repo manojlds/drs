@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import type { RestEndpointMethodTypes } from '@octokit/rest';
 
 export interface GitHubConfig {
   token: string;
@@ -66,7 +67,12 @@ export class GitHubClient {
   /**
    * Post a review comment on the PR
    */
-  async createPRComment(owner: string, repo: string, prNumber: number, body: string): Promise<any> {
+  async createPRComment(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    body: string
+  ): Promise<RestEndpointMethodTypes['issues']['createComment']['response']> {
     return await this.octokit.issues.createComment({
       owner,
       repo,
@@ -86,7 +92,7 @@ export class GitHubClient {
     commitId: string,
     path: string,
     line: number
-  ): Promise<any> {
+  ): Promise<RestEndpointMethodTypes['pulls']['createReviewComment']['response']> {
     return await this.octokit.pulls.createReviewComment({
       owner,
       repo,
@@ -113,7 +119,7 @@ export class GitHubClient {
       line: number;
       body: string;
     }>
-  ): Promise<any> {
+  ): Promise<RestEndpointMethodTypes['pulls']['createReview']['response']> {
     return await this.octokit.pulls.createReview({
       owner,
       repo,
@@ -128,7 +134,12 @@ export class GitHubClient {
   /**
    * Add labels to a PR
    */
-  async addLabels(owner: string, repo: string, prNumber: number, labels: string[]): Promise<any> {
+  async addLabels(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    labels: string[]
+  ): Promise<RestEndpointMethodTypes['issues']['addLabels']['response']> {
     return await this.octokit.issues.addLabels({
       owner,
       repo,
@@ -197,7 +208,12 @@ export class GitHubClient {
   /**
    * Update an existing comment
    */
-  async updateComment(owner: string, repo: string, commentId: number, body: string): Promise<any> {
+  async updateComment(
+    owner: string,
+    repo: string,
+    commentId: number,
+    body: string
+  ): Promise<RestEndpointMethodTypes['issues']['updateComment']['response']> {
     return await this.octokit.issues.updateComment({
       owner,
       repo,
