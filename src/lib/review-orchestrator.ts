@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
+import { shouldIgnoreFile } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from '../gitlab/comment-formatter.js';
@@ -34,10 +35,6 @@ export interface ReviewResult {
  * Filter files based on ignore patterns in config
  */
 export function filterIgnoredFiles(files: string[], config: DRSConfig): string[] {
-  // Import shouldIgnoreFile dynamically to avoid circular dependency
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { shouldIgnoreFile } = require('./config.js');
-
   return files.filter((file) => !shouldIgnoreFile(file, config));
 }
 
