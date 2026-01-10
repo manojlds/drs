@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseDiff, getChangedFiles, getAddedLines, diffContainsPattern } from '../lib/diff-parser.js';
+import {
+  parseDiff,
+  getChangedFiles,
+  getAddedLines,
+  diffContainsPattern,
+} from '../lib/diff-parser.js';
 
 describe('parseDiff', () => {
   it('should parse a simple unified diff with one file', () => {
