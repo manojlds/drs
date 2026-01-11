@@ -146,23 +146,29 @@ export class GitHubPlatformAdapter implements PlatformClient {
       console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
       console.log(chalk.gray('Falling back to individual comment posting...\n'));
 
-      // Fallback to individual comments
-      for (const comment of comments) {
-        try {
-          await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
-          console.log(
-            chalk.gray(
-              `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
-            )
-          );
-        } catch (err: any) {
-          console.warn(
-            chalk.yellow(
-              `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${err.message}`
-            )
-          );
-        }
-      }
+      // Fallback to individual comments in parallel
+      const results = await Promise.allSettled(
+        comments.map(async (comment) => {
+          try {
+            await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
+            console.log(
+              chalk.gray(
+                `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
+              )
+            );
+          } catch (err: any) {
+            console.warn(
+              chalk.yellow(
+                `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${err.message}`
+              )
+            );
+            throw err; // Re-throw to mark as rejected
+          }
+        })
+      );
+
+      const successCount = results.filter((r) => r.status === 'fulfilled').length;
+      console.log(chalk.gray(`Fallback: Posted ${successCount}/${comments.length} comment(s)`));
     }
   }
 
