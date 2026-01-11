@@ -72,7 +72,7 @@ export function loadAgentContext(
 export function buildReviewPrompt(
   agentName: string,
   basePrompt: string,
-  prNumber: number,
+  reviewLabel: string,
   changedFiles: string[],
   projectRoot: string = process.cwd()
 ): string {
@@ -86,7 +86,7 @@ export function buildReviewPrompt(
     prompt = agentContext.agentDefinition;
 
     // Add task details
-    prompt += `\n\nReview the following files from PR #${prNumber}:\n\n`;
+    prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
     prompt += changedFiles.map((f) => `- ${f}`).join('\n');
 
     return prompt;

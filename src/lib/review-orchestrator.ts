@@ -4,6 +4,7 @@ import { shouldIgnoreFile, getModelOverrides, getAgentNames } from './config.js'
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
+import { buildReviewPrompt } from './context-loader.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -110,43 +111,112 @@ export async function executeReview(
   const opencode = await connectToOpenCode(config, source.workingDir);
 
   try {
-    // Create review session
+    // Execute review
     console.log(chalk.gray('Starting code analysis...\n'));
 
-    const agentNames = getAgentNames(config);
-    const agentsList = agentNames.join(',');
-    const session = await opencode.createSession({
-      agent: 'local-reviewer',
-      message: `Review ${source.name}. Agents: ${agentsList}. Files: ${filteredFiles.join(', ')}`,
-      context: {
-        ...source.context,
-        files: filteredFiles,
-        agents: agentNames,
-      },
-    });
-
-    // Stream messages and collect issues
     const issues: ReviewIssue[] = [];
 
-    for await (const message of opencode.streamMessages(session.id)) {
-      if (message.role === 'assistant') {
-        // Display agent output in real-time
-        console.log(message.content);
+    const baseInstructions = `Review the following files from ${source.name}:
 
-        // Parse structured issues from agent responses
-        const parsedIssues = parseReviewIssues(message.content);
-        if (parsedIssues.length > 0) {
-          issues.push(...parsedIssues);
-          console.log(chalk.gray(`\n[Parsed ${parsedIssues.length} issue(s) from response]\n`));
+${filteredFiles.map((f) => `- ${f}`).join('\n')}
+
+**Instructions:**
+1. Use the Read tool to examine each changed file
+2. Analyze the code for issues in your specialty area
+3. Output your findings in this JSON format:
+
+\`\`\`json
+{
+  "issues": [
+    {
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "title": "Brief title",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "problem": "Description of the problem",
+      "solution": "How to fix it",
+      "agent": "security" | "quality" | "style" | "performance"
+    }
+  ]
+}
+\`\`\`
+
+Be thorough and identify all issues. Include line numbers when possible.`;
+
+    const agentNames = getAgentNames(config);
+    const agentPromises = agentNames.map(async (agentType) => {
+      const agentName = `review/${agentType}`;
+      console.log(chalk.gray(`Running ${agentType} review...\n`));
+
+      try {
+        const reviewPrompt = buildReviewPrompt(
+          agentType,
+          baseInstructions,
+          source.name,
+          filteredFiles
+        );
+
+        const session = await opencode.createSession({
+          agent: agentName,
+          message: reviewPrompt,
+          context: {
+            ...source.context,
+            files: filteredFiles,
+          },
+        });
+
+        const agentIssues: ReviewIssue[] = [];
+
+        for await (const message of opencode.streamMessages(session.id)) {
+          if (message.role === 'assistant') {
+            const parsedIssues = parseReviewIssues(message.content);
+            if (parsedIssues.length > 0) {
+              agentIssues.push(...parsedIssues);
+              console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
+            }
+          }
         }
+
+        await opencode.closeSession(session.id);
+        return { agentType, success: true, issues: agentIssues };
+      } catch (error) {
+        console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+        return { agentType, success: false, issues: [] };
       }
+    });
+
+    const agentResults = await Promise.all(agentPromises);
+
+    const successfulAgents = agentResults.filter((r) => r.success);
+    const failedAgents = agentResults.filter((r) => !r.success);
+
+    if (successfulAgents.length === 0) {
+      console.error(chalk.red('\n✗ All review agents failed!\n'));
+      console.error(
+        chalk.yellow(
+          'This usually means:\n' +
+            '  1. Model configuration is incorrect or missing\n' +
+            '  2. API credentials are invalid or missing\n' +
+            '  3. Models are not accessible or timed out\n' +
+            '  4. Agents cannot find files to review\n'
+        )
+      );
+      await opencode.shutdown();
+      process.exit(1);
     }
 
-    // Calculate summary
-    const summary = calculateSummary(filteredFiles.length, issues);
+    if (failedAgents.length > 0) {
+      console.log(
+        chalk.yellow(
+          `\n⚠️  ${failedAgents.length} of ${agentResults.length} agents failed: ${failedAgents.map((r) => r.agentType).join(', ')}\n`
+        )
+      );
+    }
 
-    // Clean up session
-    await opencode.closeSession(session.id);
+    agentResults.forEach((result) => issues.push(...result.issues));
+
+    const summary = calculateSummary(filteredFiles.length, issues);
 
     return {
       issues,

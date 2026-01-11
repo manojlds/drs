@@ -150,7 +150,7 @@ Be thorough and identify all issues. Include line numbers when possible.`;
         const reviewPrompt = buildReviewPrompt(
           agentType,
           baseInstructions,
-          prNumber,
+          `PR/MR #${prNumber}`,
           filteredFiles
         );
 
