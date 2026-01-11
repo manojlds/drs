@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { GitLabClient } from './client.js';
+import type { GitLabClient } from './client.js';
 import type {
   PlatformClient,
   PullRequest,

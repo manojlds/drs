@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { GitHubClient } from './client.js';
+import type { GitHubClient } from './client.js';
 import type {
   PlatformClient,
   PullRequest,
@@ -123,7 +123,7 @@ export class GitHubPlatformAdapter implements PlatformClient {
       validatePositionOrThrow(firstPosition, this.positionValidator);
     }
 
-    const commitSha = firstPosition!.commitSha!;
+    const commitSha = firstPosition.commitSha!;
 
     const reviewComments = comments.map((c) => ({
       path: c.position.path,

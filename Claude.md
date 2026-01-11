@@ -307,7 +307,57 @@ See `DEVELOPMENT.md` for comprehensive local testing instructions including:
 6. Keep agents focused on their specific domain
 7. Maintain backward compatibility when possible
 
+## Pre-Push Checklist (MANDATORY)
+
+**IMPORTANT**: Before pushing ANY changes to the repository, you MUST run these checks and ensure they all pass:
+
+```bash
+# 1. Format code with Prettier
+npm run format
+
+# 2. Fix auto-fixable linting issues
+npm run lint:fix
+
+# 3. Build the project (TypeScript compilation)
+npm run build
+
+# 4. Run all tests
+npm test
+
+# 5. Check for formatting issues (should pass after step 1)
+npm run format:check
+
+# 6. Check for linting issues (warnings are OK, errors must be fixed)
+npm run lint
+```
+
+### Quick Pre-Push Command
+
+Run all checks at once:
+
+```bash
+npm run format && npm run lint:fix && npm run build && npm test && npm run format:check
+```
+
+### What to Do if Checks Fail
+
+- **Format check fails**: Run `npm run format` to auto-fix
+- **Lint errors**: Fix manually or run `npm run lint:fix` for auto-fixable issues
+- **Build fails**: Fix TypeScript compilation errors
+- **Tests fail**: Fix failing tests before pushing
+- **Lint warnings**: These are acceptable but should be minimized over time
+
+### Why These Checks Matter
+
+1. **Formatting**: Ensures consistent code style across the project
+2. **Linting**: Catches potential bugs and enforces best practices
+3. **Build**: Ensures TypeScript compiles without errors
+4. **Tests**: Prevents regressions and ensures code quality
+5. **Format check**: Verifies all files are properly formatted
+
+**Never push code that fails any of these checks!** This maintains code quality and prevents CI pipeline failures.
+
 ---
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-11
 **Repository**: https://github.com/manojlds/drs
