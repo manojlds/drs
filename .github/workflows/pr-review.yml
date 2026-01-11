@@ -2,9 +2,7 @@ name: DRS PR Review
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
-  pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 jobs:
   # First, verify if the contributor is trusted
