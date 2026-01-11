@@ -10,8 +10,8 @@ import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import { getAgentNames } from './config.js';
-import { buildReviewPrompt } from './context-loader.js';
-import { parseReviewIssues } from './issue-parser.js';
+import { buildReviewPrompt, loadAgentContext } from './context-loader.js';
+import { hasJsonIssues, parseReviewIssues } from './issue-parser.js';
 import {
   formatSummaryComment,
   formatIssueComment,
@@ -130,8 +130,19 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       console.log(chalk.gray(`Running ${agentType} review...\n`));
 
       try {
+        const workingDir = options.workingDir || process.cwd();
+        const agentContext = loadAgentContext(agentType, workingDir);
+        const shouldWarnOnMissingJson = agentContext.source === 'override';
+        let warnedMissingJson = false;
+
         // Build prompt with global and agent-specific context
-        const reviewPrompt = buildReviewPrompt(agentType, baseInstructions, prNumber, changedFiles);
+        const reviewPrompt = buildReviewPrompt(
+          agentType,
+          baseInstructions,
+          prNumber,
+          changedFiles,
+          workingDir
+        );
 
         const session = await opencode.createSession({
           agent: agentName,
@@ -149,6 +160,19 @@ Be thorough and identify all issues. Include line numbers when possible.`;
           if (message.role === 'assistant') {
             // Parse issues from response
             const parsedIssues = parseReviewIssues(message.content);
+            if (
+              shouldWarnOnMissingJson &&
+              !warnedMissingJson &&
+              parsedIssues.length === 0 &&
+              !hasJsonIssues(message.content)
+            ) {
+              warnedMissingJson = true;
+              console.warn(
+                chalk.yellow(
+                  `⚠️  [${agentType}] Override agent response did not include JSON output.`
+                )
+              );
+            }
             if (parsedIssues.length > 0) {
               agentIssues.push(...parsedIssues);
               console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));

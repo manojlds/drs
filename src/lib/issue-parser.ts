@@ -96,6 +96,21 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
 }
 
 /**
+ * Check whether content appears to contain JSON issue output.
+ */
+export function hasJsonIssues(content: string): boolean {
+  if (/```json[\s\S]*?```/i.test(content)) {
+    return true;
+  }
+
+  if (/"issues"\s*:/i.test(content)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Extract JSON objects from text by matching brackets
  */
 function extractJsonObjects(text: string): string[] {

@@ -20,6 +20,17 @@ export interface AgentContext {
   agentDefinition?: string;
 }
 
+const fallbackJsonContract = `**Required JSON output format:**\n\n\`\`\`json\n{\n  \"issues\": [\n    {\n      \"category\": \"SECURITY\" | \"QUALITY\" | \"STYLE\" | \"PERFORMANCE\",\n      \"severity\": \"CRITICAL\" | \"HIGH\" | \"MEDIUM\" | \"LOW\",\n      \"title\": \"Brief title\",\n      \"file\": \"path/to/file.ts\",\n      \"line\": 42,\n      \"problem\": \"Description of the problem\",\n      \"solution\": \"How to fix it\",\n      \"agent\": \"security\" | \"quality\" | \"style\" | \"performance\"\n    }\n  ]\n}\n\`\`\``;
+
+function extractJsonSchemaBlock(basePrompt: string): string | null {
+  const match = basePrompt.match(/```json[\s\S]*?```/);
+  if (!match) {
+    return null;
+  }
+
+  return `**Required JSON output format:**\n\n${match[0]}`;
+}
+
 /**
  * Load global project context from .drs/context.md
  */
@@ -83,7 +94,8 @@ export function buildReviewPrompt(
 
   // If agent is fully overridden, use that instead of base prompt
   if (agentContext.source === 'override' && agentContext.agentDefinition) {
-    prompt = agentContext.agentDefinition;
+    const jsonContract = extractJsonSchemaBlock(basePrompt) ?? fallbackJsonContract;
+    prompt = `${agentContext.agentDefinition}\n\n${jsonContract}`;
 
     // Add task details
     prompt += `\n\nReview the following files from PR #${prNumber}:\n\n`;
