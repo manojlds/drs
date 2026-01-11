@@ -25,7 +25,11 @@ import {
   prepareIssuesForPosting,
   type PlatformComment,
 } from './comment-manager.js';
-import { connectToOpenCode, displayReviewSummary } from './review-orchestrator.js';
+import {
+  connectToOpenCode,
+  displayReviewSummary,
+  filterIgnoredFiles,
+} from './review-orchestrator.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 
@@ -85,6 +89,18 @@ export async function executeUnifiedReview(
     return;
   }
 
+  const filteredFiles = filterIgnoredFiles(changedFiles, config);
+  const ignoredCount = changedFiles.length - filteredFiles.length;
+
+  if (ignoredCount > 0) {
+    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns\n`));
+  }
+
+  if (filteredFiles.length === 0) {
+    console.log(chalk.yellow('✓ No files to review after filtering\n'));
+    return;
+  }
+
   // Connect to OpenCode
   const opencode = await connectToOpenCode(config, options.workingDir || process.cwd());
 
@@ -97,7 +113,7 @@ export async function executeUnifiedReview(
     // Base instructions for review agents
     const baseInstructions = `Review the following files from PR/MR #${prNumber}:
 
-${changedFiles.map((f) => `- ${f}`).join('\n')}
+${filteredFiles.map((f) => `- ${f}`).join('\n')}
 
 **Instructions:**
 1. Use the Read tool to examine each changed file
@@ -131,13 +147,18 @@ Be thorough and identify all issues. Include line numbers when possible.`;
 
       try {
         // Build prompt with global and agent-specific context
-        const reviewPrompt = buildReviewPrompt(agentType, baseInstructions, prNumber, changedFiles);
+        const reviewPrompt = buildReviewPrompt(
+          agentType,
+          baseInstructions,
+          prNumber,
+          filteredFiles
+        );
 
         const session = await opencode.createSession({
           agent: agentName,
           message: reviewPrompt,
           context: {
-            files: changedFiles,
+            files: filteredFiles,
             prNumber,
           },
         });
@@ -198,8 +219,8 @@ Be thorough and identify all issues. Include line numbers when possible.`;
     agentResults.forEach((result) => issues.push(...result.issues));
 
     // Display summary
-    const summary = calculateSummary(changedFiles.length, issues);
-    displayReviewSummary({ issues, summary, filesReviewed: changedFiles.length });
+    const summary = calculateSummary(filteredFiles.length, issues);
+    displayReviewSummary({ issues, summary, filesReviewed: filteredFiles.length });
 
     // Post comments to platform if requested
     if (postComments) {
