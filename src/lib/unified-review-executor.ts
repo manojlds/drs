@@ -6,6 +6,8 @@
  */
 
 import chalk from 'chalk';
+import { writeFile } from 'fs/promises';
+import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
@@ -25,6 +27,7 @@ import {
 } from './comment-manager.js';
 import { connectToOpenCode, displayReviewSummary } from './review-orchestrator.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
@@ -35,6 +38,8 @@ export interface UnifiedReviewOptions {
   prNumber: number;
   /** Whether to post comments to the platform */
   postComments: boolean;
+  /** Optional path to output GitLab code quality report JSON */
+  codeQualityReport?: string;
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
@@ -210,6 +215,15 @@ Be thorough and identify all issues. Include line numbers when possible.`;
       );
     }
 
+    // Generate code quality report if requested
+    if (options.codeQualityReport) {
+      await generateAndWriteCodeQualityReport(
+        issues,
+        options.codeQualityReport,
+        options.workingDir || process.cwd()
+      );
+    }
+
     // Exit with error code if critical issues found
     if (summary.bySeverity.CRITICAL > 0) {
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
@@ -293,4 +307,24 @@ async function postReviewComments(
   await platformClient.addLabels(projectId, prNumber, ['ai-reviewed']);
 
   console.log(chalk.green('✓ Review posted\n'));
+}
+
+/**
+ * Generate and write GitLab code quality report
+ */
+async function generateAndWriteCodeQualityReport(
+  issues: ReviewIssue[],
+  reportPath: string,
+  workingDir: string
+): Promise<void> {
+  console.log(chalk.gray('Generating code quality report...\n'));
+
+  const report = generateCodeQualityReport(issues);
+  const jsonContent = formatCodeQualityReport(report);
+
+  const fullPath = resolve(workingDir, reportPath);
+  await writeFile(fullPath, jsonContent, 'utf-8');
+
+  console.log(chalk.green(`✓ Code quality report written to ${reportPath}`));
+  console.log(chalk.gray(`  Total issues: ${report.length}\n`));
 }
