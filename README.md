@@ -81,6 +81,9 @@ drs review-local
 # Review specific GitLab MR
 drs review-mr --project my-org/my-repo --mr 123 --post-comments
 
+# Review GitLab MR and generate code quality report
+drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-quality-report.json
+
 # Review specific GitHub PR
 drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
 ```
@@ -151,6 +154,90 @@ docker-compose up -d
 # GitLab: http://your-server:8080/webhook/gitlab (Merge request events, Comments)
 # GitHub: http://your-server:8080/webhook/github (Pull request events)
 ```
+
+## GitLab Code Quality Reports
+
+DRS can generate GitLab-compatible code quality reports that integrate seamlessly with GitLab CI/CD. This provides an alternative (or complement) to inline MR comments.
+
+### Why Use Code Quality Reports?
+
+**Benefits:**
+- **Native GitLab Integration**: Issues appear in the MR widget and Changes tab
+- **Better UX**: Issues marked with symbols in the code gutter
+- **All Severities**: Include MEDIUM/LOW issues without cluttering MR discussions
+- **Historical Tracking**: GitLab tracks quality trends over time
+- **Non-intrusive**: Doesn't create discussion threads
+
+**When to Use:**
+- Use **inline comments** (`--post-comments`) for critical issues requiring discussion
+- Use **code quality reports** (`--code-quality-report`) for comprehensive static analysis
+- Use **both together** for maximum visibility
+
+### CLI Usage
+
+```bash
+# Generate code quality report only
+drs review-mr --project my-org/my-repo --mr 123 \
+  --code-quality-report gl-code-quality-report.json
+
+# Use both comments and code quality report
+drs review-mr --project my-org/my-repo --mr 123 \
+  --post-comments \
+  --code-quality-report gl-code-quality-report.json
+```
+
+### GitLab CI Integration
+
+Add to your `.gitlab-ci.yml`:
+
+```yaml
+code_review:
+  stage: review
+  image: node:20-alpine
+  before_script:
+    - npm install -g @diff-review-system/drs opencode-ai
+  script:
+    - drs review-mr --project $CI_PROJECT_PATH --mr $CI_MERGE_REQUEST_IID
+        --code-quality-report gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    expire_in: 1 week
+  only:
+    - merge_requests
+```
+
+The code quality report will appear in:
+1. **MR Overview**: Widget showing new/resolved issues
+2. **Changes Tab**: Gutter symbols on problematic lines
+3. **Pipeline Tab**: Quality trend graphs
+
+### Report Format
+
+DRS generates reports in GitLab's CodeClimate-compatible format:
+
+```json
+[
+  {
+    "description": "Query uses string concatenation. Use parameterized queries instead.",
+    "check_name": "drs-security",
+    "fingerprint": "7815696ecbf1c96e6894b779456d330e",
+    "severity": "blocker",
+    "location": {
+      "path": "src/api/users.ts",
+      "lines": { "begin": 42 }
+    }
+  }
+]
+```
+
+**Severity Mapping:**
+- CRITICAL → blocker
+- HIGH → critical
+- MEDIUM → major
+- LOW → minor
+
+For more details, see [GitLab Code Quality Documentation](https://docs.gitlab.com/ci/testing/code_quality/).
 
 ## OpenCode Server Configuration
 

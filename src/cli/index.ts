@@ -51,6 +51,10 @@ program
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
+  .option(
+    '--code-quality-report <path>',
+    'Generate GitLab code quality report JSON file (default: gl-code-quality-report.json)'
+  )
   .option('--verbose', 'Verbose output')
   .action(async (options) => {
     try {
@@ -69,6 +73,10 @@ program
         projectId: options.project,
         mrIid: parseInt(options.mr, 10),
         postComments: options.postComments || false,
+        codeQualityReport:
+          options.codeQualityReport === true
+            ? 'gl-code-quality-report.json'
+            : options.codeQualityReport,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

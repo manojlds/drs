@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { GitLabClient } from './client.js';
+import type { GitLabClient } from './client.js';
 import type {
   PlatformClient,
   PullRequest,
@@ -134,25 +134,29 @@ export class GitLabPlatformAdapter implements PlatformClient {
       chalk.gray(`\nPosting ${comments.length} new inline comment(s) as discussion threads...\n`)
     );
 
-    // GitLab doesn't have a bulk API, post individually
-    for (const comment of comments) {
-      try {
-        await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
-        console.log(
-          chalk.gray(
-            `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
-          )
-        );
-      } catch (error: any) {
-        console.warn(
-          chalk.yellow(
-            `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${error.message}`
-          )
-        );
-      }
-    }
+    // GitLab doesn't have a bulk API, post individually in parallel
+    const results = await Promise.allSettled(
+      comments.map(async (comment) => {
+        try {
+          await this.createInlineComment(projectId, prNumber, comment.body, comment.position);
+          console.log(
+            chalk.gray(
+              `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
+            )
+          );
+        } catch (error: any) {
+          console.warn(
+            chalk.yellow(
+              `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${error.message}`
+            )
+          );
+          throw error; // Re-throw to mark as rejected
+        }
+      })
+    );
 
-    console.log(chalk.green(`✓ Posted ${comments.length} inline comment(s)`));
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    console.log(chalk.green(`✓ Posted ${successCount}/${comments.length} inline comment(s)`));
   }
 
   async addLabels(projectId: string, prNumber: number, labels: string[]): Promise<void> {
