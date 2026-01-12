@@ -29,9 +29,7 @@ program
   .command('review-local')
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
-  .option('--agents <agents>', 'Comma-separated list of review agents (default: security,quality)')
-  .option('--format <format>', 'Output format: terminal, json, markdown', 'terminal')
-  .option('--verbose', 'Verbose output')
+  .option('--agents <agents>', 'Comma-separated list of review agents')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -39,10 +37,6 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-        },
-        output: {
-          format: options.format,
-          verbosity: options.verbose ? 'detailed' : 'normal',
         },
       } as any);
 
@@ -66,7 +60,6 @@ program
     '--code-quality-report <path>',
     'Generate GitLab code quality report JSON file (default: gl-code-quality-report.json)'
   )
-  .option('--verbose', 'Verbose output')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -74,9 +67,6 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-        },
-        output: {
-          verbosity: options.verbose ? 'detailed' : 'normal',
         },
       } as any);
 
@@ -103,7 +93,6 @@ program
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
-  .option('--verbose', 'Verbose output')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -111,9 +100,6 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-        },
-        output: {
-          verbosity: options.verbose ? 'detailed' : 'normal',
         },
       } as any);
 

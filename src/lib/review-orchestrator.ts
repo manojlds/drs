@@ -56,6 +56,7 @@ export async function connectToOpenCode(
       baseUrl: config.opencode.serverUrl || undefined,
       directory: workingDir || process.cwd(),
       modelOverrides,
+      provider: config.opencode.provider,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to OpenCode server'));

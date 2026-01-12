@@ -7,8 +7,7 @@
  */
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
-import * as fs from 'fs';
-import * as path from 'path';
+import type { CustomProvider } from '../lib/config.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -16,6 +15,7 @@ export interface OpencodeConfig {
   serverPort?: number;
   serverHostname?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
+  provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
 }
 
 export interface SessionCreateOptions {
@@ -65,81 +65,44 @@ export class OpencodeClient {
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
     } else {
       // Start server in-process
-      // OpenCode SDK handles provider authentication automatically via environment variables
-      // (e.g., ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
+      // Build OpenCode config programmatically from DRS config
 
-      // Load OpenCode configuration from .opencode/opencode.jsonc
-      let opencodeConfig: any = {
-        model: 'anthropic/claude-opus-4-20250514',
+      const opencodeConfig: any = {
+        // Tools available to DRS review agents
+        tools: {
+          Read: true,
+          Glob: true,
+          Grep: true,
+          Bash: true,
+          Write: false,
+          Edit: false,
+        },
       };
 
-      try {
-        const configPath = path.join(
-          this.directory || process.cwd(),
-          '.opencode',
-          'opencode.jsonc'
-        );
-
-        if (fs.existsSync(configPath)) {
-          const configContent = fs.readFileSync(configPath, 'utf-8');
-
-          // Strip JSONC to valid JSON
-          const lines = configContent.split('\n');
-          const cleanedLines = lines
-            .map((line) => {
-              // Remove single-line comments
-              const commentIndex = line.indexOf('//');
-              if (commentIndex !== -1) {
-                // Check if // is inside a string
-                const beforeComment = line.substring(0, commentIndex);
-                const quoteCount = (beforeComment.match(/"/g) || []).length;
-                // If odd number of quotes, // is inside a string, keep it
-                if (quoteCount % 2 === 0) {
-                  line = line.substring(0, commentIndex);
-                }
-              }
-              return line;
-            })
-            .filter((line) => line.trim().length > 0); // Remove empty lines
-
-          let jsonContent = cleanedLines.join('\n');
-          // Remove multi-line comments
-          jsonContent = jsonContent.replace(/\/\*[\s\S]*?\*\//g, '');
-          // Remove trailing commas
-          jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
-
-          opencodeConfig = JSON.parse(jsonContent);
-        }
-      } catch (error) {
-        console.error(`Failed to load OpenCode config: ${error}`);
+      // Add custom provider if configured in DRS config
+      if (this.config.provider && Object.keys(this.config.provider).length > 0) {
+        opencodeConfig.provider = this.config.provider;
+        const providerNames = Object.keys(this.config.provider);
+        console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
       }
 
       // Apply model overrides from DRS config
       if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
-        if (!opencodeConfig.agent) {
-          opencodeConfig.agent = {};
-        }
+        opencodeConfig.agent = {};
 
-        console.log('📋 Applying model overrides from DRS config:');
+        console.log('📋 Agent model configuration:');
 
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
-          if (!opencodeConfig.agent[agentName]) {
-            opencodeConfig.agent[agentName] = {};
-          }
-          opencodeConfig.agent[agentName].model = model;
+          opencodeConfig.agent[agentName] = { model };
 
           // Log each agent's model (only show review/* agents to avoid duplication)
           if (agentName.startsWith('review/')) {
-            console.log(`  - ${agentName}: ${model}`);
+            console.log(`  • ${agentName}: ${model}`);
           }
         }
 
         console.log('');
-      } else {
-        console.log(
-          'ℹ️  No model overrides from DRS config. Using models from .opencode/opencode.jsonc\n'
-        );
       }
 
       // Change to project directory so OpenCode can discover agents

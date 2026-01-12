@@ -35,26 +35,25 @@ describe('Model Override Precedence', () => {
   });
 
   const createMockConfig = (overrides?: Partial<DRSConfig['review']>): DRSConfig => ({
-    opencode: { serverUrl: '' },
+    opencode: {},
     gitlab: { url: '', token: '' },
     github: { token: '' },
     review: {
       agents: ['security', 'quality', 'style', 'performance'],
-      autoReview: true,
-      reviewOnMention: true,
-      reviewOnLabel: [],
+      defaultModel: 'anthropic/claude-sonnet-4-5-20250929',
       ignorePatterns: [],
       ...overrides,
     },
-    output: { format: 'terminal', verbosity: 'normal' },
   });
 
-  describe('Test 1: No overrides', () => {
-    it('should return empty overrides when no config or env is set', () => {
+  describe('Test 1: Default model always set', () => {
+    it('should return overrides based on defaultModel', () => {
       const config = createMockConfig();
       const overrides = getModelOverrides(config);
 
-      expect(overrides).toEqual({});
+      // defaultModel is now required, so all agents get the default
+      expect(overrides.security).toBe('anthropic/claude-sonnet-4-5-20250929');
+      expect(overrides['review/security']).toBe('anthropic/claude-sonnet-4-5-20250929');
     });
   });
 
@@ -163,10 +162,12 @@ describe('Model Override Precedence', () => {
 
       const config = createMockConfig({
         agents: ['custom-security'],
+        defaultModel: 'zhipuai/glm-4.7',
       });
 
       const overrides = getModelOverrides(config);
 
+      // Env var takes precedence over defaultModel
       expect(overrides['custom-security']).toBe('provider/custom-model');
     });
   });
@@ -257,14 +258,17 @@ describe('Model Override Precedence', () => {
       expect(overrides).toEqual({});
     });
 
-    it('should handle agents with no model and no defaults', () => {
+    it('should apply defaultModel to agents without explicit model', () => {
       const config = createMockConfig({
         agents: [{ name: 'security' }, { name: 'quality' }],
+        defaultModel: 'test/default-model',
       });
 
       const overrides = getModelOverrides(config);
 
-      expect(overrides).toEqual({});
+      // defaultModel is now always applied
+      expect(overrides.security).toBe('test/default-model');
+      expect(overrides.quality).toBe('test/default-model');
     });
 
     it('should create both short and review/ prefixed keys', () => {

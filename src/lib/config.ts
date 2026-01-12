@@ -15,10 +15,24 @@ export interface AgentConfig {
  */
 export type ModelOverrides = Record<string, string>;
 
+/**
+ * Custom OpenAI-compatible provider configuration
+ */
+export interface CustomProvider {
+  npm: string;
+  name: string;
+  options: {
+    baseURL: string;
+    apiKey: string;
+  };
+  models: Record<string, { name: string }>;
+}
+
 export interface DRSConfig {
   // OpenCode configuration
   opencode: {
-    serverUrl: string;
+    serverUrl?: string;
+    provider?: Record<string, CustomProvider>;
   };
 
   // GitLab configuration
@@ -35,24 +49,15 @@ export interface DRSConfig {
   // Review behavior
   review: {
     agents: (string | AgentConfig)[];
-    defaultModel?: string;
-    autoReview: boolean;
-    reviewOnMention: boolean;
-    reviewOnLabel: string[];
+    defaultModel: string;
     ignorePatterns: string[];
     includePatterns?: string[];
-  };
-
-  // Output configuration
-  output: {
-    format: 'gitlab' | 'github' | 'terminal' | 'json' | 'markdown';
-    verbosity: 'minimal' | 'normal' | 'detailed';
   };
 }
 
 const DEFAULT_CONFIG: DRSConfig = {
   opencode: {
-    serverUrl: process.env.OPENCODE_SERVER || '', // Empty string means use in-process server
+    serverUrl: process.env.OPENCODE_SERVER || undefined,
   },
   gitlab: {
     url: process.env.GITLAB_URL || 'https://gitlab.com',
@@ -63,9 +68,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
   review: {
     agents: ['security', 'quality', 'style', 'performance'],
-    autoReview: true,
-    reviewOnMention: true,
-    reviewOnLabel: ['needs-review', 'security-review'],
+    defaultModel: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -76,10 +79,6 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
-  },
-  output: {
-    format: 'terminal',
-    verbosity: 'normal',
   },
 };
 
@@ -130,6 +129,14 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     config.review.defaultModel = process.env.REVIEW_DEFAULT_MODEL;
   }
 
+  // Validate required fields
+  if (!config.review.defaultModel) {
+    throw new Error(
+      'Default model is required. Set defaultModel in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
+        'Run "drs init" to configure your project.'
+    );
+  }
+
   // Apply CLI overrides
   if (overrides) {
     config = mergeConfig(config, overrides);
@@ -147,7 +154,6 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
-    output: mergeSection(base.output, override.output),
   };
 }
 
@@ -183,13 +189,14 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
     );
   }
 
-  // OPENCODE_SERVER is now optional - we'll start in-process if not provided
-  if (!config.opencode.serverUrl) {
-    console.log('ℹ️  OPENCODE_SERVER not set. Will start OpenCode server in-process.');
-  }
-
   if (config.review.agents.length === 0) {
     throw new Error('At least one review agent must be configured');
+  }
+
+  if (!config.review.defaultModel) {
+    throw new Error(
+      'Default model is required. Run "drs init" to configure or set REVIEW_DEFAULT_MODEL environment variable.'
+    );
   }
 }
 
