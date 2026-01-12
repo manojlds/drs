@@ -30,6 +30,8 @@ program
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
   .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('-o, --output <path>', 'Write review results to JSON file')
+  .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -43,6 +45,8 @@ program
 
       await reviewLocal(config, {
         staged: options.staged || false,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
         debug: options.debug || false,
       });
     } catch (error) {
@@ -62,6 +66,8 @@ program
     '--code-quality-report <path>',
     'Generate GitLab code quality report JSON file (default: gl-code-quality-report.json)'
   )
+  .option('-o, --output <path>', 'Write review results to JSON file')
+  .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -81,6 +87,8 @@ program
           options.codeQualityReport === true
             ? 'gl-code-quality-report.json'
             : options.codeQualityReport,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
         debug: options.debug || false,
       });
     } catch (error) {
@@ -97,6 +105,8 @@ program
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('-o, --output <path>', 'Write review results to JSON file')
+  .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -113,6 +123,8 @@ program
         repo: options.repo,
         prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
         debug: options.debug || false,
       });
     } catch (error) {

@@ -32,6 +32,7 @@ import {
 } from './review-orchestrator.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
+import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
@@ -44,6 +45,10 @@ export interface UnifiedReviewOptions {
   postComments: boolean;
   /** Optional path to output GitLab code quality report JSON */
   codeQualityReport?: string;
+  /** Optional path to write JSON results file */
+  outputPath?: string;
+  /** Output results as JSON to console */
+  jsonOutput?: boolean;
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
@@ -247,6 +252,29 @@ Be thorough and identify all issues. Include line numbers when possible.`;
         options.codeQualityReport,
         options.workingDir || process.cwd()
       );
+    }
+
+    // Handle JSON output
+    const wantsJsonOutput = options.jsonOutput || options.outputPath;
+
+    if (wantsJsonOutput) {
+      const jsonOutput = formatReviewJson(summary, issues, {
+        source: `${options.prNumber}`,
+        project: options.projectId,
+        branch: {
+          source: pr.sourceBranch,
+          target: pr.targetBranch,
+        },
+      });
+
+      if (options.outputPath) {
+        await writeReviewJson(jsonOutput, options.outputPath, options.workingDir || process.cwd());
+        console.log(chalk.green(`\n✓ Review results written to ${options.outputPath}\n`));
+      }
+
+      if (options.jsonOutput) {
+        printReviewJson(jsonOutput);
+      }
     }
 
     // Exit with error code if critical issues found

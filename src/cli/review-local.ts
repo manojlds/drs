@@ -9,9 +9,16 @@ import {
   hasBlockingIssues,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
+import {
+  formatReviewJson,
+  writeReviewJson,
+  printReviewJson,
+} from '../lib/json-output.js';
 
 export interface ReviewLocalOptions {
   staged: boolean;
+  outputPath?: string;
+  jsonOutput?: boolean;
   debug?: boolean;
 }
 
@@ -62,25 +69,51 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
 
   const result = await executeReview(config, source);
 
-  // Display results (platform-specific: terminal output)
-  if (result.issues.length > 0) {
-    displayReviewSummary(result);
+  // Handle JSON output
+  const wantsJsonOutput = options.jsonOutput || options.outputPath;
 
-    // Display issues in terminal
-    for (const issue of result.issues) {
-      console.log(formatTerminalIssue(issue));
+  if (wantsJsonOutput) {
+    const jsonOutput = formatReviewJson(result.summary, result.issues, {
+      source: `local-${options.staged ? 'staged' : 'unstaged'}`,
+    });
+
+    if (options.outputPath) {
+      await writeReviewJson(jsonOutput, options.outputPath, cwd);
+      console.log(chalk.green(`\n✓ Review results written to ${options.outputPath}\n`));
     }
 
-    // Recommendation
-    if (hasBlockingIssues(result)) {
-      console.log(
-        chalk.red.bold('\n⚠️  Recommendation: Fix critical/high issues before pushing\n')
-      );
-      process.exit(1);
+    if (options.jsonOutput) {
+      printReviewJson(jsonOutput);
+    }
+  }
+
+  // Display results (platform-specific: terminal output)
+  // Only show terminal output if not doing JSON-only output
+  if (!options.jsonOutput) {
+    if (result.issues.length > 0) {
+      displayReviewSummary(result);
+
+      // Display issues in terminal
+      for (const issue of result.issues) {
+        console.log(formatTerminalIssue(issue));
+      }
+
+      // Recommendation
+      if (hasBlockingIssues(result)) {
+        console.log(
+          chalk.red.bold('\n⚠️  Recommendation: Fix critical/high issues before pushing\n')
+        );
+        process.exit(1);
+      } else {
+        console.log(chalk.green('\n✓ No critical issues found. Safe to push.\n'));
+      }
     } else {
-      console.log(chalk.green('\n✓ No critical issues found. Safe to push.\n'));
+      console.log(chalk.green('\n✓ No issues found! Code looks good.\n'));
     }
   } else {
-    console.log(chalk.green('\n✓ No issues found! Code looks good.\n'));
+    // Still exit with error code for blocking issues even in JSON mode
+    if (hasBlockingIssues(result)) {
+      process.exit(1);
+    }
   }
 }

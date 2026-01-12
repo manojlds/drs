@@ -10,6 +10,8 @@ export interface ReviewMROptions {
   mrIid: number;
   postComments: boolean;
   codeQualityReport?: string; // Optional path to output code quality report JSON
+  outputPath?: string; // Optional path to write JSON results file
+  jsonOutput?: boolean; // Output results as JSON to console
   debug?: boolean;
 }
 
@@ -52,6 +54,8 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     prNumber: options.mrIid,
     postComments: options.postComments,
     codeQualityReport: options.codeQualityReport,
+    outputPath: options.outputPath,
+    jsonOutput: options.jsonOutput,
     lineValidator,
     createInlinePosition,
     debug: options.debug,
