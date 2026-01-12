@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Required for npm provenance and trusted publishing
+      id-token: write # Required for npm provenance and trusted publishing (OIDC)
 
     steps:
       - name: Checkout code
@@ -42,4 +42,7 @@ jobs:
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
         env:
+          # For trusted publishing (OIDC): Remove this env block after configuring on npmjs.com
+          # The OIDC token will be used automatically when NODE_AUTH_TOKEN is not set
+          # For traditional authentication: Keep NPM_TOKEN secret configured
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
