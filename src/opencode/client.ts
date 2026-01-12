@@ -82,7 +82,8 @@ export class OpencodeClient {
 
       // Add custom provider if configured in DRS config
       if (this.config.provider && Object.keys(this.config.provider).length > 0) {
-        opencodeConfig.provider = this.config.provider;
+        // Deep clone and resolve environment variable references
+        opencodeConfig.provider = this.resolveEnvReferences(this.config.provider);
         const providerNames = Object.keys(this.config.provider);
         console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
       }
@@ -108,23 +109,48 @@ export class OpencodeClient {
 
       // Debug: Print final OpenCode config
       if (this.config.debug) {
-        console.log('🔧 DEBUG: Final OpenCode configuration:');
+        console.log('🔧 DEBUG: Final OpenCode configuration (after env resolution):');
         console.log('─'.repeat(50));
+        
+        // Show environment variable status for custom providers
+        if (this.config.provider) {
+          console.log('\n📍 Environment variable status:');
+          for (const [providerName, provider] of Object.entries(this.config.provider)) {
+            const apiKeyConfig = provider.options?.apiKey;
+            if (apiKeyConfig && typeof apiKeyConfig === 'string') {
+              const envMatch = apiKeyConfig.match(/^\{env:([^}]+)\}$/);
+              if (envMatch) {
+                const envVarName = envMatch[1];
+                const envValue = process.env[envVarName];
+                if (envValue) {
+                  console.log(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
+                } else {
+                  console.log(`  ✗ ${envVarName}: NOT SET`);
+                }
+              } else {
+                console.log(`  • ${providerName}: API key is hardcoded (not env var)`);
+              }
+            }
+          }
+          console.log('');
+        }
+
         // Sanitize config to hide API keys
         const sanitizedConfig = JSON.parse(JSON.stringify(opencodeConfig));
         if (sanitizedConfig.provider) {
           for (const providerName of Object.keys(sanitizedConfig.provider)) {
             if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
               const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
-              // Show env var reference or masked value
-              if (apiKey.startsWith('{env:')) {
-                sanitizedConfig.provider[providerName].options.apiKey = apiKey;
+              // Always redact since we've resolved env vars
+              if (apiKey && apiKey.length > 0) {
+                sanitizedConfig.provider[providerName].options.apiKey = `***REDACTED (${apiKey.length} chars)***`;
               } else {
-                sanitizedConfig.provider[providerName].options.apiKey = '***REDACTED***';
+                sanitizedConfig.provider[providerName].options.apiKey = '***EMPTY***';
               }
             }
           }
         }
+        console.log('Config being passed to OpenCode:');
         console.log(JSON.stringify(sanitizedConfig, null, 2));
         console.log('─'.repeat(50));
         console.log('');
@@ -344,6 +370,40 @@ export class OpencodeClient {
       throw new Error('Server not initialized');
     }
     return this.baseUrl;
+  }
+
+  /**
+   * Resolve {env:VAR_NAME} references to actual environment variable values
+   */
+  private resolveEnvReferences<T>(obj: T): T {
+    if (typeof obj === 'string') {
+      // Check for {env:VAR_NAME} pattern
+      const envMatch = obj.match(/^\{env:([^}]+)\}$/);
+      if (envMatch) {
+        const envVarName = envMatch[1];
+        const envValue = process.env[envVarName];
+        if (!envValue) {
+          console.warn(`⚠️  Environment variable ${envVarName} is not set`);
+          return '' as T;
+        }
+        return envValue as T;
+      }
+      return obj;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.resolveEnvReferences(item)) as T;
+    }
+
+    if (obj !== null && typeof obj === 'object') {
+      const resolved: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        resolved[key] = this.resolveEnvReferences(value);
+      }
+      return resolved as T;
+    }
+
+    return obj;
   }
 }
 
