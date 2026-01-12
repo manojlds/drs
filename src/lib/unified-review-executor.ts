@@ -50,6 +50,8 @@ export interface UnifiedReviewOptions {
   createInlinePosition?: (issue: ReviewIssue, platformData: any) => InlineCommentPosition;
   /** Working directory for file access */
   workingDir?: string;
+  /** Debug mode - print OpenCode configuration */
+  debug?: boolean;
 }
 
 /**
@@ -102,7 +104,9 @@ export async function executeUnifiedReview(
   }
 
   // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, options.workingDir || process.cwd());
+  const opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
+    debug: options.debug,
+  });
 
   try {
     // Execute review

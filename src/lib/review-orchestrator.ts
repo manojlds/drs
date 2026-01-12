@@ -18,6 +18,8 @@ export interface ReviewSource {
   context: Record<string, any>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
+  /** Debug mode - print OpenCode configuration */
+  debug?: boolean;
 }
 
 /**
@@ -39,12 +41,17 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
   return files.filter((file) => !shouldIgnoreFile(file, config));
 }
 
+export interface ConnectOptions {
+  debug?: boolean;
+}
+
 /**
  * Connect to OpenCode server (or start in-process)
  */
 export async function connectToOpenCode(
   config: DRSConfig,
-  workingDir?: string
+  workingDir?: string,
+  options?: ConnectOptions
 ): Promise<OpencodeClient> {
   console.log(chalk.gray('Connecting to OpenCode server...\n'));
 
@@ -57,6 +64,7 @@ export async function connectToOpenCode(
       directory: workingDir || process.cwd(),
       modelOverrides,
       provider: config.opencode.provider,
+      debug: options?.debug,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to OpenCode server'));
@@ -109,7 +117,7 @@ export async function executeReview(
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
   // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, source.workingDir);
+  const opencode = await connectToOpenCode(config, source.workingDir, { debug: source.debug });
 
   try {
     // Execute review

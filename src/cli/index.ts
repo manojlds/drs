@@ -30,6 +30,7 @@ program
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
   .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -42,6 +43,7 @@ program
 
       await reviewLocal(config, {
         staged: options.staged || false,
+        debug: options.debug || false,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
@@ -60,6 +62,7 @@ program
     '--code-quality-report <path>',
     'Generate GitLab code quality report JSON file (default: gl-code-quality-report.json)'
   )
+  .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -78,6 +81,7 @@ program
           options.codeQualityReport === true
             ? 'gl-code-quality-report.json'
             : options.codeQualityReport,
+        debug: options.debug || false,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
@@ -93,6 +97,7 @@ program
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd(), {
@@ -108,6 +113,7 @@ program
         repo: options.repo,
         prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
+        debug: options.debug || false,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

@@ -10,6 +10,7 @@ export interface ReviewMROptions {
   mrIid: number;
   postComments: boolean;
   codeQualityReport?: string; // Optional path to output code quality report JSON
+  debug?: boolean;
 }
 
 /**
@@ -53,5 +54,6 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     codeQualityReport: options.codeQualityReport,
     lineValidator,
     createInlinePosition,
+    debug: options.debug,
   });
 }

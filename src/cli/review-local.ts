@@ -12,6 +12,7 @@ import {
 
 export interface ReviewLocalOptions {
   staged: boolean;
+  debug?: boolean;
 }
 
 /**
@@ -56,6 +57,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
       staged: options.staged,
     },
     workingDir: cwd,
+    debug: options.debug,
   };
 
   const result = await executeReview(config, source);

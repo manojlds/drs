@@ -16,6 +16,7 @@ export interface OpencodeConfig {
   serverHostname?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
+  debug?: boolean; // Print OpenCode config for debugging
 }
 
 export interface SessionCreateOptions {
@@ -102,6 +103,30 @@ export class OpencodeClient {
           }
         }
 
+        console.log('');
+      }
+
+      // Debug: Print final OpenCode config
+      if (this.config.debug) {
+        console.log('🔧 DEBUG: Final OpenCode configuration:');
+        console.log('─'.repeat(50));
+        // Sanitize config to hide API keys
+        const sanitizedConfig = JSON.parse(JSON.stringify(opencodeConfig));
+        if (sanitizedConfig.provider) {
+          for (const providerName of Object.keys(sanitizedConfig.provider)) {
+            if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
+              const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
+              // Show env var reference or masked value
+              if (apiKey.startsWith('{env:')) {
+                sanitizedConfig.provider[providerName].options.apiKey = apiKey;
+              } else {
+                sanitizedConfig.provider[providerName].options.apiKey = '***REDACTED***';
+              }
+            }
+          }
+        }
+        console.log(JSON.stringify(sanitizedConfig, null, 2));
+        console.log('─'.repeat(50));
         console.log('');
       }
 

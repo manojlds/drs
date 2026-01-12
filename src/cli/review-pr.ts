@@ -10,6 +10,7 @@ export interface ReviewPROptions {
   repo: string;
   prNumber: number;
   postComments: boolean;
+  debug?: boolean;
 }
 
 /**
@@ -99,5 +100,6 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     lineValidator,
     createInlinePosition,
     workingDir: process.cwd(),
+    debug: options.debug,
   });
 }
