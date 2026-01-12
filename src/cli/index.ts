@@ -2,17 +2,28 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { reviewLocal } from './review-local.js';
 import { reviewMR } from './review-mr.js';
 import { reviewPR } from './review-pr.js';
 import { loadConfig } from '../lib/config.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Read version from package.json
+const packageJsonPath = join(__dirname, '..', '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+const version = packageJson.version;
 
 const program = new Command();
 
 program
   .name('drs')
   .description('Intelligent code review platform for GitLab and GitHub - Enterprise-grade analysis')
-  .version('1.0.0');
+  .version(version);
 
 program
   .command('review-local')
