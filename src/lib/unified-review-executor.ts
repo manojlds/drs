@@ -29,6 +29,7 @@ import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js'
 import {
   buildBaseInstructions,
   runReviewAgents,
+  analyzeDiffContext,
   displayReviewSummary,
   type FileWithDiff,
 } from './review-core.js';
@@ -133,6 +134,18 @@ export async function executeUnifiedReview(
       'git diff HEAD~1 -- <file>' // Fallback if no diff content
     );
 
+    // Run diff analyzer if enabled (we have actual diff content from platform)
+    let diffAnalysis = null;
+    if (config.review.enableDiffAnalyzer) {
+      diffAnalysis = await analyzeDiffContext(
+        opencode,
+        baseInstructions,
+        reviewLabel,
+        filteredFiles,
+        { prNumber }
+      );
+    }
+
     // Run agents using shared core logic
     const result = await runReviewAgents(
       opencode,
@@ -140,7 +153,8 @@ export async function executeUnifiedReview(
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      { prNumber }
+      { prNumber },
+      diffAnalysis
     );
 
     // Display summary

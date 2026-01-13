@@ -52,6 +52,7 @@ export interface DRSConfig {
     defaultModel: string;
     ignorePatterns: string[];
     includePatterns?: string[];
+    enableDiffAnalyzer?: boolean;
   };
 }
 
@@ -79,6 +80,7 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
+    enableDiffAnalyzer: process.env.ENABLE_DIFF_ANALYZER !== 'false', // Enabled by default
   },
 };
 

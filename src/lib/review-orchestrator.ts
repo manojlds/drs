@@ -13,6 +13,7 @@ import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
   runReviewAgents,
+  analyzeDiffContext,
   displayReviewSummary as displaySummary,
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
@@ -155,6 +156,18 @@ export async function executeReview(
 
     const baseInstructions = buildBaseInstructions(source.name, filesForInstructions, diffCommand);
 
+    // Run diff analyzer if enabled and diffs are available
+    let diffAnalysis = null;
+    if (config.review.enableDiffAnalyzer && filesForInstructions.some((f) => f.patch)) {
+      diffAnalysis = await analyzeDiffContext(
+        opencode,
+        baseInstructions,
+        source.name,
+        filteredFiles,
+        source.context
+      );
+    }
+
     // Run agents using shared core logic
     const result = await runReviewAgents(
       opencode,
@@ -162,7 +175,8 @@ export async function executeReview(
       baseInstructions,
       source.name,
       filteredFiles,
-      source.context
+      source.context,
+      diffAnalysis
     );
 
     return {

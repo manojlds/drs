@@ -24,6 +24,49 @@ export interface FileWithDiff {
 }
 
 /**
+ * Line range with context explanation
+ */
+export interface LineRange {
+  start: number;
+  end: number;
+  reason: string;
+}
+
+/**
+ * Enriched context for a single file
+ */
+export interface FileContext {
+  filename: string;
+  filePurpose: string;
+  changeDescription: string;
+  scopeContext: string;
+  dependencies: string[];
+  concerns: string[];
+  relatedLineRanges: LineRange[];
+}
+
+/**
+ * Summary of the overall change
+ */
+export interface ChangeSummary {
+  type: 'feature' | 'bugfix' | 'refactor' | 'docs' | 'test' | 'config' | 'other';
+  description: string;
+  subsystems: string[];
+  complexity: 'simple' | 'medium' | 'high';
+  riskLevel: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Diff analyzer output
+ */
+export interface DiffAnalysis {
+  changeSummary: ChangeSummary;
+  recommendedAgents: string[];
+  fileContexts: FileContext[];
+  overallConcerns: string[];
+}
+
+/**
  * Result from running review agents
  */
 export interface AgentReviewResult {
@@ -139,9 +182,89 @@ Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
+ * Run the diff analyzer agent to get enriched context
+ *
+ * @param opencode - OpenCode client
+ * @param baseInstructions - Base instructions containing the diff
+ * @param reviewLabel - Label for the review
+ * @param filteredFiles - List of files to review
+ * @param additionalContext - Additional context for the agent
+ * @returns Parsed diff analysis or null if analysis fails
+ */
+export async function analyzeDiffContext(
+  opencode: OpencodeClient,
+  baseInstructions: string,
+  reviewLabel: string,
+  filteredFiles: string[],
+  additionalContext: Record<string, any> = {}
+): Promise<DiffAnalysis | null> {
+  console.log(chalk.gray('Analyzing diff context...\n'));
+
+  try {
+    const analyzerPrompt = `${baseInstructions}
+
+**Your Task**: Analyze the diff above and provide enriched context for the review agents.
+
+Use the Read, Grep, and Bash tools as needed to gather complete context about:
+- What each file does
+- How the changes fit into the broader codebase
+- Dependencies and related code
+- Potential concerns for each type of review
+
+Then output your analysis in the required JSON format.`;
+
+    const session = await opencode.createSession({
+      agent: 'review/diff-analyzer',
+      message: analyzerPrompt,
+      context: {
+        ...additionalContext,
+        files: filteredFiles,
+      },
+    });
+
+    let analysisJson = '';
+
+    // Collect output from diff analyzer
+    for await (const message of opencode.streamMessages(session.id)) {
+      if (message.role === 'assistant') {
+        // Look for JSON in the message content
+        const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch) {
+          analysisJson = jsonMatch[1];
+        }
+      }
+    }
+
+    await opencode.closeSession(session.id);
+
+    if (!analysisJson) {
+      console.log(chalk.yellow('⚠️  Diff analyzer did not produce JSON output, skipping analysis'));
+      return null;
+    }
+
+    // Parse the JSON
+    const analysis: DiffAnalysis = JSON.parse(analysisJson);
+
+    console.log(chalk.green('✓ Diff analysis complete'));
+    console.log(chalk.gray(`  Change type: ${analysis.changeSummary.type}`));
+    console.log(chalk.gray(`  Complexity: ${analysis.changeSummary.complexity}`));
+    console.log(chalk.gray(`  Risk level: ${analysis.changeSummary.riskLevel}`));
+    console.log(chalk.gray(`  Recommended agents: ${analysis.recommendedAgents.join(', ')}\n`));
+
+    return analysis;
+  } catch (error) {
+    console.log(chalk.yellow(`⚠️  Diff analyzer failed: ${error}`));
+    console.log(chalk.gray('Continuing with standard review process...\n'));
+    return null;
+  }
+}
+
+/**
  * Run all configured review agents in parallel
  *
  * This is the core agent execution logic shared between local and platform reviews.
+ *
+ * @param diffAnalysis - Optional diff analysis from analyzer agent
  */
 export async function runReviewAgents(
   opencode: OpencodeClient,
@@ -149,23 +272,76 @@ export async function runReviewAgents(
   baseInstructions: string,
   reviewLabel: string,
   filteredFiles: string[],
-  additionalContext: Record<string, any> = {}
+  additionalContext: Record<string, any> = {},
+  diffAnalysis?: DiffAnalysis | null
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
-  const agentNames = getAgentNames(config);
+  // Use recommended agents from analysis if available, otherwise use configured agents
+  let agentNames = getAgentNames(config);
+  if (diffAnalysis && diffAnalysis.recommendedAgents.length > 0) {
+    // Filter configured agents to only run recommended ones
+    const recommended = new Set(diffAnalysis.recommendedAgents);
+    agentNames = agentNames.filter((name) => recommended.has(name));
+
+    if (agentNames.length < getAgentNames(config).length) {
+      const skipped = getAgentNames(config).filter((name) => !recommended.has(name));
+      console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
+    }
+  }
   const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 
     try {
       // Build prompt with global and agent-specific context
-      const reviewPrompt = buildReviewPrompt(
+      let reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles
       );
+
+      // Add enriched context from diff analysis if available
+      if (diffAnalysis) {
+        reviewPrompt += `\n\n## Enriched Context from Diff Analysis\n\n`;
+        reviewPrompt += `**Change Summary**: ${diffAnalysis.changeSummary.description}\n`;
+        reviewPrompt += `**Change Type**: ${diffAnalysis.changeSummary.type}\n`;
+        reviewPrompt += `**Complexity**: ${diffAnalysis.changeSummary.complexity}\n`;
+        reviewPrompt += `**Risk Level**: ${diffAnalysis.changeSummary.riskLevel}\n`;
+
+        if (diffAnalysis.changeSummary.subsystems.length > 0) {
+          reviewPrompt += `**Affected Subsystems**: ${diffAnalysis.changeSummary.subsystems.join(', ')}\n`;
+        }
+
+        if (diffAnalysis.overallConcerns.length > 0) {
+          reviewPrompt += `\n**Overall Concerns to Review**:\n`;
+          diffAnalysis.overallConcerns.forEach((concern) => {
+            reviewPrompt += `- ${concern}\n`;
+          });
+        }
+
+        reviewPrompt += `\n### File-Specific Context\n\n`;
+        diffAnalysis.fileContexts.forEach((fileCtx) => {
+          reviewPrompt += `**${fileCtx.filename}**:\n`;
+          reviewPrompt += `- Purpose: ${fileCtx.filePurpose}\n`;
+          reviewPrompt += `- Change: ${fileCtx.changeDescription}\n`;
+          reviewPrompt += `- Scope: ${fileCtx.scopeContext}\n`;
+
+          if (fileCtx.dependencies.length > 0) {
+            reviewPrompt += `- Dependencies: ${fileCtx.dependencies.join(', ')}\n`;
+          }
+
+          if (fileCtx.concerns.length > 0) {
+            reviewPrompt += `- Focus Areas:\n`;
+            fileCtx.concerns.forEach((concern) => {
+              reviewPrompt += `  - ${concern}\n`;
+            });
+          }
+
+          reviewPrompt += `\n`;
+        });
+      }
 
       const session = await opencode.createSession({
         agent: agentName,
@@ -173,6 +349,7 @@ export async function runReviewAgents(
         context: {
           ...additionalContext,
           files: filteredFiles,
+          diffAnalysis: diffAnalysis || undefined,
         },
       });
 
