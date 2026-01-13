@@ -295,8 +295,7 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
   if (config.review.enableDiffAnalyzer) {
     // Precedence: env var > config > defaultModel
     const diffAnalyzerEnv = process.env.REVIEW_AGENT_DIFF_ANALYZER_MODEL;
-    const diffAnalyzerModel =
-      diffAnalyzerEnv || config.review.diffAnalyzerModel || defaultModel;
+    const diffAnalyzerModel = diffAnalyzerEnv || config.review.diffAnalyzerModel || defaultModel;
 
     if (diffAnalyzerModel) {
       overrides['review/diff-analyzer'] = diffAnalyzerModel;
