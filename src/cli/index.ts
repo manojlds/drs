@@ -49,6 +49,7 @@ program
         jsonOutput: options.json || false,
         debug: options.debug || false,
       });
+      process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -91,6 +92,7 @@ program
         jsonOutput: options.json || false,
         debug: options.debug || false,
       });
+      process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -127,6 +129,7 @@ program
         jsonOutput: options.json || false,
         debug: options.debug || false,
       });
+      process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
