@@ -34,17 +34,28 @@ describe('Model Override Precedence', () => {
     process.env = originalEnv;
   });
 
-  const createMockConfig = (overrides?: Partial<DRSConfig['review']>): DRSConfig => ({
-    opencode: {},
-    gitlab: { url: '', token: '' },
-    github: { token: '' },
-    review: {
+  const createMockConfig = (overrides?: Partial<DRSConfig['review']>): DRSConfig => {
+    const baseReview: any = {
       agents: ['security', 'quality', 'style', 'performance'],
-      defaultModel: 'anthropic/claude-sonnet-4-5-20250929',
       ignorePatterns: [],
-      ...overrides,
-    },
-  });
+    };
+
+    // Only set defaultModel if no overrides provided at all (to maintain backward compatibility)
+    // If overrides are provided, only set defaultModel if explicitly included in overrides
+    if (!overrides) {
+      baseReview.defaultModel = 'anthropic/claude-sonnet-4-5-20250929';
+    }
+
+    return {
+      opencode: {},
+      gitlab: { url: '', token: '' },
+      github: { token: '' },
+      review: {
+        ...baseReview,
+        ...overrides,
+      } as DRSConfig['review'],
+    };
+  };
 
   describe('Test 1: Default model always set', () => {
     it('should return overrides based on defaultModel', () => {
