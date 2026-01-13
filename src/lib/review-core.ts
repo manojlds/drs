@@ -12,7 +12,7 @@ import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { OpencodeClient } from '../opencode/client.js';
-import { loadReviewAgents, type AgentDefinition } from '../opencode/agent-loader.js';
+import { loadReviewAgents } from '../opencode/agent-loader.js';
 
 /**
  * File with optional diff content
