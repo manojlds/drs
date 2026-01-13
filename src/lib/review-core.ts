@@ -231,6 +231,7 @@ Then output your analysis in the required JSON format.`;
         const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
         if (jsonMatch) {
           analysisJson = jsonMatch[1];
+          break; // Exit early once we have the JSON
         }
       }
     }
