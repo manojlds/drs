@@ -359,7 +359,10 @@ export class OpencodeClient {
    */
   async shutdown(): Promise<void> {
     if (this.inProcessServer) {
+      // Close the OpenCode server
       this.inProcessServer.server.close();
+      // Give server time to clean up connections
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
