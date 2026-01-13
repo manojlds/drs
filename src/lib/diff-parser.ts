@@ -181,3 +181,49 @@ export function diffContainsPattern(diff: ParsedDiff, pattern: RegExp): boolean 
   }
   return false;
 }
+
+/**
+ * Convert a ParsedDiff back to unified diff patch format
+ */
+export function diffToPatch(diff: ParsedDiff): string {
+  const lines: string[] = [];
+
+  for (const hunk of diff.hunks) {
+    // Hunk header
+    lines.push(
+      `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`
+    );
+
+    // Hunk content
+    for (const line of hunk.lines) {
+      switch (line.type) {
+        case 'add':
+          lines.push(`+${line.content}`);
+          break;
+        case 'delete':
+          lines.push(`-${line.content}`);
+          break;
+        case 'context':
+          lines.push(` ${line.content}`);
+          break;
+      }
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Get files with their diff patches
+ */
+export function getFilesWithDiffs(
+  diffs: ParsedDiff[]
+): Array<{ filename: string; patch: string }> {
+  return diffs
+    .filter((d) => !d.isDeleted)
+    .filter((d) => d.newPath !== '/dev/null')
+    .map((d) => ({
+      filename: d.newPath,
+      patch: diffToPatch(d),
+    }));
+}

@@ -1,7 +1,7 @@
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
-import { parseDiff, getChangedFiles } from '../lib/diff-parser.js';
+import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
 import { formatTerminalIssue } from '../lib/comment-formatter.js';
 import {
   executeReview,
@@ -47,24 +47,25 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
     return;
   }
 
-  // Parse diff to get changed files
+  // Parse diff to get changed files with their diffs
   const diffs = parseDiff(diffText);
   const changedFiles = getChangedFiles(diffs);
+  const filesWithDiffs = getFilesWithDiffs(diffs);
 
   if (changedFiles.length === 0) {
     console.log(chalk.yellow('✓ No files to review\n'));
     return;
   }
 
-  // Execute review using common orchestrator
+  // Execute review using common orchestrator - pass diff content directly
   const source: ReviewSource = {
     name: `Local ${options.staged ? 'staged' : 'unstaged'} diff`,
     files: changedFiles,
-    context: {
-      staged: options.staged,
-    },
+    filesWithDiffs, // Pass actual diff content so agents don't need to run git
+    context: {},
     workingDir: cwd,
     debug: options.debug,
+    staged: options.staged,
   };
 
   const result = await executeReview(config, source);
