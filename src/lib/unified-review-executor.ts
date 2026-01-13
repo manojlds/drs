@@ -135,9 +135,11 @@ export async function executeUnifiedReview(
     if (config.review.enableDiffAnalyzer) {
       diffAnalysis = await analyzeDiffContext(
         opencode,
+        config,
         baseInstructions,
         reviewLabel,
         filteredFiles,
+        options.workingDir || process.cwd(),
         { prNumber }
       );
     }

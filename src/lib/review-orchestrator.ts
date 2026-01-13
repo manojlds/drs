@@ -159,9 +159,11 @@ export async function executeReview(
     if (config.review.enableDiffAnalyzer && filesForInstructions.some((f) => f.patch)) {
       diffAnalysis = await analyzeDiffContext(
         opencode,
+        config,
         baseInstructions,
         source.name,
         filteredFiles,
+        source.workingDir || process.cwd(),
         source.context
       );
     }

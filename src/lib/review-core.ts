@@ -12,6 +12,7 @@ import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { OpencodeClient } from '../opencode/client.js';
+import { loadReviewAgents, type AgentDefinition } from '../opencode/agent-loader.js';
 
 /**
  * File with optional diff content
@@ -182,28 +183,66 @@ Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
+ * Get information about configured review agents
+ */
+function getConfiguredAgentInfo(
+  config: DRSConfig,
+  workingDir: string
+): Array<{ name: string; description: string }> {
+  const configuredNames = getAgentNames(config);
+  const allAgents = loadReviewAgents(workingDir);
+
+  return configuredNames
+    .map((name) => {
+      const fullName = `review/${name}`;
+      const agent = allAgents.find((a) => a.name === fullName);
+      return {
+        name,
+        description: agent?.description || `${name} review agent`,
+      };
+    })
+    .filter((a) => a !== null);
+}
+
+/**
  * Run the diff analyzer agent to get enriched context
  *
  * @param opencode - OpenCode client
+ * @param config - DRS configuration
  * @param baseInstructions - Base instructions containing the diff
  * @param reviewLabel - Label for the review
  * @param filteredFiles - List of files to review
+ * @param workingDir - Working directory for agent discovery
  * @param additionalContext - Additional context for the agent
  * @returns Parsed diff analysis or null if analysis fails
  */
 export async function analyzeDiffContext(
   opencode: OpencodeClient,
+  config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
   filteredFiles: string[],
+  workingDir: string,
   additionalContext: Record<string, any> = {}
 ): Promise<DiffAnalysis | null> {
   console.log(chalk.gray('Analyzing diff context...\n'));
 
   try {
+    // Get info about configured agents
+    const agentInfo = getConfiguredAgentInfo(config, workingDir);
+    const agentList = agentInfo.map((a) => `- **${a.name}**: ${a.description}`).join('\n');
+
     const analyzerPrompt = `${baseInstructions}
 
 **Your Task**: Analyze the diff above and provide enriched context for the review agents.
+
+## Available Review Agents
+
+The following review agents are configured and available:
+
+${agentList}
+
+Your job is to analyze the diff and recommend which of these agents should review the changes based on what was modified.
 
 Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - What each file does
@@ -211,7 +250,7 @@ Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - Dependencies and related code
 - Potential concerns for each type of review
 
-Then output your analysis in the required JSON format.`;
+Then output your analysis in the required JSON format. In the "recommendedAgents" field, only include agent names from the list above that are relevant to the changes.`;
 
     const session = await opencode.createSession({
       agent: 'review/diff-analyzer',

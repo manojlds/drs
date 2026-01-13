@@ -32,41 +32,18 @@ For each changed file:
 
 ### 3. Determine Relevant Review Agents
 
-Based on the analysis, recommend which agents should review this change:
+The prompt you receive will include a list of available review agents with their descriptions. Based on your analysis of the changes, recommend which agents from that list should review this change.
 
-**Security Agent** - Run if:
-- Authentication, authorization, or access control code
-- Cryptography, hashing, or encryption
-- Input validation, sanitization, or encoding
-- Database queries or API calls
-- File system operations or command execution
-- Environment variables or secrets handling
-- Session management or token handling
+**Guidelines for agent selection:**
+- If the change involves security-sensitive areas (auth, crypto, validation, queries), recommend the security agent
+- If the change involves complex logic, error handling, or code structure, recommend the quality agent
+- If the change involves formatting, naming, or documentation, recommend the style agent
+- If the change involves performance-critical code (loops, queries, algorithms), recommend the performance agent
+- For custom agents, read their descriptions and recommend them if relevant
+- **Default**: If unsure or the change is significant, recommend all available agents
+- Only skip agents if you're confident the change doesn't touch their domain at all
 
-**Quality Agent** - Run if:
-- Complex logic or algorithms (high cyclomatic complexity)
-- Error handling patterns
-- Code duplication or refactoring
-- Function/class structure changes
-- Async/promise handling
-- Resource management (connections, files, memory)
-
-**Style Agent** - Run if:
-- Naming conventions
-- Code formatting or structure
-- Comments or documentation
-- Import organization
-- File structure changes
-
-**Performance Agent** - Run if:
-- Loop operations or iterations
-- Database queries or API calls
-- Caching or memoization
-- Algorithm efficiency
-- Resource-intensive operations
-- Async/parallel processing
-
-**Default**: If unsure, recommend all agents.
+**Important**: Only recommend agents that are in the "Available Review Agents" list provided in your prompt. Do not recommend agents that aren't configured.
 
 ### 4. Prepare Enriched Context
 
