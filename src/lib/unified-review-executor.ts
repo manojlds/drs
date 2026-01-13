@@ -257,18 +257,69 @@ async function postReviewComments(
   }
 
   // Prepare issues for posting: filter to CRITICAL/HIGH, deduplicate, validate lines
+  const criticalHighCount = issues.filter(
+    (i) => i.severity === 'CRITICAL' || i.severity === 'HIGH'
+  ).length;
+
   const prepared = prepareIssuesForPosting(issues, allComments, (issue) => {
     if (!issue.line || !lineValidator) return false;
     return lineValidator.isValidLine(issue.file, issue.line);
   });
 
-  if (prepared.deduplicatedCount > 0) {
+  // Log diagnostic info about inline comment filtering
+  if (criticalHighCount > 0) {
     console.log(
-      chalk.gray(`Skipped ${prepared.deduplicatedCount} duplicate issue(s) already commented\n`)
+      chalk.gray(
+        `Inline comments: ${criticalHighCount} CRITICAL/HIGH issue(s) found\n`
+      )
+    );
+
+    if (prepared.deduplicatedCount > 0) {
+      console.log(
+        chalk.gray(`  - ${prepared.deduplicatedCount} already commented (skipped)\n`)
+      );
+    }
+
+    const issuesWithoutLines = issues.filter(
+      (i) =>
+        (i.severity === 'CRITICAL' || i.severity === 'HIGH') &&
+        (i.line === undefined || i.line === null)
+    ).length;
+    if (issuesWithoutLines > 0) {
+      console.log(
+        chalk.gray(`  - ${issuesWithoutLines} without line numbers (skipped)\n`)
+      );
+    }
+
+    const filteredByValidator = criticalHighCount - prepared.deduplicatedCount - issuesWithoutLines - prepared.inlineIssues.length;
+    if (filteredByValidator > 0) {
+      console.log(
+        chalk.gray(`  - ${filteredByValidator} on lines not in diff (skipped)\n`)
+      );
+    }
+
+    if (prepared.inlineIssues.length > 0) {
+      console.log(
+        chalk.gray(`  → ${prepared.inlineIssues.length} will be posted as inline comments\n`)
+      );
+    } else {
+      console.log(
+        chalk.yellow(`  → No inline comments to post (all filtered)\n`)
+      );
+    }
+  } else {
+    console.log(
+      chalk.gray(`No CRITICAL/HIGH issues - skipping inline comments (only summary posted)\n`)
     );
   }
 
   // Post inline comments for new CRITICAL/HIGH issues
+  if (!createInlinePosition) {
+    console.log(
+      chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`)
+    );
+  }
+
   if (prepared.inlineIssues.length > 0 && createInlinePosition) {
     const inlineComments = prepared.inlineIssues.map((issue) => ({
       body: formatIssueComment(issue, createIssueFingerprint(issue)),
