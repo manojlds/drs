@@ -282,16 +282,10 @@ async function postReviewComments(
 
   // Log diagnostic info about inline comment filtering
   if (criticalHighCount > 0) {
-    console.log(
-      chalk.gray(
-        `Inline comments: ${criticalHighCount} CRITICAL/HIGH issue(s) found\n`
-      )
-    );
+    console.log(chalk.gray(`Inline comments: ${criticalHighCount} CRITICAL/HIGH issue(s) found\n`));
 
     if (prepared.deduplicatedCount > 0) {
-      console.log(
-        chalk.gray(`  - ${prepared.deduplicatedCount} already commented (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${prepared.deduplicatedCount} already commented (skipped)\n`));
     }
 
     const issuesWithoutLines = issues.filter(
@@ -300,16 +294,16 @@ async function postReviewComments(
         (i.line === undefined || i.line === null)
     ).length;
     if (issuesWithoutLines > 0) {
-      console.log(
-        chalk.gray(`  - ${issuesWithoutLines} without line numbers (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${issuesWithoutLines} without line numbers (skipped)\n`));
     }
 
-    const filteredByValidator = criticalHighCount - prepared.deduplicatedCount - issuesWithoutLines - prepared.inlineIssues.length;
+    const filteredByValidator =
+      criticalHighCount -
+      prepared.deduplicatedCount -
+      issuesWithoutLines -
+      prepared.inlineIssues.length;
     if (filteredByValidator > 0) {
-      console.log(
-        chalk.gray(`  - ${filteredByValidator} on lines not in diff (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${filteredByValidator} on lines not in diff (skipped)\n`));
     }
 
     if (prepared.inlineIssues.length > 0) {
@@ -317,9 +311,7 @@ async function postReviewComments(
         chalk.gray(`  → ${prepared.inlineIssues.length} will be posted as inline comments\n`)
       );
     } else {
-      console.log(
-        chalk.yellow(`  → No inline comments to post (all filtered)\n`)
-      );
+      console.log(chalk.yellow(`  → No inline comments to post (all filtered)\n`));
     }
   } else {
     console.log(
@@ -329,9 +321,7 @@ async function postReviewComments(
 
   // Post inline comments for new CRITICAL/HIGH issues
   if (!createInlinePosition) {
-    console.log(
-      chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`)
-    );
+    console.log(chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`));
   }
 
   if (prepared.inlineIssues.length > 0 && createInlinePosition) {

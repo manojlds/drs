@@ -295,12 +295,7 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
-      let reviewPrompt = buildReviewPrompt(
-        agentType,
-        baseInstructions,
-        reviewLabel,
-        filteredFiles
-      );
+      let reviewPrompt = buildReviewPrompt(agentType, baseInstructions, reviewLabel, filteredFiles);
 
       // Add enriched context from diff analysis if available
       if (diffAnalysis) {
