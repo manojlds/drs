@@ -214,6 +214,7 @@ function getConfiguredAgentInfo(
  * @param filteredFiles - List of files to review
  * @param workingDir - Working directory for agent discovery
  * @param additionalContext - Additional context for the agent
+ * @param debug - Whether to print debug information
  * @returns Parsed diff analysis or null if analysis fails
  */
 export async function analyzeDiffContext(
@@ -223,7 +224,8 @@ export async function analyzeDiffContext(
   reviewLabel: string,
   filteredFiles: string[],
   workingDir: string,
-  additionalContext: Record<string, any> = {}
+  additionalContext: Record<string, any> = {},
+  debug?: boolean
 ): Promise<DiffAnalysis | null> {
   console.log(chalk.gray('Analyzing diff context...\n'));
 
@@ -251,6 +253,14 @@ Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - Potential concerns for each type of review
 
 Then output your analysis in the required JSON format. In the "recommendedAgents" field, only include agent names from the list above that are relevant to the changes.`;
+
+    // Debug: Print diff analyzer input
+    if (debug) {
+      console.log(chalk.cyan('\n🔍 DEBUG: Diff Analyzer Input'));
+      console.log(chalk.cyan('─'.repeat(80)));
+      console.log(analyzerPrompt);
+      console.log(chalk.cyan('─'.repeat(80) + '\n'));
+    }
 
     const session = await opencode.createSession({
       agent: 'review/diff-analyzer',
@@ -282,6 +292,14 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
       return null;
     }
 
+    // Debug: Print diff analyzer output
+    if (debug) {
+      console.log(chalk.cyan('\n🔍 DEBUG: Diff Analyzer Output (JSON)'));
+      console.log(chalk.cyan('─'.repeat(80)));
+      console.log(analysisJson);
+      console.log(chalk.cyan('─'.repeat(80) + '\n'));
+    }
+
     // Parse the JSON
     const analysis: DiffAnalysis = JSON.parse(analysisJson);
 
@@ -305,6 +323,7 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
  * This is the core agent execution logic shared between local and platform reviews.
  *
  * @param diffAnalysis - Optional diff analysis from analyzer agent
+ * @param debug - Whether to print debug information
  */
 export async function runReviewAgents(
   opencode: OpencodeClient,
@@ -313,7 +332,8 @@ export async function runReviewAgents(
   reviewLabel: string,
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
-  diffAnalysis?: DiffAnalysis | null
+  diffAnalysis?: DiffAnalysis | null,
+  debug?: boolean
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
@@ -392,6 +412,16 @@ export async function runReviewAgents(
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
+        // Debug: Print agent messages
+        if (debug) {
+          console.log(chalk.cyan(`\n🔍 DEBUG: [${agentType}] Message from agent`));
+          console.log(chalk.cyan('─'.repeat(80)));
+          console.log(chalk.gray(`Role: ${message.role}`));
+          console.log(chalk.gray(`Timestamp: ${message.timestamp.toISOString()}`));
+          console.log(chalk.white(message.content));
+          console.log(chalk.cyan('─'.repeat(80) + '\n'));
+        }
+
         if (message.role === 'assistant') {
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {

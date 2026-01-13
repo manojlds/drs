@@ -54,6 +54,7 @@ export interface DRSConfig {
     includePatterns?: string[];
     enableDiffAnalyzer?: boolean;
     diffAnalyzerModel?: string;
+    debug?: boolean;
   };
 }
 

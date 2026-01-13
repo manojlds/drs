@@ -104,6 +104,6 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     lineValidator,
     createInlinePosition,
     workingDir: process.cwd(),
-    debug: options.debug,
+    debug: options.debug || config.review.debug || false, // CLI flag > config > default
   });
 }

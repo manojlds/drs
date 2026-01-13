@@ -22,6 +22,9 @@ review:
   # For custom providers: provider-name/model-name
   defaultModel: opencode/glm-4.7-free
 
+  # Enable debug mode to show detailed information about diff analyzer and agent messages
+  debug: true
+
   # Review agents
   # Simple format (uses defaultModel):
   agents:

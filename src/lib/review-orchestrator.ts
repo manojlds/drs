@@ -164,7 +164,8 @@ export async function executeReview(
         source.name,
         filteredFiles,
         source.workingDir || process.cwd(),
-        source.context
+        source.context,
+        source.debug
       );
     }
 
@@ -176,7 +177,8 @@ export async function executeReview(
       source.name,
       filteredFiles,
       source.context,
-      diffAnalysis
+      diffAnalysis,
+      source.debug
     );
 
     return {

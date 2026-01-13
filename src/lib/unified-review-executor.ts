@@ -140,7 +140,8 @@ export async function executeUnifiedReview(
         reviewLabel,
         filteredFiles,
         options.workingDir || process.cwd(),
-        { prNumber }
+        { prNumber },
+        options.debug
       );
     }
 
@@ -152,7 +153,8 @@ export async function executeUnifiedReview(
       reviewLabel,
       filteredFiles,
       { prNumber },
-      diffAnalysis
+      diffAnalysis,
+      options.debug
     );
 
     // Display summary

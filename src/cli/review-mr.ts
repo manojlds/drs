@@ -111,6 +111,6 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     jsonOutput: options.jsonOutput,
     lineValidator,
     createInlinePosition,
-    debug: options.debug,
+    debug: options.debug || config.review.debug || false, // CLI flag > config > default
   });
 }

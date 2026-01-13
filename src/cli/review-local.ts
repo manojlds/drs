@@ -60,7 +60,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
     filesWithDiffs, // Pass actual diff content so agents don't need to run git
     context: {},
     workingDir: cwd,
-    debug: options.debug,
+    debug: options.debug || config.review.debug || false, // CLI flag > config > default
     staged: options.staged,
   };
 
