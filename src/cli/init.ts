@@ -331,10 +331,10 @@ export async function initProject(projectPath: string): Promise<void> {
     // Validate agents
     const invalidAgents = initConfig.agents.filter((a) => !availableAgents.includes(a));
     if (invalidAgents.length > 0) {
+      console.log(chalk.yellow(`\n⚠ Custom agents detected: ${invalidAgents.join(', ')}`));
       console.log(
-        chalk.yellow(`\n⚠ Custom agents detected: ${invalidAgents.join(', ')}`)
+        chalk.gray("  You'll need to create agent definitions in .drs/agents/{name}/agent.md")
       );
-      console.log(chalk.gray('  You\'ll need to create agent definitions in .drs/agents/{name}/agent.md'));
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -416,7 +416,9 @@ export async function initProject(projectPath: string): Promise<void> {
     console.log(chalk.bold.green('\n✓ DRS initialization complete!\n'));
 
     console.log(chalk.bold('Configuration Summary:'));
-    console.log(`  Provider: ${initConfig.useCustomProvider ? initConfig.provider?.name : 'Built-in (Anthropic/OpenAI/etc)'}`);
+    console.log(
+      `  Provider: ${initConfig.useCustomProvider ? initConfig.provider?.name : 'Built-in (Anthropic/OpenAI/etc)'}`
+    );
     console.log(`  Default Model: ${initConfig.defaultModel}`);
     console.log(`  Agents: ${initConfig.agents.join(', ')}`);
 
@@ -443,7 +445,9 @@ export async function initProject(projectPath: string): Promise<void> {
 
     console.log(`  1. Set API key: ${chalk.cyan(apiKeyHint)}`);
     console.log(`  2. Edit project context: ${chalk.cyan('.drs/context.md')}`);
-    console.log(`  3. Run a review: ${chalk.cyan('drs review-pr --pr <number> --owner <owner> --repo <repo>')}`);
+    console.log(
+      `  3. Run a review: ${chalk.cyan('drs review-pr --pr <number> --owner <owner> --repo <repo>')}`
+    );
     console.log('');
 
     prompt.close();

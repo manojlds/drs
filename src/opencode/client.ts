@@ -111,7 +111,7 @@ export class OpencodeClient {
       if (this.config.debug) {
         console.log('🔧 DEBUG: Final OpenCode configuration (after env resolution):');
         console.log('─'.repeat(50));
-        
+
         // Show environment variable status for custom providers
         if (this.config.provider) {
           console.log('\n📍 Environment variable status:');
@@ -143,7 +143,8 @@ export class OpencodeClient {
               const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
               // Always redact since we've resolved env vars
               if (apiKey && apiKey.length > 0) {
-                sanitizedConfig.provider[providerName].options.apiKey = `***REDACTED (${apiKey.length} chars)***`;
+                sanitizedConfig.provider[providerName].options.apiKey =
+                  `***REDACTED (${apiKey.length} chars)***`;
               } else {
                 sanitizedConfig.provider[providerName].options.apiKey = '***EMPTY***';
               }
@@ -358,7 +359,10 @@ export class OpencodeClient {
    */
   async shutdown(): Promise<void> {
     if (this.inProcessServer) {
+      // Close the OpenCode server
       this.inProcessServer.server.close();
+      // Give server time to clean up connections
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 

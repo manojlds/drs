@@ -190,9 +190,7 @@ export function diffToPatch(diff: ParsedDiff): string {
 
   for (const hunk of diff.hunks) {
     // Hunk header
-    lines.push(
-      `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`
-    );
+    lines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
 
     // Hunk content
     for (const line of hunk.lines) {
@@ -216,9 +214,7 @@ export function diffToPatch(diff: ParsedDiff): string {
 /**
  * Get files with their diff patches
  */
-export function getFilesWithDiffs(
-  diffs: ParsedDiff[]
-): Array<{ filename: string; patch: string }> {
+export function getFilesWithDiffs(diffs: ParsedDiff[]): Array<{ filename: string; patch: string }> {
   return diffs
     .filter((d) => !d.isDeleted)
     .filter((d) => d.newPath !== '/dev/null')

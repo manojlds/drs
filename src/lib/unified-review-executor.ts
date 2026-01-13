@@ -12,12 +12,8 @@ import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
-import {
-  formatSummaryComment,
-  formatIssueComment,
-  calculateSummary,
-  type ReviewIssue,
-} from './comment-formatter.js';
+import type { calculateSummary } from './comment-formatter.js';
+import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
@@ -29,6 +25,7 @@ import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js'
 import {
   buildBaseInstructions,
   runReviewAgents,
+  analyzeDiffContext,
   displayReviewSummary,
   type FileWithDiff,
 } from './review-core.js';
@@ -133,6 +130,20 @@ export async function executeUnifiedReview(
       'git diff HEAD~1 -- <file>' // Fallback if no diff content
     );
 
+    // Run diff analyzer if enabled (we have actual diff content from platform)
+    let diffAnalysis = null;
+    if (config.review.enableDiffAnalyzer) {
+      diffAnalysis = await analyzeDiffContext(
+        opencode,
+        config,
+        baseInstructions,
+        reviewLabel,
+        filteredFiles,
+        options.workingDir || process.cwd(),
+        { prNumber }
+      );
+    }
+
     // Run agents using shared core logic
     const result = await runReviewAgents(
       opencode,
@@ -140,7 +151,8 @@ export async function executeUnifiedReview(
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      { prNumber }
+      { prNumber },
+      diffAnalysis
     );
 
     // Display summary
@@ -268,16 +280,10 @@ async function postReviewComments(
 
   // Log diagnostic info about inline comment filtering
   if (criticalHighCount > 0) {
-    console.log(
-      chalk.gray(
-        `Inline comments: ${criticalHighCount} CRITICAL/HIGH issue(s) found\n`
-      )
-    );
+    console.log(chalk.gray(`Inline comments: ${criticalHighCount} CRITICAL/HIGH issue(s) found\n`));
 
     if (prepared.deduplicatedCount > 0) {
-      console.log(
-        chalk.gray(`  - ${prepared.deduplicatedCount} already commented (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${prepared.deduplicatedCount} already commented (skipped)\n`));
     }
 
     const issuesWithoutLines = issues.filter(
@@ -286,16 +292,16 @@ async function postReviewComments(
         (i.line === undefined || i.line === null)
     ).length;
     if (issuesWithoutLines > 0) {
-      console.log(
-        chalk.gray(`  - ${issuesWithoutLines} without line numbers (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${issuesWithoutLines} without line numbers (skipped)\n`));
     }
 
-    const filteredByValidator = criticalHighCount - prepared.deduplicatedCount - issuesWithoutLines - prepared.inlineIssues.length;
+    const filteredByValidator =
+      criticalHighCount -
+      prepared.deduplicatedCount -
+      issuesWithoutLines -
+      prepared.inlineIssues.length;
     if (filteredByValidator > 0) {
-      console.log(
-        chalk.gray(`  - ${filteredByValidator} on lines not in diff (skipped)\n`)
-      );
+      console.log(chalk.gray(`  - ${filteredByValidator} on lines not in diff (skipped)\n`));
     }
 
     if (prepared.inlineIssues.length > 0) {
@@ -303,9 +309,7 @@ async function postReviewComments(
         chalk.gray(`  → ${prepared.inlineIssues.length} will be posted as inline comments\n`)
       );
     } else {
-      console.log(
-        chalk.yellow(`  → No inline comments to post (all filtered)\n`)
-      );
+      console.log(chalk.yellow(`  → No inline comments to post (all filtered)\n`));
     }
   } else {
     console.log(
@@ -315,9 +319,7 @@ async function postReviewComments(
 
   // Post inline comments for new CRITICAL/HIGH issues
   if (!createInlinePosition) {
-    console.log(
-      chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`)
-    );
+    console.log(chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`));
   }
 
   if (prepared.inlineIssues.length > 0 && createInlinePosition) {

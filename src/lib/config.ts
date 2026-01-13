@@ -52,6 +52,8 @@ export interface DRSConfig {
     defaultModel: string;
     ignorePatterns: string[];
     includePatterns?: string[];
+    enableDiffAnalyzer?: boolean;
+    diffAnalyzerModel?: string;
   };
 }
 
@@ -79,6 +81,7 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
+    enableDiffAnalyzer: process.env.ENABLE_DIFF_ANALYZER !== 'false', // Enabled by default
   },
 };
 
@@ -260,6 +263,12 @@ export function getAgentNames(config: DRSConfig): string[] {
  * 2. Environment variable REVIEW_AGENT_<NAME>_MODEL (e.g., REVIEW_AGENT_SECURITY_MODEL)
  * 3. defaultModel in config
  * 4. Environment variable REVIEW_DEFAULT_MODEL
+ *
+ * For diff-analyzer (if enabled), precedence is:
+ * 1. REVIEW_AGENT_DIFF_ANALYZER_MODEL environment variable
+ * 2. review.diffAnalyzerModel in config
+ * 3. review.defaultModel in config
+ * 4. REVIEW_DEFAULT_MODEL environment variable
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
@@ -279,6 +288,17 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
     if (model) {
       // Use review/<agent> format which matches how agents are invoked
       overrides[`review/${agent.name}`] = model;
+    }
+  }
+
+  // Add diff-analyzer agent if enabled
+  if (config.review.enableDiffAnalyzer) {
+    // Precedence: env var > config > defaultModel
+    const diffAnalyzerEnv = process.env.REVIEW_AGENT_DIFF_ANALYZER_MODEL;
+    const diffAnalyzerModel = diffAnalyzerEnv || config.review.diffAnalyzerModel || defaultModel;
+
+    if (diffAnalyzerModel) {
+      overrides['review/diff-analyzer'] = diffAnalyzerModel;
     }
   }
 

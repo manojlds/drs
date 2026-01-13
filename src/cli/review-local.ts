@@ -9,11 +9,7 @@ import {
   hasBlockingIssues,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
-import {
-  formatReviewJson,
-  writeReviewJson,
-  printReviewJson,
-} from '../lib/json-output.js';
+import { formatReviewJson, writeReviewJson, printReviewJson } from '../lib/json-output.js';
 
 export interface ReviewLocalOptions {
   staged: boolean;
