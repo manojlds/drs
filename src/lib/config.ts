@@ -262,6 +262,9 @@ export function getAgentNames(config: DRSConfig): string[] {
  * 2. Environment variable REVIEW_AGENT_<NAME>_MODEL (e.g., REVIEW_AGENT_SECURITY_MODEL)
  * 3. defaultModel in config
  * 4. Environment variable REVIEW_DEFAULT_MODEL
+ *
+ * Note: If diff-analyzer is enabled, it will also use the defaultModel unless overridden
+ * via REVIEW_AGENT_DIFF_ANALYZER_MODEL environment variable.
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
@@ -282,6 +285,13 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
       // Use review/<agent> format which matches how agents are invoked
       overrides[`review/${agent.name}`] = model;
     }
+  }
+
+  // Add diff-analyzer agent with same default model if enabled
+  if (config.review.enableDiffAnalyzer && defaultModel) {
+    // Check for diff-analyzer specific override
+    const diffAnalyzerEnv = process.env.REVIEW_AGENT_DIFF_ANALYZER_MODEL;
+    overrides['review/diff-analyzer'] = diffAnalyzerEnv || defaultModel;
   }
 
   return overrides;
