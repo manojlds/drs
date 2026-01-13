@@ -53,6 +53,7 @@ export interface DRSConfig {
     ignorePatterns: string[];
     includePatterns?: string[];
     enableDiffAnalyzer?: boolean;
+    diffAnalyzerModel?: string;
   };
 }
 
@@ -263,8 +264,11 @@ export function getAgentNames(config: DRSConfig): string[] {
  * 3. defaultModel in config
  * 4. Environment variable REVIEW_DEFAULT_MODEL
  *
- * Note: If diff-analyzer is enabled, it will also use the defaultModel unless overridden
- * via REVIEW_AGENT_DIFF_ANALYZER_MODEL environment variable.
+ * For diff-analyzer (if enabled), precedence is:
+ * 1. REVIEW_AGENT_DIFF_ANALYZER_MODEL environment variable
+ * 2. review.diffAnalyzerModel in config
+ * 3. review.defaultModel in config
+ * 4. REVIEW_DEFAULT_MODEL environment variable
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
@@ -287,11 +291,16 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
     }
   }
 
-  // Add diff-analyzer agent with same default model if enabled
-  if (config.review.enableDiffAnalyzer && defaultModel) {
-    // Check for diff-analyzer specific override
+  // Add diff-analyzer agent if enabled
+  if (config.review.enableDiffAnalyzer) {
+    // Precedence: env var > config > defaultModel
     const diffAnalyzerEnv = process.env.REVIEW_AGENT_DIFF_ANALYZER_MODEL;
-    overrides['review/diff-analyzer'] = diffAnalyzerEnv || defaultModel;
+    const diffAnalyzerModel =
+      diffAnalyzerEnv || config.review.diffAnalyzerModel || defaultModel;
+
+    if (diffAnalyzerModel) {
+      overrides['review/diff-analyzer'] = diffAnalyzerModel;
+    }
   }
 
   return overrides;
