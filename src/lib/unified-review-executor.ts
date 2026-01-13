@@ -12,12 +12,8 @@ import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
-import {
-  formatSummaryComment,
-  formatIssueComment,
-  calculateSummary,
-  type ReviewIssue,
-} from './comment-formatter.js';
+import type { calculateSummary } from './comment-formatter.js';
+import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
