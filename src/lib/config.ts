@@ -277,8 +277,7 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
     const model = agent.model || envModel || defaultModel;
 
     if (model) {
-      // Map both the agent name and the review/<agent> format
-      overrides[agent.name] = model;
+      // Use review/<agent> format which matches how agents are invoked
       overrides[`review/${agent.name}`] = model;
     }
   }

@@ -52,7 +52,7 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       // defaultModel is now required, so all agents get the default
-      expect(overrides.security).toBe('anthropic/claude-sonnet-4-5-20250929');
+      // Only review/<agent> format is used (matching how agents are invoked)
       expect(overrides['review/security']).toBe('anthropic/claude-sonnet-4-5-20250929');
     });
   });
@@ -67,13 +67,9 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       expect(overrides).toEqual({
-        security: 'zhipuai/glm-4.7',
         'review/security': 'zhipuai/glm-4.7',
-        quality: 'zhipuai/glm-4.7',
         'review/quality': 'zhipuai/glm-4.7',
-        style: 'zhipuai/glm-4.7',
         'review/style': 'zhipuai/glm-4.7',
-        performance: 'zhipuai/glm-4.7',
         'review/performance': 'zhipuai/glm-4.7',
       });
     });
@@ -94,13 +90,9 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       expect(overrides).toEqual({
-        security: 'anthropic/claude-opus-4-5-20251101',
         'review/security': 'anthropic/claude-opus-4-5-20251101',
-        quality: 'zhipuai/glm-4.7',
         'review/quality': 'zhipuai/glm-4.7',
-        style: 'anthropic/claude-sonnet-4-5-20250929',
         'review/style': 'anthropic/claude-sonnet-4-5-20250929',
-        performance: 'zhipuai/glm-4.7',
         'review/performance': 'zhipuai/glm-4.7',
       });
     });
@@ -117,9 +109,7 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       expect(overrides).toEqual({
-        security: 'provider/model-from-env',
         'review/security': 'provider/model-from-env',
-        quality: 'provider/model-from-env',
         'review/quality': 'provider/model-from-env',
       });
     });
@@ -134,7 +124,7 @@ describe('Model Override Precedence', () => {
 
       const overrides = getModelOverrides(config);
 
-      expect(overrides.security).toBe('zhipuai/config-model');
+      expect(overrides['review/security']).toBe('zhipuai/config-model');
     });
   });
 
@@ -150,9 +140,7 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       expect(overrides).toEqual({
-        security: 'provider/security-from-env',
         'review/security': 'provider/security-from-env',
-        quality: 'zhipuai/glm-4.7',
         'review/quality': 'zhipuai/glm-4.7',
       });
     });
@@ -168,7 +156,7 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       // Env var takes precedence over defaultModel
-      expect(overrides['custom-security']).toBe('provider/custom-model');
+      expect(overrides['review/custom-security']).toBe('provider/custom-model');
     });
   });
 
@@ -187,13 +175,13 @@ describe('Model Override Precedence', () => {
 
       // Precedence verification:
       // security: per-agent config wins
-      expect(overrides.security).toBe('anthropic/security-config');
+      expect(overrides['review/security']).toBe('anthropic/security-config');
 
       // quality: env agent var wins over config default
-      expect(overrides.quality).toBe('provider/quality-env');
+      expect(overrides['review/quality']).toBe('provider/quality-env');
 
       // style: config default wins over env default
-      expect(overrides.style).toBe('zhipuai/default-config');
+      expect(overrides['review/style']).toBe('zhipuai/default-config');
     });
   });
 
@@ -211,10 +199,10 @@ describe('Model Override Precedence', () => {
 
       const overrides = getModelOverrides(config);
 
-      expect(overrides.security).toBe('zhipuai/glm-4.7');
-      expect(overrides.quality).toBe('anthropic/claude-opus-4-5-20251101');
-      expect(overrides.style).toBe('zhipuai/glm-4.7');
-      expect(overrides.performance).toBe('zhipuai/glm-4.7');
+      expect(overrides['review/security']).toBe('zhipuai/glm-4.7');
+      expect(overrides['review/quality']).toBe('anthropic/claude-opus-4-5-20251101');
+      expect(overrides['review/style']).toBe('zhipuai/glm-4.7');
+      expect(overrides['review/performance']).toBe('zhipuai/glm-4.7');
     });
   });
 
@@ -267,11 +255,11 @@ describe('Model Override Precedence', () => {
       const overrides = getModelOverrides(config);
 
       // defaultModel is now always applied
-      expect(overrides.security).toBe('test/default-model');
-      expect(overrides.quality).toBe('test/default-model');
+      expect(overrides['review/security']).toBe('test/default-model');
+      expect(overrides['review/quality']).toBe('test/default-model');
     });
 
-    it('should create both short and review/ prefixed keys', () => {
+    it('should only create review/ prefixed keys (matching how agents are invoked)', () => {
       const config = createMockConfig({
         defaultModel: 'test/model',
         agents: ['security'],
@@ -279,8 +267,9 @@ describe('Model Override Precedence', () => {
 
       const overrides = getModelOverrides(config);
 
-      expect(overrides.security).toBe('test/model');
+      // Only review/<agent> format is used
       expect(overrides['review/security']).toBe('test/model');
+      expect(Object.keys(overrides)).toEqual(['review/security']);
     });
   });
 });
