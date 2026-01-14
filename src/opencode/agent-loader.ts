@@ -22,7 +22,7 @@ const builtInAgentPath = join(packageRoot, '.opencode', 'agent');
  * Load review agents from a project directory
  *
  * Priority order:
- * 1. Project .drs/agents/**/agent.md (DRS-specific overrides/custom)
+ * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
  * 2. Built-in agents shipped with DRS (.opencode/agent)
  */
 export function loadReviewAgents(projectPath: string): AgentDefinition[] {
@@ -125,7 +125,7 @@ function parseAgentFile(
 }
 
 /**
- * Discover override agents from .drs/agents/**/agent.md
+ * Discover override agents from .drs/agents/<name>/agent.md
  */
 function discoverOverrideAgents(basePath: string, currentPath: string): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
