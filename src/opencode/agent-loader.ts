@@ -104,10 +104,7 @@ function parseAgentFile(
 
     // Generate agent name from relative path
     const agentName =
-      nameOverride ??
-      relative(basePath, filePath)
-        .replace(/\.md$/, '')
-        .replace(/\\/g, '/');
+      nameOverride ?? relative(basePath, filePath).replace(/\.md$/, '').replace(/\\/g, '/');
 
     return {
       name: agentName,
