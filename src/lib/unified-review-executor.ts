@@ -25,6 +25,7 @@ import {
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
 import {
   buildBaseInstructions,
+  buildDiffAnalyzerContext,
   runReviewAgents,
   analyzeDiffContext,
   displayReviewSummary,
@@ -125,10 +126,16 @@ export async function executeUnifiedReview(
   try {
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
+    const fallbackDiffCommand = 'git diff HEAD~1 -- <file>';
     const baseInstructions = buildBaseInstructions(
       reviewLabel,
       filteredFilesWithDiffs,
-      'git diff HEAD~1 -- <file>' // Fallback if no diff content
+      fallbackDiffCommand // Fallback if no diff content
+    );
+    const diffAnalyzerContext = buildDiffAnalyzerContext(
+      reviewLabel,
+      filteredFilesWithDiffs,
+      fallbackDiffCommand
     );
 
     // Run diff analyzer if enabled (we have actual diff content from platform)
@@ -137,11 +144,12 @@ export async function executeUnifiedReview(
       diffAnalysis = await analyzeDiffContext(
         opencode,
         config,
-        baseInstructions,
+        diffAnalyzerContext,
         reviewLabel,
         filteredFiles,
         options.workingDir || process.cwd(),
-        { prNumber }
+        { prNumber },
+        options.debug || false
       );
     }
 
@@ -154,7 +162,8 @@ export async function executeUnifiedReview(
       filteredFiles,
       { prNumber },
       diffAnalysis,
-      options.workingDir || process.cwd()
+      options.workingDir || process.cwd(),
+      options.debug || false
     );
 
     // Display summary

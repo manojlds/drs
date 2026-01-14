@@ -175,6 +175,45 @@ Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
+ * Build diff-focused context for the diff analyzer (no review-agent instructions)
+ */
+export function buildDiffAnalyzerContext(
+  label: string,
+  files: FileWithDiff[],
+  diffCommand?: string
+): string {
+  const filesWithDiffs = files.filter((f) => f.patch);
+  const hasDiffs = filesWithDiffs.length > 0;
+  const fileList = files.map((f) => `- ${f.filename}`).join('\n');
+
+  if (hasDiffs) {
+    const diffContent = filesWithDiffs
+      .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
+      .join('\n\n');
+
+    return `Analyze the following changed files from ${label}:
+
+${fileList}
+
+## Diff Content
+
+The following shows exactly what changed:
+
+${diffContent}
+
+Use this diff to understand the modifications. Read the full files for surrounding context as needed.`;
+  }
+
+  const fallbackCommand = diffCommand || 'git diff HEAD~1 -- <file>';
+
+  return `Analyze the following changed files from ${label}:
+
+${fileList}
+
+Diff content was not provided. Run \`${fallbackCommand}\` to see the exact changes, then analyze the modifications. Focus on the lines that differ.`;
+}
+
+/**
  * Get information about configured review agents
  */
 function getConfiguredAgentInfo(
@@ -224,11 +263,12 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
 export async function analyzeDiffContext(
   opencode: OpencodeClient,
   config: DRSConfig,
-  baseInstructions: string,
+  diffContext: string,
   reviewLabel: string,
   filteredFiles: string[],
   workingDir: string,
-  additionalContext: Record<string, any> = {}
+  additionalContext: Record<string, any> = {},
+  debug = false
 ): Promise<DiffAnalysis | null> {
   console.log(chalk.gray('Analyzing diff context...\n'));
 
@@ -237,7 +277,7 @@ export async function analyzeDiffContext(
     const agentInfo = getConfiguredAgentInfo(config, workingDir);
     const agentList = agentInfo.map((a) => `- **${a.name}**: ${a.description}`).join('\n');
 
-    const analyzerPrompt = `${baseInstructions}
+    const analyzerPrompt = `${diffContext}
 
 **Your Task**: Analyze the diff above and provide enriched context for the review agents.
 
@@ -256,6 +296,16 @@ Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - Potential concerns for each type of review
 
 Then output your analysis in the required JSON format. In the "recommendedAgents" field, only include agent names from the list above that are relevant to the changes.`;
+
+    if (debug) {
+      console.log(chalk.gray('┌── DEBUG: Message sent to diff analyzer'));
+      console.log(chalk.gray(`│ Agent: review/diff-analyzer`));
+      console.log(chalk.gray('│ Prompt:'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(analyzerPrompt);
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(chalk.gray('└── End message for review/diff-analyzer\n'));
+    }
 
     const session = await opencode.createSession({
       agent: 'review/diff-analyzer',
@@ -294,6 +344,13 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
     // Parse the JSON
     const analysis: DiffAnalysis = JSON.parse(analysisJson);
 
+    if (!analysis?.changeSummary) {
+      console.log(
+        chalk.yellow('⚠️  Diff analyzer returned no changeSummary; skipping diff-based context')
+      );
+      return null;
+    }
+
     console.log(chalk.green('✓ Diff analysis complete'));
     console.log(chalk.gray(`  Change type: ${analysis.changeSummary.type}`));
     console.log(chalk.gray(`  Complexity: ${analysis.changeSummary.complexity}`));
@@ -323,7 +380,8 @@ export async function runReviewAgents(
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
   diffAnalysis?: DiffAnalysis | null,
-  workingDir: string = process.cwd()
+  workingDir: string = process.cwd(),
+  debug = false
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
@@ -397,6 +455,16 @@ export async function runReviewAgents(
 
           reviewPrompt += `\n`;
         });
+      }
+
+      if (debug) {
+        console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
+        console.log(chalk.gray(`│ Agent: ${agentName}`));
+        console.log(chalk.gray('│ Prompt:'));
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(reviewPrompt);
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(chalk.gray(`└── End message for ${agentName}\n`));
       }
 
       const session = await opencode.createSession({

@@ -16,6 +16,7 @@ import {
   analyzeDiffContext,
   displayReviewSummary as displaySummary,
   hasBlockingIssues as checkBlockingIssues,
+  buildDiffAnalyzerContext,
   type FileWithDiff,
 } from './review-core.js';
 
@@ -155,6 +156,11 @@ export async function executeReview(
     }
 
     const baseInstructions = buildBaseInstructions(source.name, filesForInstructions, diffCommand);
+    const diffAnalyzerContext = buildDiffAnalyzerContext(
+      source.name,
+      filesForInstructions,
+      diffCommand
+    );
 
     // Run diff analyzer if enabled and diffs are available
     let diffAnalysis = null;
@@ -162,11 +168,12 @@ export async function executeReview(
       diffAnalysis = await analyzeDiffContext(
         opencode,
         config,
-        baseInstructions,
+        diffAnalyzerContext,
         source.name,
         filteredFiles,
         source.workingDir || process.cwd(),
-        source.context
+        source.context,
+        source.debug || false
       );
     }
 
@@ -179,7 +186,8 @@ export async function executeReview(
       filteredFiles,
       source.context,
       diffAnalysis,
-      source.workingDir || process.cwd()
+      source.workingDir || process.cwd(),
+      source.debug || false
     );
 
     return {
