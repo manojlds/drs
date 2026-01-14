@@ -183,9 +183,7 @@ export async function executeReview(
           diffAnalysis = normalized.analysis;
           if (normalized.warnings.length > 0) {
             console.log(
-              chalk.yellow(
-                `⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`
-              )
+              chalk.yellow(`⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`)
             );
           }
           console.log(chalk.green(`✓ Loaded diff context from ${source.contextReadPath}`));

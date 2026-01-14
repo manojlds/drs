@@ -143,6 +143,17 @@ npm test                      # Run tests
 npm run dev                   # Development mode with watch
 ```
 
+### After Every Change (MANDATORY)
+Run the full quality checks after each change, not just before pushing:
+```bash
+npm run format
+npm run lint:fix
+npm run build
+npm test
+npm run format:check
+npm run lint
+```
+
 ### Testing
 - Test framework: Vitest
 - Test files: `*.test.ts` alongside source files

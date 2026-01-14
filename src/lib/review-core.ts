@@ -280,9 +280,11 @@ const diffAnalysisSchema = z.object({
   overallConcerns: z.array(z.string()),
 });
 
-export function normalizeDiffAnalysis(
-  raw: any
-): { analysis: DiffAnalysis | null; errors: string[]; warnings: string[] } {
+export function normalizeDiffAnalysis(raw: any): {
+  analysis: DiffAnalysis | null;
+  errors: string[];
+  warnings: string[];
+} {
   const errors: string[] = [];
   const warnings: string[] = [];
 
