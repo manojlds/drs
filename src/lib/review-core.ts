@@ -204,6 +204,19 @@ function getConfiguredAgentInfo(
     .filter((a) => a !== null);
 }
 
+function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const lines = trimmed.split('\n');
+  const limitedLines = lines.slice(0, maxLines).join('\n');
+  const limitedChars =
+    limitedLines.length > maxChars ? `${limitedLines.slice(0, maxChars)}…` : limitedLines;
+  return limitedChars;
+}
+
 /**
  * Run the diff analyzer agent to get enriched context
  *
@@ -266,6 +279,10 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
     // Collect output from diff analyzer
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        const snippet = renderAgentMessage(message.content);
+        if (snippet) {
+          console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+        }
         // Look for JSON in the message content
         const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
         if (jsonMatch) {
@@ -313,9 +330,19 @@ export async function runReviewAgents(
   reviewLabel: string,
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
-  diffAnalysis?: DiffAnalysis | null
+  diffAnalysis?: DiffAnalysis | null,
+  workingDir: string = process.cwd()
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
+
+  const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
+  if (configuredAgentInfo.length > 0) {
+    console.log(chalk.bold('🧰 Available Review Agents'));
+    configuredAgentInfo.forEach((agent) => {
+      console.log(`  • ${chalk.cyan(agent.name)} - ${agent.description}`);
+    });
+    console.log('');
+  }
 
   // Use recommended agents from analysis if available, otherwise use configured agents
   let agentNames = getAgentNames(config);
@@ -329,6 +356,8 @@ export async function runReviewAgents(
       console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
     }
   }
+
+  console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
@@ -393,6 +422,10 @@ export async function runReviewAgents(
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
+          const snippet = renderAgentMessage(message.content);
+          if (snippet) {
+            console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+          }
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
             agentIssues.push(...parsedIssues);
