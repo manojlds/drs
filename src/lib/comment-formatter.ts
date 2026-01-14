@@ -13,6 +13,8 @@ export interface ReviewIssue {
   agent: string;
 }
 
+import type { ChangeSummary } from './change-summary.js';
+
 export interface ReviewSummary {
   filesReviewed: number;
   issuesFound: number;
@@ -73,7 +75,8 @@ export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): st
 export function formatSummaryComment(
   summary: ReviewSummary,
   issues: ReviewIssue[],
-  commentId?: string
+  commentId?: string,
+  changeSummary?: ChangeSummary
 ): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
@@ -82,6 +85,18 @@ export function formatSummaryComment(
   }
 
   comment += `# 📋 Code Review Analysis\n\n`;
+
+  if (changeSummary) {
+    comment += `## 🧭 Change Summary\n\n`;
+    comment += `${changeSummary.description}\n\n`;
+    comment += `- **Type**: ${changeSummary.type}\n`;
+    comment += `- **Complexity**: ${changeSummary.complexity}\n`;
+    comment += `- **Risk Level**: ${changeSummary.riskLevel}\n`;
+    if (changeSummary.subsystems.length > 0) {
+      comment += `- **Affected Subsystems**: ${changeSummary.subsystems.join(', ')}\n`;
+    }
+    comment += `\n`;
+  }
 
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
