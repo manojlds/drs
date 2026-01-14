@@ -1,5 +1,5 @@
 export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type IssueCategory = 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE';
+export type IssueCategory = 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE' | 'DOCUMENTATION';
 
 export interface ReviewIssue {
   category: IssueCategory;
@@ -34,6 +34,7 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
   QUALITY: '📊',
   STYLE: '✨',
   PERFORMANCE: '⚡',
+  DOCUMENTATION: '📝',
 };
 
 /**
@@ -113,7 +114,8 @@ export function formatSummaryComment(
     comment += `- ${CATEGORY_EMOJI.SECURITY} **Security**: ${summary.byCategory.SECURITY}\n`;
     comment += `- ${CATEGORY_EMOJI.QUALITY} **Quality**: ${summary.byCategory.QUALITY}\n`;
     comment += `- ${CATEGORY_EMOJI.STYLE} **Style**: ${summary.byCategory.STYLE}\n`;
-    comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n\n`;
+    comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n`;
+    comment += `- ${CATEGORY_EMOJI.DOCUMENTATION} **Documentation**: ${summary.byCategory.DOCUMENTATION}\n\n`;
 
     // Group issues by severity
     const criticalIssues = issues.filter((i) => i.severity === 'CRITICAL');
@@ -204,6 +206,7 @@ export function calculateSummary(filesReviewed: number, issues: ReviewIssue[]): 
       QUALITY: 0,
       STYLE: 0,
       PERFORMANCE: 0,
+      DOCUMENTATION: 0,
     },
   };
 

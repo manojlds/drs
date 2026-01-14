@@ -28,6 +28,12 @@ describe('Config', () => {
   it('should use default agents when no override provided', () => {
     const config = loadConfig(process.cwd());
 
-    expect(config.review.agents).toEqual(['security', 'quality', 'style', 'performance']);
+    expect(config.review.agents).toEqual([
+      'security',
+      'quality',
+      'style',
+      'performance',
+      'documentation',
+    ]);
   });
 });

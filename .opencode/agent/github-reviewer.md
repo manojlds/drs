@@ -28,6 +28,7 @@ Use the Task tool to invoke these specialized review agents:
 - **review/quality** - Code patterns, complexity, maintainability
 - **review/style** - Formatting, naming, documentation
 - **review/performance** - Optimization opportunities, algorithmic improvements
+- **review/documentation** - Documentation accuracy, README and API docs alignment
 
 ## Review Workflow
 
@@ -47,7 +48,7 @@ The specialized agents output findings in this JSON format:
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Issue title",
       "file": "path/to/file.ts",

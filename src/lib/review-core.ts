@@ -124,14 +124,14 @@ ${diffContent}
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Brief title",
       "file": "path/to/file.ts",
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance"
+      "agent": "security" | "quality" | "style" | "performance" | "documentation"
     }
   ]
 }
@@ -158,14 +158,14 @@ ${fileList}
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Brief title",
       "file": "path/to/file.ts",
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance"
+      "agent": "security" | "quality" | "style" | "performance" | "documentation"
     }
   ]
 }
