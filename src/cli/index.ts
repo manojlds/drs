@@ -32,6 +32,9 @@ program
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
+  .option('--context-only', 'Run diff analyzer only and skip review agents')
+  .option('--context-output <path>', 'Write diff context JSON to file')
+  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -47,6 +50,9 @@ program
         staged: options.staged || false,
         outputPath: options.output,
         jsonOutput: options.json || false,
+        contextOnly: options.contextOnly || false,
+        contextOutputPath: options.contextOutput,
+        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);
@@ -69,6 +75,9 @@ program
   )
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
+  .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
+  .option('--context-output <path>', 'Write diff context JSON to file')
+  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -90,6 +99,9 @@ program
             : options.codeQualityReport,
         outputPath: options.output,
         jsonOutput: options.json || false,
+        contextOnly: options.contextOnly || false,
+        contextOutputPath: options.contextOutput,
+        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);
@@ -109,6 +121,9 @@ program
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
+  .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
+  .option('--context-output <path>', 'Write diff context JSON to file')
+  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
@@ -127,6 +142,9 @@ program
         postComments: options.postComments || false,
         outputPath: options.output,
         jsonOutput: options.json || false,
+        contextOnly: options.contextOnly || false,
+        contextOutputPath: options.contextOutput,
+        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);

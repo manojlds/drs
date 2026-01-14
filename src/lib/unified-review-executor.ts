@@ -50,6 +50,12 @@ export interface UnifiedReviewOptions {
   outputPath?: string;
   /** Output results as JSON to console */
   jsonOutput?: boolean;
+  /** Run only diff analyzer and skip review agents/comments */
+  contextOnly?: boolean;
+  /** Write diff analysis JSON to this path (if produced or loaded) */
+  contextOutputPath?: string;
+  /** Read diff analysis JSON from this path instead of running analyzer */
+  contextReadPath?: string;
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
@@ -138,9 +144,22 @@ export async function executeUnifiedReview(
       fallbackDiffCommand
     );
 
-    // Run diff analyzer if enabled (we have actual diff content from platform)
-    let diffAnalysis = null;
-    if (config.review.enableDiffAnalyzer) {
+    // Obtain diff analysis: from file, or by running analyzer
+    let diffAnalysis: DiffAnalysis | null = null;
+
+    if (options.contextReadPath) {
+      try {
+        const raw = await readFile(options.contextReadPath, 'utf-8');
+        diffAnalysis = JSON.parse(raw) as DiffAnalysis;
+        console.log(chalk.green(`✓ Loaded diff context from ${options.contextReadPath}`));
+      } catch (err) {
+        console.log(
+          chalk.yellow(
+            `⚠️  Failed to read context from ${options.contextReadPath}: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
+    } else if (config.review.enableDiffAnalyzer) {
       diffAnalysis = await analyzeDiffContext(
         opencode,
         config,
@@ -151,6 +170,25 @@ export async function executeUnifiedReview(
         { prNumber },
         options.debug || false
       );
+    }
+
+    // Optionally write diff context
+    if (options.contextOutputPath && diffAnalysis) {
+      try {
+        await writeFile(options.contextOutputPath, JSON.stringify(diffAnalysis, null, 2), 'utf-8');
+        console.log(chalk.green(`✓ Diff context written to ${options.contextOutputPath}\n`));
+      } catch (err) {
+        console.log(
+          chalk.yellow(
+            `⚠️  Failed to write diff context to ${options.contextOutputPath}: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
+    }
+
+    if (options.contextOnly) {
+      console.log(chalk.gray('Context-only mode: skipping review agents and comments.\n'));
+      return;
     }
 
     // Run agents using shared core logic
