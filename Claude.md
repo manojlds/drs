@@ -41,7 +41,8 @@ drs/
 │   │   │   ├── security.md      # Security vulnerability detection
 │   │   │   ├── quality.md       # Code quality analysis
 │   │   │   ├── style.md         # Style and conventions
-│   │   │   └── performance.md   # Performance optimization
+│   │   │   ├── performance.md   # Performance optimization
+│   │   │   └── documentation.md # Documentation accuracy review
 │   │   ├── gitlab-reviewer.md   # GitLab MR orchestrator
 │   │   ├── github-reviewer.md   # GitHub PR orchestrator
 │   │   └── local-reviewer.md    # Local diff reviewer
@@ -89,10 +90,11 @@ drs/
 - `local-reviewer.md` - Local diff analysis coordinator
 
 **Specialized Review Agents:**
-- `review/security.md` - Detects security vulnerabilities (OWASP Top 10, injection attacks, auth issues)
-- `review/quality.md` - Analyzes code quality (design patterns, complexity, error handling)
-- `review/style.md` - Checks code style (naming, formatting, documentation, TypeScript types)
-- `review/performance.md` - Identifies performance issues (algorithmic complexity, caching, concurrency)
+  - `review/security.md` - Detects security vulnerabilities (OWASP Top 10, injection attacks, auth issues)
+  - `review/quality.md` - Analyzes code quality (design patterns, complexity, error handling)
+  - `review/style.md` - Checks code style (naming, formatting, documentation, TypeScript types)
+  - `review/performance.md` - Identifies performance issues (algorithmic complexity, caching, concurrency)
+  - `review/documentation.md` - Reviews documentation accuracy (README, API docs, comments)
 
 ### 2. CLI Commands (src/cli/)
 

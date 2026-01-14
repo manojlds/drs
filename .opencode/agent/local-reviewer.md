@@ -26,6 +26,7 @@ Use the Task tool to invoke these agents based on the changed files:
 - **review/quality** - For complex logic, business rules, core functionality
 - **review/style** - For all changed files
 - **review/performance** - For database queries, loops, API calls
+- **review/documentation** - For README, API docs, and code comment updates
 
 ## Workflow
 
@@ -44,7 +45,7 @@ The specialized agents output findings in this JSON format:
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Issue title",
       "file": "path/to/file.ts",

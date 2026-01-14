@@ -153,7 +153,7 @@ export function getAgent(projectPath: string, agentName: string): AgentDefinitio
 }
 
 /**
- * Get all review agents (security, quality, style, performance)
+ * Get all review agents (security, quality, style, performance, documentation)
  */
 export function getReviewAgents(projectPath: string): AgentDefinition[] {
   const agents = loadReviewAgents(projectPath);
