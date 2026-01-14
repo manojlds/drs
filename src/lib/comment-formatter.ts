@@ -1,5 +1,5 @@
 export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type IssueCategory = 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE';
+export type IssueCategory = 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE' | 'DOCUMENTATION';
 
 export interface ReviewIssue {
   category: IssueCategory;
@@ -12,6 +12,8 @@ export interface ReviewIssue {
   references?: string[];
   agent: string;
 }
+
+import type { ChangeSummary } from './change-summary.js';
 
 export interface ReviewSummary {
   filesReviewed: number;
@@ -32,6 +34,7 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
   QUALITY: '📊',
   STYLE: '✨',
   PERFORMANCE: '⚡',
+  DOCUMENTATION: '📝',
 };
 
 /**
@@ -73,7 +76,8 @@ export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): st
 export function formatSummaryComment(
   summary: ReviewSummary,
   issues: ReviewIssue[],
-  commentId?: string
+  commentId?: string,
+  changeSummary?: ChangeSummary
 ): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
@@ -82,6 +86,18 @@ export function formatSummaryComment(
   }
 
   comment += `# 📋 Code Review Analysis\n\n`;
+
+  if (changeSummary) {
+    comment += `## 🧭 Change Summary\n\n`;
+    comment += `${changeSummary.description}\n\n`;
+    comment += `- **Type**: ${changeSummary.type}\n`;
+    comment += `- **Complexity**: ${changeSummary.complexity}\n`;
+    comment += `- **Risk Level**: ${changeSummary.riskLevel}\n`;
+    if (changeSummary.subsystems.length > 0) {
+      comment += `- **Affected Subsystems**: ${changeSummary.subsystems.join(', ')}\n`;
+    }
+    comment += `\n`;
+  }
 
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
@@ -98,7 +114,8 @@ export function formatSummaryComment(
     comment += `- ${CATEGORY_EMOJI.SECURITY} **Security**: ${summary.byCategory.SECURITY}\n`;
     comment += `- ${CATEGORY_EMOJI.QUALITY} **Quality**: ${summary.byCategory.QUALITY}\n`;
     comment += `- ${CATEGORY_EMOJI.STYLE} **Style**: ${summary.byCategory.STYLE}\n`;
-    comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n\n`;
+    comment += `- ${CATEGORY_EMOJI.PERFORMANCE} **Performance**: ${summary.byCategory.PERFORMANCE}\n`;
+    comment += `- ${CATEGORY_EMOJI.DOCUMENTATION} **Documentation**: ${summary.byCategory.DOCUMENTATION}\n\n`;
 
     // Group issues by severity
     const criticalIssues = issues.filter((i) => i.severity === 'CRITICAL');
@@ -189,6 +206,7 @@ export function calculateSummary(filesReviewed: number, issues: ReviewIssue[]): 
       QUALITY: 0,
       STYLE: 0,
       PERFORMANCE: 0,
+      DOCUMENTATION: 0,
     },
   };
 

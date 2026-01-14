@@ -11,6 +11,7 @@ import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
+import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 
@@ -47,17 +48,6 @@ export interface FileContext {
 }
 
 /**
- * Summary of the overall change
- */
-export interface ChangeSummary {
-  type: 'feature' | 'bugfix' | 'refactor' | 'docs' | 'test' | 'config' | 'other';
-  description: string;
-  subsystems: string[];
-  complexity: 'simple' | 'medium' | 'high';
-  riskLevel: 'low' | 'medium' | 'high';
-}
-
-/**
  * Diff analyzer output
  */
 export interface DiffAnalysis {
@@ -75,6 +65,8 @@ export interface AgentReviewResult {
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
+  /** Diff-based change summary when available */
+  changeSummary?: ChangeSummary;
   /** Number of files actually reviewed */
   filesReviewed: number;
   /** Agent execution results */
@@ -132,14 +124,14 @@ ${diffContent}
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Brief title",
       "file": "path/to/file.ts",
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance"
+      "agent": "security" | "quality" | "style" | "performance" | "documentation"
     }
   ]
 }
@@ -166,14 +158,14 @@ ${fileList}
 {
   "issues": [
     {
-      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+      "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "title": "Brief title",
       "file": "path/to/file.ts",
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance"
+      "agent": "security" | "quality" | "style" | "performance" | "documentation"
     }
   ]
 }
@@ -202,6 +194,19 @@ function getConfiguredAgentInfo(
       };
     })
     .filter((a) => a !== null);
+}
+
+function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const lines = trimmed.split('\n');
+  const limitedLines = lines.slice(0, maxLines).join('\n');
+  const limitedChars =
+    limitedLines.length > maxChars ? `${limitedLines.slice(0, maxChars)}…` : limitedLines;
+  return limitedChars;
 }
 
 /**
@@ -276,6 +281,10 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
     // Collect output from diff analyzer
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        const snippet = renderAgentMessage(message.content);
+        if (snippet) {
+          console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+        }
         // Look for JSON in the message content
         const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
         if (jsonMatch) {
@@ -333,9 +342,19 @@ export async function runReviewAgents(
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
   diffAnalysis?: DiffAnalysis | null,
+  workingDir: string = process.cwd(),
   debug?: boolean
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
+
+  const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
+  if (configuredAgentInfo.length > 0) {
+    console.log(chalk.bold('🧰 Available Review Agents'));
+    configuredAgentInfo.forEach((agent) => {
+      console.log(`  • ${chalk.cyan(agent.name)} - ${agent.description}`);
+    });
+    console.log('');
+  }
 
   // Use recommended agents from analysis if available, otherwise use configured agents
   let agentNames = getAgentNames(config);
@@ -349,6 +368,8 @@ export async function runReviewAgents(
       console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
     }
   }
+
+  console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
@@ -423,6 +444,10 @@ export async function runReviewAgents(
         }
 
         if (message.role === 'assistant') {
+          const snippet = renderAgentMessage(message.content);
+          if (snippet) {
+            console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+          }
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
             agentIssues.push(...parsedIssues);
@@ -477,6 +502,7 @@ export async function runReviewAgents(
   return {
     issues,
     summary,
+    changeSummary: diffAnalysis?.changeSummary,
     filesReviewed: filteredFiles.length,
     agentResults,
   };
@@ -489,10 +515,23 @@ export function displayReviewSummary(result: {
   issues: ReviewIssue[];
   summary: ReturnType<typeof calculateSummary>;
   filesReviewed: number;
+  changeSummary?: ChangeSummary;
 }): void {
   console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log(chalk.bold('📊 Review Summary'));
   console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+
+  if (result.changeSummary) {
+    console.log(chalk.bold('🧭 Change Summary'));
+    console.log(`  ${result.changeSummary.description}`);
+    console.log(`  Type: ${result.changeSummary.type}`);
+    console.log(`  Complexity: ${result.changeSummary.complexity}`);
+    console.log(`  Risk level: ${result.changeSummary.riskLevel}`);
+    if (result.changeSummary.subsystems.length > 0) {
+      console.log(`  Subsystems: ${result.changeSummary.subsystems.join(', ')}`);
+    }
+    console.log('');
+  }
 
   console.log(`  Files reviewed: ${chalk.cyan(result.summary.filesReviewed)}`);
   console.log(`  Issues found: ${chalk.yellow(result.summary.issuesFound)}`);

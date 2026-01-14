@@ -8,7 +8,7 @@ import type { ReviewIssue } from './comment-formatter.js';
  * {
  *   "issues": [
  *     {
- *       "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE",
+ *       "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
  *       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
  *       "title": "Issue title",
  *       "file": "path/to/file.ts",
@@ -133,7 +133,7 @@ function isValidIssue(obj: any): obj is ReviewIssue {
     obj &&
     typeof obj === 'object' &&
     typeof obj.category === 'string' &&
-    ['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE'].includes(obj.category) &&
+    ['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE', 'DOCUMENTATION'].includes(obj.category) &&
     typeof obj.severity === 'string' &&
     ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(obj.severity) &&
     typeof obj.title === 'string' &&

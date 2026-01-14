@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { dirname, join, relative } from 'path';
+import { fileURLToPath } from 'url';
 import * as yaml from 'yaml';
 
 export interface AgentDefinition {
@@ -12,49 +13,52 @@ export interface AgentDefinition {
   hidden?: boolean;
 }
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageRoot = join(__dirname, '..', '..');
+const builtInAgentPath = join(packageRoot, '.opencode', 'agent');
+
 /**
  * Load review agents from a project directory
  *
  * Priority order:
- * 1. Project .drs/agents/ (DRS-specific)
- * 2. Project .opencode/agent/ (OpenCode standard)
- * 3. Global DRS agents (fallback)
+ * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
+ * 2. Built-in agents shipped with DRS (.opencode/agent)
  */
 export function loadReviewAgents(projectPath: string): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
-  // Define search paths in priority order
-  const agentPaths = [join(projectPath, '.drs/agents'), join(projectPath, '.opencode/agent')];
-
   const discovered = new Set<string>();
 
-  for (const agentPath of agentPaths) {
-    if (!existsSync(agentPath)) {
-      continue;
+  const overridePath = join(projectPath, '.drs', 'agents');
+  const overrideAgents = discoverOverrideAgents(overridePath, overridePath);
+  for (const agent of overrideAgents) {
+    if (!discovered.has(agent.name)) {
+      agents.push(agent);
+      discovered.add(agent.name);
     }
+  }
 
-    const foundAgents = discoverAgents(agentPath, agentPath);
-
-    for (const agent of foundAgents) {
-      // Only add if we haven't seen this agent name before (priority order)
-      if (!discovered.has(agent.name)) {
-        agents.push(agent);
-        discovered.add(agent.name);
-      }
+  const builtInAgents = discoverAgents(builtInAgentPath, builtInAgentPath);
+  for (const agent of builtInAgents) {
+    if (!discovered.has(agent.name)) {
+      agents.push(agent);
+      discovered.add(agent.name);
     }
   }
 
   return agents;
 }
 
-/**
- * Recursively discover agent markdown files in a directory
- */
-function discoverAgents(basePath: string, currentPath: string): AgentDefinition[] {
-  const agents: AgentDefinition[] = [];
+function traverseDirectory(
+  basePath: string,
+  currentPath: string,
+  fileFilter: (entry: string, fullPath: string) => boolean
+): string[] {
+  const files: string[] = [];
 
   if (!existsSync(currentPath)) {
-    return agents;
+    return files;
   }
 
   const entries = readdirSync(currentPath);
@@ -64,24 +68,34 @@ function discoverAgents(basePath: string, currentPath: string): AgentDefinition[
     const stat = statSync(fullPath);
 
     if (stat.isDirectory()) {
-      // Recursively search subdirectories
-      agents.push(...discoverAgents(basePath, fullPath));
-    } else if (stat.isFile() && entry.endsWith('.md')) {
-      // Parse markdown file as agent definition
-      const agent = parseAgentFile(fullPath, basePath);
-      if (agent) {
-        agents.push(agent);
-      }
+      files.push(...traverseDirectory(basePath, fullPath, fileFilter));
+    } else if (stat.isFile() && fileFilter(entry, fullPath)) {
+      files.push(fullPath);
     }
   }
 
-  return agents;
+  return files;
+}
+
+/**
+ * Recursively discover agent markdown files in a directory
+ */
+function discoverAgents(basePath: string, currentPath: string): AgentDefinition[] {
+  const files = traverseDirectory(basePath, currentPath, (entry) => entry.endsWith('.md'));
+
+  return files
+    .map((filePath) => parseAgentFile(filePath, basePath))
+    .filter((agent): agent is AgentDefinition => Boolean(agent));
 }
 
 /**
  * Parse an agent markdown file and extract frontmatter
  */
-function parseAgentFile(filePath: string, basePath: string): AgentDefinition | null {
+function parseAgentFile(
+  filePath: string,
+  basePath: string,
+  nameOverride?: string
+): AgentDefinition | null {
   try {
     const content = readFileSync(filePath, 'utf-8');
 
@@ -96,8 +110,8 @@ function parseAgentFile(filePath: string, basePath: string): AgentDefinition | n
     const frontmatter = yaml.parse(frontmatterMatch[1]);
 
     // Generate agent name from relative path
-    const relativePath = relative(basePath, filePath);
-    const agentName = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
+    const agentName =
+      nameOverride ?? relative(basePath, filePath).replace(/\.md$/, '').replace(/\\/g, '/');
 
     return {
       name: agentName,
@@ -115,6 +129,22 @@ function parseAgentFile(filePath: string, basePath: string): AgentDefinition | n
 }
 
 /**
+ * Discover override agents from .drs/agents/<name>/agent.md
+ */
+function discoverOverrideAgents(basePath: string, currentPath: string): AgentDefinition[] {
+  const files = traverseDirectory(basePath, currentPath, (entry) => entry === 'agent.md');
+
+  return files
+    .map((fullPath) => {
+      const relativePath = relative(basePath, fullPath).replace(/\\/g, '/');
+      const stripped = relativePath.replace(/\/agent\.md$/, '');
+      const agentName = stripped.startsWith('review/') ? stripped : `review/${stripped}`;
+      return parseAgentFile(fullPath, basePath, agentName);
+    })
+    .filter((agent): agent is AgentDefinition => Boolean(agent));
+}
+
+/**
  * Get a specific agent by name
  */
 export function getAgent(projectPath: string, agentName: string): AgentDefinition | null {
@@ -123,7 +153,7 @@ export function getAgent(projectPath: string, agentName: string): AgentDefinitio
 }
 
 /**
- * Get all review agents (security, quality, style, performance)
+ * Get all review agents (security, quality, style, performance, documentation)
  */
 export function getReviewAgents(projectPath: string): AgentDefinition[] {
   const agents = loadReviewAgents(projectPath);

@@ -70,14 +70,13 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN || '',
   },
   review: {
-    agents: ['security', 'quality', 'style', 'performance'],
+    agents: ['security', 'quality', 'style', 'performance', 'documentation'],
     defaultModel: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
       '**/__tests__/**',
       '**/__mocks__/**',
-      '*.md',
       'package-lock.json',
       'yarn.lock',
       'pnpm-lock.yaml',

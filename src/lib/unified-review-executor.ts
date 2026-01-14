@@ -14,6 +14,7 @@ import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
 import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
+import type { ChangeSummary } from './change-summary.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
@@ -154,6 +155,7 @@ export async function executeUnifiedReview(
       filteredFiles,
       { prNumber },
       diffAnalysis,
+      options.workingDir || process.cwd(),
       options.debug
     );
 
@@ -168,6 +170,7 @@ export async function executeUnifiedReview(
         prNumber,
         result.summary,
         result.issues,
+        result.changeSummary,
         pr.platformData,
         options.lineValidator,
         options.createInlinePosition
@@ -236,6 +239,7 @@ async function postReviewComments(
   prNumber: number,
   summary: ReturnType<typeof calculateSummary>,
   issues: ReviewIssue[],
+  changeSummary: ChangeSummary | undefined,
   platformData: any,
   lineValidator?: LineValidator,
   createInlinePosition?: (issue: ReviewIssue, platformData: any) => InlineCommentPosition
@@ -260,7 +264,7 @@ async function postReviewComments(
 
   // Post or update summary comment
   console.log(chalk.gray('Posting review summary...\n'));
-  const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID);
+  const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID, changeSummary);
 
   if (existingSummary) {
     await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);
