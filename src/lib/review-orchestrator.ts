@@ -19,6 +19,7 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   buildDiffAnalyzerContext,
   type FileWithDiff,
+  type DiffAnalysis,
 } from './review-core.js';
 
 /**

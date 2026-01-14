@@ -321,9 +321,15 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
     // Collect output from diff analyzer
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
-        const snippet = renderAgentMessage(message.content);
-        if (snippet) {
-          console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+        if (debug) {
+          console.log(chalk.gray('┌── DEBUG: Full response from review/diff-analyzer'));
+          console.log(message.content);
+          console.log(chalk.gray('└── End response for review/diff-analyzer\n'));
+        } else {
+          const snippet = renderAgentMessage(message.content);
+          if (snippet) {
+            console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+          }
         }
         // Look for JSON in the message content
         const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
@@ -483,9 +489,16 @@ export async function runReviewAgents(
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
           const snippet = renderAgentMessage(message.content);
+        if (debug) {
+          console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
+          console.log(message.content);
+          console.log(chalk.gray(`└── End response for ${agentName}\n`));
+        } else {
+          const snippet = renderAgentMessage(message.content);
           if (snippet) {
             console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
           }
+        }
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
             agentIssues.push(...parsedIssues);

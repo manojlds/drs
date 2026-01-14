@@ -9,7 +9,7 @@
  */
 
 import chalk from 'chalk';
-import { writeFile } from 'fs/promises';
+import { writeFile, readFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
@@ -30,6 +30,7 @@ import {
   analyzeDiffContext,
   displayReviewSummary,
   type FileWithDiff,
+  type DiffAnalysis,
 } from './review-core.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
