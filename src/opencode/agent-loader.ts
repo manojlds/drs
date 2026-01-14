@@ -50,14 +50,15 @@ export function loadReviewAgents(projectPath: string): AgentDefinition[] {
   return agents;
 }
 
-/**
- * Recursively discover agent markdown files in a directory
- */
-function discoverAgents(basePath: string, currentPath: string): AgentDefinition[] {
-  const agents: AgentDefinition[] = [];
+function traverseDirectory(
+  basePath: string,
+  currentPath: string,
+  fileFilter: (entry: string, fullPath: string) => boolean
+): string[] {
+  const files: string[] = [];
 
   if (!existsSync(currentPath)) {
-    return agents;
+    return files;
   }
 
   const entries = readdirSync(currentPath);
@@ -67,18 +68,24 @@ function discoverAgents(basePath: string, currentPath: string): AgentDefinition[
     const stat = statSync(fullPath);
 
     if (stat.isDirectory()) {
-      // Recursively search subdirectories
-      agents.push(...discoverAgents(basePath, fullPath));
-    } else if (stat.isFile() && entry.endsWith('.md')) {
-      // Parse markdown file as agent definition
-      const agent = parseAgentFile(fullPath, basePath);
-      if (agent) {
-        agents.push(agent);
-      }
+      files.push(...traverseDirectory(basePath, fullPath, fileFilter));
+    } else if (stat.isFile() && fileFilter(entry, fullPath)) {
+      files.push(fullPath);
     }
   }
 
-  return agents;
+  return files;
+}
+
+/**
+ * Recursively discover agent markdown files in a directory
+ */
+function discoverAgents(basePath: string, currentPath: string): AgentDefinition[] {
+  const files = traverseDirectory(basePath, currentPath, (entry) => entry.endsWith('.md'));
+
+  return files
+    .map((filePath) => parseAgentFile(filePath, basePath))
+    .filter((agent): agent is AgentDefinition => Boolean(agent));
 }
 
 /**
@@ -125,32 +132,16 @@ function parseAgentFile(
  * Discover override agents from .drs/agents/<name>/agent.md
  */
 function discoverOverrideAgents(basePath: string, currentPath: string): AgentDefinition[] {
-  const agents: AgentDefinition[] = [];
+  const files = traverseDirectory(basePath, currentPath, (entry) => entry === 'agent.md');
 
-  if (!existsSync(currentPath)) {
-    return agents;
-  }
-
-  const entries = readdirSync(currentPath);
-
-  for (const entry of entries) {
-    const fullPath = join(currentPath, entry);
-    const stat = statSync(fullPath);
-
-    if (stat.isDirectory()) {
-      agents.push(...discoverOverrideAgents(basePath, fullPath));
-    } else if (stat.isFile() && entry === 'agent.md') {
+  return files
+    .map((fullPath) => {
       const relativePath = relative(basePath, fullPath).replace(/\\/g, '/');
       const stripped = relativePath.replace(/\/agent\.md$/, '');
       const agentName = stripped.startsWith('review/') ? stripped : `review/${stripped}`;
-      const agent = parseAgentFile(fullPath, basePath, agentName);
-      if (agent) {
-        agents.push(agent);
-      }
-    }
-  }
-
-  return agents;
+      return parseAgentFile(fullPath, basePath, agentName);
+    })
+    .filter((agent): agent is AgentDefinition => Boolean(agent));
 }
 
 /**
