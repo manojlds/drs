@@ -47,6 +47,8 @@ export interface ReviewResult {
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
+  /** Diff-based change summary when available */
+  changeSummary?: import('./change-summary.js').ChangeSummary;
   /** Number of files actually reviewed (after filtering) */
   filesReviewed: number;
 }
@@ -183,6 +185,7 @@ export async function executeReview(
     return {
       issues: result.issues,
       summary: result.summary,
+      changeSummary: result.changeSummary,
       filesReviewed: result.filesReviewed,
     };
   } catch (error) {

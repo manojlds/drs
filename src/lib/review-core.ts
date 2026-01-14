@@ -11,6 +11,7 @@ import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
+import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 
@@ -47,17 +48,6 @@ export interface FileContext {
 }
 
 /**
- * Summary of the overall change
- */
-export interface ChangeSummary {
-  type: 'feature' | 'bugfix' | 'refactor' | 'docs' | 'test' | 'config' | 'other';
-  description: string;
-  subsystems: string[];
-  complexity: 'simple' | 'medium' | 'high';
-  riskLevel: 'low' | 'medium' | 'high';
-}
-
-/**
  * Diff analyzer output
  */
 export interface DiffAnalysis {
@@ -75,6 +65,8 @@ export interface AgentReviewResult {
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
+  /** Diff-based change summary when available */
+  changeSummary?: ChangeSummary;
   /** Number of files actually reviewed */
   filesReviewed: number;
   /** Agent execution results */
@@ -480,6 +472,7 @@ export async function runReviewAgents(
   return {
     issues,
     summary,
+    changeSummary: diffAnalysis?.changeSummary,
     filesReviewed: filteredFiles.length,
     agentResults,
   };
@@ -492,10 +485,23 @@ export function displayReviewSummary(result: {
   issues: ReviewIssue[];
   summary: ReturnType<typeof calculateSummary>;
   filesReviewed: number;
+  changeSummary?: ChangeSummary;
 }): void {
   console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log(chalk.bold('📊 Review Summary'));
   console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+
+  if (result.changeSummary) {
+    console.log(chalk.bold('🧭 Change Summary'));
+    console.log(`  ${result.changeSummary.description}`);
+    console.log(`  Type: ${result.changeSummary.type}`);
+    console.log(`  Complexity: ${result.changeSummary.complexity}`);
+    console.log(`  Risk level: ${result.changeSummary.riskLevel}`);
+    if (result.changeSummary.subsystems.length > 0) {
+      console.log(`  Subsystems: ${result.changeSummary.subsystems.join(', ')}`);
+    }
+    console.log('');
+  }
 
   console.log(`  Files reviewed: ${chalk.cyan(result.summary.filesReviewed)}`);
   console.log(`  Issues found: ${chalk.yellow(result.summary.issuesFound)}`);
