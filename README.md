@@ -313,8 +313,8 @@ Create custom agents in your project:
 
 ```bash
 # Create custom security agent
-mkdir -p .drs/agents
-cat > .drs/agents/security.md << 'EOF'
+mkdir -p .drs/agents/security
+cat > .drs/agents/security/agent.md << 'EOF'
 ---
 description: Custom security reviewer
 model: opencode/claude-sonnet-4-5
