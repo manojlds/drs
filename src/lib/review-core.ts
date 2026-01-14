@@ -279,6 +279,10 @@ Then output your analysis in the required JSON format. In the "recommendedAgents
     // Collect output from diff analyzer
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        const snippet = renderAgentMessage(message.content);
+        if (snippet) {
+          console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+        }
         // Look for JSON in the message content
         const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
         if (jsonMatch) {
