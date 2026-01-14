@@ -176,7 +176,8 @@ export async function executeReview(
       source.name,
       filteredFiles,
       source.context,
-      diffAnalysis
+      diffAnalysis,
+      source.workingDir || process.cwd()
     );
 
     return {
