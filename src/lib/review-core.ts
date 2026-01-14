@@ -280,7 +280,7 @@ const diffAnalysisSchema = z.object({
   overallConcerns: z.array(z.string()),
 });
 
-function normalizeDiffAnalysis(
+export function normalizeDiffAnalysis(
   raw: any
 ): { analysis: DiffAnalysis | null; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
@@ -540,15 +540,26 @@ export async function runReviewAgents(
   }
 
   // Use recommended agents from analysis if available, otherwise use configured agents
-  let agentNames = getAgentNames(config);
+  const configuredAgentNames = getAgentNames(config);
+  let agentNames = configuredAgentNames;
   if (diffAnalysis && diffAnalysis.recommendedAgents.length > 0) {
     // Filter configured agents to only run recommended ones
     const recommended = new Set(diffAnalysis.recommendedAgents);
-    agentNames = agentNames.filter((name) => recommended.has(name));
+    const filteredAgents = configuredAgentNames.filter((name) => recommended.has(name));
 
-    if (agentNames.length < getAgentNames(config).length) {
-      const skipped = getAgentNames(config).filter((name) => !recommended.has(name));
-      console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
+    if (filteredAgents.length === 0) {
+      console.log(
+        chalk.yellow(
+          '⚠️  Diff analysis recommended no configured agents; running all configured agents.\n'
+        )
+      );
+      agentNames = configuredAgentNames;
+    } else {
+      agentNames = filteredAgents;
+      if (agentNames.length < configuredAgentNames.length) {
+        const skipped = configuredAgentNames.filter((name) => !recommended.has(name));
+        console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
+      }
     }
   }
 
@@ -627,17 +638,16 @@ export async function runReviewAgents(
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
-          const snippet = renderAgentMessage(message.content);
-        if (debug) {
-          console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
-          console.log(message.content);
-          console.log(chalk.gray(`└── End response for ${agentName}\n`));
-        } else {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+          if (debug) {
+            console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
+            console.log(message.content);
+            console.log(chalk.gray(`└── End response for ${agentName}\n`));
+          } else {
+            const snippet = renderAgentMessage(message.content);
+            if (snippet) {
+              console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+            }
           }
-        }
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
             agentIssues.push(...parsedIssues);

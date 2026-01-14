@@ -29,6 +29,7 @@ import {
   runReviewAgents,
   analyzeDiffContext,
   displayReviewSummary,
+  normalizeDiffAnalysis,
   type FileWithDiff,
   type DiffAnalysis,
 } from './review-core.js';
@@ -151,8 +152,25 @@ export async function executeUnifiedReview(
     if (options.contextReadPath) {
       try {
         const raw = await readFile(options.contextReadPath, 'utf-8');
-        diffAnalysis = JSON.parse(raw) as DiffAnalysis;
-        console.log(chalk.green(`✓ Loaded diff context from ${options.contextReadPath}`));
+        const parsed = JSON.parse(raw);
+        const normalized = normalizeDiffAnalysis(parsed);
+        if (normalized.analysis) {
+          diffAnalysis = normalized.analysis;
+          if (normalized.warnings.length > 0) {
+            console.log(
+              chalk.yellow(
+                `⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`
+              )
+            );
+          }
+          console.log(chalk.green(`✓ Loaded diff context from ${options.contextReadPath}`));
+        } else {
+          console.log(
+            chalk.yellow(
+              `⚠️  Invalid diff context in ${options.contextReadPath}: ${normalized.errors.join('; ')}`
+            )
+          );
+        }
       } catch (err) {
         console.log(
           chalk.yellow(

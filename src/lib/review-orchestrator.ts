@@ -18,6 +18,7 @@ import {
   displayReviewSummary as displaySummary,
   hasBlockingIssues as checkBlockingIssues,
   buildDiffAnalyzerContext,
+  normalizeDiffAnalysis,
   type FileWithDiff,
   type DiffAnalysis,
 } from './review-core.js';
@@ -176,8 +177,25 @@ export async function executeReview(
     if (source.contextReadPath) {
       try {
         const raw = await readFile(source.contextReadPath, 'utf-8');
-        diffAnalysis = JSON.parse(raw) as DiffAnalysis;
-        console.log(chalk.green(`✓ Loaded diff context from ${source.contextReadPath}`));
+        const parsed = JSON.parse(raw);
+        const normalized = normalizeDiffAnalysis(parsed);
+        if (normalized.analysis) {
+          diffAnalysis = normalized.analysis;
+          if (normalized.warnings.length > 0) {
+            console.log(
+              chalk.yellow(
+                `⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`
+              )
+            );
+          }
+          console.log(chalk.green(`✓ Loaded diff context from ${source.contextReadPath}`));
+        } else {
+          console.log(
+            chalk.yellow(
+              `⚠️  Invalid diff context in ${source.contextReadPath}: ${normalized.errors.join('; ')}`
+            )
+          );
+        }
       } catch (err) {
         console.log(
           chalk.yellow(
