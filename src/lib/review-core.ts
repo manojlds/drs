@@ -6,6 +6,7 @@
  */
 
 import chalk from 'chalk';
+import { z } from 'zod';
 import type { DRSConfig } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
@@ -248,6 +249,82 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
   return limitedChars;
 }
 
+const lineRangeSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+  reason: z.string(),
+});
+
+const fileContextSchema = z.object({
+  filename: z.string(),
+  filePurpose: z.string(),
+  changeDescription: z.string(),
+  scopeContext: z.string(),
+  dependencies: z.array(z.string()),
+  concerns: z.array(z.string()),
+  relatedLineRanges: z.array(lineRangeSchema),
+});
+
+const changeSummarySchema = z.object({
+  type: z.enum(['feature', 'bugfix', 'refactor', 'docs', 'test', 'config', 'other']),
+  description: z.string(),
+  subsystems: z.array(z.string()),
+  complexity: z.enum(['simple', 'medium', 'high']),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+});
+
+const diffAnalysisSchema = z.object({
+  changeSummary: changeSummarySchema,
+  recommendedAgents: z.array(z.string()),
+  fileContexts: z.array(fileContextSchema),
+  overallConcerns: z.array(z.string()),
+});
+
+function normalizeDiffAnalysis(
+  raw: any
+): { analysis: DiffAnalysis | null; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (raw && typeof raw === 'object') {
+    if (raw.changeSummary) {
+      if (typeof raw.changeSummary.subsystems === 'string') {
+        warnings.push('Normalized changeSummary.subsystems from string to array');
+        raw.changeSummary.subsystems = raw.changeSummary.subsystems
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+    }
+    if (Array.isArray(raw.fileContexts)) {
+      raw.fileContexts = raw.fileContexts.map((fc: any) => {
+        const next = { ...fc };
+        if (Array.isArray(next.relatedLineRanges)) {
+          next.relatedLineRanges = next.relatedLineRanges.map((r: any) => {
+            if (typeof r === 'string') {
+              warnings.push('Normalized relatedLineRanges entry from string to object');
+              return { start: 0, end: 0, reason: r };
+            }
+            return {
+              start: typeof r?.start === 'number' ? r.start : 0,
+              end: typeof r?.end === 'number' ? r.end : 0,
+              reason: typeof r?.reason === 'string' ? r.reason : '',
+            };
+          });
+        }
+        return next;
+      });
+    }
+  }
+
+  const result = diffAnalysisSchema.safeParse(raw);
+  if (!result.success) {
+    errors.push(...result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`));
+    return { analysis: null, errors, warnings };
+  }
+  return { analysis: result.data, errors, warnings };
+}
+
 /**
  * Run the diff analyzer agent to get enriched context
  *
@@ -277,7 +354,7 @@ export async function analyzeDiffContext(
     const agentInfo = getConfiguredAgentInfo(config, workingDir);
     const agentList = agentInfo.map((a) => `- **${a.name}**: ${a.description}`).join('\n');
 
-    const analyzerPrompt = `${diffContext}
+    const basePrompt = `${diffContext}
 
 **Your Task**: Analyze the diff above and provide enriched context for the review agents.
 
@@ -295,64 +372,126 @@ Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - Dependencies and related code
 - Potential concerns for each type of review
 
-Then output your analysis in the required JSON format. In the "recommendedAgents" field, only include agent names from the list above that are relevant to the changes.`;
+Required schema (all top-level keys are mandatory):
+- changeSummary: { type, description, subsystems, complexity, riskLevel }
+- recommendedAgents: string[]
+- fileContexts: array of { filename, filePurpose, changeDescription, scopeContext, dependencies[], concerns[], relatedLineRanges[] }
+- overallConcerns: string[]
 
-    if (debug) {
-      console.log(chalk.gray('┌── DEBUG: Message sent to diff analyzer'));
-      console.log(chalk.gray(`│ Agent: review/diff-analyzer`));
-      console.log(chalk.gray('│ Prompt:'));
-      console.log(chalk.gray('─'.repeat(60)));
-      console.log(analyzerPrompt);
-      console.log(chalk.gray('─'.repeat(60)));
-      console.log(chalk.gray('└── End message for review/diff-analyzer\n'));
-    }
+Validation instructions:
+- Draft your JSON output.
+- Call the \`json-validate\` tool with your draft JSON string.
+- If validation fails, fix the JSON and validate again until it succeeds.
+- When valid, respond with the JSON object only (no markdown fences, no prose).`;
 
-    const session = await opencode.createSession({
-      agent: 'review/diff-analyzer',
-      message: analyzerPrompt,
-      context: {
-        ...additionalContext,
-        files: filteredFiles,
-      },
-    });
+    const maxAttempts = 2;
+    let attempt = 0;
+    let lastAssistantContent = '';
+    let analysis: DiffAnalysis | null = null;
+    let validationErrors: string[] = [];
 
-    let analysisJson = '';
+    while (attempt < maxAttempts && !analysis) {
+      const prompt =
+        attempt === 0
+          ? basePrompt
+          : `${basePrompt}
 
-    // Collect output from diff analyzer
-    for await (const message of opencode.streamMessages(session.id)) {
-      if (message.role === 'assistant') {
-        if (debug) {
-          console.log(chalk.gray('┌── DEBUG: Full response from review/diff-analyzer'));
-          console.log(message.content);
-          console.log(chalk.gray('└── End response for review/diff-analyzer\n'));
-        } else {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+Your previous output failed validation for these reasons:
+- ${validationErrors.join('\n- ')}
+
+Previous draft:
+${lastAssistantContent}
+
+Please fix the JSON to satisfy the schema and return only the corrected JSON (no fences, no prose).`;
+
+      if (debug) {
+        console.log(chalk.gray('┌── DEBUG: Message sent to diff analyzer'));
+        console.log(chalk.gray(`│ Agent: review/diff-analyzer`));
+        console.log(chalk.gray('│ Prompt:'));
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(prompt);
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(chalk.gray('└── End message for review/diff-analyzer\n'));
+      }
+
+      const session = await opencode.createSession({
+        agent: 'review/diff-analyzer',
+        message: prompt,
+        context: {
+          ...additionalContext,
+          files: filteredFiles,
+        },
+      });
+
+      let analysisJson = '';
+      lastAssistantContent = '';
+
+      // Collect output from diff analyzer
+      for await (const message of opencode.streamMessages(session.id)) {
+        if (message.role === 'assistant') {
+          lastAssistantContent = message.content;
+          if (debug) {
+            console.log(chalk.gray('┌── DEBUG: Full response from review/diff-analyzer'));
+            console.log(message.content);
+            console.log(chalk.gray('└── End response for review/diff-analyzer\n'));
+          } else {
+            const snippet = renderAgentMessage(message.content);
+            if (snippet) {
+              console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+            }
+          }
+          // Look for JSON in the message content
+          const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch) {
+            analysisJson = jsonMatch[1];
+            break; // Exit early once we have the JSON
           }
         }
-        // Look for JSON in the message content
-        const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
-          analysisJson = jsonMatch[1];
-          break; // Exit early once we have the JSON
+      }
+
+      await opencode.closeSession(session.id);
+
+      // Fallback: if no fenced JSON was found, try parsing the last assistant message as JSON
+      if (!analysisJson && lastAssistantContent.trim()) {
+        try {
+          const parsed = JSON.parse(lastAssistantContent);
+          analysisJson = JSON.stringify(parsed);
+        } catch {
+          // ignore
         }
       }
+
+      if (!analysisJson) {
+        validationErrors = ['No JSON content was produced'];
+      } else {
+        try {
+          const parsed = JSON.parse(analysisJson);
+          const normalized = normalizeDiffAnalysis(parsed);
+          if (normalized.analysis) {
+            analysis = normalized.analysis;
+            if (normalized.warnings.length > 0) {
+              console.log(
+                chalk.yellow(
+                  `⚠️  Diff analysis normalized output: ${normalized.warnings.join('; ')}`
+                )
+              );
+            }
+          } else {
+            validationErrors = normalized.errors;
+          }
+        } catch (err: any) {
+          validationErrors = [err?.message || 'Failed to parse JSON'];
+        }
+      }
+
+      attempt++;
     }
 
-    await opencode.closeSession(session.id);
-
-    if (!analysisJson) {
-      console.log(chalk.yellow('⚠️  Diff analyzer did not produce JSON output, skipping analysis'));
-      return null;
-    }
-
-    // Parse the JSON
-    const analysis: DiffAnalysis = JSON.parse(analysisJson);
-
-    if (!analysis?.changeSummary) {
+    if (!analysis) {
       console.log(
-        chalk.yellow('⚠️  Diff analyzer returned no changeSummary; skipping diff-based context')
+        chalk.yellow(
+          `⚠️  Diff analyzer did not produce valid JSON after ${maxAttempts} attempt(s); skipping analysis`
+        )
       );
       return null;
     }
