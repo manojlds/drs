@@ -29,6 +29,7 @@ review:
     - quality
     - style
     - performance
+    - documentation
 
   # OR detailed format with per-agent model overrides:
   # agents:
@@ -45,7 +46,6 @@ review:
     - "*.spec.ts"
     - "**/__tests__/**"
     - "**/__mocks__/**"
-    - "*.md"
     - "package-lock.json"
     - "yarn.lock"
     - "pnpm-lock.yaml"
