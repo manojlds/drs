@@ -9,6 +9,7 @@
  */
 
 import chalk from 'chalk';
+import simpleGit from 'simple-git';
 import { writeFile, readFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
@@ -33,9 +34,141 @@ import {
   type FileWithDiff,
   type DiffAnalysis,
 } from './review-core.js';
-import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type {
+  PlatformClient,
+  LineValidator,
+  InlineCommentPosition,
+  PullRequest,
+} from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
+
+interface RepoInfo {
+  host?: string;
+  repoPath?: string;
+  remoteUrl?: string;
+}
+
+function normalizeRepoPath(path: string): string {
+  return path.replace(/^\/+/, '').replace(/\.git$/i, '').toLowerCase();
+}
+
+function parseRemoteUrl(remoteUrl: string): RepoInfo | null {
+  if (!remoteUrl) return null;
+
+  const trimmed = remoteUrl.trim();
+  const sshMatch = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
+  if (sshMatch) {
+    return { host: sshMatch[1], repoPath: sshMatch[2], remoteUrl: trimmed };
+  }
+
+  if (
+    trimmed.startsWith('ssh://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  ) {
+    try {
+      const url = new URL(trimmed);
+      return {
+        host: url.hostname,
+        repoPath: url.pathname.replace(/^\/+/, ''),
+        remoteUrl: trimmed,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
+  const data = pr?.platformData;
+
+  if (data?.base?.repo?.full_name) {
+    const hostUrl = data.base.repo.html_url || data.base.repo.clone_url || data.base.repo.ssh_url;
+    const hostInfo = hostUrl ? parseRemoteUrl(hostUrl) : null;
+    return {
+      host: hostInfo?.host || 'github.com',
+      repoPath: data.base.repo.full_name,
+    };
+  }
+
+  if (typeof projectId === 'string' && projectId.includes('/')) {
+    return { repoPath: projectId };
+  }
+
+  if (typeof data?.web_url === 'string') {
+    const info = parseRemoteUrl(data.web_url);
+    if (info?.repoPath) {
+      const pathWithoutSuffix = info.repoPath.replace(/\/-\/.*$/, '');
+      return { host: info.host, repoPath: pathWithoutSuffix };
+    }
+  }
+
+  return null;
+}
+
+async function enforceRepoBranchMatch(
+  workingDir: string,
+  projectId: string,
+  pr: PullRequest
+): Promise<void> {
+  const git = simpleGit({ baseDir: workingDir });
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error('Not a git repository. Run review from the PR/MR repository checkout.');
+  }
+
+  const branchSummary = await git.branch();
+  const currentBranch = branchSummary.current;
+  const headSha = (await git.revparse(['HEAD'])).trim();
+
+  const remotes = await git.getRemotes(true);
+  const origin = remotes.find((r) => r.name === 'origin') || remotes[0];
+  const remoteUrl = origin?.refs?.fetch || origin?.refs?.push;
+  if (!remoteUrl) {
+    throw new Error('No git remotes found. Cannot validate repository match for PR/MR.');
+  }
+
+  const localRepo = parseRemoteUrl(remoteUrl);
+  if (!localRepo?.repoPath) {
+    throw new Error(`Unable to parse git remote URL: ${remoteUrl}`);
+  }
+
+  const expectedRepo = getExpectedRepoInfo(pr, projectId);
+  if (!expectedRepo?.repoPath) {
+    throw new Error('Unable to determine expected repository from PR/MR data.');
+  }
+
+  const localRepoPath = normalizeRepoPath(localRepo.repoPath);
+  const expectedRepoPath = normalizeRepoPath(expectedRepo.repoPath);
+  const hostMismatch =
+    expectedRepo.host && localRepo.host && expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
+  const repoMismatch = localRepoPath !== expectedRepoPath;
+
+  if (hostMismatch || repoMismatch) {
+    throw new Error(
+      `Repository mismatch for PR/MR review.\n` +
+        `Local repo: ${localRepo.host ? `${localRepo.host}/` : ''}${localRepoPath}\n` +
+        `Expected: ${expectedRepo.host ? `${expectedRepo.host}/` : ''}${expectedRepoPath}\n` +
+        `Run the review from the PR/MR repository checkout.`
+    );
+  }
+
+  const expectedBranch = pr.sourceBranch;
+  const branchMatches = currentBranch === expectedBranch;
+  const shaMatches = pr.headSha ? headSha === pr.headSha : false;
+
+  if (!branchMatches && !shaMatches) {
+    throw new Error(
+      `Branch mismatch for PR/MR review.\n` +
+        `Local branch: ${currentBranch || '(unknown)'}\n` +
+        `Expected branch: ${expectedBranch}\n` +
+        `Check out the PR/MR source branch before running the review.`
+    );
+  }
+}
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
@@ -83,6 +216,9 @@ export async function executeUnifiedReview(
   console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
 
   const pr = await platformClient.getPullRequest(projectId, prNumber);
+
+  await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr);
+
   const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
 
   console.log(chalk.bold(`PR/MR: ${pr.title}`));
