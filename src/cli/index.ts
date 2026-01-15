@@ -22,16 +22,6 @@ const version = packageJson.version;
 
 const program = new Command();
 
-function getDiffAnalyzerOverride(): boolean | undefined {
-  if (process.argv.includes('--no-diff-analyzer')) {
-    return false;
-  }
-  if (process.argv.includes('--diff-analyzer')) {
-    return true;
-  }
-  return undefined;
-}
-
 program
   .name('drs')
   .description('Intelligent code review platform for GitLab and GitHub - Enterprise-grade analysis')
@@ -44,20 +34,14 @@ program
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--no-diff-analyzer', 'Disable diff analyzer')
-  .option('--context-only', 'Run diff analyzer only and skip review agents')
-  .option('--context-output <path>', 'Write diff context JSON to file')
-  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
-      const diffAnalyzerOverride = getDiffAnalyzerOverride();
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          enableDiffAnalyzer: diffAnalyzerOverride,
         },
       } as any);
 
@@ -65,9 +49,6 @@ program
         staged: options.staged || false,
         outputPath: options.output,
         jsonOutput: options.json || false,
-        contextOnly: options.contextOnly || false,
-        contextOutputPath: options.contextOutput,
-        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);
@@ -91,20 +72,14 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--no-diff-analyzer', 'Disable diff analyzer')
-  .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
-  .option('--context-output <path>', 'Write diff context JSON to file')
-  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
-      const diffAnalyzerOverride = getDiffAnalyzerOverride();
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          enableDiffAnalyzer: diffAnalyzerOverride,
         },
       } as any);
 
@@ -119,9 +94,6 @@ program
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
-        contextOnly: options.contextOnly || false,
-        contextOutputPath: options.contextOutput,
-        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);
@@ -142,20 +114,14 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--no-diff-analyzer', 'Disable diff analyzer')
-  .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
-  .option('--context-output <path>', 'Write diff context JSON to file')
-  .option('--context-read <path>', 'Read diff context JSON from file and skip analyzer')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
-      const diffAnalyzerOverride = getDiffAnalyzerOverride();
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          enableDiffAnalyzer: diffAnalyzerOverride,
         },
       } as any);
 
@@ -167,9 +133,6 @@ program
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
-        contextOnly: options.contextOnly || false,
-        contextOutputPath: options.contextOutput,
-        contextReadPath: options.contextRead,
         debug: options.debug || false,
       });
       process.exit(0);

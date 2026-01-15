@@ -6,7 +6,6 @@
  */
 
 import chalk from 'chalk';
-import { readFile, writeFile } from 'fs/promises';
 import type { DRSConfig } from './config.js';
 import { shouldIgnoreFile, getModelOverrides } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
@@ -14,13 +13,9 @@ import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
   runReviewAgents,
-  analyzeDiffContext,
   displayReviewSummary as displaySummary,
   hasBlockingIssues as checkBlockingIssues,
-  buildDiffAnalyzerContext,
-  normalizeDiffAnalysis,
   type FileWithDiff,
-  type DiffAnalysis,
 } from './review-core.js';
 
 /**
@@ -41,12 +36,6 @@ export interface ReviewSource {
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
-  /** Run only diff analyzer and skip review agents */
-  contextOnly?: boolean;
-  /** Write diff analysis JSON to this path (if produced or loaded) */
-  contextOutputPath?: string;
-  /** Read diff analysis JSON from this path instead of running analyzer */
-  contextReadPath?: string;
 }
 
 /**
@@ -165,78 +154,6 @@ export async function executeReview(
     }
 
     const baseInstructions = buildBaseInstructions(source.name, filesForInstructions, diffCommand);
-    const diffAnalyzerContext = buildDiffAnalyzerContext(
-      source.name,
-      filesForInstructions,
-      diffCommand
-    );
-
-    // Obtain diff analysis: from file, or by running analyzer
-    let diffAnalysis: DiffAnalysis | null = null;
-
-    if (source.contextReadPath) {
-      try {
-        const raw = await readFile(source.contextReadPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        const normalized = normalizeDiffAnalysis(parsed);
-        if (normalized.analysis) {
-          diffAnalysis = normalized.analysis;
-          if (normalized.warnings.length > 0) {
-            console.log(
-              chalk.yellow(`⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`)
-            );
-          }
-          console.log(chalk.green(`✓ Loaded diff context from ${source.contextReadPath}`));
-        } else {
-          console.log(
-            chalk.yellow(
-              `⚠️  Invalid diff context in ${source.contextReadPath}: ${normalized.errors.join('; ')}`
-            )
-          );
-        }
-      } catch (err) {
-        console.log(
-          chalk.yellow(
-            `⚠️  Failed to read context from ${source.contextReadPath}: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
-      }
-    } else if (config.review.enableDiffAnalyzer && filesForInstructions.some((f) => f.patch)) {
-      diffAnalysis = await analyzeDiffContext(
-        opencode,
-        config,
-        diffAnalyzerContext,
-        source.name,
-        filteredFiles,
-        source.workingDir || process.cwd(),
-        source.context,
-        source.debug || false
-      );
-    }
-
-    // Optionally write diff context
-    if (source.contextOutputPath && diffAnalysis) {
-      try {
-        await writeFile(source.contextOutputPath, JSON.stringify(diffAnalysis, null, 2), 'utf-8');
-        console.log(chalk.green(`✓ Diff context written to ${source.contextOutputPath}\n`));
-      } catch (err) {
-        console.log(
-          chalk.yellow(
-            `⚠️  Failed to write diff context to ${source.contextOutputPath}: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
-      }
-    }
-
-    if (source.contextOnly) {
-      console.log(chalk.gray('Context-only mode: skipping review agents and comments.\n'));
-      return {
-        issues: [],
-        summary: calculateSummary(filteredFiles.length, []),
-        changeSummary: diffAnalysis?.changeSummary,
-        filesReviewed: filteredFiles.length,
-      };
-    }
 
     // Run agents using shared core logic
     const result = await runReviewAgents(
@@ -246,7 +163,6 @@ export async function executeReview(
       source.name,
       filteredFiles,
       source.context,
-      diffAnalysis,
       source.workingDir || process.cwd(),
       source.debug || false
     );

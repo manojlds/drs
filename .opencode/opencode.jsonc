@@ -8,7 +8,6 @@
     "Glob": true,
     "Grep": true,
     "Bash": true,
-    "json-validate": true,
     "Write": false,
     "Edit": false
   }

@@ -6,7 +6,6 @@
  */
 
 import chalk from 'chalk';
-import { z } from 'zod';
 import type { DRSConfig } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
@@ -24,38 +23,6 @@ export interface FileWithDiff {
   filename: string;
   /** Unified diff patch (if available from platform) */
   patch?: string;
-}
-
-/**
- * Line range with context explanation
- */
-export interface LineRange {
-  start: number;
-  end: number;
-  reason: string;
-}
-
-/**
- * Enriched context for a single file
- */
-export interface FileContext {
-  filename: string;
-  filePurpose: string;
-  changeDescription: string;
-  scopeContext: string;
-  dependencies: string[];
-  concerns: string[];
-  relatedLineRanges: LineRange[];
-}
-
-/**
- * Diff analyzer output
- */
-export interface DiffAnalysis {
-  changeSummary: ChangeSummary;
-  recommendedAgents: string[];
-  fileContexts: FileContext[];
-  overallConcerns: string[];
 }
 
 /**
@@ -176,45 +143,6 @@ Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
- * Build diff-focused context for the diff analyzer (no review-agent instructions)
- */
-export function buildDiffAnalyzerContext(
-  label: string,
-  files: FileWithDiff[],
-  diffCommand?: string
-): string {
-  const filesWithDiffs = files.filter((f) => f.patch);
-  const hasDiffs = filesWithDiffs.length > 0;
-  const fileList = files.map((f) => `- ${f.filename}`).join('\n');
-
-  if (hasDiffs) {
-    const diffContent = filesWithDiffs
-      .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
-      .join('\n\n');
-
-    return `Analyze the following changed files from ${label}:
-
-${fileList}
-
-## Diff Content
-
-The following shows exactly what changed:
-
-${diffContent}
-
-Use this diff to understand the modifications. Read the full files for surrounding context as needed.`;
-  }
-
-  const fallbackCommand = diffCommand || 'git diff HEAD~1 -- <file>';
-
-  return `Analyze the following changed files from ${label}:
-
-${fileList}
-
-Diff content was not provided. Run \`${fallbackCommand}\` to see the exact changes, then analyze the modifications. Focus on the lines that differ.`;
-}
-
-/**
  * Get information about configured review agents
  */
 function getConfiguredAgentInfo(
@@ -249,276 +177,6 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
   return limitedChars;
 }
 
-const lineRangeSchema = z.object({
-  start: z.number(),
-  end: z.number(),
-  reason: z.string(),
-});
-
-const fileContextSchema = z.object({
-  filename: z.string(),
-  filePurpose: z.string(),
-  changeDescription: z.string(),
-  scopeContext: z.string(),
-  dependencies: z.array(z.string()),
-  concerns: z.array(z.string()),
-  relatedLineRanges: z.array(lineRangeSchema),
-});
-
-const changeSummarySchema = z.object({
-  type: z.enum(['feature', 'bugfix', 'refactor', 'docs', 'test', 'config', 'other']),
-  description: z.string(),
-  subsystems: z.array(z.string()),
-  complexity: z.enum(['simple', 'medium', 'high']),
-  riskLevel: z.enum(['low', 'medium', 'high']),
-});
-
-const diffAnalysisSchema = z.object({
-  changeSummary: changeSummarySchema,
-  recommendedAgents: z.array(z.string()),
-  fileContexts: z.array(fileContextSchema),
-  overallConcerns: z.array(z.string()),
-});
-
-export function normalizeDiffAnalysis(raw: any): {
-  analysis: DiffAnalysis | null;
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  if (raw && typeof raw === 'object') {
-    if (raw.changeSummary) {
-      if (typeof raw.changeSummary.subsystems === 'string') {
-        warnings.push('Normalized changeSummary.subsystems from string to array');
-        raw.changeSummary.subsystems = raw.changeSummary.subsystems
-          .split(',')
-          .map((s: string) => s.trim())
-          .filter(Boolean);
-      }
-    }
-    if (Array.isArray(raw.fileContexts)) {
-      raw.fileContexts = raw.fileContexts.map((fc: any) => {
-        const next = { ...fc };
-        if (Array.isArray(next.relatedLineRanges)) {
-          next.relatedLineRanges = next.relatedLineRanges.map((r: any) => {
-            if (typeof r === 'string') {
-              warnings.push('Normalized relatedLineRanges entry from string to object');
-              return { start: 0, end: 0, reason: r };
-            }
-            return {
-              start: typeof r?.start === 'number' ? r.start : 0,
-              end: typeof r?.end === 'number' ? r.end : 0,
-              reason: typeof r?.reason === 'string' ? r.reason : '',
-            };
-          });
-        }
-        return next;
-      });
-    }
-  }
-
-  const result = diffAnalysisSchema.safeParse(raw);
-  if (!result.success) {
-    errors.push(...result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`));
-    return { analysis: null, errors, warnings };
-  }
-  return { analysis: result.data, errors, warnings };
-}
-
-/**
- * Run the diff analyzer agent to get enriched context
- *
- * @param opencode - OpenCode client
- * @param config - DRS configuration
- * @param baseInstructions - Base instructions containing the diff
- * @param reviewLabel - Label for the review
- * @param filteredFiles - List of files to review
- * @param workingDir - Working directory for agent discovery
- * @param additionalContext - Additional context for the agent
- * @returns Parsed diff analysis or null if analysis fails
- */
-export async function analyzeDiffContext(
-  opencode: OpencodeClient,
-  config: DRSConfig,
-  diffContext: string,
-  reviewLabel: string,
-  filteredFiles: string[],
-  workingDir: string,
-  additionalContext: Record<string, any> = {},
-  debug = false
-): Promise<DiffAnalysis | null> {
-  console.log(chalk.gray('Analyzing diff context...\n'));
-
-  try {
-    // Get info about configured agents
-    const agentInfo = getConfiguredAgentInfo(config, workingDir);
-    const agentList = agentInfo.map((a) => `- **${a.name}**: ${a.description}`).join('\n');
-
-    const basePrompt = `${diffContext}
-
-**Your Task**: Analyze the diff above and provide enriched context for the review agents.
-
-## Available Review Agents
-
-The following review agents are configured and available:
-
-${agentList}
-
-Your job is to analyze the diff and recommend which of these agents should review the changes based on what was modified.
-
-Use the Read, Grep, and Bash tools as needed to gather complete context about:
-- What each file does
-- How the changes fit into the broader codebase
-- Dependencies and related code
-- Potential concerns for each type of review
-
-Required schema (all top-level keys are mandatory):
-- changeSummary: { type, description, subsystems, complexity, riskLevel }
-- recommendedAgents: string[]
-- fileContexts: array of { filename, filePurpose, changeDescription, scopeContext, dependencies[], concerns[], relatedLineRanges[] }
-- overallConcerns: string[]
-
-Validation instructions:
-- Draft your JSON output.
-- Call the \`json-validate\` tool with your draft JSON string.
-- If validation fails, fix the JSON and validate again until it succeeds.
-- When valid, respond with the JSON object only (no markdown fences, no prose).`;
-
-    const maxAttempts = 2;
-    let attempt = 0;
-    let lastAssistantContent = '';
-    let analysis: DiffAnalysis | null = null;
-    let validationErrors: string[] = [];
-
-    while (attempt < maxAttempts && !analysis) {
-      const prompt =
-        attempt === 0
-          ? basePrompt
-          : `${basePrompt}
-
-Your previous output failed validation for these reasons:
-- ${validationErrors.join('\n- ')}
-
-Previous draft:
-${lastAssistantContent}
-
-Please fix the JSON to satisfy the schema and return only the corrected JSON (no fences, no prose).`;
-
-      if (debug) {
-        console.log(chalk.gray('┌── DEBUG: Message sent to diff analyzer'));
-        console.log(chalk.gray(`│ Agent: review/diff-analyzer`));
-        console.log(chalk.gray('│ Prompt:'));
-        console.log(chalk.gray('─'.repeat(60)));
-        console.log(prompt);
-        console.log(chalk.gray('─'.repeat(60)));
-        console.log(chalk.gray('└── End message for review/diff-analyzer\n'));
-      }
-
-      const session = await opencode.createSession({
-        agent: 'review/diff-analyzer',
-        message: prompt,
-        context: {
-          ...additionalContext,
-          files: filteredFiles,
-        },
-      });
-
-      let analysisJson = '';
-      lastAssistantContent = '';
-
-      // Collect output from diff analyzer
-      for await (const message of opencode.streamMessages(session.id)) {
-        if (message.role === 'assistant') {
-          lastAssistantContent = message.content;
-          if (debug) {
-            console.log(chalk.gray('┌── DEBUG: Full response from review/diff-analyzer'));
-            console.log(message.content);
-            console.log(chalk.gray('└── End response for review/diff-analyzer\n'));
-          } else {
-            const snippet = renderAgentMessage(message.content);
-            if (snippet) {
-              console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
-            }
-          }
-          // Look for JSON in the message content
-          const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
-          if (jsonMatch) {
-            analysisJson = jsonMatch[1];
-            break; // Exit early once we have the JSON
-          }
-        }
-      }
-
-      await opencode.closeSession(session.id);
-
-      // Fallback: if no fenced JSON was found, try parsing the last assistant message as JSON
-      if (!analysisJson && lastAssistantContent.trim()) {
-        try {
-          const parsed = JSON.parse(lastAssistantContent);
-          analysisJson = JSON.stringify(parsed);
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!analysisJson) {
-        validationErrors = ['No JSON content was produced'];
-      } else {
-        try {
-          const parsed = JSON.parse(analysisJson);
-          const normalized = normalizeDiffAnalysis(parsed);
-          if (normalized.analysis) {
-            analysis = normalized.analysis;
-            if (normalized.warnings.length > 0) {
-              console.log(
-                chalk.yellow(
-                  `⚠️  Diff analysis normalized output: ${normalized.warnings.join('; ')}`
-                )
-              );
-            }
-          } else {
-            validationErrors = normalized.errors;
-          }
-        } catch (err: any) {
-          validationErrors = [err?.message || 'Failed to parse JSON'];
-        }
-      }
-
-      attempt++;
-    }
-
-    if (!analysis) {
-      console.log(
-        chalk.yellow(
-          `⚠️  Diff analyzer did not produce valid JSON after ${maxAttempts} attempt(s); skipping analysis`
-        )
-      );
-      return null;
-    }
-
-    console.log(chalk.green('✓ Diff analysis complete'));
-    console.log(chalk.gray(`  Change type: ${analysis.changeSummary.type}`));
-    console.log(chalk.gray(`  Complexity: ${analysis.changeSummary.complexity}`));
-    console.log(chalk.gray(`  Risk level: ${analysis.changeSummary.riskLevel}`));
-    console.log(chalk.gray(`  Recommended agents: ${analysis.recommendedAgents.join(', ')}\n`));
-
-    return analysis;
-  } catch (error) {
-    console.log(chalk.yellow(`⚠️  Diff analyzer failed: ${error}`));
-    console.log(chalk.gray('Continuing with standard review process...\n'));
-    return null;
-  }
-}
-
-/**
- * Run all configured review agents in parallel
- *
- * This is the core agent execution logic shared between local and platform reviews.
- *
- * @param diffAnalysis - Optional diff analysis from analyzer agent
- */
 export async function runReviewAgents(
   opencode: OpencodeClient,
   config: DRSConfig,
@@ -526,7 +184,6 @@ export async function runReviewAgents(
   reviewLabel: string,
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
-  diffAnalysis?: DiffAnalysis | null,
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
@@ -541,30 +198,7 @@ export async function runReviewAgents(
     console.log('');
   }
 
-  // Use recommended agents from analysis if available, otherwise use configured agents
-  const configuredAgentNames = getAgentNames(config);
-  let agentNames = configuredAgentNames;
-  if (diffAnalysis && diffAnalysis.recommendedAgents.length > 0) {
-    // Filter configured agents to only run recommended ones
-    const recommended = new Set(diffAnalysis.recommendedAgents);
-    const filteredAgents = configuredAgentNames.filter((name) => recommended.has(name));
-
-    if (filteredAgents.length === 0) {
-      console.log(
-        chalk.yellow(
-          '⚠️  Diff analysis recommended no configured agents; running all configured agents.\n'
-        )
-      );
-      agentNames = configuredAgentNames;
-    } else {
-      agentNames = filteredAgents;
-      if (agentNames.length < configuredAgentNames.length) {
-        const skipped = configuredAgentNames.filter((name) => !recommended.has(name));
-        console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
-      }
-    }
-  }
-
+  const agentNames = getAgentNames(config);
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const agentPromises = agentNames.map(async (agentType) => {
     const agentName = `review/${agentType}`;
@@ -572,48 +206,12 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
-      let reviewPrompt = buildReviewPrompt(agentType, baseInstructions, reviewLabel, filteredFiles);
-
-      // Add enriched context from diff analysis if available
-      if (diffAnalysis) {
-        reviewPrompt += `\n\n## Enriched Context from Diff Analysis\n\n`;
-        reviewPrompt += `**Change Summary**: ${diffAnalysis.changeSummary.description}\n`;
-        reviewPrompt += `**Change Type**: ${diffAnalysis.changeSummary.type}\n`;
-        reviewPrompt += `**Complexity**: ${diffAnalysis.changeSummary.complexity}\n`;
-        reviewPrompt += `**Risk Level**: ${diffAnalysis.changeSummary.riskLevel}\n`;
-
-        if (diffAnalysis.changeSummary.subsystems.length > 0) {
-          reviewPrompt += `**Affected Subsystems**: ${diffAnalysis.changeSummary.subsystems.join(', ')}\n`;
-        }
-
-        if (diffAnalysis.overallConcerns.length > 0) {
-          reviewPrompt += `\n**Overall Concerns to Review**:\n`;
-          diffAnalysis.overallConcerns.forEach((concern) => {
-            reviewPrompt += `- ${concern}\n`;
-          });
-        }
-
-        reviewPrompt += `\n### File-Specific Context\n\n`;
-        diffAnalysis.fileContexts.forEach((fileCtx) => {
-          reviewPrompt += `**${fileCtx.filename}**:\n`;
-          reviewPrompt += `- Purpose: ${fileCtx.filePurpose}\n`;
-          reviewPrompt += `- Change: ${fileCtx.changeDescription}\n`;
-          reviewPrompt += `- Scope: ${fileCtx.scopeContext}\n`;
-
-          if (fileCtx.dependencies.length > 0) {
-            reviewPrompt += `- Dependencies: ${fileCtx.dependencies.join(', ')}\n`;
-          }
-
-          if (fileCtx.concerns.length > 0) {
-            reviewPrompt += `- Focus Areas:\n`;
-            fileCtx.concerns.forEach((concern) => {
-              reviewPrompt += `  - ${concern}\n`;
-            });
-          }
-
-          reviewPrompt += `\n`;
-        });
-      }
+      const reviewPrompt = buildReviewPrompt(
+        agentType,
+        baseInstructions,
+        reviewLabel,
+        filteredFiles
+      );
 
       if (debug) {
         console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
@@ -631,7 +229,6 @@ export async function runReviewAgents(
         context: {
           ...additionalContext,
           files: filteredFiles,
-          diffAnalysis: diffAnalysis || undefined,
         },
       });
 
@@ -704,7 +301,6 @@ export async function runReviewAgents(
   return {
     issues,
     summary,
-    changeSummary: diffAnalysis?.changeSummary,
     filesReviewed: filteredFiles.length,
     agentResults,
   };

@@ -13,9 +13,6 @@ export interface ReviewPROptions {
   outputPath?: string; // Optional path to write JSON results file
   jsonOutput?: boolean; // Output results as JSON to console
   baseBranch?: string;
-  contextOnly?: boolean;
-  contextOutputPath?: string;
-  contextReadPath?: string;
   debug?: boolean;
 }
 
@@ -109,9 +106,6 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     lineValidator,
     createInlinePosition,
     workingDir: process.cwd(),
-    contextOnly: options.contextOnly,
-    contextOutputPath: options.contextOutputPath,
-    contextReadPath: options.contextReadPath,
     debug: options.debug,
   });
 }

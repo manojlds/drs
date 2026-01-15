@@ -10,7 +10,7 @@
 
 import chalk from 'chalk';
 import simpleGit from 'simple-git';
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
@@ -24,16 +24,7 @@ import {
   type PlatformComment,
 } from './comment-manager.js';
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
-import {
-  buildBaseInstructions,
-  buildDiffAnalyzerContext,
-  runReviewAgents,
-  analyzeDiffContext,
-  displayReviewSummary,
-  normalizeDiffAnalysis,
-  type FileWithDiff,
-  type DiffAnalysis,
-} from './review-core.js';
+import { buildBaseInstructions, runReviewAgents, displayReviewSummary } from './review-core.js';
 import type {
   PlatformClient,
   LineValidator,
@@ -260,12 +251,6 @@ export interface UnifiedReviewOptions {
   jsonOutput?: boolean;
   /** Override base branch used for diff command hints */
   baseBranch?: string;
-  /** Run only diff analyzer and skip review agents/comments */
-  contextOnly?: boolean;
-  /** Write diff analysis JSON to this path (if produced or loaded) */
-  contextOutputPath?: string;
-  /** Read diff analysis JSON from this path instead of running analyzer */
-  contextReadPath?: string;
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
@@ -306,25 +291,18 @@ export async function executeUnifiedReview(
     return;
   }
 
-  // Get list of changed files (excluding deleted files) with their diffs
-  const changedFilesWithDiffs: FileWithDiff[] = allFiles
+  // Get list of changed files (excluding deleted files)
+  const changedFileNames = allFiles
     .filter((file) => file.status !== 'removed')
-    .map((file) => ({
-      filename: file.filename,
-      patch: file.patch,
-    }));
+    .map((file) => file.filename);
 
-  if (changedFilesWithDiffs.length === 0) {
+  if (changedFileNames.length === 0) {
     console.log(chalk.yellow('✓ No files to review after filtering\n'));
     return;
   }
 
-  // Filter files but keep diff content
-  const changedFileNames = changedFilesWithDiffs.map((f) => f.filename);
+  // Filter files by ignore patterns
   const filteredFileNames = filterIgnoredFiles(changedFileNames, config);
-  const filteredFilesWithDiffs = changedFilesWithDiffs.filter((f) =>
-    filteredFileNames.includes(f.filename)
-  );
   const filteredFiles = filteredFileNames;
   const ignoredCount = changedFileNames.length - filteredFiles.length;
 
@@ -356,74 +334,6 @@ export async function executeUnifiedReview(
     if (baseBranchResolution.resolvedBaseBranch) {
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
     }
-    const diffAnalyzerContext = buildDiffAnalyzerContext(
-      reviewLabel,
-      filteredFilesWithDiffs,
-      fallbackDiffCommand
-    );
-
-    // Obtain diff analysis: from file, or by running analyzer
-    let diffAnalysis: DiffAnalysis | null = null;
-
-    if (options.contextReadPath) {
-      try {
-        const raw = await readFile(options.contextReadPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        const normalized = normalizeDiffAnalysis(parsed);
-        if (normalized.analysis) {
-          diffAnalysis = normalized.analysis;
-          if (normalized.warnings.length > 0) {
-            console.log(
-              chalk.yellow(`⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`)
-            );
-          }
-          console.log(chalk.green(`✓ Loaded diff context from ${options.contextReadPath}`));
-        } else {
-          console.log(
-            chalk.yellow(
-              `⚠️  Invalid diff context in ${options.contextReadPath}: ${normalized.errors.join('; ')}`
-            )
-          );
-        }
-      } catch (err) {
-        console.log(
-          chalk.yellow(
-            `⚠️  Failed to read context from ${options.contextReadPath}: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
-      }
-    } else if (config.review.enableDiffAnalyzer) {
-      diffAnalysis = await analyzeDiffContext(
-        opencode,
-        config,
-        diffAnalyzerContext,
-        reviewLabel,
-        filteredFiles,
-        options.workingDir || process.cwd(),
-        { prNumber },
-        options.debug || false
-      );
-    }
-
-    // Optionally write diff context
-    if (options.contextOutputPath && diffAnalysis) {
-      try {
-        await writeFile(options.contextOutputPath, JSON.stringify(diffAnalysis, null, 2), 'utf-8');
-        console.log(chalk.green(`✓ Diff context written to ${options.contextOutputPath}\n`));
-      } catch (err) {
-        console.log(
-          chalk.yellow(
-            `⚠️  Failed to write diff context to ${options.contextOutputPath}: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
-      }
-    }
-
-    if (options.contextOnly) {
-      console.log(chalk.gray('Context-only mode: skipping review agents and comments.\n'));
-      return;
-    }
-
     // Run agents using shared core logic
     const result = await runReviewAgents(
       opencode,
@@ -432,7 +342,6 @@ export async function executeUnifiedReview(
       reviewLabel,
       filteredFiles,
       { prNumber },
-      diffAnalysis,
       options.workingDir || process.cwd(),
       options.debug || false
     );
