@@ -53,6 +53,11 @@ export interface DRSConfig {
     ignorePatterns: string[];
     includePatterns?: string[];
   };
+
+  // Describe behavior (PR/MR description generation)
+  describe?: {
+    model?: string;
+  };
 }
 
 const DEFAULT_CONFIG: DRSConfig = {

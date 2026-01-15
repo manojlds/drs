@@ -10,6 +10,8 @@ import { reviewMR } from './review-mr.js';
 import { reviewPR } from './review-pr.js';
 import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
+import { describePR } from './describe-pr.js';
+import { describeMR } from './describe-mr.js';
 import { loadConfig } from '../lib/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -133,6 +135,64 @@ program
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
+        debug: options.debug || false,
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('describe-pr')
+  .description('Generate comprehensive description for a GitHub pull request')
+  .requiredOption('--pr <number>', 'Pull request number')
+  .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
+  .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
+  .option('--post-description', 'Post generated description to the PR (requires GITHUB_TOKEN)')
+  .option('-o, --output <path>', 'Write description to JSON file')
+  .option('--json', 'Output results as JSON to console')
+  .option('--debug', 'Print OpenCode configuration for debugging')
+  .action(async (options) => {
+    try {
+      const config = loadConfig(process.cwd());
+
+      await describePR(config, {
+        owner: options.owner,
+        repo: options.repo,
+        prNumber: parseInt(options.pr, 10),
+        postDescription: options.postDescription || false,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
+        debug: options.debug || false,
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('describe-mr')
+  .description('Generate comprehensive description for a GitLab merge request')
+  .requiredOption('--mr <iid>', 'Merge request IID (number)')
+  .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
+  .option('--post-description', 'Post generated description to the MR (requires GITLAB_TOKEN)')
+  .option('-o, --output <path>', 'Write description to JSON file')
+  .option('--json', 'Output results as JSON to console')
+  .option('--debug', 'Print OpenCode configuration for debugging')
+  .action(async (options) => {
+    try {
+      const config = loadConfig(process.cwd());
+
+      await describeMR(config, {
+        projectId: options.project,
+        mrIid: parseInt(options.mr, 10),
+        postDescription: options.postDescription || false,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
         debug: options.debug || false,
       });
       process.exit(0);
