@@ -24,12 +24,13 @@ review:
 
   # Review agents
   # Simple format (uses defaultModel):
+  # NOTE: Temporarily using only quality agent while working on this PR
   agents:
-    - security
+    # - security
     - quality
-    - style
-    - performance
-    - documentation
+    # - style
+    # - performance
+    # - documentation
 
   # OR detailed format with per-agent model overrides:
   # agents:
@@ -49,3 +50,20 @@ review:
     - "package-lock.json"
     - "yarn.lock"
     - "pnpm-lock.yaml"
+
+# PR/MR Description Generator
+describe:
+  # Model to use for description generation (optional, defaults to review.defaultModel)
+  # model: opencode/glm-4.7-free
+
+  # Generate PR/MR title (default: true)
+  generateTitle: true
+
+  # Generate suggested labels (default: true)
+  generateLabels: true
+
+  # Include recommendations section (default: true)
+  includeRecommendations: true
+
+  # Maximum files to include in walkthrough (future use)
+  # maxFilesInWalkthrough: 50
