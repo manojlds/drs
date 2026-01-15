@@ -54,4 +54,4 @@ review:
 # PR/MR Description Generator
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
-  # model: opencode/glm-4.7-free
+  model: opencode/glm-4.7-free
