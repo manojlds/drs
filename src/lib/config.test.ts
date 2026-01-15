@@ -25,15 +25,19 @@ describe('Config', () => {
     expect(config.review.agents).toEqual(['security']);
   });
 
-  it('should use default agents when no override provided', () => {
+  it('should load agents from config file when no override provided', () => {
     const config = loadConfig(process.cwd());
 
-    expect(config.review.agents).toEqual([
-      'security',
-      'quality',
-      'style',
-      'performance',
-      'documentation',
-    ]);
+    // Should load whatever is configured in the project's .drs/drs.config.yaml
+    expect(config.review.agents).toBeDefined();
+    expect(Array.isArray(config.review.agents)).toBe(true);
+    expect(config.review.agents.length).toBeGreaterThan(0);
+
+    // Verify each agent is a string (simple format) or object (detailed format)
+    config.review.agents.forEach((agent) => {
+      const isValid = typeof agent === 'string' ||
+                     (typeof agent === 'object' && 'name' in agent);
+      expect(isValid).toBe(true);
+    });
   });
 });

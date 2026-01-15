@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { DRSConfig } from '../lib/config.js';
+import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
@@ -49,10 +49,14 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Initialize OpenCode client
+  // Initialize OpenCode client with model overrides
+  const modelOverrides = getDescriberModelOverride(config);
   const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl || undefined,
+    baseUrl: config.opencode.serverUrl ?? undefined,
     directory: process.cwd(),
+    modelOverrides,
+    provider: config.opencode.provider,
+    debug: options.debug,
   });
 
   try {
