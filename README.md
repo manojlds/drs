@@ -78,6 +78,7 @@ reviews with different agents.
 - `--context-only` Run the diff analyzer only (skip review agents and comments)
 - `--context-output <path>` Write diff context JSON to a file
 - `--context-read <path>` Read diff context JSON from a file and skip the analyzer
+- `--no-diff-analyzer` Disable the diff analyzer entirely
 
 ```bash
 # Run diff analyzer only, save context for later
@@ -85,6 +86,9 @@ drs review-local --context-only --context-output diff-context.json
 
 # Review using saved context (skip analyzer)
 drs review-local --context-read diff-context.json
+
+# Disable the diff analyzer for this run
+drs review-local --no-diff-analyzer
 ```
 
 **CI pattern: analyze once, reuse many times**
