@@ -5,6 +5,7 @@ import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { buildBaseInstructions } from '../lib/review-core.js';
 import { displayDescription, postDescription } from '../lib/description-formatter.js';
+import type { FileChange } from '../lib/platform-client.js';
 
 export interface DescribePROptions {
   owner: string;
@@ -24,19 +25,18 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
   const platformAdapter = new GitHubPlatformAdapter(githubClient);
   const projectId = `${options.owner}/${options.repo}`;
 
-  // Fetch PR details
+  // Fetch PR files
   console.log(
     chalk.dim(`Fetching PR #${options.prNumber} from ${options.owner}/${options.repo}...`)
   );
 
-  const prDetails = await platformAdapter.getPullRequest(projectId, options.prNumber);
   const files = await githubClient.getPRFiles(options.owner, options.repo, options.prNumber);
 
   console.log(chalk.dim(`Found ${files.length} changed files\n`));
 
   // Build context for the describer agent
   const label = `PR #${options.prNumber}`;
-  const filesWithDiffs = files.map((file: any) => ({
+  const filesWithDiffs = files.map((file: FileChange) => ({
     filename: file.filename,
     diff: file.patch,
   }));

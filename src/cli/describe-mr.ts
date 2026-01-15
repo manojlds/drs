@@ -5,6 +5,7 @@ import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { buildBaseInstructions } from '../lib/review-core.js';
 import { displayDescription, postDescription } from '../lib/description-formatter.js';
+import type { FileChange } from '../lib/platform-client.js';
 
 export interface DescribeMROptions {
   projectId: string;
@@ -22,17 +23,16 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
   const gitlabClient = createGitLabClient();
   const platformAdapter = new GitLabPlatformAdapter(gitlabClient);
 
-  // Fetch MR details
+  // Fetch MR files
   console.log(chalk.dim(`Fetching MR !${options.mrIid} from project ${options.projectId}...`));
 
-  const mrDetails = await platformAdapter.getPullRequest(options.projectId, options.mrIid);
   const files = await platformAdapter.getChangedFiles(options.projectId, options.mrIid);
 
   console.log(chalk.dim(`Found ${files.length} changed files\n`));
 
   // Build context for the describer agent
   const label = `MR !${options.mrIid}`;
-  const filesWithDiffs = files.map((file: any) => ({
+  const filesWithDiffs = files.map((file: FileChange) => ({
     filename: file.filename,
     diff: file.patch,
   }));
