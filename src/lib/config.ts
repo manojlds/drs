@@ -289,3 +289,28 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
 
   return overrides;
 }
+
+/**
+ * Get model override for the describer agent
+ * Precedence:
+ * 1. describe.model in config
+ * 2. Environment variable DESCRIBE_MODEL
+ * 3. review.defaultModel in config (fallback)
+ * 4. Environment variable REVIEW_DEFAULT_MODEL (fallback)
+ */
+export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
+  const overrides: ModelOverrides = {};
+
+  // Check for describer-specific model
+  const describerModel =
+    config.describe?.model ??
+    process.env.DESCRIBE_MODEL ??
+    config.review.defaultModel ??
+    process.env.REVIEW_DEFAULT_MODEL;
+
+  if (describerModel) {
+    overrides['describe/pr-describer'] = describerModel;
+  }
+
+  return overrides;
+}
