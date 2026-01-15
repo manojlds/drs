@@ -118,6 +118,10 @@ drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-qu
 
 # Review specific GitHub PR
 drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
+
+# Generate review JSON first, then post comments after manual review
+drs review-pr --owner octocat --repo hello-world --pr 456 -o review.json
+drs post-comments --input review.json --owner octocat --repo hello-world --pr 456
 ```
 
 ### Mode 2: GitLab CI/CD

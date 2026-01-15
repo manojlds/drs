@@ -50,7 +50,10 @@ interface RepoInfo {
 }
 
 function normalizeRepoPath(path: string): string {
-  return path.replace(/^\/+/, '').replace(/\.git$/i, '').toLowerCase();
+  return path
+    .replace(/^\/+/, '')
+    .replace(/\.git$/i, '')
+    .toLowerCase();
 }
 
 function parseRemoteUrl(remoteUrl: string): RepoInfo | null {
@@ -109,7 +112,7 @@ function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
   return null;
 }
 
-async function enforceRepoBranchMatch(
+export async function enforceRepoBranchMatch(
   workingDir: string,
   projectId: string,
   pr: PullRequest
@@ -144,7 +147,9 @@ async function enforceRepoBranchMatch(
   const localRepoPath = normalizeRepoPath(localRepo.repoPath);
   const expectedRepoPath = normalizeRepoPath(expectedRepo.repoPath);
   const hostMismatch =
-    expectedRepo.host && localRepo.host && expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
+    expectedRepo.host &&
+    localRepo.host &&
+    expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
   const repoMismatch = localRepoPath !== expectedRepoPath;
 
   if (hostMismatch || repoMismatch) {
@@ -431,7 +436,7 @@ export async function executeUnifiedReview(
 /**
  * Post review comments to the platform
  */
-async function postReviewComments(
+export async function postReviewComments(
   platformClient: PlatformClient,
   projectId: string,
   prNumber: number,
