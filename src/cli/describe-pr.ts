@@ -4,6 +4,7 @@ import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { buildBaseInstructions } from '../lib/review-core.js';
+import { displayDescription, postDescription } from '../lib/description-formatter.js';
 
 export interface DescribePROptions {
   owner: string;
@@ -89,7 +90,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     }
 
     // Display the description
-    displayDescription(description);
+    displayDescription(description, 'PR');
 
     // Save to JSON file if requested
     if (options.outputPath) {
@@ -105,155 +106,11 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
 
     // Post description to PR if requested
     if (options.postDescription) {
-      await postDescriptionToPR(platformAdapter, projectId, options.prNumber, description);
+      await postDescription(platformAdapter, projectId, options.prNumber, description, 'PR');
     }
 
     console.log(chalk.green('\n✓ PR description generated successfully\n'));
   } finally {
     await opencode.shutdown();
-  }
-}
-
-function displayDescription(description: any) {
-  console.log(chalk.bold.cyan('📝 Generated PR Description\n'));
-
-  // Type
-  console.log(chalk.bold('Type: ') + chalk.yellow(description.type));
-
-  // Title
-  console.log(chalk.bold('\nTitle:'));
-  console.log(chalk.white(description.title));
-
-  // Summary
-  console.log(chalk.bold('\nSummary:'));
-  for (const bullet of description.summary) {
-    console.log(chalk.white(`  • ${bullet}`));
-  }
-
-  // Walkthrough
-  if (description.walkthrough && description.walkthrough.length > 0) {
-    console.log(chalk.bold('\n📂 Changes Walkthrough:\n'));
-
-    for (const fileChange of description.walkthrough) {
-      const icon = getChangeIcon(fileChange.changeType);
-      const significance = fileChange.significance === 'major' ? chalk.red('⭐') : '';
-
-      console.log(
-        chalk.cyan(
-          `${icon} ${fileChange.file} ${significance} (${fileChange.semanticLabel})`
-        )
-      );
-      console.log(chalk.dim(`   ${fileChange.title}`));
-
-      if (fileChange.changes && fileChange.changes.length > 0) {
-        for (const change of fileChange.changes) {
-          console.log(chalk.white(`     • ${change}`));
-        }
-      }
-      console.log();
-    }
-  }
-
-  // Labels
-  if (description.labels && description.labels.length > 0) {
-    console.log(chalk.bold('🏷️  Suggested Labels:'));
-    console.log(chalk.white('  ' + description.labels.join(', ')));
-  }
-
-  // Recommendations
-  if (description.recommendations && description.recommendations.length > 0) {
-    console.log(chalk.bold('\n💡 Recommendations:\n'));
-    for (const rec of description.recommendations) {
-      console.log(chalk.yellow(`  • ${rec}`));
-    }
-  }
-}
-
-function getChangeIcon(changeType: string): string {
-  switch (changeType) {
-    case 'added':
-      return chalk.green('+');
-    case 'modified':
-      return chalk.yellow('~');
-    case 'deleted':
-      return chalk.red('-');
-    case 'renamed':
-      return chalk.blue('→');
-    default:
-      return chalk.gray('•');
-  }
-}
-
-async function postDescriptionToPR(
-  platformAdapter: GitHubPlatformAdapter,
-  projectId: string,
-  prNumber: number,
-  description: any
-) {
-  console.log(chalk.dim('\nPosting description to PR...'));
-
-  // Format the description as markdown
-  let markdown = '## AI-Generated PR Description\n\n';
-
-  markdown += `**Type:** ${description.type}\n\n`;
-
-  markdown += '### Summary\n\n';
-  for (const bullet of description.summary) {
-    markdown += `- ${bullet}\n`;
-  }
-
-  if (description.walkthrough && description.walkthrough.length > 0) {
-    markdown += '\n### Changes Walkthrough\n\n';
-    markdown += '<details>\n<summary>View file-by-file changes</summary>\n\n';
-
-    for (const fileChange of description.walkthrough) {
-      const icon = getMarkdownChangeIcon(fileChange.changeType);
-      markdown += `#### ${icon} \`${fileChange.file}\` (${fileChange.semanticLabel})\n\n`;
-      markdown += `**${fileChange.title}**\n\n`;
-
-      if (fileChange.changes && fileChange.changes.length > 0) {
-        for (const change of fileChange.changes) {
-          markdown += `- ${change}\n`;
-        }
-        markdown += '\n';
-      }
-    }
-
-    markdown += '</details>\n\n';
-  }
-
-  if (description.labels && description.labels.length > 0) {
-    markdown += '### Suggested Labels\n\n';
-    markdown += description.labels.map((l: string) => `\`${l}\``).join(', ') + '\n\n';
-  }
-
-  if (description.recommendations && description.recommendations.length > 0) {
-    markdown += '### Recommendations\n\n';
-    for (const rec of description.recommendations) {
-      markdown += `- ${rec}\n`;
-    }
-    markdown += '\n';
-  }
-
-  markdown += '\n---\n*Generated by DRS - Diff Review System*\n';
-
-  // Post as a comment
-  await platformAdapter.createComment(projectId, prNumber, markdown);
-
-  console.log(chalk.green('✓ Description posted to PR'));
-}
-
-function getMarkdownChangeIcon(changeType: string): string {
-  switch (changeType) {
-    case 'added':
-      return '➕';
-    case 'modified':
-      return '✏️';
-    case 'deleted':
-      return '➖';
-    case 'renamed':
-      return '➡️';
-    default:
-      return '📄';
   }
 }
