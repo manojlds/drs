@@ -3,7 +3,7 @@ import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
-import { buildBaseInstructions } from '../lib/review-core.js';
+import { buildDescribeInstructions } from '../lib/describe-core.js';
 import {
   displayDescription,
   normalizeDescription,
@@ -45,7 +45,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     diff: file.patch,
   }));
 
-  const instructions = buildBaseInstructions(label, filesWithDiffs);
+  const instructions = buildDescribeInstructions(label, filesWithDiffs);
 
   if (options.debug) {
     console.log(chalk.yellow('\n=== Agent Instructions ==='));

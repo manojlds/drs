@@ -3,7 +3,7 @@ import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
-import { buildBaseInstructions } from '../lib/review-core.js';
+import { buildDescribeInstructions } from '../lib/describe-core.js';
 import {
   displayDescription,
   normalizeDescription,
@@ -41,7 +41,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     diff: file.patch,
   }));
 
-  const instructions = buildBaseInstructions(label, filesWithDiffs);
+  const instructions = buildDescribeInstructions(label, filesWithDiffs);
 
   if (options.debug) {
     console.log(chalk.yellow('\n=== Agent Instructions ==='));
