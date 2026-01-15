@@ -57,10 +57,6 @@ export interface DRSConfig {
   // Describe behavior (PR/MR description generation)
   describe?: {
     model?: string;
-    generateTitle?: boolean;
-    generateLabels?: boolean;
-    includeRecommendations?: boolean;
-    maxFilesInWalkthrough?: number;
   };
 }
 

@@ -55,15 +55,3 @@ review:
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
   # model: opencode/glm-4.7-free
-
-  # Generate PR/MR title (default: true)
-  generateTitle: true
-
-  # Generate suggested labels (default: true)
-  generateLabels: true
-
-  # Include recommendations section (default: true)
-  includeRecommendations: true
-
-  # Maximum files to include in walkthrough (future use)
-  # maxFilesInWalkthrough: 50
