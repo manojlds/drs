@@ -743,6 +743,13 @@ export function displayReviewSummary(result: {
     console.log(`    🟡 High: ${chalk.yellow(result.summary.bySeverity.HIGH)}`);
     console.log(`    🟠 Medium: ${chalk.hex('#FFA500')(result.summary.bySeverity.MEDIUM)}`);
     console.log(`    ⚪ Low: ${chalk.gray(result.summary.bySeverity.LOW)}`);
+    console.log('');
+    console.log('  By category:');
+    console.log(`    🔒 Security: ${chalk.cyan(result.summary.byCategory.SECURITY)}`);
+    console.log(`    📊 Quality: ${chalk.cyan(result.summary.byCategory.QUALITY)}`);
+    console.log(`    ✨ Style: ${chalk.cyan(result.summary.byCategory.STYLE)}`);
+    console.log(`    ⚡ Performance: ${chalk.cyan(result.summary.byCategory.PERFORMANCE)}`);
+    console.log(`    📝 Documentation: ${chalk.cyan(result.summary.byCategory.DOCUMENTATION)}`);
   }
 
   console.log('');
