@@ -9,7 +9,8 @@
  */
 
 import chalk from 'chalk';
-import { writeFile } from 'fs/promises';
+import simpleGit from 'simple-git';
+import { writeFile, readFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { DRSConfig } from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
@@ -25,14 +26,222 @@ import {
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
 import {
   buildBaseInstructions,
+  buildDiffAnalyzerContext,
   runReviewAgents,
   analyzeDiffContext,
   displayReviewSummary,
+  normalizeDiffAnalysis,
   type FileWithDiff,
+  type DiffAnalysis,
 } from './review-core.js';
-import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type {
+  PlatformClient,
+  LineValidator,
+  InlineCommentPosition,
+  PullRequest,
+} from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
+
+interface RepoInfo {
+  host?: string;
+  repoPath?: string;
+  remoteUrl?: string;
+}
+
+function normalizeRepoPath(path: string): string {
+  return path
+    .replace(/^\/+/, '')
+    .replace(/\.git$/i, '')
+    .toLowerCase();
+}
+
+function parseRemoteUrl(remoteUrl: string): RepoInfo | null {
+  if (!remoteUrl) return null;
+
+  const trimmed = remoteUrl.trim();
+  const sshMatch = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
+  if (sshMatch) {
+    return { host: sshMatch[1], repoPath: sshMatch[2], remoteUrl: trimmed };
+  }
+
+  if (
+    trimmed.startsWith('ssh://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  ) {
+    try {
+      const url = new URL(trimmed);
+      return {
+        host: url.hostname,
+        repoPath: url.pathname.replace(/^\/+/, ''),
+        remoteUrl: trimmed,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
+  const data = pr?.platformData;
+
+  if (data?.base?.repo?.full_name) {
+    const hostUrl = data.base.repo.html_url || data.base.repo.clone_url || data.base.repo.ssh_url;
+    const hostInfo = hostUrl ? parseRemoteUrl(hostUrl) : null;
+    return {
+      host: hostInfo?.host || 'github.com',
+      repoPath: data.base.repo.full_name,
+    };
+  }
+
+  if (typeof projectId === 'string' && projectId.includes('/')) {
+    return { repoPath: projectId };
+  }
+
+  if (typeof data?.web_url === 'string') {
+    const info = parseRemoteUrl(data.web_url);
+    if (info?.repoPath) {
+      const pathWithoutSuffix = info.repoPath.replace(/\/-\/.*$/, '');
+      return { host: info.host, repoPath: pathWithoutSuffix };
+    }
+  }
+
+  return null;
+}
+
+type BaseBranchResolution = {
+  baseBranch?: string;
+  resolvedBaseBranch?: string;
+  diffCommand: string;
+  source?: string;
+};
+
+function normalizeBaseBranch(baseBranch?: string): string | undefined {
+  if (!baseBranch) return undefined;
+  return baseBranch.startsWith('origin/') ? baseBranch : `origin/${baseBranch}`;
+}
+
+function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseBranchResolution {
+  if (cliBaseBranch) {
+    const resolved = normalizeBaseBranch(cliBaseBranch);
+    return {
+      baseBranch: cliBaseBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'cli',
+    };
+  }
+
+  if (process.env.DRS_BASE_BRANCH) {
+    const resolved = normalizeBaseBranch(process.env.DRS_BASE_BRANCH);
+    return {
+      baseBranch: process.env.DRS_BASE_BRANCH,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:DRS_BASE_BRANCH',
+    };
+  }
+
+  if (process.env.GITHUB_BASE_REF) {
+    const resolved = normalizeBaseBranch(process.env.GITHUB_BASE_REF);
+    return {
+      baseBranch: process.env.GITHUB_BASE_REF,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:GITHUB_BASE_REF',
+    };
+  }
+
+  if (process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME) {
+    const resolved = normalizeBaseBranch(process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME);
+    return {
+      baseBranch: process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
+    };
+  }
+
+  if (targetBranch) {
+    const resolved = normalizeBaseBranch(targetBranch);
+    return {
+      baseBranch: targetBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'pr:targetBranch',
+    };
+  }
+
+  return {
+    diffCommand: 'git diff HEAD~1 -- <file>',
+  };
+}
+
+export async function enforceRepoBranchMatch(
+  workingDir: string,
+  projectId: string,
+  pr: PullRequest
+): Promise<void> {
+  const git = simpleGit({ baseDir: workingDir });
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error('Not a git repository. Run review from the PR/MR repository checkout.');
+  }
+
+  const branchSummary = await git.branch();
+  const currentBranch = branchSummary.current;
+  const headSha = (await git.revparse(['HEAD'])).trim();
+
+  const remotes = await git.getRemotes(true);
+  const origin = remotes.find((r) => r.name === 'origin') || remotes[0];
+  const remoteUrl = origin?.refs?.fetch || origin?.refs?.push;
+  if (!remoteUrl) {
+    throw new Error('No git remotes found. Cannot validate repository match for PR/MR.');
+  }
+
+  const localRepo = parseRemoteUrl(remoteUrl);
+  if (!localRepo?.repoPath) {
+    throw new Error(`Unable to parse git remote URL: ${remoteUrl}`);
+  }
+
+  const expectedRepo = getExpectedRepoInfo(pr, projectId);
+  if (!expectedRepo?.repoPath) {
+    throw new Error('Unable to determine expected repository from PR/MR data.');
+  }
+
+  const localRepoPath = normalizeRepoPath(localRepo.repoPath);
+  const expectedRepoPath = normalizeRepoPath(expectedRepo.repoPath);
+  const hostMismatch =
+    expectedRepo.host &&
+    localRepo.host &&
+    expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
+  const repoMismatch = localRepoPath !== expectedRepoPath;
+
+  if (hostMismatch || repoMismatch) {
+    throw new Error(
+      `Repository mismatch for PR/MR review.\n` +
+        `Local repo: ${localRepo.host ? `${localRepo.host}/` : ''}${localRepoPath}\n` +
+        `Expected: ${expectedRepo.host ? `${expectedRepo.host}/` : ''}${expectedRepoPath}\n` +
+        `Run the review from the PR/MR repository checkout.`
+    );
+  }
+
+  const expectedBranch = pr.sourceBranch;
+  const branchMatches = currentBranch === expectedBranch;
+  const shaMatches = pr.headSha ? headSha === pr.headSha : false;
+
+  if (!branchMatches && !shaMatches) {
+    throw new Error(
+      `Branch mismatch for PR/MR review.\n` +
+        `Local branch: ${currentBranch || '(unknown)'}\n` +
+        `Expected branch: ${expectedBranch}\n` +
+        `Check out the PR/MR source branch before running the review.`
+    );
+  }
+}
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
@@ -49,6 +258,14 @@ export interface UnifiedReviewOptions {
   outputPath?: string;
   /** Output results as JSON to console */
   jsonOutput?: boolean;
+  /** Override base branch used for diff command hints */
+  baseBranch?: string;
+  /** Run only diff analyzer and skip review agents/comments */
+  contextOnly?: boolean;
+  /** Write diff analysis JSON to this path (if produced or loaded) */
+  contextOutputPath?: string;
+  /** Read diff analysis JSON from this path instead of running analyzer */
+  contextReadPath?: string;
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
@@ -74,6 +291,9 @@ export async function executeUnifiedReview(
   console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
 
   const pr = await platformClient.getPullRequest(projectId, prNumber);
+
+  await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr);
+
   const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
 
   console.log(chalk.bold(`PR/MR: ${pr.title}`));
@@ -125,24 +345,83 @@ export async function executeUnifiedReview(
   try {
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
-    const baseInstructions = buildBaseInstructions(
+    const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
+    const fallbackDiffCommand = baseBranchResolution.diffCommand;
+    const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
+    let baseInstructions = buildBaseInstructions(
+      reviewLabel,
+      filesForInstructions,
+      fallbackDiffCommand
+    );
+    if (baseBranchResolution.resolvedBaseBranch) {
+      baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
+    }
+    const diffAnalyzerContext = buildDiffAnalyzerContext(
       reviewLabel,
       filteredFilesWithDiffs,
-      'git diff HEAD~1 -- <file>' // Fallback if no diff content
+      fallbackDiffCommand
     );
 
-    // Run diff analyzer if enabled (we have actual diff content from platform)
-    let diffAnalysis = null;
-    if (config.review.enableDiffAnalyzer) {
+    // Obtain diff analysis: from file, or by running analyzer
+    let diffAnalysis: DiffAnalysis | null = null;
+
+    if (options.contextReadPath) {
+      try {
+        const raw = await readFile(options.contextReadPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const normalized = normalizeDiffAnalysis(parsed);
+        if (normalized.analysis) {
+          diffAnalysis = normalized.analysis;
+          if (normalized.warnings.length > 0) {
+            console.log(
+              chalk.yellow(`⚠️  Diff context normalized output: ${normalized.warnings.join('; ')}`)
+            );
+          }
+          console.log(chalk.green(`✓ Loaded diff context from ${options.contextReadPath}`));
+        } else {
+          console.log(
+            chalk.yellow(
+              `⚠️  Invalid diff context in ${options.contextReadPath}: ${normalized.errors.join('; ')}`
+            )
+          );
+        }
+      } catch (err) {
+        console.log(
+          chalk.yellow(
+            `⚠️  Failed to read context from ${options.contextReadPath}: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
+    } else if (config.review.enableDiffAnalyzer) {
       diffAnalysis = await analyzeDiffContext(
         opencode,
         config,
-        baseInstructions,
+        diffAnalyzerContext,
         reviewLabel,
         filteredFiles,
         options.workingDir || process.cwd(),
-        { prNumber }
+        { prNumber },
+        options.debug || false
       );
+    }
+
+    // Optionally write diff context
+    if (options.contextOutputPath && diffAnalysis) {
+      try {
+        await writeFile(options.contextOutputPath, JSON.stringify(diffAnalysis, null, 2), 'utf-8');
+        console.log(chalk.green(`✓ Diff context written to ${options.contextOutputPath}\n`));
+      } catch (err) {
+        console.log(
+          chalk.yellow(
+            `⚠️  Failed to write diff context to ${options.contextOutputPath}: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
+    }
+
+    if (options.contextOnly) {
+      console.log(chalk.gray('Context-only mode: skipping review agents and comments.\n'));
+      return;
     }
 
     // Run agents using shared core logic
@@ -154,7 +433,8 @@ export async function executeUnifiedReview(
       filteredFiles,
       { prNumber },
       diffAnalysis,
-      options.workingDir || process.cwd()
+      options.workingDir || process.cwd(),
+      options.debug || false
     );
 
     // Display summary
@@ -231,7 +511,7 @@ export async function executeUnifiedReview(
 /**
  * Post review comments to the platform
  */
-async function postReviewComments(
+export async function postReviewComments(
   platformClient: PlatformClient,
   projectId: string,
   prNumber: number,

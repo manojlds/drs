@@ -15,6 +15,9 @@ export interface ReviewLocalOptions {
   staged: boolean;
   outputPath?: string;
   jsonOutput?: boolean;
+  contextOnly?: boolean;
+  contextOutputPath?: string;
+  contextReadPath?: string;
   debug?: boolean;
 }
 
@@ -62,9 +65,17 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
     workingDir: cwd,
     debug: options.debug,
     staged: options.staged,
+    contextOnly: options.contextOnly,
+    contextOutputPath: options.contextOutputPath,
+    contextReadPath: options.contextReadPath,
   };
 
   const result = await executeReview(config, source);
+
+  // If context-only, stop after context processing
+  if (options.contextOnly) {
+    return;
+  }
 
   // Handle JSON output
   const wantsJsonOutput = options.jsonOutput || options.outputPath;

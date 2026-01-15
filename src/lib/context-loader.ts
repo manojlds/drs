@@ -96,7 +96,13 @@ export function buildReviewPrompt(
 
   // 1. Global project context (if available)
   if (globalContext) {
-    prompt += `# Project Context\n\n${globalContext}\n\n`;
+    const trimmedContext = globalContext.trim();
+    const firstLine = trimmedContext.split('\n').find((line) => line.trim().length > 0) || '';
+    if (/^#\s*project context/i.test(firstLine)) {
+      prompt += `${trimmedContext}\n\n`;
+    } else {
+      prompt += `# Project Context\n\n${trimmedContext}\n\n`;
+    }
   }
 
   // 2. Agent-specific context (if available)

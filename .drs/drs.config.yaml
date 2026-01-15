@@ -21,6 +21,8 @@ review:
   # For built-in providers: anthropic/claude-sonnet-4-5-20250929, openai/gpt-4o, zhipuai/glm-4.7
   # For custom providers: provider-name/model-name
   defaultModel: opencode/glm-4.7-free
+  diffAnalyzerModel: opencode/glm-4.7-free
+  enableDiffAnalyzer: false
 
   # Review agents
   # Simple format (uses defaultModel):

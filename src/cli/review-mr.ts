@@ -12,6 +12,10 @@ export interface ReviewMROptions {
   codeQualityReport?: string; // Optional path to output code quality report JSON
   outputPath?: string; // Optional path to write JSON results file
   jsonOutput?: boolean; // Output results as JSON to console
+  baseBranch?: string;
+  contextOnly?: boolean;
+  contextOutputPath?: string;
+  contextReadPath?: string;
   debug?: boolean;
 }
 
@@ -109,8 +113,12 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     codeQualityReport: options.codeQualityReport,
     outputPath: options.outputPath,
     jsonOutput: options.jsonOutput,
+    baseBranch: options.baseBranch,
     lineValidator,
     createInlinePosition,
+    contextOnly: options.contextOnly,
+    contextOutputPath: options.contextOutputPath,
+    contextReadPath: options.contextReadPath,
     debug: options.debug,
   });
 }

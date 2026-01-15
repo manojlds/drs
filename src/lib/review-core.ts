@@ -6,6 +6,7 @@
  */
 
 import chalk from 'chalk';
+import { z } from 'zod';
 import type { DRSConfig } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
@@ -175,6 +176,45 @@ Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
+ * Build diff-focused context for the diff analyzer (no review-agent instructions)
+ */
+export function buildDiffAnalyzerContext(
+  label: string,
+  files: FileWithDiff[],
+  diffCommand?: string
+): string {
+  const filesWithDiffs = files.filter((f) => f.patch);
+  const hasDiffs = filesWithDiffs.length > 0;
+  const fileList = files.map((f) => `- ${f.filename}`).join('\n');
+
+  if (hasDiffs) {
+    const diffContent = filesWithDiffs
+      .map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``)
+      .join('\n\n');
+
+    return `Analyze the following changed files from ${label}:
+
+${fileList}
+
+## Diff Content
+
+The following shows exactly what changed:
+
+${diffContent}
+
+Use this diff to understand the modifications. Read the full files for surrounding context as needed.`;
+  }
+
+  const fallbackCommand = diffCommand || 'git diff HEAD~1 -- <file>';
+
+  return `Analyze the following changed files from ${label}:
+
+${fileList}
+
+Diff content was not provided. Run \`${fallbackCommand}\` to see the exact changes, then analyze the modifications. Focus on the lines that differ.`;
+}
+
+/**
  * Get information about configured review agents
  */
 function getConfiguredAgentInfo(
@@ -209,6 +249,84 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
   return limitedChars;
 }
 
+const lineRangeSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+  reason: z.string(),
+});
+
+const fileContextSchema = z.object({
+  filename: z.string(),
+  filePurpose: z.string(),
+  changeDescription: z.string(),
+  scopeContext: z.string(),
+  dependencies: z.array(z.string()),
+  concerns: z.array(z.string()),
+  relatedLineRanges: z.array(lineRangeSchema),
+});
+
+const changeSummarySchema = z.object({
+  type: z.enum(['feature', 'bugfix', 'refactor', 'docs', 'test', 'config', 'other']),
+  description: z.string(),
+  subsystems: z.array(z.string()),
+  complexity: z.enum(['simple', 'medium', 'high']),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+});
+
+const diffAnalysisSchema = z.object({
+  changeSummary: changeSummarySchema,
+  recommendedAgents: z.array(z.string()),
+  fileContexts: z.array(fileContextSchema),
+  overallConcerns: z.array(z.string()),
+});
+
+export function normalizeDiffAnalysis(raw: any): {
+  analysis: DiffAnalysis | null;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (raw && typeof raw === 'object') {
+    if (raw.changeSummary) {
+      if (typeof raw.changeSummary.subsystems === 'string') {
+        warnings.push('Normalized changeSummary.subsystems from string to array');
+        raw.changeSummary.subsystems = raw.changeSummary.subsystems
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+    }
+    if (Array.isArray(raw.fileContexts)) {
+      raw.fileContexts = raw.fileContexts.map((fc: any) => {
+        const next = { ...fc };
+        if (Array.isArray(next.relatedLineRanges)) {
+          next.relatedLineRanges = next.relatedLineRanges.map((r: any) => {
+            if (typeof r === 'string') {
+              warnings.push('Normalized relatedLineRanges entry from string to object');
+              return { start: 0, end: 0, reason: r };
+            }
+            return {
+              start: typeof r?.start === 'number' ? r.start : 0,
+              end: typeof r?.end === 'number' ? r.end : 0,
+              reason: typeof r?.reason === 'string' ? r.reason : '',
+            };
+          });
+        }
+        return next;
+      });
+    }
+  }
+
+  const result = diffAnalysisSchema.safeParse(raw);
+  if (!result.success) {
+    errors.push(...result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`));
+    return { analysis: null, errors, warnings };
+  }
+  return { analysis: result.data, errors, warnings };
+}
+
 /**
  * Run the diff analyzer agent to get enriched context
  *
@@ -224,11 +342,12 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
 export async function analyzeDiffContext(
   opencode: OpencodeClient,
   config: DRSConfig,
-  baseInstructions: string,
+  diffContext: string,
   reviewLabel: string,
   filteredFiles: string[],
   workingDir: string,
-  additionalContext: Record<string, any> = {}
+  additionalContext: Record<string, any> = {},
+  debug = false
 ): Promise<DiffAnalysis | null> {
   console.log(chalk.gray('Analyzing diff context...\n'));
 
@@ -237,7 +356,7 @@ export async function analyzeDiffContext(
     const agentInfo = getConfiguredAgentInfo(config, workingDir);
     const agentList = agentInfo.map((a) => `- **${a.name}**: ${a.description}`).join('\n');
 
-    const analyzerPrompt = `${baseInstructions}
+    const basePrompt = `${diffContext}
 
 **Your Task**: Analyze the diff above and provide enriched context for the review agents.
 
@@ -255,44 +374,129 @@ Use the Read, Grep, and Bash tools as needed to gather complete context about:
 - Dependencies and related code
 - Potential concerns for each type of review
 
-Then output your analysis in the required JSON format. In the "recommendedAgents" field, only include agent names from the list above that are relevant to the changes.`;
+Required schema (all top-level keys are mandatory):
+- changeSummary: { type, description, subsystems, complexity, riskLevel }
+- recommendedAgents: string[]
+- fileContexts: array of { filename, filePurpose, changeDescription, scopeContext, dependencies[], concerns[], relatedLineRanges[] }
+- overallConcerns: string[]
 
-    const session = await opencode.createSession({
-      agent: 'review/diff-analyzer',
-      message: analyzerPrompt,
-      context: {
-        ...additionalContext,
-        files: filteredFiles,
-      },
-    });
+Validation instructions:
+- Draft your JSON output.
+- Call the \`json-validate\` tool with your draft JSON string.
+- If validation fails, fix the JSON and validate again until it succeeds.
+- When valid, respond with the JSON object only (no markdown fences, no prose).`;
 
-    let analysisJson = '';
+    const maxAttempts = 2;
+    let attempt = 0;
+    let lastAssistantContent = '';
+    let analysis: DiffAnalysis | null = null;
+    let validationErrors: string[] = [];
 
-    // Collect output from diff analyzer
-    for await (const message of opencode.streamMessages(session.id)) {
-      if (message.role === 'assistant') {
-        const snippet = renderAgentMessage(message.content);
-        if (snippet) {
-          console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
-        }
-        // Look for JSON in the message content
-        const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
-          analysisJson = jsonMatch[1];
-          break; // Exit early once we have the JSON
+    while (attempt < maxAttempts && !analysis) {
+      const prompt =
+        attempt === 0
+          ? basePrompt
+          : `${basePrompt}
+
+Your previous output failed validation for these reasons:
+- ${validationErrors.join('\n- ')}
+
+Previous draft:
+${lastAssistantContent}
+
+Please fix the JSON to satisfy the schema and return only the corrected JSON (no fences, no prose).`;
+
+      if (debug) {
+        console.log(chalk.gray('┌── DEBUG: Message sent to diff analyzer'));
+        console.log(chalk.gray(`│ Agent: review/diff-analyzer`));
+        console.log(chalk.gray('│ Prompt:'));
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(prompt);
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(chalk.gray('└── End message for review/diff-analyzer\n'));
+      }
+
+      const session = await opencode.createSession({
+        agent: 'review/diff-analyzer',
+        message: prompt,
+        context: {
+          ...additionalContext,
+          files: filteredFiles,
+        },
+      });
+
+      let analysisJson = '';
+      lastAssistantContent = '';
+
+      // Collect output from diff analyzer
+      for await (const message of opencode.streamMessages(session.id)) {
+        if (message.role === 'assistant') {
+          lastAssistantContent = message.content;
+          if (debug) {
+            console.log(chalk.gray('┌── DEBUG: Full response from review/diff-analyzer'));
+            console.log(message.content);
+            console.log(chalk.gray('└── End response for review/diff-analyzer\n'));
+          } else {
+            const snippet = renderAgentMessage(message.content);
+            if (snippet) {
+              console.log(chalk.gray(`[diff-analyzer] ${snippet}\n`));
+            }
+          }
+          // Look for JSON in the message content
+          const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch) {
+            analysisJson = jsonMatch[1];
+            break; // Exit early once we have the JSON
+          }
         }
       }
+
+      await opencode.closeSession(session.id);
+
+      // Fallback: if no fenced JSON was found, try parsing the last assistant message as JSON
+      if (!analysisJson && lastAssistantContent.trim()) {
+        try {
+          const parsed = JSON.parse(lastAssistantContent);
+          analysisJson = JSON.stringify(parsed);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!analysisJson) {
+        validationErrors = ['No JSON content was produced'];
+      } else {
+        try {
+          const parsed = JSON.parse(analysisJson);
+          const normalized = normalizeDiffAnalysis(parsed);
+          if (normalized.analysis) {
+            analysis = normalized.analysis;
+            if (normalized.warnings.length > 0) {
+              console.log(
+                chalk.yellow(
+                  `⚠️  Diff analysis normalized output: ${normalized.warnings.join('; ')}`
+                )
+              );
+            }
+          } else {
+            validationErrors = normalized.errors;
+          }
+        } catch (err: any) {
+          validationErrors = [err?.message || 'Failed to parse JSON'];
+        }
+      }
+
+      attempt++;
     }
 
-    await opencode.closeSession(session.id);
-
-    if (!analysisJson) {
-      console.log(chalk.yellow('⚠️  Diff analyzer did not produce JSON output, skipping analysis'));
+    if (!analysis) {
+      console.log(
+        chalk.yellow(
+          `⚠️  Diff analyzer did not produce valid JSON after ${maxAttempts} attempt(s); skipping analysis`
+        )
+      );
       return null;
     }
-
-    // Parse the JSON
-    const analysis: DiffAnalysis = JSON.parse(analysisJson);
 
     console.log(chalk.green('✓ Diff analysis complete'));
     console.log(chalk.gray(`  Change type: ${analysis.changeSummary.type}`));
@@ -323,7 +527,8 @@ export async function runReviewAgents(
   filteredFiles: string[],
   additionalContext: Record<string, any> = {},
   diffAnalysis?: DiffAnalysis | null,
-  workingDir: string = process.cwd()
+  workingDir: string = process.cwd(),
+  debug = false
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
@@ -337,15 +542,26 @@ export async function runReviewAgents(
   }
 
   // Use recommended agents from analysis if available, otherwise use configured agents
-  let agentNames = getAgentNames(config);
+  const configuredAgentNames = getAgentNames(config);
+  let agentNames = configuredAgentNames;
   if (diffAnalysis && diffAnalysis.recommendedAgents.length > 0) {
     // Filter configured agents to only run recommended ones
     const recommended = new Set(diffAnalysis.recommendedAgents);
-    agentNames = agentNames.filter((name) => recommended.has(name));
+    const filteredAgents = configuredAgentNames.filter((name) => recommended.has(name));
 
-    if (agentNames.length < getAgentNames(config).length) {
-      const skipped = getAgentNames(config).filter((name) => !recommended.has(name));
-      console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
+    if (filteredAgents.length === 0) {
+      console.log(
+        chalk.yellow(
+          '⚠️  Diff analysis recommended no configured agents; running all configured agents.\n'
+        )
+      );
+      agentNames = configuredAgentNames;
+    } else {
+      agentNames = filteredAgents;
+      if (agentNames.length < configuredAgentNames.length) {
+        const skipped = configuredAgentNames.filter((name) => !recommended.has(name));
+        console.log(chalk.gray(`Skipping agents based on analysis: ${skipped.join(', ')}\n`));
+      }
     }
   }
 
@@ -399,6 +615,16 @@ export async function runReviewAgents(
         });
       }
 
+      if (debug) {
+        console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
+        console.log(chalk.gray(`│ Agent: ${agentName}`));
+        console.log(chalk.gray('│ Prompt:'));
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(reviewPrompt);
+        console.log(chalk.gray('─'.repeat(60)));
+        console.log(chalk.gray(`└── End message for ${agentName}\n`));
+      }
+
       const session = await opencode.createSession({
         agent: agentName,
         message: reviewPrompt,
@@ -414,9 +640,15 @@ export async function runReviewAgents(
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+          if (debug) {
+            console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
+            console.log(message.content);
+            console.log(chalk.gray(`└── End response for ${agentName}\n`));
+          } else {
+            const snippet = renderAgentMessage(message.content);
+            if (snippet) {
+              console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
+            }
           }
           const parsedIssues = parseReviewIssues(message.content);
           if (parsedIssues.length > 0) {
@@ -511,6 +743,13 @@ export function displayReviewSummary(result: {
     console.log(`    🟡 High: ${chalk.yellow(result.summary.bySeverity.HIGH)}`);
     console.log(`    🟠 Medium: ${chalk.hex('#FFA500')(result.summary.bySeverity.MEDIUM)}`);
     console.log(`    ⚪ Low: ${chalk.gray(result.summary.bySeverity.LOW)}`);
+    console.log('');
+    console.log('  By category:');
+    console.log(`    🔒 Security: ${chalk.cyan(result.summary.byCategory.SECURITY)}`);
+    console.log(`    📊 Quality: ${chalk.cyan(result.summary.byCategory.QUALITY)}`);
+    console.log(`    ✨ Style: ${chalk.cyan(result.summary.byCategory.STYLE)}`);
+    console.log(`    ⚡ Performance: ${chalk.cyan(result.summary.byCategory.PERFORMANCE)}`);
+    console.log(`    📝 Documentation: ${chalk.cyan(result.summary.byCategory.DOCUMENTATION)}`);
   }
 
   console.log('');
