@@ -68,38 +68,6 @@ drs review-local --staged
 drs review-local --agents security,quality
 ```
 
-### 6. Diff Context Options (Analyzer-Only / Save & Load)
-
-These options let you run the diff analyzer by itself, save the enriched context to a file,
-and reuse it later to skip re-analysis. Useful for debugging, faster CI runs, or re-running
-reviews with different agents.
-
-**Options:**
-- `--context-only` Run the diff analyzer only (skip review agents and comments)
-- `--context-output <path>` Write diff context JSON to a file
-- `--context-read <path>` Read diff context JSON from a file and skip the analyzer
-- `--no-diff-analyzer` Disable the diff analyzer entirely
-
-```bash
-# Run diff analyzer only, save context for later
-drs review-local --context-only --context-output diff-context.json
-
-# Review using saved context (skip analyzer)
-drs review-local --context-read diff-context.json
-
-# Disable the diff analyzer for this run
-drs review-local --no-diff-analyzer
-```
-
-**CI pattern: analyze once, reuse many times**
-```bash
-# Step 1: produce context
-drs review-mr --project my-org/my-repo --mr 123 --context-only --context-output diff-context.json
-
-# Step 2: run one or more reviews without re-analyzing
-drs review-mr --project my-org/my-repo --mr 123 --context-read diff-context.json --post-comments
-```
-
 ## Deployment Modes
 
 ### Mode 1: Local CLI

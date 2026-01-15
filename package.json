@@ -58,8 +58,7 @@
     "hono": "^4.0.0",
     "redis": "^4.6.0",
     "simple-git": "^3.22.0",
-    "yaml": "^2.3.0",
-    "zod": "^3.22.0"
+    "yaml": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.6",
