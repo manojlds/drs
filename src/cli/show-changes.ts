@@ -15,6 +15,7 @@ export interface ShowChangesOptions {
   prNumber?: number;
   projectId?: string;
   mrIid?: number;
+  baseBranch?: string;
   file?: string;
   outputPath?: string;
   jsonOutput?: boolean;
@@ -25,6 +26,9 @@ interface ShowChangesPayload {
   label: string;
   files: FileWithDiff[];
   instructions: string;
+  resolvedBaseBranch?: string;
+  diffCommand: string;
+  diffCommandSource?: string;
   metadata: {
     projectId: string;
     prNumber: number;
@@ -51,6 +55,74 @@ function ensureFileMatch(files: FileWithDiff[], filename?: string): FileWithDiff
     throw new Error(`No matching file "${filename}" found in PR/MR changes.`);
   }
   return matches;
+}
+
+type BaseBranchResolution = {
+  baseBranch?: string;
+  resolvedBaseBranch?: string;
+  diffCommand: string;
+  source?: string;
+};
+
+function normalizeBaseBranch(baseBranch?: string): string | undefined {
+  if (!baseBranch) return undefined;
+  return baseBranch.startsWith('origin/') ? baseBranch : `origin/${baseBranch}`;
+}
+
+function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseBranchResolution {
+  if (cliBaseBranch) {
+    const resolved = normalizeBaseBranch(cliBaseBranch);
+    return {
+      baseBranch: cliBaseBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'cli',
+    };
+  }
+
+  if (process.env.DRS_BASE_BRANCH) {
+    const resolved = normalizeBaseBranch(process.env.DRS_BASE_BRANCH);
+    return {
+      baseBranch: process.env.DRS_BASE_BRANCH,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:DRS_BASE_BRANCH',
+    };
+  }
+
+  if (process.env.GITHUB_BASE_REF) {
+    const resolved = normalizeBaseBranch(process.env.GITHUB_BASE_REF);
+    return {
+      baseBranch: process.env.GITHUB_BASE_REF,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:GITHUB_BASE_REF',
+    };
+  }
+
+  if (process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME) {
+    const resolved = normalizeBaseBranch(process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME);
+    return {
+      baseBranch: process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
+    };
+  }
+
+  if (targetBranch) {
+    const resolved = normalizeBaseBranch(targetBranch);
+    return {
+      baseBranch: targetBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'pr:targetBranch',
+    };
+  }
+
+  return {
+    diffCommand: 'git diff HEAD~1 -- <file>',
+  };
 }
 
 export async function showChanges(config: DRSConfig, options: ShowChangesOptions): Promise<void> {
@@ -95,12 +167,20 @@ export async function showChanges(config: DRSConfig, options: ShowChangesOptions
     const scopedFiles = ensureFileMatch(filteredFiles, options.file);
 
     const label = `PR/MR #${pr.number}`;
-    const instructions = buildBaseInstructions(label, scopedFiles, 'git diff HEAD~1 -- <file>');
+    const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
+    const instructions = buildBaseInstructions(
+      label,
+      scopedFiles.map((file) => ({ filename: file.filename })),
+      baseBranchResolution.diffCommand
+    );
 
     const payload: ShowChangesPayload = {
       label,
       files: scopedFiles,
       instructions,
+      resolvedBaseBranch: baseBranchResolution.resolvedBaseBranch,
+      diffCommand: baseBranchResolution.diffCommand,
+      diffCommandSource: baseBranchResolution.source,
       metadata: {
         projectId,
         prNumber: pr.number,
@@ -137,12 +217,20 @@ export async function showChanges(config: DRSConfig, options: ShowChangesOptions
   const scopedFiles = ensureFileMatch(filteredFiles, options.file);
 
   const label = `PR/MR #${pr.number}`;
-  const instructions = buildBaseInstructions(label, scopedFiles, 'git diff HEAD~1 -- <file>');
+  const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
+  const instructions = buildBaseInstructions(
+    label,
+    scopedFiles.map((file) => ({ filename: file.filename })),
+    baseBranchResolution.diffCommand
+  );
 
   const payload: ShowChangesPayload = {
     label,
     files: scopedFiles,
     instructions,
+    resolvedBaseBranch: baseBranchResolution.resolvedBaseBranch,
+    diffCommand: baseBranchResolution.diffCommand,
+    diffCommandSource: baseBranchResolution.source,
     metadata: {
       projectId,
       prNumber: pr.number,
@@ -162,7 +250,10 @@ async function writeOutput(
   jsonOutput?: boolean,
   workingDir: string = process.cwd()
 ): Promise<void> {
-  const output = jsonOutput ? JSON.stringify(payload, null, 2) : payload.instructions;
+  let output = jsonOutput ? JSON.stringify(payload, null, 2) : payload.instructions;
+  if (!jsonOutput && payload.resolvedBaseBranch) {
+    output = `${output}\n\nBase branch resolved to: ${payload.resolvedBaseBranch} (${payload.diffCommandSource})`;
+  }
 
   if (outputPath) {
     const fullPath = resolve(workingDir, outputPath);

@@ -12,6 +12,7 @@ export interface ReviewPROptions {
   postComments: boolean;
   outputPath?: string; // Optional path to write JSON results file
   jsonOutput?: boolean; // Output results as JSON to console
+  baseBranch?: string;
   contextOnly?: boolean;
   contextOutputPath?: string;
   contextReadPath?: string;
@@ -104,6 +105,7 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     postComments: options.postComments,
     outputPath: options.outputPath,
     jsonOutput: options.jsonOutput,
+    baseBranch: options.baseBranch,
     lineValidator,
     createInlinePosition,
     workingDir: process.cwd(),

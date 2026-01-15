@@ -90,6 +90,7 @@ program
   )
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
+  .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--no-diff-analyzer', 'Disable diff analyzer')
   .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
   .option('--context-output <path>', 'Write diff context JSON to file')
@@ -117,6 +118,7 @@ program
             : options.codeQualityReport,
         outputPath: options.output,
         jsonOutput: options.json || false,
+        baseBranch: options.baseBranch,
         contextOnly: options.contextOnly || false,
         contextOutputPath: options.contextOutput,
         contextReadPath: options.contextRead,
@@ -139,6 +141,7 @@ program
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
+  .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--no-diff-analyzer', 'Disable diff analyzer')
   .option('--context-only', 'Run diff analyzer only and skip review agents/comments')
   .option('--context-output <path>', 'Write diff context JSON to file')
@@ -163,6 +166,7 @@ program
         postComments: options.postComments || false,
         outputPath: options.output,
         jsonOutput: options.json || false,
+        baseBranch: options.baseBranch,
         contextOnly: options.contextOnly || false,
         contextOutputPath: options.contextOutput,
         contextReadPath: options.contextRead,
@@ -213,6 +217,7 @@ program
   .option('--repo <repo>', 'GitHub repository name (e.g., "hello-world")')
   .option('--pr <number>', 'GitHub pull request number')
   .option('--file <path>', 'Filter output to a single file path')
+  .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--json', 'Output as JSON instead of raw instructions')
   .option('-o, --output <path>', 'Write output to a file')
   .action(async (options) => {
@@ -225,6 +230,7 @@ program
         repo: options.repo,
         prNumber: options.pr ? parseInt(options.pr, 10) : undefined,
         file: options.file,
+        baseBranch: options.baseBranch,
         jsonOutput: options.json || false,
         outputPath: options.output,
         workingDir: process.cwd(),

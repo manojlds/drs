@@ -119,6 +119,9 @@ drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-qu
 # Review specific GitHub PR
 drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
 
+# Override base branch used for diff hints
+drs review-pr --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
+
 # Generate review JSON first, then post comments after manual review
 drs review-pr --owner octocat --repo hello-world --pr 456 -o review.json
 drs post-comments --input review.json --owner octocat --repo hello-world --pr 456
@@ -128,6 +131,9 @@ drs show-changes --owner octocat --repo hello-world --pr 456
 
 # Show diff context for a single file
 drs show-changes --owner octocat --repo hello-world --pr 456 --file src/app.ts
+
+# Show diff context using a specific base branch
+drs show-changes --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
 ```
 
 ### Mode 2: GitLab CI/CD

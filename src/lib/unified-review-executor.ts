@@ -112,6 +112,74 @@ function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
   return null;
 }
 
+type BaseBranchResolution = {
+  baseBranch?: string;
+  resolvedBaseBranch?: string;
+  diffCommand: string;
+  source?: string;
+};
+
+function normalizeBaseBranch(baseBranch?: string): string | undefined {
+  if (!baseBranch) return undefined;
+  return baseBranch.startsWith('origin/') ? baseBranch : `origin/${baseBranch}`;
+}
+
+function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseBranchResolution {
+  if (cliBaseBranch) {
+    const resolved = normalizeBaseBranch(cliBaseBranch);
+    return {
+      baseBranch: cliBaseBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'cli',
+    };
+  }
+
+  if (process.env.DRS_BASE_BRANCH) {
+    const resolved = normalizeBaseBranch(process.env.DRS_BASE_BRANCH);
+    return {
+      baseBranch: process.env.DRS_BASE_BRANCH,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:DRS_BASE_BRANCH',
+    };
+  }
+
+  if (process.env.GITHUB_BASE_REF) {
+    const resolved = normalizeBaseBranch(process.env.GITHUB_BASE_REF);
+    return {
+      baseBranch: process.env.GITHUB_BASE_REF,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:GITHUB_BASE_REF',
+    };
+  }
+
+  if (process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME) {
+    const resolved = normalizeBaseBranch(process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME);
+    return {
+      baseBranch: process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'env:CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
+    };
+  }
+
+  if (targetBranch) {
+    const resolved = normalizeBaseBranch(targetBranch);
+    return {
+      baseBranch: targetBranch,
+      resolvedBaseBranch: resolved,
+      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
+      source: 'pr:targetBranch',
+    };
+  }
+
+  return {
+    diffCommand: 'git diff HEAD~1 -- <file>',
+  };
+}
+
 export async function enforceRepoBranchMatch(
   workingDir: string,
   projectId: string,
@@ -190,6 +258,8 @@ export interface UnifiedReviewOptions {
   outputPath?: string;
   /** Output results as JSON to console */
   jsonOutput?: boolean;
+  /** Override base branch used for diff command hints */
+  baseBranch?: string;
   /** Run only diff analyzer and skip review agents/comments */
   contextOnly?: boolean;
   /** Write diff analysis JSON to this path (if produced or loaded) */
@@ -275,12 +345,17 @@ export async function executeUnifiedReview(
   try {
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
-    const fallbackDiffCommand = 'git diff HEAD~1 -- <file>';
-    const baseInstructions = buildBaseInstructions(
+    const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
+    const fallbackDiffCommand = baseBranchResolution.diffCommand;
+    const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
+    let baseInstructions = buildBaseInstructions(
       reviewLabel,
-      filteredFilesWithDiffs,
-      fallbackDiffCommand // Fallback if no diff content
+      filesForInstructions,
+      fallbackDiffCommand
     );
+    if (baseBranchResolution.resolvedBaseBranch) {
+      baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
+    }
     const diffAnalyzerContext = buildDiffAnalyzerContext(
       reviewLabel,
       filteredFilesWithDiffs,
