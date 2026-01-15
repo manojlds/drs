@@ -224,9 +224,13 @@ export class OpencodeClient {
         createdAt: new Date(),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to create session: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      const connectionHint =
+        message.includes('fetch failed') || message.includes('ECONNREFUSED')
+          ? ` Check the OpenCode server URL (${this.baseUrl ?? 'in-process'}) and ensure it is reachable.`
+          : '';
+
+      throw new Error(`Failed to create session: ${message}${connectionHint}`);
     }
   }
 
