@@ -35,8 +35,7 @@ describe('Config', () => {
 
     // Verify each agent is a string (simple format) or object (detailed format)
     config.review.agents.forEach((agent) => {
-      const isValid = typeof agent === 'string' ||
-                     (typeof agent === 'object' && 'name' in agent);
+      const isValid = typeof agent === 'string' || (typeof agent === 'object' && 'name' in agent);
       expect(isValid).toBe(true);
     });
   });

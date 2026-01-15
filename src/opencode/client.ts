@@ -97,11 +97,7 @@ export class OpencodeClient {
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
           opencodeConfig.agent[agentName] = { model };
-
-          // Log each agent's model (only show review/* agents to avoid duplication)
-          if (agentName.startsWith('review/')) {
-            console.log(`  • ${agentName}: ${model}`);
-          }
+          console.log(`  • ${agentName}: ${model}`);
         }
 
         console.log('');
