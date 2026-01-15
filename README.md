@@ -122,6 +122,12 @@ drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
 # Generate review JSON first, then post comments after manual review
 drs review-pr --owner octocat --repo hello-world --pr 456 -o review.json
 drs post-comments --input review.json --owner octocat --repo hello-world --pr 456
+
+# Show the diff context passed to agents
+drs show-changes --owner octocat --repo hello-world --pr 456
+
+# Show diff context for a single file
+drs show-changes --owner octocat --repo hello-world --pr 456 --file src/app.ts
 ```
 
 ### Mode 2: GitLab CI/CD
