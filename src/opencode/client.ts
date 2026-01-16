@@ -7,6 +7,7 @@
  */
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import net from 'net';
 import type { CustomProvider } from '../lib/config.js';
 
 export interface OpencodeConfig {
@@ -161,14 +162,43 @@ export class OpencodeClient {
         process.chdir(projectDir);
       }
 
+      const hostname = this.config.serverHostname || '127.0.0.1';
+      const defaultPort = this.config.serverPort || 4096;
+
+      const startServer = async (port: number) => {
+        return await createOpencode({
+          hostname,
+          port,
+          timeout: 10000,
+          config: opencodeConfig,
+        });
+      };
+
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      this.inProcessServer = await createOpencode({
-        hostname: this.config.serverHostname || '127.0.0.1',
-        port: this.config.serverPort || 4096,
-        timeout: 10000,
-        config: opencodeConfig,
-      });
+      try {
+        this.inProcessServer = await startServer(defaultPort);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldRetry =
+          message.includes('EADDRINUSE') ||
+          message.includes('address already in use') ||
+          message.includes(`Failed to start server on port ${defaultPort}`);
+
+        if (!shouldRetry) {
+          throw error;
+        }
+
+        const fallbackPort = await findAvailablePort(defaultPort + 1, 10);
+        if (fallbackPort === null) {
+          throw error;
+        }
+
+        console.warn(
+          `⚠️  Port ${defaultPort} unavailable. Retrying OpenCode server on port ${fallbackPort}.`
+        );
+        this.inProcessServer = await startServer(fallbackPort);
+      }
 
       // Restore original working directory
       if (projectDir !== originalCwd) {
@@ -409,6 +439,28 @@ export class OpencodeClient {
 
     return obj;
   }
+}
+
+async function findAvailablePort(startPort: number, attempts: number): Promise<number | null> {
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const port = startPort + offset;
+    const available = await isPortAvailable(port);
+    if (available) {
+      return port;
+    }
+  }
+  return null;
+}
+
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', () => resolve(false));
+    server.listen(port, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 /**
