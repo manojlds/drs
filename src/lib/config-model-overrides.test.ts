@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getModelOverrides,
+  getUnifiedModelOverride,
   normalizeAgentConfig,
   getAgentNames,
   type DRSConfig,
@@ -28,6 +29,7 @@ describe('Model Override Precedence', () => {
     delete process.env.REVIEW_AGENT_QUALITY_MODEL;
     delete process.env.REVIEW_AGENT_STYLE_MODEL;
     delete process.env.REVIEW_AGENT_PERFORMANCE_MODEL;
+    delete process.env.REVIEW_UNIFIED_MODEL;
   });
 
   afterEach(() => {
@@ -242,6 +244,43 @@ describe('Model Override Precedence', () => {
       const names = getAgentNames(config);
 
       expect(names).toEqual(['security', 'quality', 'style']);
+    });
+  });
+
+  describe('Unified reviewer model overrides', () => {
+    it('should use unified model from config', () => {
+      const config = createMockConfig({
+        defaultModel: 'anthropic/claude-sonnet-4-5-20250929',
+        unified: {
+          model: 'provider/unified-config',
+        },
+      });
+
+      const overrides = getUnifiedModelOverride(config);
+
+      expect(overrides['review/unified-reviewer']).toBe('provider/unified-config');
+    });
+
+    it('should fall back to env REVIEW_UNIFIED_MODEL when config missing', () => {
+      process.env.REVIEW_UNIFIED_MODEL = 'provider/unified-env';
+
+      const config = createMockConfig({
+        defaultModel: 'provider/default-model',
+      });
+
+      const overrides = getUnifiedModelOverride(config);
+
+      expect(overrides['review/unified-reviewer']).toBe('provider/unified-env');
+    });
+
+    it('should fall back to review.defaultModel when unified model missing', () => {
+      const config = createMockConfig({
+        defaultModel: 'provider/default-model',
+      });
+
+      const overrides = getUnifiedModelOverride(config);
+
+      expect(overrides['review/unified-reviewer']).toBe('provider/default-model');
     });
   });
 

@@ -89,6 +89,14 @@ opencode:
   # Default model for all agents
   defaultModel: ${config.defaultModel}
 
+  # Review mode: multi-agent | unified | hybrid
+  # mode: multi-agent
+
+  # Unified review settings (used for unified/hybrid modes)
+  # unified:
+  #   model: ${config.defaultModel}
+  #   severityThreshold: HIGH
+
   # Review agents
   agents:
 `;

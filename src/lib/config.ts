@@ -52,6 +52,11 @@ export interface DRSConfig {
     defaultModel: string;
     ignorePatterns: string[];
     includePatterns?: string[];
+    mode?: ReviewMode;
+    unified?: {
+      model?: string;
+      severityThreshold?: ReviewSeverity;
+    };
     describe?: {
       enabled?: boolean;
       postDescription?: boolean;
@@ -72,6 +77,9 @@ export interface DRSConfig {
     tokenEstimateDivisor?: number;
   };
 }
+
+export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
+export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
   opencode: {
@@ -96,6 +104,10 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
+    mode: 'multi-agent',
+    unified: {
+      severityThreshold: 'HIGH',
+    },
     describe: {
       enabled: false,
       postDescription: false,
@@ -156,6 +168,21 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (process.env.REVIEW_DEFAULT_MODEL) {
     config.review.defaultModel = process.env.REVIEW_DEFAULT_MODEL;
   }
+  if (process.env.REVIEW_MODE) {
+    config.review.mode = process.env.REVIEW_MODE as ReviewMode;
+  }
+  if (process.env.REVIEW_UNIFIED_MODEL) {
+    config.review.unified = {
+      ...config.review.unified,
+      model: process.env.REVIEW_UNIFIED_MODEL,
+    };
+  }
+  if (process.env.REVIEW_UNIFIED_THRESHOLD) {
+    config.review.unified = {
+      ...config.review.unified,
+      severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
+    };
+  }
 
   // Validate required fields
   if (!config.review.defaultModel) {
@@ -168,6 +195,17 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   // Apply CLI overrides
   if (overrides) {
     config = mergeConfig(config, overrides);
+  }
+
+  if (!config.review.mode) {
+    config.review.mode = 'multi-agent';
+  }
+
+  const validModes: ReviewMode[] = ['multi-agent', 'unified', 'hybrid'];
+  if (!validModes.includes(config.review.mode)) {
+    throw new Error(
+      `Invalid review mode "${config.review.mode}". Valid options: ${validModes.join(', ')}`
+    );
   }
 
   return config;
@@ -223,7 +261,9 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
   }
 
   if (config.review.agents.length === 0) {
-    throw new Error('At least one review agent must be configured');
+    if (config.review.mode !== 'unified') {
+      throw new Error('At least one review agent must be configured');
+    }
   }
 
   if (!config.review.defaultModel) {
@@ -314,6 +354,30 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
       // Use review/<agent> format which matches how agents are invoked
       overrides[`review/${agent.name}`] = model;
     }
+  }
+
+  return overrides;
+}
+
+/**
+ * Get model override for the unified reviewer agent
+ * Precedence:
+ * 1. review.unified.model in config
+ * 2. Environment variable REVIEW_UNIFIED_MODEL
+ * 3. review.defaultModel in config (fallback)
+ * 4. Environment variable REVIEW_DEFAULT_MODEL (fallback)
+ */
+export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
+  const overrides: ModelOverrides = {};
+
+  const unifiedModel =
+    config.review.unified?.model ??
+    process.env.REVIEW_UNIFIED_MODEL ??
+    config.review.defaultModel ??
+    process.env.REVIEW_DEFAULT_MODEL;
+
+  if (unifiedModel) {
+    overrides['review/unified-reviewer'] = unifiedModel;
   }
 
   return overrides;

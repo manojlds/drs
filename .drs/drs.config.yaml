@@ -22,15 +22,22 @@ review:
   # For custom providers: provider-name/model-name
   defaultModel: opencode/glm-4.7-free
 
-  # Review agents
+  # Review mode
+  # Options: multi-agent | unified | hybrid
+  mode: unified
+
+  # Review agents (used in multi-agent or hybrid modes)
   # Simple format (uses defaultModel):
-  # NOTE: Temporarily using only quality agent while working on this PR
   agents:
-    # - security
+    - security
     - quality
-    # - style
-    # - performance
-    # - documentation
+    - style
+    - performance
+    - documentation
+
+  # Unified review settings
+  unified:
+    severityThreshold: HIGH
 
   # OR detailed format with per-agent model overrides:
   # agents:

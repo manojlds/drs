@@ -13,16 +13,12 @@ import type { CustomProvider } from '../lib/config.js';
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
   directory?: string;
-  serverPort?: number;
-  serverHostname?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
 }
 
-const DEFAULT_OPENCODE_PORT = 4096;
 const SERVER_START_TIMEOUT_MS = 10000;
-const PORT_SEARCH_ATTEMPTS = 10;
 
 export interface SessionCreateOptions {
   agent: string;
@@ -166,43 +162,12 @@ export class OpencodeClient {
         process.chdir(projectDir);
       }
 
-      const hostname = this.config.serverHostname || '127.0.0.1';
-      const defaultPort = this.config.serverPort || DEFAULT_OPENCODE_PORT;
-
-      const startServer = async (port: number) => {
-        return await createOpencode({
-          hostname,
-          port,
-          timeout: SERVER_START_TIMEOUT_MS,
-          config: opencodeConfig,
-        });
-      };
-
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      try {
-        this.inProcessServer = await startServer(defaultPort);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const shouldRetry =
-          message.includes('EADDRINUSE') ||
-          message.includes('address already in use') ||
-          message.includes(`Failed to start server on port ${defaultPort}`);
-
-        if (!shouldRetry) {
-          throw error;
-        }
-
-        const fallbackPort = await findAvailablePort(defaultPort + 1, PORT_SEARCH_ATTEMPTS);
-        if (fallbackPort === null) {
-          throw error;
-        }
-
-        console.warn(
-          `⚠️  Port ${defaultPort} unavailable. Retrying OpenCode server on port ${fallbackPort}.`
-        );
-        this.inProcessServer = await startServer(fallbackPort);
-      }
+      this.inProcessServer = await createOpencode({
+        timeout: SERVER_START_TIMEOUT_MS,
+        config: opencodeConfig,
+      });
 
       // Restore original working directory
       if (projectDir !== originalCwd) {
@@ -211,6 +176,12 @@ export class OpencodeClient {
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
+      const ready = await waitForServerReady(this.baseUrl);
+      if (!ready) {
+        console.warn(
+          `⚠️  OpenCode server did not become ready at ${this.baseUrl}. Review requests may fail.`
+        );
+      }
     }
   }
 
@@ -445,26 +416,50 @@ export class OpencodeClient {
   }
 }
 
-async function findAvailablePort(startPort: number, attempts: number): Promise<number | null> {
-  for (let offset = 0; offset < attempts; offset += 1) {
-    const port = startPort + offset;
-    const available = await isPortAvailable(port);
-    if (available) {
-      return port;
+function parseServerEndpoint(baseUrl: string): { host: string; port: number } | null {
+  try {
+    const url = new URL(baseUrl);
+    const port = url.port !== '' ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+
+    if (!url.hostname || Number.isNaN(port)) {
+      return null;
     }
+
+    return { host: url.hostname, port };
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function isPortAvailable(port: number): Promise<boolean> {
+async function isServerReachable(baseUrl: string): Promise<boolean> {
+  const endpoint = parseServerEndpoint(baseUrl);
+  if (!endpoint) {
+    return false;
+  }
+
   return new Promise((resolve) => {
-    const server = net.createServer();
-    server.unref();
-    server.once('error', () => resolve(false));
-    server.listen(port, () => {
-      server.close(() => resolve(true));
+    const socket = net.createConnection(endpoint, () => {
+      socket.end();
+      resolve(true);
     });
+
+    socket.setTimeout(1000);
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => resolve(false));
   });
+}
+
+async function waitForServerReady(baseUrl: string, attempts = 10, delayMs = 200): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await isServerReachable(baseUrl)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
 }
 
 /**

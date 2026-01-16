@@ -12,7 +12,12 @@ import chalk from 'chalk';
 import simpleGit from 'simple-git';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
-import { getDescriberModelOverride, getModelOverrides, type DRSConfig } from './config.js';
+import {
+  getDescriberModelOverride,
+  getModelOverrides,
+  getUnifiedModelOverride,
+  type DRSConfig,
+} from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
 import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
@@ -26,7 +31,7 @@ import {
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
 import {
   buildBaseInstructions,
-  runReviewAgents,
+  runReviewPipeline,
   displayReviewSummary,
   type FileWithDiff,
 } from './review-core.js';
@@ -402,7 +407,10 @@ export async function executeUnifiedReview(
     return;
   }
 
-  const reviewOverrides = getModelOverrides(config);
+  const reviewOverrides = {
+    ...getModelOverrides(config),
+    ...getUnifiedModelOverride(config),
+  };
   const describeOverrides = config.review.describe?.enabled
     ? getDescriberModelOverride(config)
     : {};
@@ -443,7 +451,7 @@ export async function executeUnifiedReview(
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
     }
     // Run agents using shared core logic
-    const result = await runReviewAgents(
+    const result = await runReviewPipeline(
       opencode,
       config,
       baseInstructions,

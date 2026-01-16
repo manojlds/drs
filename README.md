@@ -7,9 +7,12 @@ Enterprise-grade automated code review for Merge Requests and Pull Requests, pow
 ## Features
 
 - **Comprehensive Analysis**: Advanced code review using Claude's latest models
-- **Specialized Review Domains**: Security, quality, style, and performance analysis
+- **Specialized Review Domains**: Security, quality, style, performance, and documentation analysis
 - **Multi-Platform Support**: Native integration with GitLab and GitHub
 - **Flexible Deployment**: CI/CD pipelines, webhook server, or local CLI
+- **Review Modes**: Multi-agent deep review, single-pass unified review, and hybrid escalation
+- **Unified Reviewer**: One-pass JSON output with severity-tagged findings across domains
+- **PR/MR Descriptions**: Optional auto-generated descriptions and labels for pull requests
 - **Highly Customizable**: Configure review agents with project-specific rules
 - **Deep Integration**: Full API support for both GitLab and GitHub platforms
 
