@@ -211,6 +211,12 @@ export class OpencodeClient {
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
+      const ready = await waitForServerReady(this.baseUrl);
+      if (!ready) {
+        console.warn(
+          `⚠️  OpenCode server did not become ready at ${this.baseUrl}. Review requests may fail.`
+        );
+      }
     }
   }
 
@@ -465,6 +471,52 @@ function isPortAvailable(port: number): Promise<boolean> {
       server.close(() => resolve(true));
     });
   });
+}
+
+function parseServerEndpoint(baseUrl: string): { host: string; port: number } | null {
+  try {
+    const url = new URL(baseUrl);
+    const port = url.port !== '' ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+
+    if (!url.hostname || Number.isNaN(port)) {
+      return null;
+    }
+
+    return { host: url.hostname, port };
+  } catch {
+    return null;
+  }
+}
+
+async function isServerReachable(baseUrl: string): Promise<boolean> {
+  const endpoint = parseServerEndpoint(baseUrl);
+  if (!endpoint) {
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    const socket = net.createConnection(endpoint, () => {
+      socket.end();
+      resolve(true);
+    });
+
+    socket.setTimeout(1000);
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => resolve(false));
+  });
+}
+
+async function waitForServerReady(baseUrl: string, attempts = 10, delayMs = 200): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await isServerReachable(baseUrl)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
 }
 
 /**
