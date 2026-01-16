@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { writeJsonOutput } from './write-json-output.js';
 import { parseReviewOutput } from './review-parser.js';
@@ -84,6 +84,7 @@ describe('review output path integration', () => {
     };
 
     const expectedPath = join(workingDir, OUTPUT_PATHS.review_output);
+    await mkdir(dirname(expectedPath), { recursive: true });
     await writeFile(expectedPath, JSON.stringify(payload), 'utf-8');
 
     const parsed = await parseReviewOutput(workingDir);
