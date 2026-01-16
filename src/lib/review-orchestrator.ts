@@ -7,7 +7,7 @@
 
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
-import { shouldIgnoreFile, getModelOverrides } from './config.js';
+import { shouldIgnoreFile, getModelOverrides, type ModelOverrides } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
@@ -62,6 +62,7 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
 
 export interface ConnectOptions {
   debug?: boolean;
+  modelOverrides?: ModelOverrides;
 }
 
 /**
@@ -76,7 +77,7 @@ export async function connectToOpenCode(
 
   try {
     // Get model overrides from DRS config
-    const modelOverrides = getModelOverrides(config);
+    const modelOverrides = options?.modelOverrides ?? getModelOverrides(config);
 
     return await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,

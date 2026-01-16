@@ -52,6 +52,10 @@ export interface DRSConfig {
     defaultModel: string;
     ignorePatterns: string[];
     includePatterns?: string[];
+    describe?: {
+      enabled?: boolean;
+      postDescription?: boolean;
+    };
   };
 
   // Describe behavior (PR/MR description generation)
@@ -92,6 +96,10 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
+    describe: {
+      enabled: false,
+      postDescription: false,
+    },
   },
   contextCompression: {
     enabled: true,
