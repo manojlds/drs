@@ -135,13 +135,13 @@ program
             ? true
             : options.skipDescribe === true
               ? false
-              : config.review.describe?.enabled ?? false,
+              : (config.review.describe?.enabled ?? false),
         postDescription:
           options.postDescription === true
             ? true
             : options.skipPostDescription === true
               ? false
-              : config.review.describe?.postDescription ?? false,
+              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
       });
       process.exit(0);
@@ -205,13 +205,13 @@ program
             ? true
             : options.skipDescribe === true
               ? false
-              : config.review.describe?.enabled ?? false,
+              : (config.review.describe?.enabled ?? false),
         postDescription:
           options.postDescription === true
             ? true
             : options.skipPostDescription === true
               ? false
-              : config.review.describe?.postDescription ?? false,
+              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
       });
       process.exit(0);
