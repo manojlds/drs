@@ -94,22 +94,6 @@ jobs:
           EOF
           echo "✅ OpenCode Zen auth.json created"
 
-      - name: Generate PR Description (Trusted Contributor)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
-        run: |
-          echo "📝 Generating PR description for trusted contributor..."
-          echo "👤 Author: ${{ github.event.pull_request.user.login }} (trusted)"
-
-          node dist/cli/index.js describe-pr \
-            --owner ${{ github.event.repository.owner.login }} \
-            --repo ${{ github.event.repository.name }} \
-            --pr ${{ github.event.pull_request.number }} \
-            --post-description \
-            -o pr-description.json
-
       - name: Review Pull Request (Trusted Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -180,22 +164,6 @@ jobs:
           }
           EOF
           echo "✅ OpenCode Zen auth.json created"
-
-      - name: Generate PR Description (External Contributor)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
-        run: |
-          echo "📝 Generating PR description for external contributor..."
-          echo "👤 Author: ${{ github.event.pull_request.user.login }} (external - approved)"
-
-          node dist/cli/index.js describe-pr \
-            --owner ${{ github.event.repository.owner.login }} \
-            --repo ${{ github.event.repository.name }} \
-            --pr ${{ github.event.pull_request.number }} \
-            --post-description \
-            -o pr-description.json
 
       - name: Review Pull Request (External Contributor)
         env:

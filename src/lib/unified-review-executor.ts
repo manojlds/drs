@@ -12,7 +12,7 @@ import chalk from 'chalk';
 import simpleGit from 'simple-git';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
-import type { DRSConfig } from './config.js';
+import { getDescriberModelOverride, getModelOverrides, type DRSConfig } from './config.js';
 import type { calculateSummary } from './comment-formatter.js';
 import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
@@ -24,7 +24,14 @@ import {
   type PlatformComment,
 } from './comment-manager.js';
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
-import { buildBaseInstructions, runReviewAgents, displayReviewSummary } from './review-core.js';
+import {
+  buildBaseInstructions,
+  runReviewAgents,
+  displayReviewSummary,
+  type FileWithDiff,
+} from './review-core.js';
+import { buildDescribeInstructions } from './describe-core.js';
+import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
 import type {
   PlatformClient,
   LineValidator,
@@ -32,7 +39,15 @@ import type {
   PullRequest,
 } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
+import {
+  displayDescription,
+  normalizeDescription,
+  postDescription,
+  type Description,
+  type Platform,
+} from './description-formatter.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
+import type { OpencodeClient } from '../opencode/client.js';
 
 interface RepoInfo {
   host?: string;
@@ -234,6 +249,78 @@ export async function enforceRepoBranchMatch(
   }
 }
 
+function detectPlatform(pr: PullRequest): Platform {
+  const platformData = pr.platformData as Record<string, unknown> | undefined;
+  if (platformData && ('iid' in platformData || 'diff_refs' in platformData)) {
+    return 'MR';
+  }
+  return 'PR';
+}
+
+async function runDescribeIfEnabled(
+  opencode: OpencodeClient,
+  config: DRSConfig,
+  platformClient: PlatformClient,
+  projectId: string,
+  pr: PullRequest,
+  files: FileWithDiff[],
+  debug?: boolean
+): Promise<Description | null> {
+  if (!config.review.describe?.enabled) {
+    return null;
+  }
+
+  console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
+
+  const label = `${detectPlatform(pr)} #${pr.number}`;
+  const compression = compressFilesWithDiffs(files, config.contextCompression);
+  const compressionSummary = formatCompressionSummary(compression);
+
+  if (compressionSummary) {
+    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+  }
+
+  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
+
+  if (debug) {
+    console.log(chalk.yellow('\n=== Describe Agent Instructions ==='));
+    console.log(instructions);
+    console.log(chalk.yellow('=== End Instructions ===\n'));
+  }
+
+  const session = await opencode.createSession({
+    agent: 'describe/pr-describer',
+    message: instructions,
+  });
+
+  let fullResponse = '';
+  for await (const message of opencode.streamMessages(session.id)) {
+    if (message.role === 'assistant') {
+      fullResponse += message.content;
+    }
+  }
+
+  let descriptionPayload: Description;
+  try {
+    const jsonMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    descriptionPayload = jsonMatch ? JSON.parse(jsonMatch[1]) : JSON.parse(fullResponse);
+  } catch (parseError) {
+    console.error(chalk.red('Failed to parse agent output as JSON'));
+    console.log(chalk.dim('Agent output:'), fullResponse);
+    throw new Error('Describe agent did not return valid JSON output');
+  }
+
+  const description = normalizeDescription(descriptionPayload);
+  const platform = detectPlatform(pr);
+  displayDescription(description, platform);
+
+  if (config.review.describe.postDescription) {
+    await postDescription(platformClient, projectId, pr.number, description, platform);
+  }
+
+  return description;
+}
+
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
   platformClient: PlatformClient;
@@ -315,12 +402,33 @@ export async function executeUnifiedReview(
     return;
   }
 
+  const reviewOverrides = getModelOverrides(config);
+  const describeOverrides = config.review.describe?.enabled
+    ? getDescriberModelOverride(config)
+    : {};
+  const modelOverrides = { ...reviewOverrides, ...describeOverrides };
+
   // Connect to OpenCode
   const opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
     debug: options.debug,
+    modelOverrides,
   });
 
   try {
+    const filesForDescribe: FileWithDiff[] = allFiles.map((file) => ({
+      filename: file.filename,
+      patch: file.patch,
+    }));
+    await runDescribeIfEnabled(
+      opencode,
+      config,
+      platformClient,
+      projectId,
+      pr,
+      filesForDescribe,
+      options.debug
+    );
+
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);

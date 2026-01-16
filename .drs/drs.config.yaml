@@ -51,6 +51,10 @@ review:
     - "yarn.lock"
     - "pnpm-lock.yaml"
 
+  describe:
+    enabled: true
+    postDescription: true
+
 # PR/MR Description Generator
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)

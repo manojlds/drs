@@ -7,7 +7,7 @@
 
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
-import { shouldIgnoreFile, getModelOverrides } from './config.js';
+import { shouldIgnoreFile, getModelOverrides, type ModelOverrides } from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
@@ -17,6 +17,7 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
 } from './review-core.js';
+import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -61,6 +62,7 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
 
 export interface ConnectOptions {
   debug?: boolean;
+  modelOverrides?: ModelOverrides;
 }
 
 /**
@@ -75,7 +77,7 @@ export async function connectToOpenCode(
 
   try {
     // Get model overrides from DRS config
-    const modelOverrides = getModelOverrides(config);
+    const modelOverrides = options?.modelOverrides ?? getModelOverrides(config);
 
     return await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,
@@ -153,7 +155,19 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    const baseInstructions = buildBaseInstructions(source.name, filesForInstructions, diffCommand);
+    const compression = compressFilesWithDiffs(filesForInstructions, config.contextCompression);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
+    const baseInstructions = buildBaseInstructions(
+      source.name,
+      compression.files,
+      diffCommand,
+      compressionSummary
+    );
 
     // Run agents using shared core logic
     const result = await runReviewAgents(
