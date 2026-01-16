@@ -9,11 +9,18 @@ import type { FileWithDiff } from './review-core.js';
 export function buildDescribeInstructions(
   label: string,
   files: FileWithDiff[],
-  compressionSummary?: string
+  compressionSummary?: string,
+  projectContext?: string
 ): string {
   const filesWithDiffs = files.filter((f) => f.patch);
   const hasDiffs = filesWithDiffs.length > 0;
   const fileList = files.map((f) => `- ${f.filename}`).join('\n');
+  const trimmedContext = projectContext?.trim();
+  const contextSection = trimmedContext
+    ? /^#\s*project context/i.test(trimmedContext.split('\n')[0] ?? '')
+      ? `${trimmedContext}\n\n`
+      : `# Project Context\n\n${trimmedContext}\n\n`
+    : '';
 
   const diffContent = hasDiffs
     ? filesWithDiffs.map((f) => `### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``).join('\n\n')
@@ -56,7 +63,7 @@ export function buildDescribeInstructions(
   ]
 }`;
 
-  return `Generate a comprehensive PR/MR description for ${label}.
+  return `${contextSection}Generate a comprehensive PR/MR description for ${label}.
 
 Changed files:
 ${fileList}

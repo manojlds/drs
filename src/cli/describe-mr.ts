@@ -4,6 +4,7 @@ import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
+import { loadGlobalContext } from '../lib/context-loader.js';
 import {
   displayDescription,
   normalizeDescription,
@@ -50,7 +51,14 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
   }
 
-  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
+  const includeProjectContext = config.describe?.includeProjectContext ?? true;
+  const projectContext = includeProjectContext ? loadGlobalContext() : null;
+  const instructions = buildDescribeInstructions(
+    label,
+    compression.files,
+    compressionSummary,
+    projectContext ?? undefined
+  );
 
   if (options.debug) {
     console.log(chalk.yellow('\n=== Agent Instructions ==='));
