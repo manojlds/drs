@@ -325,10 +325,13 @@ review:
 
 ## What Can Be Implemented Next
 
-### Priority 1: Context Compression (High Impact)
+**Next up**: Priority 4 (Ticket Context Integration) now that context compression and unified modes are implemented.
+
+### Priority 1: Context Compression (High Impact) (Implemented)
 
 **Problem**: Large PRs are expensive and slow to analyze
-**Solution**: Implement token budget management
+**Status**: Implemented via context compression in review and describe flows.
+**Solution**: Implement token budget management (completed)
 
 **Implementation**:
 
@@ -368,10 +371,11 @@ class ContextBudgetManager {
 
 **Complexity**: Medium (2-3 weeks)
 
-### Priority 2: Unified Review Mode (Cost Optimization)
+### Priority 2: Unified Review Mode (Cost Optimization) (Implemented)
 
 **Problem**: Current multi-agent approach is thorough but expensive
-**Solution**: Add fast mode with single LLM call (like pr-agent)
+**Status**: Implemented with unified and hybrid review modes.
+**Solution**: Add fast mode with single LLM call (like pr-agent) (completed)
 
 **Implementation**:
 
@@ -405,10 +409,11 @@ Output JSON:
 
 **Complexity**: Medium (2-3 weeks)
 
-### Priority 3: JSON-Based Agent Configuration (Usability)
+### Priority 3: JSON-Based Agent Configuration (Usability) (Deferred)
 
 **Problem**: Customizing agent behavior requires editing agent markdown files
-**Solution**: Allow per-agent customization in config
+**Status**: Not needed for now given the current context override + agentic system; revisit if a concrete per-agent customization need arises.
+**Solution**: Allow per-agent customization in config (future work)
 
 **Implementation**:
 
@@ -732,7 +737,7 @@ review:
 
 1. **Focus on describe first**: Most valuable feature from pr-agent
 2. **Keep multi-agent architecture**: DRS's strength is thorough analysis
-3. **Add fast mode later**: Will implement unified mode as option
+3. **Add fast mode**: Implemented unified mode as an option
 4. **Configuration-driven**: Follow pr-agent's approach of TOML/YAML config
 
 ### Code Locations
@@ -773,8 +778,8 @@ node dist/cli/index.js describe-mr \
 
 ### Future Considerations
 
-1. **Large PR Handling**: Need context compression for PRs with 50+ files
-2. **Cost Optimization**: Consider unified mode for common cases
+1. **Large PR Handling**: Context compression is in place; monitor effectiveness on 50+ file PRs
+2. **Cost Optimization**: Unified mode is available; monitor adoption for common cases
 3. **Quality Metrics**: Track false positive rate for review agents
 4. **User Feedback**: Collect feedback on describe quality and usefulness
 
