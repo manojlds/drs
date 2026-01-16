@@ -4,6 +4,8 @@ import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
 
 const JSON_FENCE_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 interface DescribeOutputPointer {
   outputType?: OutputType;
   outputPath?: string;
@@ -27,7 +29,7 @@ function resolveWithinWorkingDir(workingDir: string, targetPath: string): string
   return fullPath;
 }
 
-async function readJsonIfExists(workingDir: string, targetPath: string): Promise<unknown | null> {
+async function readJsonIfExists(workingDir: string, targetPath: string): Promise<JsonValue | null> {
   const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath);
   try {
     const fileContents = await readFile(resolvedPath, 'utf-8');
@@ -60,10 +62,7 @@ function resolveDescribeOutputPath(pointer: DescribeOutputPointer | null): strin
   return null;
 }
 
-function parseDescribeOutputPointer(
-  raw: string,
-  debug: boolean
-): DescribeOutputPointer | null {
+function parseDescribeOutputPointer(raw: string, debug: boolean): DescribeOutputPointer | null {
   try {
     const parsed = parseJsonFromAgentOutput(raw);
     if (isOutputPointer(parsed)) {

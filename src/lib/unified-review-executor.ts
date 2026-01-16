@@ -306,7 +306,11 @@ async function runDescribeIfEnabled(
 
   let descriptionPayload: Description;
   try {
-    descriptionPayload = (await parseDescribeOutput(workingDir, debug, fullResponse)) as Description;
+    descriptionPayload = (await parseDescribeOutput(
+      workingDir,
+      debug,
+      fullResponse
+    )) as Description;
   } catch (parseError) {
     console.error(chalk.red('Failed to parse agent output as JSON'));
     console.log(chalk.dim('Agent output:'), fullResponse);
