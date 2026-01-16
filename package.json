@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "dev": "tsx watch src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run",

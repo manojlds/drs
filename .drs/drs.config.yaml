@@ -58,6 +58,10 @@ review:
     - "yarn.lock"
     - "pnpm-lock.yaml"
 
+  # Auto-generate a description during review-mr/review-pr
+  # CLI overrides:
+  #   --describe / --skip-describe
+  #   --post-description / --skip-post-description
   describe:
     enabled: true
     postDescription: true
@@ -65,4 +69,5 @@ review:
 # PR/MR Description Generator
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
+  # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
   model: opencode/glm-4.7-free

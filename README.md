@@ -84,11 +84,19 @@ drs review-local
 # Review specific GitLab MR
 drs review-mr --project my-org/my-repo --mr 123 --post-comments
 
+# Review GitLab MR and auto-generate a description (optionally post it)
+drs review-mr --project my-org/my-repo --mr 123 --describe
+drs review-mr --project my-org/my-repo --mr 123 --describe --post-description
+
 # Review GitLab MR and generate code quality report
 drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-quality-report.json
 
 # Review specific GitHub PR
 drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
+
+# Review GitHub PR and auto-generate a description (optionally post it)
+drs review-pr --owner octocat --repo hello-world --pr 456 --describe
+drs review-pr --owner octocat --repo hello-world --pr 456 --describe --post-description
 
 # Override base branch used for diff hints
 drs review-pr --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
@@ -105,6 +113,12 @@ drs show-changes --owner octocat --repo hello-world --pr 456 --file src/app.ts
 
 # Show diff context using a specific base branch
 drs show-changes --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
+
+# Generate PR/MR descriptions on demand
+drs describe-pr --owner octocat --repo hello-world --pr 456
+drs describe-pr --owner octocat --repo hello-world --pr 456 --post-description
+drs describe-mr --project my-org/my-repo --mr 123
+drs describe-mr --project my-org/my-repo --mr 123 --post-description
 ```
 
 ### Mode 2: GitLab CI/CD
@@ -355,7 +369,18 @@ review:
   ignorePatterns:
     - "*.test.ts"
     - "*.md"
+  describe:
+    enabled: true
+    postDescription: false
+
+describe:
+  model: opencode/glm-4.7-free
 ```
+
+Notes:
+- `review.describe` controls auto-description when running `review-mr` or `review-pr`.
+- CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
+- `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 
 ## Review Domains
 

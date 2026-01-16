@@ -220,6 +220,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
+    describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
   };
 }
