@@ -57,7 +57,8 @@ export interface AgentResult {
 export function buildBaseInstructions(
   label: string,
   files: FileWithDiff[],
-  diffCommand?: string
+  diffCommand?: string,
+  compressionSummary?: string
 ): string {
   // Check if we have actual diff content
   const filesWithDiffs = files.filter((f) => f.patch);
@@ -81,7 +82,7 @@ The following shows exactly what changed in this PR/MR:
 
 ${diffContent}
 
-**Instructions:**
+${compressionSummary ? `${compressionSummary}\n\n` : ''}**Instructions:**
 1. Analyze the diff content above to understand what lines were changed
 2. Use the Read tool to examine the full file for additional context if needed
 3. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.

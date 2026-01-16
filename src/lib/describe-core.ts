@@ -6,7 +6,11 @@ import type { FileWithDiff } from './review-core.js';
  * @param label - Human-readable label for the description (e.g., "PR #123", "MR !456")
  * @param files - List of files with optional diff content
  */
-export function buildDescribeInstructions(label: string, files: FileWithDiff[]): string {
+export function buildDescribeInstructions(
+  label: string,
+  files: FileWithDiff[],
+  compressionSummary?: string
+): string {
   const filesWithDiffs = files.filter((f) => f.patch);
   const hasDiffs = filesWithDiffs.length > 0;
   const fileList = files.map((f) => `- ${f.filename}`).join('\n');
@@ -22,7 +26,7 @@ ${fileList}
 
 ${hasDiffs ? `## Diff Content\n\n${diffContent}\n` : ''}
 
-Instructions:
+${compressionSummary ? `${compressionSummary}\n\n` : ''}Instructions:
 1. Focus on new or modified code (lines starting with + in diffs).
 2. Summarize intent and impact. Avoid code review feedback.
 3. Use the Read tool for additional context if needed.

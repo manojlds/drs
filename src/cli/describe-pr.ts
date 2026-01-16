@@ -10,6 +10,7 @@ import {
   postDescription,
 } from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
+import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
 
 export interface DescribePROptions {
   owner: string;
@@ -42,10 +43,17 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
   const label = `PR #${options.prNumber}`;
   const filesWithDiffs = files.map((file: FileChange) => ({
     filename: file.filename,
-    diff: file.patch,
+    patch: file.patch,
   }));
 
-  const instructions = buildDescribeInstructions(label, filesWithDiffs);
+  const compression = compressFilesWithDiffs(filesWithDiffs, config.contextCompression);
+  const compressionSummary = formatCompressionSummary(compression);
+
+  if (compressionSummary) {
+    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+  }
+
+  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
 
   if (options.debug) {
     console.log(chalk.yellow('\n=== Agent Instructions ==='));

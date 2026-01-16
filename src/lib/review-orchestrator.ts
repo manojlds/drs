@@ -17,6 +17,7 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
 } from './review-core.js';
+import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -153,7 +154,19 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    const baseInstructions = buildBaseInstructions(source.name, filesForInstructions, diffCommand);
+    const compression = compressFilesWithDiffs(filesForInstructions, config.contextCompression);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
+    const baseInstructions = buildBaseInstructions(
+      source.name,
+      compression.files,
+      diffCommand,
+      compressionSummary
+    );
 
     // Run agents using shared core logic
     const result = await runReviewAgents(

@@ -58,6 +58,15 @@ export interface DRSConfig {
   describe?: {
     model?: string;
   };
+
+  // Context compression (diff size management)
+  contextCompression?: {
+    enabled?: boolean;
+    maxTokens?: number;
+    softBufferTokens?: number;
+    hardBufferTokens?: number;
+    tokenEstimateDivisor?: number;
+  };
 }
 
 const DEFAULT_CONFIG: DRSConfig = {
@@ -83,6 +92,13 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
+  },
+  contextCompression: {
+    enabled: true,
+    maxTokens: 8000,
+    softBufferTokens: 1500,
+    hardBufferTokens: 1000,
+    tokenEstimateDivisor: 4,
   },
 };
 
@@ -158,16 +174,21 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
+    contextCompression: mergeSection(base.contextCompression, override.contextCompression),
   };
 }
 
 /**
  * Merge a config section, skipping undefined values
  */
-function mergeSection<T extends Record<string, any>>(base: T, override?: Partial<T>): T {
-  if (!override) return base;
+function mergeSection<T extends Record<string, any>>(
+  base: T | undefined,
+  override?: Partial<T>
+): T {
+  const safeBase = (base ?? {}) as T;
+  if (!override) return safeBase;
 
-  const result = { ...base };
+  const result = { ...safeBase };
   for (const key in override) {
     if (override[key] !== undefined) {
       result[key] = override[key] as any;
