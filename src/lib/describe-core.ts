@@ -20,8 +20,12 @@ export function buildDescribeInstructions(
     : '';
 
   const outputSchema = `Output requirements:
-- Return only raw JSON. No markdown, no code fences, no extra text.
-- Output must start with "{" and end with "}".
+- You MUST call the write_json_output tool with:
+  - outputType: "describe_output"
+  - payload: the JSON object
+- After calling the tool, return only: {"outputType":"describe_output"}
+- Do not return raw JSON directly.
+- Do not include markdown, code fences, or extra text.
 - Follow this exact schema:
 {
   "type": "feature" | "bugfix" | "refactor" | "docs" | "test" | "chore" | "perf",

@@ -51,6 +51,7 @@ import {
   type Description,
   type Platform,
 } from './description-formatter.js';
+import { parseDescribeOutput } from './describe-parser.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import type { OpencodeClient } from '../opencode/client.js';
 
@@ -270,6 +271,7 @@ async function runDescribeIfEnabled(
   pr: PullRequest,
   files: FileWithDiff[],
   shouldPostDescription: boolean,
+  workingDir: string,
   debug?: boolean
 ): Promise<Description | null> {
   console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
@@ -304,12 +306,12 @@ async function runDescribeIfEnabled(
 
   let descriptionPayload: Description;
   try {
-    const jsonMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/);
-    descriptionPayload = jsonMatch ? JSON.parse(jsonMatch[1]) : JSON.parse(fullResponse);
+    descriptionPayload = (await parseDescribeOutput(workingDir, debug)) as Description;
   } catch (parseError) {
     console.error(chalk.red('Failed to parse agent output as JSON'));
     console.log(chalk.dim('Agent output:'), fullResponse);
-    throw new Error('Describe agent did not return valid JSON output');
+    const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
+    throw new Error(`Describe agent did not return valid JSON output${reason}`);
   }
 
   const description = normalizeDescription(descriptionPayload);
@@ -439,6 +441,7 @@ export async function executeUnifiedReview(
         pr,
         filesForDescribe,
         postDescriptionEnabled,
+        options.workingDir || process.cwd(),
         options.debug
       );
     }

@@ -11,6 +11,7 @@ import {
 } from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
 import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
+import { parseDescribeOutput } from '../lib/describe-parser.js';
 
 export interface DescribeMROptions {
   projectId: string;
@@ -87,18 +88,12 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     // Parse the JSON output from the agent
     let description;
     try {
-      // Extract JSON from the agent output
-      const jsonMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        description = JSON.parse(jsonMatch[1]);
-      } else {
-        // Try parsing the whole output as JSON
-        description = JSON.parse(fullResponse);
-      }
+      description = await parseDescribeOutput(process.cwd(), options.debug);
     } catch (parseError) {
       console.error(chalk.red('Failed to parse agent output as JSON'));
       console.log(chalk.dim('Agent output:'), fullResponse);
-      throw new Error('Agent did not return valid JSON output');
+      const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
+      throw new Error(`Agent did not return valid JSON output${reason}`);
     }
 
     let normalizedDescription;
