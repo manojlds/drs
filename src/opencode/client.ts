@@ -20,6 +20,10 @@ export interface OpencodeConfig {
   debug?: boolean; // Print OpenCode config for debugging
 }
 
+const DEFAULT_OPENCODE_PORT = 4096;
+const SERVER_START_TIMEOUT_MS = 10000;
+const PORT_SEARCH_ATTEMPTS = 10;
+
 export interface SessionCreateOptions {
   agent: string;
   message: string;
@@ -163,13 +167,13 @@ export class OpencodeClient {
       }
 
       const hostname = this.config.serverHostname || '127.0.0.1';
-      const defaultPort = this.config.serverPort || 4096;
+      const defaultPort = this.config.serverPort || DEFAULT_OPENCODE_PORT;
 
       const startServer = async (port: number) => {
         return await createOpencode({
           hostname,
           port,
-          timeout: 10000,
+          timeout: SERVER_START_TIMEOUT_MS,
           config: opencodeConfig,
         });
       };
@@ -189,7 +193,7 @@ export class OpencodeClient {
           throw error;
         }
 
-        const fallbackPort = await findAvailablePort(defaultPort + 1, 10);
+        const fallbackPort = await findAvailablePort(defaultPort + 1, PORT_SEARCH_ATTEMPTS);
         if (fallbackPort === null) {
           throw error;
         }
