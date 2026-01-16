@@ -115,7 +115,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
   contextCompression: {
     enabled: true,
-    maxTokens: 8000,
+    maxTokens: 32000,
     softBufferTokens: 1500,
     hardBufferTokens: 1000,
     tokenEstimateDivisor: 4,

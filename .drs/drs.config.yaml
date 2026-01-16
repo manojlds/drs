@@ -71,3 +71,11 @@ describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
   # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
   model: opencode/glm-4.7-free
+
+# Context compression (diff size management)
+contextCompression:
+  enabled: true
+  maxTokens: 32000
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+  tokenEstimateDivisor: 4
