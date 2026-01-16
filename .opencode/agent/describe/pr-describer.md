@@ -29,8 +29,8 @@ You MUST:
 1) Call `write_json_output` with:
    - outputType: "describe_output"
    - payload: the JSON object
-2) Return **only** this raw JSON pointer (no markdown, no extra text):
-   {"outputType":"describe_output"}
+2) Return **only** the JSON pointer returned by the tool (no markdown, no extra text):
+   {"outputType":"describe_output","outputPath":".drs/describe-output.json"}
 Do not return raw JSON directly. The output must be exactly the pointer above.
 If you cannot produce valid JSON, return the **best-effort valid JSON** that matches the schema.
 

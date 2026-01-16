@@ -1,10 +1,11 @@
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
+import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
 
 const JSON_FENCE_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 
 interface DescribeOutputPointer {
-  outputType?: 'describe_output';
+  outputType?: OutputType;
   outputPath?: string;
 }
 
@@ -12,7 +13,7 @@ function isOutputPointer(value: unknown): value is DescribeOutputPointer {
   return !!value && typeof value === 'object' && ('outputType' in value || 'outputPath' in value);
 }
 
-const DESCRIBE_OUTPUT_PATH = '.drs/describe-output.json';
+const DESCRIBE_OUTPUT_PATH = OUTPUT_PATHS.describe_output;
 
 function resolveWithinWorkingDir(workingDir: string, targetPath: string): string {
   const root = resolve(workingDir);
@@ -37,6 +38,49 @@ async function readJsonIfExists(workingDir: string, targetPath: string): Promise
     }
     throw error;
   }
+}
+
+function resolveDescribeOutputPath(pointer: DescribeOutputPointer | null): string | null {
+  if (!pointer) {
+    return null;
+  }
+
+  if (pointer.outputType && pointer.outputType !== 'describe_output') {
+    throw new Error(`Unexpected output type for describe output: ${pointer.outputType}`);
+  }
+
+  if (pointer.outputPath) {
+    return pointer.outputPath;
+  }
+
+  if (pointer.outputType) {
+    return OUTPUT_PATHS[pointer.outputType];
+  }
+
+  return null;
+}
+
+function parseDescribeOutputPointer(
+  raw: string,
+  debug: boolean
+): DescribeOutputPointer | null {
+  try {
+    const parsed = parseJsonFromAgentOutput(raw);
+    if (isOutputPointer(parsed)) {
+      return parsed;
+    }
+    if (debug) {
+      console.log('Describe output pointer not found in agent output.');
+    }
+  } catch (error) {
+    if (debug) {
+      console.log(
+        `Describe output pointer parse failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  return null;
 }
 
 function findJsonCandidates(text: string): string[] {
@@ -132,8 +176,25 @@ export function parseJsonFromAgentOutput(raw: string): unknown {
 
 export async function parseDescribeOutput(
   workingDir: string = process.cwd(),
-  debug = false
+  debug = false,
+  rawOutput?: string
 ): Promise<unknown> {
+  const pointer = rawOutput ? parseDescribeOutputPointer(rawOutput, debug) : null;
+  const pointerPath = resolveDescribeOutputPath(pointer);
+
+  if (pointerPath) {
+    const pointerOutput = await readJsonIfExists(workingDir, pointerPath);
+    if (pointerOutput) {
+      if (debug) {
+        console.log(`Describe output loaded from ${pointerPath}`);
+      }
+      return pointerOutput;
+    }
+    if (debug) {
+      console.log(`Describe output not found at ${pointerPath}, falling back to default path.`);
+    }
+  }
+
   const defaultOutput = await readJsonIfExists(workingDir, DESCRIBE_OUTPUT_PATH);
   if (defaultOutput) {
     if (debug) {

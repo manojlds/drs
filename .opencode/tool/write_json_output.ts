@@ -3,15 +3,9 @@ import { dirname, resolve } from 'path';
 import { tool } from '@opencode-ai/plugin';
 import Ajv from 'ajv';
 import { describeOutputSchema, reviewOutputSchema } from '../../src/lib/json-output-schema.js';
+import { OUTPUT_PATHS } from '../../src/lib/output-paths.js';
 
 const DEFAULT_INDENT = 2;
-
-const OUTPUT_PATHS = {
-  describe_output: '.drs/describe-output.json',
-  review_output: '.drs/review-output.json',
-} as const;
-
-type OutputType = keyof typeof OUTPUT_PATHS;
 
 const ajv = new Ajv({ allErrors: true });
 
@@ -70,6 +64,6 @@ export default tool({
     await mkdir(dirname(resolvedPath), { recursive: true });
     await writeFile(resolvedPath, jsonContent, 'utf-8');
 
-    return JSON.stringify({ outputType });
+    return JSON.stringify({ outputType, outputPath: OUTPUT_PATHS[outputType] });
   },
 });

@@ -88,7 +88,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     // Parse the JSON output from the agent
     let description;
     try {
-      description = await parseDescribeOutput(process.cwd(), options.debug);
+      description = await parseDescribeOutput(process.cwd(), options.debug, fullResponse);
     } catch (parseError) {
       console.error(chalk.red('Failed to parse agent output as JSON'));
       console.log(chalk.dim('Agent output:'), fullResponse);

@@ -23,7 +23,8 @@ export function buildDescribeInstructions(
 - You MUST call the write_json_output tool with:
   - outputType: "describe_output"
   - payload: the JSON object
-- After calling the tool, return only: {"outputType":"describe_output"}
+  - After calling the tool, return only the JSON pointer returned by the tool
+    (e.g. {"outputType":"describe_output","outputPath":".drs/describe-output.json"})
 - Do not return raw JSON directly.
 - Do not include markdown, code fences, or extra text.
 - Follow this exact schema:
