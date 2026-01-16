@@ -310,9 +310,6 @@ DRS uses OpenCode SDK with markdown-based agent definitions:
 ```
 .opencode/
 ├── agent/
-│   ├── gitlab-reviewer.md       # GitLab MR orchestrator
-│   ├── github-reviewer.md       # GitHub PR orchestrator
-│   ├── local-reviewer.md        # Local diff reviewer
 │   └── review/
 │       ├── security.md          # Security specialist
 │       ├── quality.md           # Code quality expert

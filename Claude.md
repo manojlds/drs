@@ -43,9 +43,6 @@ drs/
 │   │   │   ├── style.md         # Style and conventions
 │   │   │   ├── performance.md   # Performance optimization
 │   │   │   └── documentation.md # Documentation accuracy review
-│   │   ├── gitlab-reviewer.md   # GitLab MR orchestrator
-│   │   ├── github-reviewer.md   # GitHub PR orchestrator
-│   │   └── local-reviewer.md    # Local diff reviewer
 │   └── opencode.jsonc           # OpenCode configuration
 │
 ├── src/
@@ -83,11 +80,6 @@ drs/
 ## Key Components
 
 ### 1. Review Agents (.opencode/agent/)
-
-**Orchestrator Agents:**
-- `gitlab-reviewer.md` - Main GitLab MR review coordinator
-- `github-reviewer.md` - Main GitHub PR review coordinator
-- `local-reviewer.md` - Local diff analysis coordinator
 
 **Specialized Review Agents:**
   - `review/security.md` - Detects security vulnerabilities (OWASP Top 10, injection attacks, auth issues)
@@ -179,11 +171,7 @@ npm run dev -- review-pr --owner octocat --repo hello-world --pr 456
 ## Important Patterns and Conventions
 
 ### 1. Agent Invocation Pattern
-Orchestrator agents invoke specialized review agents as subagents:
-```typescript
-// Example: gitlab-reviewer.md invokes review/security.md
-invoke_agent("review/security", { diff: mrDiff })
-```
+Specialized agents are invoked directly by the CLI orchestration layer.
 
 ### 2. Configuration Merging
 The config system merges settings from multiple sources with proper precedence.
