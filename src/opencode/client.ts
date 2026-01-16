@@ -13,16 +13,12 @@ import type { CustomProvider } from '../lib/config.js';
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
   directory?: string;
-  serverPort?: number;
-  serverHostname?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
 }
 
-const DEFAULT_OPENCODE_PORT = 4096;
 const SERVER_START_TIMEOUT_MS = 10000;
-const PORT_SEARCH_ATTEMPTS = 10;
 
 export interface SessionCreateOptions {
   agent: string;
@@ -166,43 +162,12 @@ export class OpencodeClient {
         process.chdir(projectDir);
       }
 
-      const hostname = this.config.serverHostname || '127.0.0.1';
-      const defaultPort = this.config.serverPort || DEFAULT_OPENCODE_PORT;
-
-      const startServer = async (port: number) => {
-        return await createOpencode({
-          hostname,
-          port,
-          timeout: SERVER_START_TIMEOUT_MS,
-          config: opencodeConfig,
-        });
-      };
-
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      try {
-        this.inProcessServer = await startServer(defaultPort);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const shouldRetry =
-          message.includes('EADDRINUSE') ||
-          message.includes('address already in use') ||
-          message.includes(`Failed to start server on port ${defaultPort}`);
-
-        if (!shouldRetry) {
-          throw error;
-        }
-
-        const fallbackPort = await findAvailablePort(defaultPort + 1, PORT_SEARCH_ATTEMPTS);
-        if (fallbackPort === null) {
-          throw error;
-        }
-
-        console.warn(
-          `⚠️  Port ${defaultPort} unavailable. Retrying OpenCode server on port ${fallbackPort}.`
-        );
-        this.inProcessServer = await startServer(fallbackPort);
-      }
+      this.inProcessServer = await createOpencode({
+        timeout: SERVER_START_TIMEOUT_MS,
+        config: opencodeConfig,
+      });
 
       // Restore original working directory
       if (projectDir !== originalCwd) {
@@ -449,28 +414,6 @@ export class OpencodeClient {
 
     return obj;
   }
-}
-
-async function findAvailablePort(startPort: number, attempts: number): Promise<number | null> {
-  for (let offset = 0; offset < attempts; offset += 1) {
-    const port = startPort + offset;
-    const available = await isPortAvailable(port);
-    if (available) {
-      return port;
-    }
-  }
-  return null;
-}
-
-function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.unref();
-    server.once('error', () => resolve(false));
-    server.listen(port, () => {
-      server.close(() => resolve(true));
-    });
-  });
 }
 
 function parseServerEndpoint(baseUrl: string): { host: string; port: number } | null {
