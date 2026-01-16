@@ -25,7 +25,13 @@ Your mission is to analyze code changes and generate a comprehensive, well-struc
 ## Output Format
 
 You MUST output a JSON object with this exact structure.
-Return **only** raw JSON (no markdown, no code fences, no extra text).
+You MUST:
+1) Call `write_json_output` with:
+   - outputType: "describe_output"
+   - payload: the JSON object
+2) Return **only** the JSON pointer returned by the tool (no markdown, no extra text):
+   {"outputType":"describe_output","outputPath":".drs/describe-output.json"}
+Do not return raw JSON directly. The output must be exactly the pointer above.
 If you cannot produce valid JSON, return the **best-effort valid JSON** that matches the schema.
 
 ```json
@@ -61,7 +67,7 @@ If you cannot produce valid JSON, return the **best-effort valid JSON** that mat
 ## Type Classification Guidelines
 
 - **feature**: New functionality, capabilities, or enhancements
-- **bugfix**: Fixes for defects, errors, or incorrect behavior
+- **bug fix**: Fixes for defects, errors, or incorrect behavior
 - **refactor**: Code restructuring without behavior change
 - **docs**: Documentation updates (README, API docs, comments)
 - **test**: Test additions or improvements
@@ -73,7 +79,7 @@ If you cannot produce valid JSON, return the **best-effort valid JSON** that mat
 For each file in the walkthrough:
 
 - **feature**: Implements new functionality
-- **bugfix**: Fixes a defect or error
+- **bug fix**: Fixes a defect or error
 - **refactor**: Restructures code without changing behavior
 - **test**: Test files or test utilities
 - **docs**: Documentation files
@@ -123,7 +129,7 @@ For each file:
 ## Label Suggestions
 
 Suggest 2-5 labels that:
-- Categorize the PR/MR (feature, bugfix, etc.)
+- Categorize the PR/MR (feature, bug fix, etc.)
 - Indicate affected areas (auth, api, ui, database, etc.)
 - Flag important aspects (breaking-change, security, performance, etc.)
 - Use common label conventions (lowercase, hyphenated)
@@ -142,7 +148,7 @@ Provide 0-3 actionable suggestions:
 1. **Read all changed files** to understand the full context
 2. **Identify the primary language** to understand conventions
 3. **Group files by purpose** (e.g., all auth-related changes together)
-4. **Determine the overall type** (feature, bugfix, etc.)
+4. **Determine the overall type** (feature, bug fix, etc.)
 5. **Craft a clear, specific title** that captures the main theme
 6. **Extract key changes** for the summary (2-4 most important)
 7. **Document file-by-file changes** in the walkthrough

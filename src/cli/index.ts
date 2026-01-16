@@ -88,6 +88,10 @@ program
     'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
   )
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
+  .option('--describe', 'Generate PR/MR description during review')
+  .option('--skip-describe', 'Skip PR/MR description during review')
+  .option('--post-description', 'Post generated description to the MR (requires GITLAB_TOKEN)')
+  .option('--skip-post-description', 'Do not post generated description to the MR')
   .option(
     '--code-quality-report <path>',
     'Generate GitLab code quality report JSON file (default: gl-code-quality-report.json)'
@@ -126,6 +130,18 @@ program
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
+        describe:
+          options.describe === true
+            ? true
+            : options.skipDescribe === true
+              ? false
+              : (config.review.describe?.enabled ?? false),
+        postDescription:
+          options.postDescription === true
+            ? true
+            : options.skipPostDescription === true
+              ? false
+              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
       });
       process.exit(0);
@@ -149,6 +165,10 @@ program
     'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
   )
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('--describe', 'Generate PR/MR description during review')
+  .option('--skip-describe', 'Skip PR/MR description during review')
+  .option('--post-description', 'Post generated description to the PR (requires GITHUB_TOKEN)')
+  .option('--skip-post-description', 'Do not post generated description to the PR')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
@@ -180,6 +200,18 @@ program
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
+        describe:
+          options.describe === true
+            ? true
+            : options.skipDescribe === true
+              ? false
+              : (config.review.describe?.enabled ?? false),
+        postDescription:
+          options.postDescription === true
+            ? true
+            : options.skipPostDescription === true
+              ? false
+              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
       });
       process.exit(0);

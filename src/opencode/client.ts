@@ -76,6 +76,7 @@ export class OpencodeClient {
           Glob: true,
           Grep: true,
           Bash: true,
+          write_json_output: true,
           Write: false,
           Edit: false,
         },

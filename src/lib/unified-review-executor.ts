@@ -51,6 +51,7 @@ import {
   type Description,
   type Platform,
 } from './description-formatter.js';
+import { parseDescribeOutput } from './describe-parser.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import type { OpencodeClient } from '../opencode/client.js';
 
@@ -269,12 +270,10 @@ async function runDescribeIfEnabled(
   projectId: string,
   pr: PullRequest,
   files: FileWithDiff[],
+  shouldPostDescription: boolean,
+  workingDir: string,
   debug?: boolean
 ): Promise<Description | null> {
-  if (!config.review.describe?.enabled) {
-    return null;
-  }
-
   console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
 
   const label = `${detectPlatform(pr)} #${pr.number}`;
@@ -307,19 +306,23 @@ async function runDescribeIfEnabled(
 
   let descriptionPayload: Description;
   try {
-    const jsonMatch = fullResponse.match(/```json\s*([\s\S]*?)\s*```/);
-    descriptionPayload = jsonMatch ? JSON.parse(jsonMatch[1]) : JSON.parse(fullResponse);
+    descriptionPayload = (await parseDescribeOutput(
+      workingDir,
+      debug,
+      fullResponse
+    )) as Description;
   } catch (parseError) {
     console.error(chalk.red('Failed to parse agent output as JSON'));
     console.log(chalk.dim('Agent output:'), fullResponse);
-    throw new Error('Describe agent did not return valid JSON output');
+    const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
+    throw new Error(`Describe agent did not return valid JSON output${reason}`);
   }
 
   const description = normalizeDescription(descriptionPayload);
   const platform = detectPlatform(pr);
   displayDescription(description, platform);
 
-  if (config.review.describe.postDescription) {
+  if (shouldPostDescription) {
     await postDescription(platformClient, projectId, pr.number, description, platform);
   }
 
@@ -349,6 +352,10 @@ export interface UnifiedReviewOptions {
   createInlinePosition?: (issue: ReviewIssue, platformData: any) => InlineCommentPosition;
   /** Working directory for file access */
   workingDir?: string;
+  /** Generate PR/MR description during review */
+  describe?: boolean;
+  /** Post generated description during review */
+  postDescription?: boolean;
   /** Debug mode - print OpenCode configuration */
   debug?: boolean;
 }
@@ -411,9 +418,11 @@ export async function executeUnifiedReview(
     ...getModelOverrides(config),
     ...getUnifiedModelOverride(config),
   };
-  const describeOverrides = config.review.describe?.enabled
-    ? getDescriberModelOverride(config)
-    : {};
+  const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
+  const postDescriptionEnabled =
+    options.postDescription ?? config.review.describe?.postDescription ?? false;
+
+  const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
   const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
   // Connect to OpenCode
@@ -427,15 +436,19 @@ export async function executeUnifiedReview(
       filename: file.filename,
       patch: file.patch,
     }));
-    await runDescribeIfEnabled(
-      opencode,
-      config,
-      platformClient,
-      projectId,
-      pr,
-      filesForDescribe,
-      options.debug
-    );
+    if (describeEnabled) {
+      await runDescribeIfEnabled(
+        opencode,
+        config,
+        platformClient,
+        projectId,
+        pr,
+        filesForDescribe,
+        postDescriptionEnabled,
+        options.workingDir || process.cwd(),
+        options.debug
+      );
+    }
 
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;

@@ -138,6 +138,11 @@ npm run dev                   # Development mode with watch
 ### After Every Change (MANDATORY)
 Run the full quality checks after each change, not just before pushing:
 ```bash
+npm run check:all
+```
+
+Equivalent to:
+```bash
 npm run format
 npm run lint:fix
 npm run build
@@ -145,6 +150,8 @@ npm test
 npm run format:check
 npm run lint
 ```
+
+Use `npm run type-check` for a quick TypeScript-only validation.
 
 ### Testing
 - Test framework: Vitest
@@ -338,6 +345,11 @@ Run all checks at once:
 
 ```bash
 npm run format && npm run lint:fix && npm run build && npm test && npm run format:check
+```
+
+Shortcut:
+```bash
+npm run check:all
 ```
 
 ### What to Do if Checks Fail
