@@ -127,7 +127,6 @@ function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
 type BaseBranchResolution = {
   baseBranch?: string;
   resolvedBaseBranch?: string;
-  diffCommand: string;
   source?: string;
 };
 
@@ -142,7 +141,6 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
     return {
       baseBranch: cliBaseBranch,
       resolvedBaseBranch: resolved,
-      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
       source: 'cli',
     };
   }
@@ -152,7 +150,6 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
     return {
       baseBranch: process.env.DRS_BASE_BRANCH,
       resolvedBaseBranch: resolved,
-      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
       source: 'env:DRS_BASE_BRANCH',
     };
   }
@@ -162,7 +159,6 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
     return {
       baseBranch: process.env.GITHUB_BASE_REF,
       resolvedBaseBranch: resolved,
-      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
       source: 'env:GITHUB_BASE_REF',
     };
   }
@@ -172,7 +168,6 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
     return {
       baseBranch: process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME,
       resolvedBaseBranch: resolved,
-      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
       source: 'env:CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
     };
   }
@@ -182,14 +177,38 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
     return {
       baseBranch: targetBranch,
       resolvedBaseBranch: resolved,
-      diffCommand: `git diff ${resolved}...HEAD -- <file>`,
       source: 'pr:targetBranch',
     };
   }
 
-  return {
-    diffCommand: 'git diff HEAD~1 -- <file>',
-  };
+  return {};
+}
+
+function getCanonicalDiffCommand(
+  pr: PullRequest,
+  baseBranchResolution: BaseBranchResolution
+): string {
+  const githubBase = process.env.GITHUB_BASE_REF;
+  const githubHead = process.env.GITHUB_HEAD_REF;
+  if (githubBase && githubHead) {
+    return `git diff origin/${githubBase} origin/${githubHead} -- <file>`;
+  }
+
+  const gitlabBase = process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME;
+  const gitlabHead = process.env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME;
+  if (gitlabBase && gitlabHead) {
+    return `git diff origin/${gitlabBase} origin/${gitlabHead} -- <file>`;
+  }
+
+  if (pr.targetBranch && pr.sourceBranch) {
+    return `git diff origin/${pr.targetBranch} origin/${pr.sourceBranch} -- <file>`;
+  }
+
+  if (baseBranchResolution.resolvedBaseBranch) {
+    return `git diff ${baseBranchResolution.resolvedBaseBranch}...HEAD -- <file>`;
+  }
+
+  return 'git diff -- <file>';
 }
 
 export async function enforceRepoBranchMatch(
@@ -453,7 +472,7 @@ export async function executeUnifiedReview(
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
-    const fallbackDiffCommand = baseBranchResolution.diffCommand;
+    const fallbackDiffCommand = getCanonicalDiffCommand(pr, baseBranchResolution);
     const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
