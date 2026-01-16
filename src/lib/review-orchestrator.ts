@@ -149,7 +149,7 @@ export async function executeReview(
 
   try {
     // Build instructions - use provided diffs if available, otherwise fall back to git command
-    const diffCommand = source.staged ? 'git diff --cached -- <file>' : 'git diff HEAD~1 -- <file>';
+    const diffCommand = source.staged ? 'git diff --cached -- <file>' : 'git diff -- <file>';
 
     // Use provided diffs if available (filtered to match filteredFiles)
     let filesForInstructions: FileWithDiff[];
