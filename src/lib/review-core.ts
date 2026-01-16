@@ -10,6 +10,7 @@ import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
+import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
@@ -90,15 +91,34 @@ The following shows exactly what changed in this PR/MR:
 
 ${diffContent}
 
-${compressionSummary ? `${compressionSummary}\n\n` : ''}**Instructions:**
-1. Analyze the diff content above to understand what lines were changed
-2. Use the Read tool to examine the full file for additional context if needed
-3. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
-4. Analyze the changed code for issues in your specialty area
-5. Output your findings in this JSON format:
-
-\`\`\`json
+${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
+- You MUST call the write_json_output tool with:
+  - outputType: "review_output"
+  - payload: the JSON object
+  - After calling the tool, return only the JSON pointer returned by the tool
+    (e.g. {"outputType":"review_output","outputPath":".drs/review-output.json"})
+- Do not return raw JSON directly.
+- Do not include markdown, code fences, or extra text.
+- Follow this exact schema:
 {
+  "timestamp": "ISO-8601 timestamp or descriptive string",
+  "summary": {
+    "filesReviewed": ${files.length},
+    "issuesFound": 0,
+    "bySeverity": {
+      "CRITICAL": 0,
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    },
+    "byCategory": {
+      "SECURITY": 0,
+      "QUALITY": 0,
+      "STYLE": 0,
+      "PERFORMANCE": 0,
+      "DOCUMENTATION": 0
+    }
+  },
   "issues": [
     {
       "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
@@ -108,13 +128,19 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}**Instructions:**
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance" | "documentation"
+      "references": ["https://link1", "https://link2"],
+      "agent": "security" | "quality" | "style" | "performance" | "documentation" | "unified"
     }
   ]
 }
-\`\`\`
 
-Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
+**Instructions:**
+1. Analyze the diff content above to understand what lines were changed
+2. Use the Read tool to examine the full file for additional context if needed
+3. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
+4. Analyze the changed code for issues in your specialty area
+5. Populate summary counts based on the issues you report (use 0 when none).
+6. Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
   }
 
   // No diff content available - fall back to git diff command
@@ -124,15 +150,34 @@ Focus on the changes - only report issues for newly added or modified lines (lin
 
 ${fileList}
 
-**Instructions:**
-1. First, use the Bash tool to run \`${fallbackCommand}\` to see what lines were actually changed
-2. Use the Read tool to examine the full file for context
-3. **IMPORTANT: Only report issues on lines that were actually changed or added.** Do not report issues on existing code that was not modified.
-4. Analyze the changed code for issues in your specialty area
-5. Output your findings in this JSON format:
-
-\`\`\`json
+Output requirements:
+- You MUST call the write_json_output tool with:
+  - outputType: "review_output"
+  - payload: the JSON object
+  - After calling the tool, return only the JSON pointer returned by the tool
+    (e.g. {"outputType":"review_output","outputPath":".drs/review-output.json"})
+- Do not return raw JSON directly.
+- Do not include markdown, code fences, or extra text.
+- Follow this exact schema:
 {
+  "timestamp": "ISO-8601 timestamp or descriptive string",
+  "summary": {
+    "filesReviewed": ${files.length},
+    "issuesFound": 0,
+    "bySeverity": {
+      "CRITICAL": 0,
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    },
+    "byCategory": {
+      "SECURITY": 0,
+      "QUALITY": 0,
+      "STYLE": 0,
+      "PERFORMANCE": 0,
+      "DOCUMENTATION": 0
+    }
+  },
   "issues": [
     {
       "category": "SECURITY" | "QUALITY" | "STYLE" | "PERFORMANCE" | "DOCUMENTATION",
@@ -142,13 +187,19 @@ ${fileList}
       "line": 42,
       "problem": "Description of the problem",
       "solution": "How to fix it",
-      "agent": "security" | "quality" | "style" | "performance" | "documentation"
+      "references": ["https://link1", "https://link2"],
+      "agent": "security" | "quality" | "style" | "performance" | "documentation" | "unified"
     }
   ]
 }
-\`\`\`
 
-Focus on the changes - only report issues for newly added or modified lines.`;
+**Instructions:**
+1. First, use the Bash tool to run \`${fallbackCommand}\` to see what lines were actually changed
+2. Use the Read tool to examine the full file for context
+3. **IMPORTANT: Only report issues on lines that were actually changed or added.** Do not report issues on existing code that was not modified.
+4. Analyze the changed code for issues in your specialty area
+5. Populate summary counts based on the issues you report (use 0 when none).
+6. Focus on the changes - only report issues for newly added or modified lines.`;
 }
 
 /**
@@ -257,9 +308,11 @@ export async function runUnifiedReviewAgent(
     });
 
     const agentIssues: ReviewIssue[] = [];
+    let fullResponse = '';
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        fullResponse += message.content;
         if (debug) {
           console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
           console.log(message.content);
@@ -270,15 +323,26 @@ export async function runUnifiedReviewAgent(
             console.log(chalk.gray(`[unified] ${snippet}\n`));
           }
         }
-        const parsedIssues = parseReviewIssues(message.content, 'unified');
-        if (parsedIssues.length > 0) {
-          agentIssues.push(...parsedIssues);
-          console.log(chalk.green(`✓ [unified] Found ${parsedIssues.length} issue(s)`));
-        }
       }
     }
 
     await opencode.closeSession(session.id);
+
+    try {
+      const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
+      const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), 'unified');
+      if (parsedIssues.length > 0) {
+        agentIssues.push(...parsedIssues);
+        console.log(chalk.green(`✓ [unified] Found ${parsedIssues.length} issue(s)`));
+      }
+    } catch (parseError) {
+      console.error(chalk.red('Failed to parse unified review output'));
+      if (debug) {
+        console.log(chalk.dim('Unified agent output:'), fullResponse);
+      }
+      const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
+      throw new Error(`Unified review agent did not return valid JSON output${reason}`);
+    }
 
     const summary = calculateSummary(filteredFiles.length, agentIssues);
 
@@ -322,7 +386,9 @@ export async function runReviewAgents(
 
   const agentNames = getAgentNames(config);
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
-  const agentPromises = agentNames.map(async (agentType) => {
+  const agentResults: AgentResult[] = [];
+
+  for (const agentType of agentNames) {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
 
@@ -356,10 +422,12 @@ export async function runReviewAgents(
       });
 
       const agentIssues: ReviewIssue[] = [];
+      let fullResponse = '';
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'assistant') {
+          fullResponse += message.content;
           if (debug) {
             console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
             console.log(message.content);
@@ -370,24 +438,22 @@ export async function runReviewAgents(
               console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
             }
           }
-          const parsedIssues = parseReviewIssues(message.content);
-          if (parsedIssues.length > 0) {
-            agentIssues.push(...parsedIssues);
-            console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
-          }
         }
       }
 
       await opencode.closeSession(session.id);
-      return { agentType, success: true, issues: agentIssues };
+      const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
+      const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
+      if (parsedIssues.length > 0) {
+        agentIssues.push(...parsedIssues);
+        console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
+      }
+      agentResults.push({ agentType, success: true, issues: agentIssues });
     } catch (error) {
       console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
-      return { agentType, success: false, issues: [] };
+      agentResults.push({ agentType, success: false, issues: [] });
     }
-  });
-
-  // Wait for all agents to complete
-  const agentResults = await Promise.all(agentPromises);
+  }
 
   // Check agent results
   const successfulAgents = agentResults.filter((r) => r.success);

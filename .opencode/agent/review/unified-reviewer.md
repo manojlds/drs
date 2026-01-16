@@ -20,13 +20,34 @@ You are a unified code review agent responsible for reviewing changes across **s
 
 ## Output Requirements
 
-Return **only** a JSON code block using this structure:
+- You MUST call the `write_json_output` tool with:
+  - `outputType`: `"review_output"`
+  - `payload`: the JSON object described below
+  - After calling the tool, return **only** the JSON pointer returned by the tool
+    (e.g. `{"outputType":"review_output","outputPath":".drs/review-output.json"}`)
+- Do **not** return raw JSON directly.
+- Do **not** include markdown, code fences, or extra text.
+- Follow this exact schema:
 
 ```json
 {
+  "timestamp": "ISO-8601 timestamp or descriptive string",
   "summary": {
-    "type": "brief overall assessment",
-    "description": "1-2 sentences"
+    "filesReviewed": 0,
+    "issuesFound": 0,
+    "bySeverity": {
+      "CRITICAL": 0,
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    },
+    "byCategory": {
+      "SECURITY": 0,
+      "QUALITY": 0,
+      "STYLE": 0,
+      "PERFORMANCE": 0,
+      "DOCUMENTATION": 0
+    }
   },
   "issues": [
     {
@@ -37,17 +58,14 @@ Return **only** a JSON code block using this structure:
       "line": 42,
       "problem": "Description of the problem",
       "solution": "Concrete fix or mitigation",
+      "references": ["https://link1", "https://link2"],
       "agent": "unified"
     }
   ]
 }
 ```
 
-If there are no issues, return:
-
-```json
-{ "summary": { "type": "clean", "description": "No issues found." }, "issues": [] }
-```
+If there are no issues, set `issues` to `[]` and keep summary counts at `0`.
 
 ### Important Constraints
 - **Only report issues on changed or added lines** (lines starting with `+` in the diff).
