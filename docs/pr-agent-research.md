@@ -325,6 +325,8 @@ review:
 
 ## What Can Be Implemented Next
 
+**Next up**: Priority 4 (Ticket Context Integration) now that context compression and unified modes are implemented.
+
 ### Priority 1: Context Compression (High Impact) (Implemented)
 
 **Problem**: Large PRs are expensive and slow to analyze
