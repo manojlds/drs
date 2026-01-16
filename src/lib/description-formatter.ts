@@ -210,11 +210,22 @@ export function getMarkdownChangeIcon(changeType: string): string {
 /**
  * Format description as markdown
  */
+const DESCRIPTION_COMMENT_ID = 'drs-description';
+
+function findExistingDescriptionComment(comments: Array<{ id: number | string; body: string }>) {
+  return (
+    comments.find((comment) =>
+      comment.body.includes(`<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->`)
+    ) || null
+  );
+}
+
 export function formatDescriptionAsMarkdown(
   description: Description,
   platform: Platform = 'PR'
 ): string {
-  let markdown = `## AI-Generated ${platform} Description\n\n`;
+  let markdown = `<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->\n`;
+  markdown += `## AI-Generated ${platform} Description\n\n`;
 
   markdown += `**Type:** ${description.type}\n\n`;
 
@@ -274,7 +285,14 @@ export async function postDescription(
   console.log(chalk.dim(`\nPosting description to ${platform}...`));
 
   const markdown = formatDescriptionAsMarkdown(description, platform);
-  await platformAdapter.createComment(projectId, prNumber, markdown);
+  const existingComments = await platformAdapter.getComments(projectId, prNumber);
+  const existingDescription = findExistingDescriptionComment(existingComments);
+
+  if (existingDescription) {
+    await platformAdapter.updateComment(projectId, prNumber, existingDescription.id, markdown);
+  } else {
+    await platformAdapter.createComment(projectId, prNumber, markdown);
+  }
 
   console.log(chalk.green(`✓ Description posted to ${platform}`));
 }
