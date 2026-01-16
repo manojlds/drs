@@ -405,10 +405,11 @@ Output JSON:
 
 **Complexity**: Medium (2-3 weeks)
 
-### Priority 3: JSON-Based Agent Configuration (Usability)
+### Priority 3: JSON-Based Agent Configuration (Usability) (Deferred)
 
 **Problem**: Customizing agent behavior requires editing agent markdown files
-**Solution**: Allow per-agent customization in config
+**Status**: Not needed for now given the current context override + agentic system; revisit if a concrete per-agent customization need arises.
+**Solution**: Allow per-agent customization in config (future work)
 
 **Implementation**:
 
