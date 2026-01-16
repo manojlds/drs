@@ -7,6 +7,7 @@
  */
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import net from 'net';
 import type { CustomProvider } from '../lib/config.js';
 
 export interface OpencodeConfig {
@@ -18,6 +19,10 @@ export interface OpencodeConfig {
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
 }
+
+const DEFAULT_OPENCODE_PORT = 4096;
+const SERVER_START_TIMEOUT_MS = 10000;
+const PORT_SEARCH_ATTEMPTS = 10;
 
 export interface SessionCreateOptions {
   agent: string;
@@ -97,11 +102,7 @@ export class OpencodeClient {
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
           opencodeConfig.agent[agentName] = { model };
-
-          // Log each agent's model (only show review/* agents to avoid duplication)
-          if (agentName.startsWith('review/')) {
-            console.log(`  • ${agentName}: ${model}`);
-          }
+          console.log(`  • ${agentName}: ${model}`);
         }
 
         console.log('');
@@ -165,14 +166,43 @@ export class OpencodeClient {
         process.chdir(projectDir);
       }
 
+      const hostname = this.config.serverHostname || '127.0.0.1';
+      const defaultPort = this.config.serverPort || DEFAULT_OPENCODE_PORT;
+
+      const startServer = async (port: number) => {
+        return await createOpencode({
+          hostname,
+          port,
+          timeout: SERVER_START_TIMEOUT_MS,
+          config: opencodeConfig,
+        });
+      };
+
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      this.inProcessServer = await createOpencode({
-        hostname: this.config.serverHostname || '127.0.0.1',
-        port: this.config.serverPort || 4096,
-        timeout: 10000,
-        config: opencodeConfig,
-      });
+      try {
+        this.inProcessServer = await startServer(defaultPort);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldRetry =
+          message.includes('EADDRINUSE') ||
+          message.includes('address already in use') ||
+          message.includes(`Failed to start server on port ${defaultPort}`);
+
+        if (!shouldRetry) {
+          throw error;
+        }
+
+        const fallbackPort = await findAvailablePort(defaultPort + 1, PORT_SEARCH_ATTEMPTS);
+        if (fallbackPort === null) {
+          throw error;
+        }
+
+        console.warn(
+          `⚠️  Port ${defaultPort} unavailable. Retrying OpenCode server on port ${fallbackPort}.`
+        );
+        this.inProcessServer = await startServer(fallbackPort);
+      }
 
       // Restore original working directory
       if (projectDir !== originalCwd) {
@@ -228,9 +258,13 @@ export class OpencodeClient {
         createdAt: new Date(),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to create session: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      const connectionHint =
+        message.includes('fetch failed') || message.includes('ECONNREFUSED')
+          ? ` Check the OpenCode server URL (${this.baseUrl ?? 'in-process'}) and ensure it is reachable.`
+          : '';
+
+      throw new Error(`Failed to create session: ${message}${connectionHint}`);
     }
   }
 
@@ -409,6 +443,28 @@ export class OpencodeClient {
 
     return obj;
   }
+}
+
+async function findAvailablePort(startPort: number, attempts: number): Promise<number | null> {
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const port = startPort + offset;
+    const available = await isPortAvailable(port);
+    if (available) {
+      return port;
+    }
+  }
+  return null;
+}
+
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', () => resolve(false));
+    server.listen(port, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 /**

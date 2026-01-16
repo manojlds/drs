@@ -3,8 +3,12 @@ import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
-import { buildBaseInstructions } from '../lib/review-core.js';
-import { displayDescription, postDescription } from '../lib/description-formatter.js';
+import { buildDescribeInstructions } from '../lib/describe-core.js';
+import {
+  displayDescription,
+  normalizeDescription,
+  postDescription,
+} from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
 
 export interface DescribeMROptions {
@@ -37,7 +41,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     diff: file.patch,
   }));
 
-  const instructions = buildBaseInstructions(label, filesWithDiffs);
+  const instructions = buildDescribeInstructions(label, filesWithDiffs);
 
   if (options.debug) {
     console.log(chalk.yellow('\n=== Agent Instructions ==='));
@@ -89,24 +93,43 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
       throw new Error('Agent did not return valid JSON output');
     }
 
+    let normalizedDescription;
+    try {
+      normalizedDescription = normalizeDescription(description);
+    } catch (validationError) {
+      console.error(chalk.red('Agent output did not match expected description schema'));
+      console.log(chalk.dim('Agent output:'), fullResponse);
+      throw validationError;
+    }
+
     // Display the description
-    displayDescription(description, 'MR');
+    displayDescription(normalizedDescription, 'MR');
 
     // Save to JSON file if requested
     if (options.outputPath) {
       const fs = await import('fs/promises');
-      await fs.writeFile(options.outputPath, JSON.stringify(description, null, 2), 'utf-8');
+      await fs.writeFile(
+        options.outputPath,
+        JSON.stringify(normalizedDescription, null, 2),
+        'utf-8'
+      );
       console.log(chalk.green(`\n✓ Description saved to ${options.outputPath}`));
     }
 
     // Output JSON if requested
     if (options.jsonOutput) {
-      console.log('\n' + JSON.stringify(description, null, 2));
+      console.log('\n' + JSON.stringify(normalizedDescription, null, 2));
     }
 
     // Post description to MR if requested
     if (options.postDescription) {
-      await postDescription(platformAdapter, options.projectId, options.mrIid, description, 'MR');
+      await postDescription(
+        platformAdapter,
+        options.projectId,
+        options.mrIid,
+        normalizedDescription,
+        'MR'
+      );
     }
 
     console.log(chalk.green('\n✓ MR description generated successfully\n'));

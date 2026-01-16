@@ -1,12 +1,124 @@
 import chalk from 'chalk';
 import type { PlatformClient } from './platform-client.js';
 
+export interface DescriptionWalkthroughEntry {
+  file: string;
+  changeType: string;
+  semanticLabel: string;
+  title: string;
+  changes?: string[];
+  significance?: string;
+}
+
+export interface Description {
+  type: string;
+  title: string;
+  summary: string[];
+  walkthrough?: DescriptionWalkthroughEntry[];
+  labels?: string[];
+  recommendations?: string[];
+}
+
+function normalizeStringArray(value: unknown, fieldName: string, required = false): string[] {
+  if (value == null) {
+    if (required) {
+      throw new Error(`Missing required field: ${fieldName}`);
+    }
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`Field "${fieldName}" must be an array of strings`);
+  }
+
+  const invalidEntry = value.find((entry) => typeof entry !== 'string');
+  if (invalidEntry !== undefined) {
+    throw new Error(`Field "${fieldName}" must contain only strings`);
+  }
+
+  return value;
+}
+
+export function normalizeDescription(description: unknown): Description {
+  if (!description || typeof description !== 'object') {
+    throw new Error('Description output must be a JSON object');
+  }
+
+  const typedDescription = description as Record<string, unknown>;
+
+  const typeValue = typedDescription.type;
+  if (typeof typeValue !== 'string' || typeValue.trim().length === 0) {
+    throw new Error('Missing required field: type');
+  }
+
+  const titleValue = typedDescription.title;
+  if (typeof titleValue !== 'string' || titleValue.trim().length === 0) {
+    throw new Error('Missing required field: title');
+  }
+
+  const summary = normalizeStringArray(typedDescription.summary, 'summary', true);
+  const labels = normalizeStringArray(typedDescription.labels, 'labels');
+  const recommendations = normalizeStringArray(typedDescription.recommendations, 'recommendations');
+
+  const walkthroughValue = typedDescription.walkthrough;
+  if (walkthroughValue != null && !Array.isArray(walkthroughValue)) {
+    throw new Error('Field "walkthrough" must be an array');
+  }
+
+  const walkthrough = Array.isArray(walkthroughValue)
+    ? walkthroughValue.map((entry, index) => {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error(`Walkthrough entry ${index + 1} must be an object`);
+        }
+        const typedEntry = entry as Record<string, unknown>;
+        const file = typedEntry.file;
+        const changeType = typedEntry.changeType;
+        const semanticLabel = typedEntry.semanticLabel;
+        const title = typedEntry.title;
+
+        if (typeof file !== 'string' || file.trim().length === 0) {
+          throw new Error(`Walkthrough entry ${index + 1} is missing "file"`);
+        }
+        if (typeof changeType !== 'string' || changeType.trim().length === 0) {
+          throw new Error(`Walkthrough entry ${index + 1} is missing "changeType"`);
+        }
+        if (typeof semanticLabel !== 'string' || semanticLabel.trim().length === 0) {
+          throw new Error(`Walkthrough entry ${index + 1} is missing "semanticLabel"`);
+        }
+        if (typeof title !== 'string' || title.trim().length === 0) {
+          throw new Error(`Walkthrough entry ${index + 1} is missing "title"`);
+        }
+
+        const changes = normalizeStringArray(typedEntry.changes, 'walkthrough.changes');
+
+        return {
+          file,
+          changeType,
+          semanticLabel,
+          title,
+          changes,
+          significance:
+            typeof typedEntry.significance === 'string' ? typedEntry.significance : undefined,
+        };
+      })
+    : undefined;
+
+  return {
+    type: typeValue,
+    title: titleValue,
+    summary,
+    walkthrough,
+    labels,
+    recommendations,
+  };
+}
+
 export type Platform = 'PR' | 'MR';
 
 /**
  * Display description to console
  */
-export function displayDescription(description: any, platform: Platform = 'PR') {
+export function displayDescription(description: Description, platform: Platform = 'PR') {
   console.log(chalk.bold.cyan(`📝 Generated ${platform} Description\n`));
 
   // Type
@@ -98,8 +210,22 @@ export function getMarkdownChangeIcon(changeType: string): string {
 /**
  * Format description as markdown
  */
-export function formatDescriptionAsMarkdown(description: any, platform: Platform = 'PR'): string {
-  let markdown = `## AI-Generated ${platform} Description\n\n`;
+const DESCRIPTION_COMMENT_ID = 'drs-description';
+
+function findExistingDescriptionComment(comments: Array<{ id: number | string; body: string }>) {
+  return (
+    comments.find((comment) =>
+      comment.body.includes(`<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->`)
+    ) || null
+  );
+}
+
+export function formatDescriptionAsMarkdown(
+  description: Description,
+  platform: Platform = 'PR'
+): string {
+  let markdown = `<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->\n`;
+  markdown += `## AI-Generated ${platform} Description\n\n`;
 
   markdown += `**Type:** ${description.type}\n\n`;
 
@@ -153,13 +279,20 @@ export async function postDescription(
   platformAdapter: PlatformClient,
   projectId: string,
   prNumber: number,
-  description: any,
+  description: Description,
   platform: Platform = 'PR'
 ) {
   console.log(chalk.dim(`\nPosting description to ${platform}...`));
 
   const markdown = formatDescriptionAsMarkdown(description, platform);
-  await platformAdapter.createComment(projectId, prNumber, markdown);
+  const existingComments = await platformAdapter.getComments(projectId, prNumber);
+  const existingDescription = findExistingDescriptionComment(existingComments);
+
+  if (existingDescription) {
+    await platformAdapter.updateComment(projectId, prNumber, existingDescription.id, markdown);
+  } else {
+    await platformAdapter.createComment(projectId, prNumber, markdown);
+  }
 
   console.log(chalk.green(`✓ Description posted to ${platform}`));
 }

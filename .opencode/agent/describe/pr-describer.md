@@ -24,7 +24,9 @@ Your mission is to analyze code changes and generate a comprehensive, well-struc
 
 ## Output Format
 
-You MUST output a JSON object with this exact structure:
+You MUST output a JSON object with this exact structure.
+Return **only** raw JSON (no markdown, no code fences, no extra text).
+If you cannot produce valid JSON, return the **best-effort valid JSON** that matches the schema.
 
 ```json
 {
