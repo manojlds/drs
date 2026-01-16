@@ -6,7 +6,7 @@
  */
 
 import chalk from 'chalk';
-import type { DRSConfig } from './config.js';
+import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
@@ -14,6 +14,7 @@ import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
+import { createIssueFingerprint } from './comment-manager.js';
 
 /**
  * File with optional diff content
@@ -46,6 +47,13 @@ export interface AgentResult {
   success: boolean;
   issues: ReviewIssue[];
 }
+
+const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+  CRITICAL: 4,
+};
 
 /**
  * Build base review instructions for agents
@@ -178,6 +186,119 @@ function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): stri
   return limitedChars;
 }
 
+function resolveReviewMode(config: DRSConfig): ReviewMode {
+  return config.review.mode ?? 'multi-agent';
+}
+
+function shouldEscalateHybrid(issues: ReviewIssue[], threshold: ReviewSeverity): boolean {
+  return issues.some(
+    (issue) => REVIEW_SEVERITY_ORDER[issue.severity] >= REVIEW_SEVERITY_ORDER[threshold]
+  );
+}
+
+function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIssue[] {
+  const seen = new Set<string>();
+  const merged: ReviewIssue[] = [];
+
+  for (const issue of [...primary, ...secondary]) {
+    const fingerprint = createIssueFingerprint(issue);
+    if (seen.has(fingerprint)) {
+      continue;
+    }
+    seen.add(fingerprint);
+    merged.push(issue);
+  }
+
+  return merged;
+}
+
+export async function runUnifiedReviewAgent(
+  opencode: OpencodeClient,
+  config: DRSConfig,
+  baseInstructions: string,
+  reviewLabel: string,
+  filteredFiles: string[],
+  additionalContext: Record<string, any> = {},
+  workingDir: string = process.cwd(),
+  debug = false
+): Promise<AgentReviewResult> {
+  const agentType = 'unified-reviewer';
+  const agentName = `review/${agentType}`;
+
+  console.log(chalk.bold('🎯 Selected Agents: unified-reviewer\n'));
+  console.log(chalk.gray('Running unified review...\n'));
+
+  try {
+    const reviewPrompt = buildReviewPrompt(
+      agentType,
+      baseInstructions,
+      reviewLabel,
+      filteredFiles,
+      workingDir
+    );
+
+    if (debug) {
+      console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
+      console.log(chalk.gray(`│ Agent: ${agentName}`));
+      console.log(chalk.gray('│ Prompt:'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(reviewPrompt);
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(chalk.gray(`└── End message for ${agentName}\n`));
+    }
+
+    const session = await opencode.createSession({
+      agent: agentName,
+      message: reviewPrompt,
+      context: {
+        ...additionalContext,
+        files: filteredFiles,
+      },
+    });
+
+    const agentIssues: ReviewIssue[] = [];
+
+    for await (const message of opencode.streamMessages(session.id)) {
+      if (message.role === 'assistant') {
+        if (debug) {
+          console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
+          console.log(message.content);
+          console.log(chalk.gray(`└── End response for ${agentName}\n`));
+        } else {
+          const snippet = renderAgentMessage(message.content);
+          if (snippet) {
+            console.log(chalk.gray(`[unified] ${snippet}\n`));
+          }
+        }
+        const parsedIssues = parseReviewIssues(message.content, 'unified');
+        if (parsedIssues.length > 0) {
+          agentIssues.push(...parsedIssues);
+          console.log(chalk.green(`✓ [unified] Found ${parsedIssues.length} issue(s)`));
+        }
+      }
+    }
+
+    await opencode.closeSession(session.id);
+
+    const summary = calculateSummary(filteredFiles.length, agentIssues);
+
+    return {
+      issues: agentIssues,
+      summary,
+      filesReviewed: filteredFiles.length,
+      agentResults: [{ agentType, success: true, issues: agentIssues }],
+    };
+  } catch (error) {
+    console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    return {
+      issues: [],
+      summary: calculateSummary(filteredFiles.length, []),
+      filesReviewed: filteredFiles.length,
+      agentResults: [{ agentType, success: false, issues: [] }],
+    };
+  }
+}
+
 export async function runReviewAgents(
   opencode: OpencodeClient,
   config: DRSConfig,
@@ -211,7 +332,8 @@ export async function runReviewAgents(
         agentType,
         baseInstructions,
         reviewLabel,
-        filteredFiles
+        filteredFiles,
+        workingDir
       );
 
       if (debug) {
@@ -304,6 +426,96 @@ export async function runReviewAgents(
     summary,
     filesReviewed: filteredFiles.length,
     agentResults,
+  };
+}
+
+export async function runReviewPipeline(
+  opencode: OpencodeClient,
+  config: DRSConfig,
+  baseInstructions: string,
+  reviewLabel: string,
+  filteredFiles: string[],
+  additionalContext: Record<string, any> = {},
+  workingDir: string = process.cwd(),
+  debug = false
+): Promise<AgentReviewResult> {
+  const mode = resolveReviewMode(config);
+
+  if (mode === 'unified') {
+    return runUnifiedReviewAgent(
+      opencode,
+      config,
+      baseInstructions,
+      reviewLabel,
+      filteredFiles,
+      additionalContext,
+      workingDir,
+      debug
+    );
+  }
+
+  if (mode === 'multi-agent') {
+    return runReviewAgents(
+      opencode,
+      config,
+      baseInstructions,
+      reviewLabel,
+      filteredFiles,
+      additionalContext,
+      workingDir,
+      debug
+    );
+  }
+
+  const unifiedResult = await runUnifiedReviewAgent(
+    opencode,
+    config,
+    baseInstructions,
+    reviewLabel,
+    filteredFiles,
+    additionalContext,
+    workingDir,
+    debug
+  );
+
+  const unifiedSuccess = unifiedResult.agentResults.every((result) => result.success);
+  const threshold = config.review.unified?.severityThreshold ?? 'HIGH';
+  const shouldEscalate = unifiedSuccess
+    ? shouldEscalateHybrid(unifiedResult.issues, threshold)
+    : true;
+
+  if (!shouldEscalate) {
+    console.log(
+      chalk.gray(`Hybrid mode: no issues at or above ${threshold}, skipping deep review.\n`)
+    );
+    return unifiedResult;
+  }
+
+  if (!unifiedSuccess) {
+    console.log(chalk.yellow('Hybrid mode: unified review failed, falling back to deep review.\n'));
+  } else {
+    console.log(chalk.yellow('Hybrid mode: escalating to deep review agents.\n'));
+  }
+
+  const deepResult = await runReviewAgents(
+    opencode,
+    config,
+    baseInstructions,
+    reviewLabel,
+    filteredFiles,
+    additionalContext,
+    workingDir,
+    debug
+  );
+
+  const mergedIssues = mergeIssues(unifiedResult.issues, deepResult.issues);
+  const summary = calculateSummary(filteredFiles.length, mergedIssues);
+
+  return {
+    issues: mergedIssues,
+    summary,
+    filesReviewed: filteredFiles.length,
+    agentResults: [...unifiedResult.agentResults, ...deepResult.agentResults],
   };
 }
 

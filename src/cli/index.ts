@@ -34,16 +34,31 @@ program
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
   .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
+  .option('--unified-model <model>', 'Model override for unified review agent')
+  .option(
+    '--unified-threshold <severity>',
+    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
+  )
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
+      const unifiedOverride =
+        options.unifiedModel || options.unifiedThreshold
+          ? {
+              model: options.unifiedModel,
+              severityThreshold: options.unifiedThreshold,
+            }
+          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
+          mode: options.reviewMode,
+          unified: unifiedOverride,
         },
       } as any);
 
@@ -66,6 +81,12 @@ program
   .requiredOption('--mr <iid>', 'Merge request IID (number)')
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
+  .option('--unified-model <model>', 'Model override for unified review agent')
+  .option(
+    '--unified-threshold <severity>',
+    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
+  )
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
   .option(
     '--code-quality-report <path>',
@@ -77,11 +98,20 @@ program
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
+      const unifiedOverride =
+        options.unifiedModel || options.unifiedThreshold
+          ? {
+              model: options.unifiedModel,
+              severityThreshold: options.unifiedThreshold,
+            }
+          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
+          mode: options.reviewMode,
+          unified: unifiedOverride,
         },
       } as any);
 
@@ -112,6 +142,12 @@ program
   .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
+  .option('--unified-model <model>', 'Model override for unified review agent')
+  .option(
+    '--unified-threshold <severity>',
+    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
+  )
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
@@ -119,11 +155,20 @@ program
   .option('--debug', 'Print OpenCode configuration for debugging')
   .action(async (options) => {
     try {
+      const unifiedOverride =
+        options.unifiedModel || options.unifiedThreshold
+          ? {
+              model: options.unifiedModel,
+              severityThreshold: options.unifiedThreshold,
+            }
+          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
+          mode: options.reviewMode,
+          unified: unifiedOverride,
         },
       } as any);
 

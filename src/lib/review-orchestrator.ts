@@ -7,12 +7,17 @@
 
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
-import { shouldIgnoreFile, getModelOverrides, type ModelOverrides } from './config.js';
+import {
+  shouldIgnoreFile,
+  getModelOverrides,
+  getUnifiedModelOverride,
+  type ModelOverrides,
+} from './config.js';
 import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
-  runReviewAgents,
+  runReviewPipeline,
   displayReviewSummary as displaySummary,
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
@@ -77,7 +82,8 @@ export async function connectToOpenCode(
 
   try {
     // Get model overrides from DRS config
-    const modelOverrides = options?.modelOverrides ?? getModelOverrides(config);
+    const modelOverrides =
+      options?.modelOverrides ?? { ...getModelOverrides(config), ...getUnifiedModelOverride(config) };
 
     return await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,
@@ -170,7 +176,7 @@ export async function executeReview(
     );
 
     // Run agents using shared core logic
-    const result = await runReviewAgents(
+    const result = await runReviewPipeline(
       opencode,
       config,
       baseInstructions,
