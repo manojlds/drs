@@ -66,6 +66,7 @@ export interface DRSConfig {
   // Describe behavior (PR/MR description generation)
   describe?: {
     model?: string;
+    includeProjectContext?: boolean;
   };
 
   // Context compression (diff size management)
@@ -119,6 +120,9 @@ const DEFAULT_CONFIG: DRSConfig = {
     softBufferTokens: 1500,
     hardBufferTokens: 1000,
     tokenEstimateDivisor: 4,
+  },
+  describe: {
+    includeProjectContext: true,
   },
 };
 

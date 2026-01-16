@@ -71,6 +71,8 @@ describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
   # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
   model: opencode/glm-4.7-free
+  # Include .drs/context.md content in describe agent instructions
+  includeProjectContext: true
 
 # Context compression (diff size management)
 contextCompression:
