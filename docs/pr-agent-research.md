@@ -614,6 +614,8 @@ interface ValidatedIssue extends ReviewIssue {
 - [x] Post descriptions as comments
 - [x] Configuration support
 - [x] Documentation
+- [x] Context compression
+- [x] Unified review mode
 
 ### 🔄 In Progress
 
@@ -621,13 +623,79 @@ interface ValidatedIssue extends ReviewIssue {
 
 ### 📋 Planned
 
-- [ ] Context compression
-- [ ] Unified review mode
 - [ ] JSON-based agent configuration
 - [ ] Ticket context integration
 - [ ] Sequence diagrams
 - [ ] Context caching
 - [ ] Self-reflection & validation
+
+---
+
+## Config Improvements Plan (JSON-Based Agent Configuration)
+
+### Goals
+
+- Allow per-agent customization without editing agent markdown files.
+- Support default values and per-run overrides (CLI/env/config).
+- Keep config schema backward-compatible with existing YAML.
+- Provide guardrails/validation to prevent misconfiguration.
+
+### Proposed Configuration Schema
+
+```yaml
+review:
+  agentConfig:
+    security:
+      severityThreshold: HIGH
+      categories:
+        - sql-injection
+        - xss
+        - auth-bypass
+      excludePatterns:
+        - "test/**"
+
+    quality:
+      complexityThreshold: 15
+      duplicateLineThreshold: 10
+      checkPatterns:
+        - DRY
+        - SOLID
+        - error-handling
+```
+
+### Implementation Plan
+
+1. **Config Types & Validation**
+   - Extend `DRSConfig` to include `review.agentConfig`.
+   - Define per-agent config types in `src/lib/config.ts` (or a new `src/lib/agent-config.ts`).
+   - Validate values (e.g., severity enum, numeric ranges, non-empty arrays).
+
+2. **Load & Merge Behavior**
+   - Merge config from `.drs/drs.config.yaml`, `.gitlab-review.yml`, env, and CLI overrides.
+   - Ensure unknown agents are ignored with warnings (not hard failures).
+
+3. **Agent Prompt Wiring**
+   - Pass agent-specific config into the prompt builder in `review-core.ts`.
+   - Add a structured section like `Agent Configuration` to reduce prompt ambiguity.
+   - Ensure unified reviewer receives relevant config for all agent categories.
+
+4. **CLI Overrides**
+   - Add CLI flags for common overrides (e.g., `--security-threshold`, `--quality-complexity`).
+   - Translate CLI flags into `review.agentConfig` overrides.
+
+5. **Documentation**
+   - Update README and `.drs/drs.config.yaml` template examples.
+   - Add a section in `docs/pr-agent-research.md` linking to the new config options.
+
+6. **Tests**
+   - Add unit tests for config loading/merging with `agentConfig`.
+   - Add tests for prompt injection into `review-core` for at least one agent.
+
+### Milestone Breakdown
+
+- **Phase 1 (Schema + Merge)**: Add types, merging logic, and validation.
+- **Phase 2 (Prompt Wiring)**: Inject agentConfig into review prompts.
+- **Phase 3 (CLI + Docs + Tests)**: CLI overrides, docs updates, and coverage.
 
 ---
 
