@@ -184,7 +184,10 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
   return {};
 }
 
-function getCanonicalDiffCommand(pr: PullRequest, baseBranchResolution: BaseBranchResolution): string {
+function getCanonicalDiffCommand(
+  pr: PullRequest,
+  baseBranchResolution: BaseBranchResolution
+): string {
   const githubBase = process.env.GITHUB_BASE_REF;
   const githubHead = process.env.GITHUB_HEAD_REF;
   if (githubBase && githubHead) {
