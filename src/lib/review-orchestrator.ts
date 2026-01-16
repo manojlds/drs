@@ -82,8 +82,10 @@ export async function connectToOpenCode(
 
   try {
     // Get model overrides from DRS config
-    const modelOverrides =
-      options?.modelOverrides ?? { ...getModelOverrides(config), ...getUnifiedModelOverride(config) };
+    const modelOverrides = options?.modelOverrides ?? {
+      ...getModelOverrides(config),
+      ...getUnifiedModelOverride(config),
+    };
 
     return await createOpencodeClientInstance({
       baseUrl: config.opencode.serverUrl || undefined,
