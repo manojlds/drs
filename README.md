@@ -9,7 +9,7 @@ Enterprise-grade automated code review for Merge Requests and Pull Requests, pow
 - **Comprehensive Analysis**: Advanced code review using Claude's latest models
 - **Specialized Review Domains**: Security, quality, style, performance, and documentation analysis
 - **Multi-Platform Support**: Native integration with GitLab and GitHub
-- **Flexible Deployment**: CI/CD pipelines, webhook server, or local CLI
+- **Flexible Deployment**: CI/CD pipelines or local CLI
 - **Review Modes**: Multi-agent deep review, single-pass unified review, and hybrid escalation
 - **Unified Reviewer**: One-pass JSON output with severity-tagged findings across domains
 - **PR/MR Descriptions**: Optional auto-generated descriptions and labels for pull requests
@@ -173,20 +173,6 @@ DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-revi
 - Cost protection mechanisms
 - Maintainer workflow
 - Attack prevention strategies
-
-### Mode 4: Webhook Server
-
-Deploy as a standalone service:
-
-```bash
-# Using Docker Compose
-cd examples
-docker-compose up -d
-
-# Configure webhooks:
-# GitLab: http://your-server:8080/webhook/gitlab (Merge request events, Comments)
-# GitHub: http://your-server:8080/webhook/github (Pull request events)
-```
 
 ## GitLab Code Quality Reports
 
