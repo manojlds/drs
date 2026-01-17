@@ -66,11 +66,11 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'custom-provider': {
-            model: 'custom-model',
+            models: { 'custom-model': { name: 'custom-model' } },
             options: {
               baseURL: 'https://api.custom.com',
               apiKey: '{env:CUSTOM_API_KEY}',
-            },
+            } as any,
           },
         },
       });
@@ -137,11 +137,11 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: '{env:TEST_API_KEY}',
-            },
+            } as any,
           },
         },
       });
@@ -167,11 +167,11 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: '{env:NONEXISTENT_VAR}',
-            },
+            } as any,
           },
         },
       });
@@ -190,13 +190,15 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            npm: '@test/provider',
+            name: 'test-provider',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: 'hardcoded-key',
-            },
+            } as any,
           },
-        },
+        } as any,
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
@@ -209,7 +211,9 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            npm: '@test/provider',
+            name: 'test-provider',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: 'test-key',
@@ -218,7 +222,7 @@ describe('OpencodeClient', () => {
               },
             } as any,
           },
-        },
+        } as any,
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
@@ -238,13 +242,13 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: 'test-key',
               keys: ['{env:TEST_ARRAY_KEY}', 'static-value'],
             } as any,
-          },
+          } as any,
         },
       });
 
@@ -262,7 +266,7 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
-            model: 'test-model',
+            models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: 'test-key',
@@ -271,7 +275,7 @@ describe('OpencodeClient', () => {
               ratio: 0.5,
               nullValue: null,
             } as any,
-          },
+          } as any,
         },
       });
 
@@ -339,13 +343,15 @@ describe('OpencodeClient', () => {
         },
         provider: {
           'custom-provider': {
-            model: 'custom-model',
+            npm: '@custom/provider',
+            name: 'custom-provider',
+            models: { 'custom-model': { name: 'custom-model' } },
             options: {
               baseURL: 'https://api.custom.com',
               apiKey: '{env:CUSTOM_KEY}',
-            },
+            } as any,
           },
-        },
+        } as any,
         debug: false,
       });
 

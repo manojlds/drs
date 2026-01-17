@@ -260,7 +260,7 @@ describe('review-core', () => {
           content: 'This is not valid JSON',
           timestamp: new Date(),
         };
-      });
+      }) as any;
 
       // parseReviewOutput mock returns { issues: [] } for invalid JSON
       // so this should succeed with no issues
@@ -363,8 +363,8 @@ describe('review-core', () => {
         if (callCount === 1) {
           throw new Error('First agent failed');
         }
-        return { id: `session-${agent}` };
-      });
+        return { id: `session-${agent}`, agent, createdAt: new Date() };
+      }) as any;
 
       const result = await runReviewAgents(
         mockOpencode,
@@ -530,7 +530,7 @@ describe('review-core', () => {
           }),
           timestamp: new Date(),
         };
-      });
+      }) as any;
 
       const result = await runReviewPipeline(
         mockOpencode,
@@ -581,7 +581,7 @@ describe('review-core', () => {
           }),
           timestamp: new Date(),
         };
-      });
+      }) as any;
 
       const result = await runReviewPipeline(
         mockOpencode,

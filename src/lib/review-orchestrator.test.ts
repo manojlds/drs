@@ -152,12 +152,12 @@ describe('review-orchestrator', () => {
     it('should return all files when no ignore patterns', () => {
       const config = {
         opencode: {},
-        gitlab: {},
-        github: {},
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
         review: {
           ignorePatterns: [],
         },
-      } as DRSConfig;
+      } as unknown as DRSConfig;
 
       const files = ['src/app.ts', 'src/utils.ts', 'README.md'];
 
