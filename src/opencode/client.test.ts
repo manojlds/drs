@@ -66,13 +66,15 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'custom-provider': {
+            npm: '@custom/provider',
+            name: 'custom-provider',
             models: { 'custom-model': { name: 'custom-model' } },
             options: {
               baseURL: 'https://api.custom.com',
               apiKey: '{env:CUSTOM_API_KEY}',
             } as any,
           },
-        },
+        } as any,
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
@@ -137,13 +139,15 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
+            npm: '@test/provider',
+            name: 'test-provider',
             models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: '{env:TEST_API_KEY}',
             } as any,
           },
-        },
+        } as any,
       });
 
       // The client should be created successfully
@@ -167,13 +171,15 @@ describe('OpencodeClient', () => {
       const client = new OpencodeClient({
         provider: {
           'test-provider': {
+            npm: '@test/provider',
+            name: 'test-provider',
             models: { 'test-model': { name: 'test-model' } },
             options: {
               baseURL: 'https://api.test.com',
               apiKey: '{env:NONEXISTENT_VAR}',
             } as any,
           },
-        },
+        } as any,
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
