@@ -1,376 +1,231 @@
 # Claude.md - DRS Repository Guide
 
+## ⚠️ CRITICAL: Run Checks After EVERY Change
+
+**MANDATORY**: After making ANY code change, immediately run:
+
+```bash
+npm run check:all
+```
+
+This single command runs: format → lint:fix → build → test → format:check → lint
+
+**What it does:**
+- ✅ Formats code with Prettier
+- ✅ Fixes auto-fixable lint issues
+- ✅ **Type checks and compiles TypeScript** (via `build` which runs `tsc`)
+- ✅ Runs all tests
+- ✅ Verifies formatting and linting
+
+**Never push code that fails these checks!** This prevents CI failures and maintains code quality.
+
+---
+
 ## Project Overview
 
-**DRS (Diff Review System)** is an AI-powered code review bot for GitLab Merge Requests and GitHub Pull Requests, built on the OpenCode SDK and powered by Claude AI. The system uses specialized AI agents to provide comprehensive code reviews focusing on security, quality, style, and performance.
+**DRS (Diff Review System)** is an AI-powered code review bot for GitLab MRs and GitHub PRs, built on OpenCode SDK and powered by Claude AI.
 
-### Key Features
-- Multi-platform support (GitLab MRs and GitHub PRs)
-- Specialized review agents with distinct focuses
-- Multiple deployment modes (CI/CD, webhook server, local CLI)
-- Markdown-based agent definitions for easy customization
-- Native OpenCode SDK integration
+**Key Technologies:**
+- Node.js 20+ (TypeScript)
+- OpenCode SDK (@opencode-ai/sdk)
+- Claude AI (via Anthropic API)
+- GitLab: @gitbeaker/node
+- GitHub: @octokit/rest
+- Testing: Vitest
 
-## Architecture
+---
 
-### Core Technologies
-- **Runtime**: Node.js 20+ (TypeScript)
-- **AI Framework**: OpenCode SDK (@opencode-ai/sdk)
-- **AI Model**: Claude (via Anthropic API)
-- **GitLab Integration**: @gitbeaker/node
-- **GitHub Integration**: @octokit/rest
-- **Web Server**: Hono (for webhook mode)
-- **Job Queue**: BullMQ + Redis (for webhook mode)
-- **CLI**: Commander.js
-- **Git Operations**: simple-git
-
-### Design Principles
-1. **Markdown-Based Agents**: All review agents are defined as markdown files with YAML frontmatter
-2. **Subagent Architecture**: Specialized reviewers invoked as subagents by orchestrator agents
-3. **Repository Customization**: Projects can override default agents in `.drs/agents/` or `.opencode/agent/`
-4. **Multiple Deployment Modes**: Flexible deployment supporting CI/CD, webhooks, and local usage
-5. **OpenCode Native**: Built directly on OpenCode SDK, not as a wrapper
-
-## Directory Structure
+## Essential Directory Structure
 
 ```
 drs/
-├── .opencode/                    # OpenCode configuration and agents
-│   ├── agent/
-│   │   ├── review/              # Specialized review agents
-│   │   │   ├── security.md      # Security vulnerability detection
-│   │   │   ├── quality.md       # Code quality analysis
-│   │   │   ├── style.md         # Style and conventions
-│   │   │   ├── performance.md   # Performance optimization
-│   │   │   └── documentation.md # Documentation accuracy review
-│   └── opencode.jsonc           # OpenCode configuration
+├── .opencode/agent/review/      # Review agent definitions
+│   ├── security.md              # Security vulnerabilities
+│   ├── quality.md               # Code quality
+│   ├── style.md                 # Style & conventions
+│   ├── performance.md           # Performance issues
+│   └── documentation.md         # Doc accuracy
 │
 ├── src/
-│   ├── cli/                     # CLI commands
-│   │   ├── index.ts            # Main CLI entry point
-│   │   ├── init.ts             # Project initialization
-│   │   ├── review-mr.ts        # GitLab MR review command
-│   │   ├── review-pr.ts        # GitHub PR review command
-│   │   └── review-local.ts     # Local diff review command
-│   │
-│   ├── gitlab/                  # GitLab integration
-│   │   ├── client.ts           # GitLab API client
-│   │   ├── diff-parser.ts      # MR diff parsing
-│   │   └── comment-formatter.ts # Comment formatting
-│   │
-│   ├── github/                  # GitHub integration
-│   │   └── client.ts           # GitHub API client
-│   │
-│   ├── opencode/                # OpenCode SDK integration
-│   │   ├── client.ts           # OpenCode client wrapper
-│   │   └── agent-loader.ts     # Agent discovery and loading
-│   │
-│   ├── ci/                      # CI/CD integration
-│   │   └── runner.ts           # CI environment detection
-│   │
-│   └── lib/                     # Shared utilities
-│       └── config.ts           # Configuration management
+│   ├── cli/                     # CLI commands (review-local, review-mr, review-pr)
+│   ├── gitlab/                  # GitLab API integration
+│   ├── github/                  # GitHub API integration
+│   ├── opencode/                # OpenCode SDK wrapper
+│   └── lib/                     # Shared utilities (config, review logic)
 │
-├── examples/                    # Example configurations
-├── ARCHITECTURE.md             # Detailed architecture documentation
-├── DESIGN.md                   # Original design document
-└── DEVELOPMENT.md              # Development and testing guide
+└── tests/                       # Test files (*.test.ts)
 ```
 
-## Key Components
-
-### 1. Review Agents (.opencode/agent/)
-
-**Specialized Review Agents:**
-  - `review/security.md` - Detects security vulnerabilities (OWASP Top 10, injection attacks, auth issues)
-  - `review/quality.md` - Analyzes code quality (design patterns, complexity, error handling)
-  - `review/style.md` - Checks code style (naming, formatting, documentation, TypeScript types)
-  - `review/performance.md` - Identifies performance issues (algorithmic complexity, caching, concurrency)
-  - `review/documentation.md` - Reviews documentation accuracy (README, API docs, comments)
-
-### 2. CLI Commands (src/cli/)
-
-- `drs init` - Initialize DRS in a project
-- `drs review-local` - Review local git changes
-- `drs review-mr` - Review specific GitLab MR
-- `drs review-pr` - Review specific GitHub PR
-
-### 3. Integration Clients
-
-**GitLab Client (src/gitlab/client.ts):**
-- Fetches MR details and diffs
-- Posts review comments
-- Handles GitLab API authentication
-
-**GitHub Client (src/github/client.ts):**
-- Fetches PR details and diffs
-- Posts review comments
-- Handles GitHub API authentication
-
-**OpenCode Client (src/opencode/client.ts):**
-- Manages OpenCode server connection
-- Invokes review agents
-- Handles in-process or remote OpenCode server
-
-### 4. Configuration System (src/lib/config.ts)
-
-Configuration is loaded from multiple sources (in order of precedence):
-1. `.drs/drs.config.yaml` - DRS-specific config
-2. `.gitlab-review.yml` - Alternative location
-3. `.opencode/opencode.jsonc` - OpenCode config
-4. Environment variables
-
-**Key Configuration Options:**
-- `review.agents` - Which agents to run
-- `review.ignorePatterns` - Files/patterns to exclude
-- Custom agent overrides
+---
 
 ## Development Workflow
 
 ### Setup
 ```bash
-npm install                    # Install dependencies
-npm run build                 # Build TypeScript
-npm test                      # Run tests
-npm run dev                   # Development mode with watch
+npm install          # Install dependencies
+npm run build        # Build TypeScript
+npm test             # Run tests
 ```
 
-### After Every Change (MANDATORY)
-Run the full quality checks after each change, not just before pushing:
+### After EVERY Change
 ```bash
-npm run check:all
+npm run check:all    # ALWAYS run this after any code change
 ```
 
-Equivalent to:
+Quick type-check only (if needed):
 ```bash
-npm run format
-npm run lint:fix
-npm run build
-npm test
-npm run format:check
-npm run lint
-```
-
-Use `npm run type-check` for a quick TypeScript-only validation.
-
-### Testing
-- Test framework: Vitest
-- Test files: `*.test.ts` alongside source files
-- Run tests: `npm test`
-
-### Building
-```bash
-npm run build                 # Compile TypeScript to dist/
+npm run type-check   # Runs tsc --noEmit (fast validation)
 ```
 
 ### Local Testing
 ```bash
-# Test local review
-npm run dev -- review-local
-
-# Test GitLab MR review
-npm run dev -- review-mr --project org/repo --mr 123
-
-# Test GitHub PR review
-npm run dev -- review-pr --owner octocat --repo hello-world --pr 456
+npm run dev -- review-local                           # Test local changes
+npm run dev -- review-mr --project org/repo --mr 123  # Test GitLab MR
+npm run dev -- review-pr --owner user --repo name --pr 456  # Test GitHub PR
 ```
 
-## Important Patterns and Conventions
+---
 
-### 1. Agent Invocation Pattern
-Specialized agents are invoked directly by the CLI orchestration layer.
+## Configuration
 
-### 2. Configuration Merging
-The config system merges settings from multiple sources with proper precedence.
-See: `src/lib/config.ts`
+**Config files** (in precedence order):
+1. `.drs/drs.config.yaml` - DRS config
+2. `.gitlab-review.yml` - Alternative location
+3. `.opencode/opencode.jsonc` - OpenCode config
+4. Environment variables
 
-### 3. Diff Parsing
-GitLab and GitHub diffs are parsed into a standardized format for agent consumption.
-See: `src/gitlab/diff-parser.ts`
+**Key options:**
+- `review.agents` - Which agents to run (security, quality, style, etc.)
+- `review.ignorePatterns` - Files/patterns to exclude from review
 
-### 4. Comment Formatting
-Review comments are formatted differently for GitLab vs GitHub based on their API requirements.
-See: `src/gitlab/comment-formatter.ts`
-
-### 5. OpenCode Server Modes
-- **In-process**: DRS starts OpenCode server automatically (requires OpenCode CLI installed)
-- **Remote**: DRS connects to existing OpenCode server (set `OPENCODE_SERVER` env var)
+---
 
 ## Environment Variables
 
-### Required (depending on platform)
+### Required (platform-specific)
 ```bash
-GITLAB_TOKEN=glpat-xxx          # For GitLab MR reviews
-GITHUB_TOKEN=ghp-xxx            # For GitHub PR reviews
+GITLAB_TOKEN=glpat-xxx    # For GitLab MR reviews
+GITHUB_TOKEN=ghp-xxx      # For GitHub PR reviews
 
-# Provider API Keys (set the one for your chosen model provider)
-ANTHROPIC_API_KEY=sk-ant-xxx    # For Anthropic Claude models
-ZHIPU_API_KEY=xxx               # For ZhipuAI GLM models
-OPENAI_API_KEY=sk-xxx           # For OpenAI models
+# Model provider (choose one)
+ANTHROPIC_API_KEY=sk-ant-xxx   # For Claude models
+ZHIPU_API_KEY=xxx              # For ZhipuAI GLM models
+OPENAI_API_KEY=sk-xxx          # For OpenAI models
 ```
 
 ### Optional
 ```bash
-OPENCODE_SERVER=http://localhost:3000  # Leave empty for in-process mode
+OPENCODE_SERVER=http://localhost:3000  # Remote server (empty = in-process)
 GITLAB_URL=https://gitlab.com          # Custom GitLab instance
-REVIEW_AGENTS=security,quality         # Override default agents
+REVIEW_AGENTS=security,quality         # Override agents
 ```
-
-## Common Development Tasks
-
-### Adding a New Review Agent
-1. Create markdown file in `.opencode/agent/review/`
-2. Add YAML frontmatter with description and model
-3. Write agent instructions in markdown
-4. Update orchestrator agents to invoke new agent
-
-### Adding a New CLI Command
-1. Create command file in `src/cli/`
-2. Add command to `src/cli/index.ts`
-3. Implement command logic using OpenCode client
-4. Add tests
-
-### Modifying Configuration Schema
-1. Update types in `src/lib/config.ts`
-2. Update config merging logic
-3. Update validation
-4. Document in README.md
-
-### Updating Integration APIs
-1. GitLab: Update `src/gitlab/client.ts`
-2. GitHub: Update `src/github/client.ts`
-3. Ensure backward compatibility
-4. Add tests for new API features
-
-## Testing Strategy
-
-### Unit Tests
-- Configuration loading and merging: `src/lib/config.test.ts`
-- Diff parsing logic
-- Comment formatting
-
-### Integration Tests
-- Full review workflow with mock OpenCode server
-- GitLab/GitHub API interactions with mocks
-- CLI command execution
-
-### Manual Testing
-See `DEVELOPMENT.md` for comprehensive local testing instructions including:
-- Local diff reviews
-- GitLab MR reviews with test projects
-- GitHub PR reviews with test repositories
-- Agent customization testing
-
-## Dependencies to Watch
-
-### Critical Dependencies
-- `@opencode-ai/sdk` - Core framework, breaking changes impact entire system
-- `@anthropic-ai/sdk` - Claude API, model changes may affect agent performance
-- `@gitbeaker/node` - GitLab API, updates may add new features
-- `@octokit/rest` - GitHub API, updates may add new features
-
-### Version Requirements
-- Node.js: >=20.0.0 (required for modern TypeScript features)
-- Git: >=2.30 (required for local review mode)
-- OpenCode CLI: Latest version (required even for in-process mode)
-
-## Documentation Files
-
-- **README.md** - User-facing documentation and quick start
-- **ARCHITECTURE.md** - Detailed technical architecture (OpenCode SDK approach)
-- **DESIGN.md** - Original design document (Claude Agent SDK approach, historical)
-- **DEVELOPMENT.md** - Local development and testing guide
-- **Claude.md** (this file) - AI assistant guide for working with this codebase
-
-## Security Considerations
-
-1. **API Tokens**: Never commit tokens, use environment variables
-2. **Input Validation**: Validate all user inputs and API responses
-3. **Agent Safety**: Review agents should detect but not introduce security issues
-4. **Rate Limiting**: Respect GitLab/GitHub API rate limits
-5. **Secrets in Code**: Review agents check for exposed secrets in diffs
-
-## Known Limitations
-
-1. Large diffs may hit OpenCode/Claude context limits
-2. Binary files cannot be reviewed
-3. Some GitLab/GitHub features may not be supported
-4. In-process mode requires OpenCode CLI to be globally installed
-
-## Getting Help
-
-- **Issues**: https://github.com/manojlds/drs/issues
-- **Documentation**: See docs/ directory and markdown files
-- **OpenCode Docs**: https://opencode.ai/docs
-- **GitLab API Docs**: https://docs.gitlab.com/ee/api/
-- **GitHub API Docs**: https://docs.github.com/en/rest
-
-## Contributing Guidelines
-
-1. Follow existing code patterns and conventions
-2. Add tests for new features
-3. Update relevant documentation
-4. Ensure TypeScript compiles without errors
-5. Run linter before committing: `npm run lint`
-6. Keep agents focused on their specific domain
-7. Maintain backward compatibility when possible
-
-## Pre-Push Checklist (MANDATORY)
-
-**IMPORTANT**: Before pushing ANY changes to the repository, you MUST run these checks and ensure they all pass:
-
-```bash
-# 1. Format code with Prettier
-npm run format
-
-# 2. Fix auto-fixable linting issues
-npm run lint:fix
-
-# 3. Build the project (TypeScript compilation)
-npm run build
-
-# 4. Run all tests
-npm test
-
-# 5. Check for formatting issues (should pass after step 1)
-npm run format:check
-
-# 6. Check for linting issues (warnings are OK, errors must be fixed)
-npm run lint
-```
-
-### Quick Pre-Push Command
-
-Run all checks at once:
-
-```bash
-npm run format && npm run lint:fix && npm run build && npm test && npm run format:check
-```
-
-Shortcut:
-```bash
-npm run check:all
-```
-
-### What to Do if Checks Fail
-
-- **Format check fails**: Run `npm run format` to auto-fix
-- **Lint errors**: Fix manually or run `npm run lint:fix` for auto-fixable issues
-- **Build fails**: Fix TypeScript compilation errors
-- **Tests fail**: Fix failing tests before pushing
-- **Lint warnings**: These are acceptable but should be minimized over time
-
-### Why These Checks Matter
-
-1. **Formatting**: Ensures consistent code style across the project
-2. **Linting**: Catches potential bugs and enforces best practices
-3. **Build**: Ensures TypeScript compiles without errors
-4. **Tests**: Prevents regressions and ensures code quality
-5. **Format check**: Verifies all files are properly formatted
-
-**Never push code that fails any of these checks!** This maintains code quality and prevents CI pipeline failures.
 
 ---
 
-**Last Updated**: 2026-01-11
+## Testing with Vitest
+
+**Test framework:** Vitest
+**Test files:** `*.test.ts` alongside source files
+**Run tests:** `npm test`
+
+**Common patterns:**
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mocking modules
+vi.mock('./module.js', () => ({
+  func: vi.fn(() => 'mocked'),
+}));
+
+// Type assertions for test mocks
+const mockObj = {
+  required: 'value',
+  optional: 123,
+} as any;  // Use for complex partial types
+
+const config = {
+  partial: 'config',
+} as unknown as FullType;  // For config objects
+```
+
+**Important interface requirements in tests:**
+- `SessionMessage`: Must have `id`, `role`, `content`, `timestamp`
+- `Session`: Must have `id`, `agent`, `createdAt`
+- `CustomProvider`: Must have `npm`, `name`, `models`, `options`
+
+---
+
+## Common Tasks
+
+### Adding a Review Agent
+1. Create `.opencode/agent/review/newagent.md`
+2. Add YAML frontmatter (description, model)
+3. Write agent instructions
+4. Update config to include new agent
+
+### Adding a CLI Command
+1. Create file in `src/cli/`
+2. Register in `src/cli/index.ts`
+3. Add tests (`.test.ts`)
+4. **Run `npm run check:all`**
+
+### Fixing Type Errors
+- Type errors are caught during `npm run build` (runs `tsc`)
+- Use `npm run type-check` for quick validation
+- Fix errors before running tests
+
+### Fixing Lint Errors
+```bash
+npm run lint:fix     # Auto-fix what's possible
+npm run lint         # Check remaining issues
+```
+
+---
+
+## Quality Checks Reference
+
+| Command | What It Does |
+|---------|--------------|
+| `npm run check:all` | **ALL checks** (format + lint + build + test) |
+| `npm run format` | Auto-format with Prettier |
+| `npm run lint:fix` | Fix auto-fixable lint issues |
+| `npm run build` | **Compile TypeScript + type check** |
+| `npm run type-check` | Type check only (no build) |
+| `npm test` | Run all Vitest tests |
+| `npm run format:check` | Verify formatting |
+| `npm run lint` | Check linting (errors + warnings) |
+
+**The `build` command includes full type checking via `tsc`** - you don't need to run `type-check` separately if you're running `check:all`.
+
+---
+
+## Key Principles
+
+1. **Run `check:all` after EVERY change** - not just before pushing
+2. **All tests must pass** - fix failures immediately
+3. **Zero TypeScript errors** - type checking is part of `build`
+4. **Minimal warnings** - fix lint warnings when practical
+5. **Consistent formatting** - Prettier handles this automatically
+
+---
+
+## Documentation Files
+
+- **README.md** - User guide and quick start
+- **ARCHITECTURE.md** - Technical architecture details
+- **DEVELOPMENT.md** - Local testing guide
+- **Claude.md** - This file (AI assistant reference)
+
+---
+
+## Security Notes
+
+1. **Never commit API tokens** - use environment variables only
+2. **Validate inputs** - all user inputs and API responses
+3. **Check for secrets** - agents detect exposed secrets in diffs
+4. **Respect rate limits** - GitLab/GitHub API limits
+
+---
+
+**Last Updated**: 2026-01-17
 **Repository**: https://github.com/manojlds/drs
