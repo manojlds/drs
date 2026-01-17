@@ -1,10 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  loadGlobalContext,
-  loadAgentContext,
-  buildReviewPrompt,
-  type AgentContext,
-} from './context-loader.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { loadGlobalContext, loadAgentContext, buildReviewPrompt } from './context-loader.js';
 import { existsSync, readFileSync } from 'fs';
 
 // Mock fs module
@@ -137,9 +132,7 @@ describe('context-loader', () => {
         return pathStr.includes('.drs/context.md');
       });
 
-      let readCallCount = 0;
       vi.mocked(readFileSync).mockImplementation((path) => {
-        readCallCount++;
         if (path.toString().includes('.drs/context.md')) {
           return '# Project Context\n\nThis is our project';
         }
@@ -242,9 +235,7 @@ describe('context-loader', () => {
         );
       });
 
-      let readCallCount = 0;
       vi.mocked(readFileSync).mockImplementation((path) => {
-        readCallCount++;
         if (path.toString().includes('.drs/context.md')) {
           return 'Global project context';
         }
@@ -273,13 +264,7 @@ describe('context-loader', () => {
       });
       vi.mocked(readFileSync).mockReturnValue('Custom agent');
 
-      const result = buildReviewPrompt(
-        'security',
-        'Base prompt',
-        'PR #5',
-        [],
-        '/test/project'
-      );
+      const result = buildReviewPrompt('security', 'Base prompt', 'PR #5', [], '/test/project');
 
       expect(result).toContain('Review the following files from PR #5');
       // Should still work with no files listed

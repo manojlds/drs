@@ -17,7 +17,7 @@ vi.mock('@opencode-ai/sdk', () => ({
       },
     },
   })),
-  createOpencodeClient: vi.fn((config: any) => ({
+  createOpencodeClient: vi.fn((_config: any) => ({
     session: {
       create: vi.fn(async () => ({ data: { id: 'session-456' } })),
       prompt: vi.fn(async () => {}),
@@ -68,6 +68,7 @@ describe('OpencodeClient', () => {
           'custom-provider': {
             model: 'custom-model',
             options: {
+              baseURL: 'https://api.custom.com',
               apiKey: '{env:CUSTOM_API_KEY}',
             },
           },
@@ -138,6 +139,7 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
               apiKey: '{env:TEST_API_KEY}',
             },
           },
@@ -167,6 +169,7 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
               apiKey: '{env:NONEXISTENT_VAR}',
             },
           },
@@ -189,6 +192,7 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
               apiKey: 'hardcoded-key',
             },
           },
@@ -207,10 +211,12 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
+              apiKey: 'test-key',
               nested: {
                 deepKey: '{env:TEST_NESTED_KEY}',
               },
-            },
+            } as any,
           },
         },
       });
@@ -234,8 +240,10 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
+              apiKey: 'test-key',
               keys: ['{env:TEST_ARRAY_KEY}', 'static-value'],
-            },
+            } as any,
           },
         },
       });
@@ -256,11 +264,13 @@ describe('OpencodeClient', () => {
           'test-provider': {
             model: 'test-model',
             options: {
+              baseURL: 'https://api.test.com',
+              apiKey: 'test-key',
               timeout: 5000,
               enabled: true,
               ratio: 0.5,
               nullValue: null,
-            },
+            } as any,
           },
         },
       });
@@ -279,8 +289,7 @@ describe('OpencodeClient', () => {
     });
 
     it('should create and initialize client with createOpencodeClientInstance', async () => {
-      const { createOpencode, createOpencodeClient: createSDKClient } =
-        await import('@opencode-ai/sdk');
+      const { createOpencodeClient: createSDKClient } = await import('@opencode-ai/sdk');
 
       // Mock for remote server
       vi.mocked(createSDKClient).mockReturnValueOnce({
@@ -332,8 +341,8 @@ describe('OpencodeClient', () => {
           'custom-provider': {
             model: 'custom-model',
             options: {
+              baseURL: 'https://api.custom.com',
               apiKey: '{env:CUSTOM_KEY}',
-              baseUrl: 'https://api.custom.com',
             },
           },
         },

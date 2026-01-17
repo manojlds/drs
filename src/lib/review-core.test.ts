@@ -10,7 +10,6 @@ import {
   type AgentReviewResult,
 } from './review-core.js';
 import type { DRSConfig } from './config.js';
-import type { ReviewIssue } from './comment-formatter.js';
 import type { OpencodeClient } from '../opencode/client.js';
 
 // Mock dependencies
@@ -112,10 +111,7 @@ describe('review-core', () => {
     });
 
     it('should build instructions without diff content', () => {
-      const files: FileWithDiff[] = [
-        { filename: 'src/app.ts' },
-        { filename: 'src/utils.ts' },
-      ];
+      const files: FileWithDiff[] = [{ filename: 'src/app.ts' }, { filename: 'src/utils.ts' }];
 
       const instructions = buildBaseInstructions('MR !456', files, 'git diff HEAD~1');
 
@@ -176,6 +172,7 @@ describe('review-core', () => {
         createSession: vi.fn(async () => ({ id: 'session-1' })),
         streamMessages: vi.fn(async function* () {
           yield {
+            id: 'msg-1',
             role: 'assistant',
             content: JSON.stringify({
               issues: [
@@ -190,6 +187,7 @@ describe('review-core', () => {
                 },
               ],
             }),
+            timestamp: new Date(),
           };
         }),
         closeSession: vi.fn(async () => {}),
@@ -221,6 +219,7 @@ describe('review-core', () => {
       expect(result.filesReviewed).toBe(1);
       expect(result.agentResults).toHaveLength(1);
       expect(result.agentResults[0].success).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockOpencode.createSession).toHaveBeenCalledWith({
         agent: 'review/unified-reviewer',
         message: expect.stringContaining('Review these files'),
@@ -228,6 +227,7 @@ describe('review-core', () => {
           files: ['src/app.ts'],
         },
       });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockOpencode.closeSession).toHaveBeenCalledWith('session-1');
     });
 
@@ -255,8 +255,10 @@ describe('review-core', () => {
     it('should handle invalid JSON output gracefully', async () => {
       mockOpencode.streamMessages = vi.fn(async function* () {
         yield {
+          id: 'msg-1',
           role: 'assistant',
           content: 'This is not valid JSON',
+          timestamp: new Date(),
         };
       });
 
@@ -308,6 +310,7 @@ describe('review-core', () => {
         streamMessages: vi.fn(async function* ({ agent }: any) {
           const agentType = agent?.split('/')[1] || 'test';
           yield {
+            id: 'msg-1',
             role: 'assistant',
             content: JSON.stringify({
               issues: [
@@ -322,6 +325,7 @@ describe('review-core', () => {
                 },
               ],
             }),
+            timestamp: new Date(),
           };
         }),
         closeSession: vi.fn(async () => {}),
@@ -427,6 +431,7 @@ describe('review-core', () => {
         createSession: vi.fn(async () => ({ id: 'session-1' })),
         streamMessages: vi.fn(async function* () {
           yield {
+            id: 'msg-1',
             role: 'assistant',
             content: JSON.stringify({
               issues: [
@@ -441,6 +446,7 @@ describe('review-core', () => {
                 },
               ],
             }),
+            timestamp: new Date(),
           };
         }),
         closeSession: vi.fn(async () => {}),
@@ -507,6 +513,7 @@ describe('review-core', () => {
       // Mock unified review returning only LOW severity
       mockOpencode.streamMessages = vi.fn(async function* () {
         yield {
+          id: 'msg-1',
           role: 'assistant',
           content: JSON.stringify({
             issues: [
@@ -521,6 +528,7 @@ describe('review-core', () => {
               },
             ],
           }),
+          timestamp: new Date(),
         };
       });
 
@@ -556,6 +564,7 @@ describe('review-core', () => {
       mockOpencode.streamMessages = vi.fn(async function* () {
         callCount++;
         yield {
+          id: 'msg-1',
           role: 'assistant',
           content: JSON.stringify({
             issues: [
@@ -570,6 +579,7 @@ describe('review-core', () => {
               },
             ],
           }),
+          timestamp: new Date(),
         };
       });
 

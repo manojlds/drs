@@ -6,7 +6,6 @@ import {
   type ReviewSource,
 } from './review-orchestrator.js';
 import type { DRSConfig } from './config.js';
-import type { OpencodeClient } from '../opencode/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', async () => {
@@ -21,9 +20,7 @@ vi.mock('./config.js', async () => {
           return file.startsWith(dir + '/');
         }
         if (pattern.includes('*')) {
-          const regex = new RegExp(
-            '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
-          );
+          const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
           return regex.test(file);
         }
         return file === pattern;
@@ -153,7 +150,10 @@ describe('review-orchestrator', () => {
     });
 
     it('should return all files when no ignore patterns', () => {
-      const config: DRSConfig = {
+      const config = {
+        opencode: {},
+        gitlab: {},
+        github: {},
         review: {
           ignorePatterns: [],
         },
@@ -173,12 +173,7 @@ describe('review-orchestrator', () => {
         },
       } as DRSConfig;
 
-      const files = [
-        'src/app.ts',
-        'src/app.spec.ts',
-        'test/integration.ts',
-        'lib/utils.ts',
-      ];
+      const files = ['src/app.ts', 'src/app.spec.ts', 'test/integration.ts', 'lib/utils.ts'];
 
       const result = filterIgnoredFiles(files, config);
 
@@ -211,15 +206,15 @@ describe('review-orchestrator', () => {
       const client = await connectToOpenCode(config, '/test/dir');
 
       expect(client).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(client.createSession).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(client.shutdown).toBeDefined();
     });
 
     it('should handle connection failure', async () => {
       const { createOpencodeClientInstance } = await import('../opencode/client.js');
-      vi.mocked(createOpencodeClientInstance).mockRejectedValueOnce(
-        new Error('Connection failed')
-      );
+      vi.mocked(createOpencodeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
 
       const config: DRSConfig = {
         opencode: {},
@@ -506,9 +501,7 @@ describe('review-orchestrator', () => {
 
     it('should handle "All review agents failed" error specially', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
-      vi.mocked(runReviewPipeline).mockRejectedValueOnce(
-        new Error('All review agents failed')
-      );
+      vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('All review agents failed'));
 
       const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
@@ -518,9 +511,7 @@ describe('review-orchestrator', () => {
         context: {},
       };
 
-      await expect(executeReview(mockConfig, source)).rejects.toThrow(
-        'All review agents failed'
-      );
+      await expect(executeReview(mockConfig, source)).rejects.toThrow('All review agents failed');
 
       expect(mockExit).toHaveBeenCalledWith(1);
       mockExit.mockRestore();
