@@ -8,6 +8,7 @@ import * as yaml from 'yaml';
 export interface AgentConfig {
   name: string;
   model?: string;
+  skills?: string[]; // Skills to enable for this specific agent
 }
 
 /**
@@ -77,6 +78,13 @@ export interface DRSConfig {
     hardBufferTokens?: number;
     tokenEstimateDivisor?: number;
   };
+
+  // Skills configuration (agentskills.io)
+  skills?: {
+    enabled?: boolean; // Enable/disable skills globally
+    directory?: string; // Directory containing skills (default: .drs/skills)
+    global?: string[]; // Skills to enable for all agents
+  };
 }
 
 export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
@@ -123,6 +131,11 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
   describe: {
     includeProjectContext: true,
+  },
+  skills: {
+    enabled: true,
+    directory: '.drs/skills',
+    global: [],
   },
 };
 
@@ -187,6 +200,24 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
       severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
     };
   }
+  if (process.env.SKILLS_ENABLED !== undefined) {
+    config.skills = {
+      ...config.skills,
+      enabled: process.env.SKILLS_ENABLED === 'true',
+    };
+  }
+  if (process.env.SKILLS_DIRECTORY) {
+    config.skills = {
+      ...config.skills,
+      directory: process.env.SKILLS_DIRECTORY,
+    };
+  }
+  if (process.env.SKILLS_GLOBAL) {
+    config.skills = {
+      ...config.skills,
+      global: process.env.SKILLS_GLOBAL.split(',').map((s) => s.trim()),
+    };
+  }
 
   // Validate required fields
   if (!config.review.defaultModel) {
@@ -226,6 +257,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     review: mergeSection(base.review, override.review),
     describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
+    skills: mergeSection(base.skills, override.skills),
   };
 }
 

@@ -1,11 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { loadGlobalContext, loadAgentContext, buildReviewPrompt } from './context-loader.js';
+import type { DRSConfig } from './config.js';
 import { existsSync, readFileSync } from 'fs';
 
 // Mock fs module
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
+  readdirSync: vi.fn(),
+  statSync: vi.fn(),
+}));
+
+// Mock skill-loader module
+vi.mock('./skill-loader.js', () => ({
+  getAgentSkills: vi.fn(() => []),
+  buildSkillsContext: vi.fn(() => ''),
 }));
 
 describe('context-loader', () => {
@@ -315,6 +324,98 @@ describe('context-loader', () => {
 
       expect(result).toContain('# Project Context\n\nContent here');
       expect(result).not.toMatch(/^\n+/); // Should not start with newlines
+    });
+
+    it('should include skills context when config is provided', async () => {
+      const { getAgentSkills, buildSkillsContext } = await import('./skill-loader.js');
+
+      vi.mocked(existsSync).mockReturnValue(false);
+      vi.mocked(getAgentSkills).mockReturnValue([
+        {
+          name: 'test-skill',
+          path: '/path/to/skill/SKILL.md',
+          content: 'Test skill content',
+        },
+      ]);
+      vi.mocked(buildSkillsContext).mockReturnValue('# Available Skills\n\nTest skill content');
+
+      const mockConfig: DRSConfig = {
+        opencode: {},
+        gitlab: { url: 'https://gitlab.com', token: '' },
+        github: { token: '' },
+        review: {
+          agents: ['security'],
+          defaultModel: 'test-model',
+          ignorePatterns: [],
+          mode: 'multi-agent',
+        },
+        skills: {
+          enabled: true,
+          directory: '.drs/skills',
+          global: ['test-skill'],
+        },
+      };
+
+      const result = buildReviewPrompt(
+        'security',
+        'Base prompt',
+        'PR #1',
+        ['file.ts'],
+        '/test/project',
+        mockConfig
+      );
+
+      expect(result).toContain('# Available Skills');
+      expect(result).toContain('Test skill content');
+      expect(result).toContain('Base prompt');
+    });
+
+    it('should include skills in agent override mode', async () => {
+      const { getAgentSkills, buildSkillsContext } = await import('./skill-loader.js');
+
+      vi.mocked(existsSync).mockImplementation((path) => {
+        return path.toString().includes('agent.md');
+      });
+      vi.mocked(readFileSync).mockReturnValue('# Custom Agent\n\nCustom instructions');
+      vi.mocked(getAgentSkills).mockReturnValue([
+        {
+          name: 'test-skill',
+          path: '/path/to/skill/SKILL.md',
+          content: 'Test skill content',
+        },
+      ]);
+      vi.mocked(buildSkillsContext).mockReturnValue('# Available Skills\n\nTest skill content');
+
+      const mockConfig: DRSConfig = {
+        opencode: {},
+        gitlab: { url: 'https://gitlab.com', token: '' },
+        github: { token: '' },
+        review: {
+          agents: ['security'],
+          defaultModel: 'test-model',
+          ignorePatterns: [],
+          mode: 'multi-agent',
+        },
+        skills: {
+          enabled: true,
+          directory: '.drs/skills',
+          global: ['test-skill'],
+        },
+      };
+
+      const result = buildReviewPrompt(
+        'security',
+        'Base prompt',
+        'PR #1',
+        ['file.ts'],
+        '/test/project',
+        mockConfig
+      );
+
+      expect(result).toContain('# Custom Agent');
+      expect(result).toContain('# Available Skills');
+      expect(result).toContain('Test skill content');
+      expect(result).toContain('Review the following files from PR #1');
     });
   });
 });

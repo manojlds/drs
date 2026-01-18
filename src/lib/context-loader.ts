@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import type { DRSConfig } from './config.js';
+import { getAgentSkills, buildSkillsContext } from './skill-loader.js';
 
 export interface AgentContext {
   /**
@@ -74,7 +76,8 @@ export function buildReviewPrompt(
   basePrompt: string,
   reviewLabel: string,
   changedFiles: string[],
-  projectRoot: string = process.cwd()
+  projectRoot: string = process.cwd(),
+  config?: DRSConfig
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentName, projectRoot);
@@ -84,6 +87,15 @@ export function buildReviewPrompt(
   // If agent is fully overridden, use that instead of base prompt
   if (agentContext.source === 'override' && agentContext.agentDefinition) {
     prompt = agentContext.agentDefinition;
+
+    // Add skills context if available
+    if (config) {
+      const skills = getAgentSkills(config, agentName, projectRoot);
+      if (skills.length > 0) {
+        const skillsContext = buildSkillsContext(skills);
+        prompt += `\n\n${skillsContext}\n\n`;
+      }
+    }
 
     // Add task details
     prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
@@ -111,7 +123,16 @@ export function buildReviewPrompt(
     prompt += `${agentContext.agentContext}\n\n`;
   }
 
-  // 3. Base agent instructions
+  // 3. Skills context (if available)
+  if (config) {
+    const skills = getAgentSkills(config, agentName, projectRoot);
+    if (skills.length > 0) {
+      const skillsContext = buildSkillsContext(skills);
+      prompt += `${skillsContext}\n\n`;
+    }
+  }
+
+  // 4. Base agent instructions
   prompt += basePrompt;
 
   return prompt;

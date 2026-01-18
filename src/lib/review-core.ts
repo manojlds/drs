@@ -285,7 +285,8 @@ export async function runUnifiedReviewAgent(
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      workingDir
+      workingDir,
+      config
     );
 
     if (debug) {
@@ -399,7 +400,8 @@ export async function runReviewAgents(
         baseInstructions,
         reviewLabel,
         filteredFiles,
-        workingDir
+        workingDir,
+        config
       );
 
       if (debug) {

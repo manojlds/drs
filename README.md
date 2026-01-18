@@ -368,6 +368,127 @@ Notes:
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 
+### Skills Support (agentskills.io)
+
+DRS supports [Agent Skills](https://agentskills.io) - a standardized way to provide domain-specific knowledge and instructions to review agents. Skills are folders containing `SKILL.md` files that agents can discover and use during code reviews.
+
+#### Setting Up Skills
+
+Create skills in your project:
+
+```bash
+# Create skills directory
+mkdir -p .drs/skills/code-review-best-practices
+
+# Create a skill definition
+cat > .drs/skills/code-review-best-practices/SKILL.md << 'EOF'
+# Code Review Best Practices
+
+## Instructions
+
+When reviewing code, always check for:
+
+1. **Error Handling**: Ensure all external calls have proper error handling
+2. **Testing**: New features should include tests
+3. **Documentation**: Public APIs must be documented
+4. **Performance**: Avoid unnecessary loops and allocations
+
+## Project-Specific Rules
+
+- All database queries must use parameterized queries
+- API responses must include proper error codes
+- All user inputs must be validated
+EOF
+```
+
+#### Configure Skills
+
+Enable skills globally or per-agent in `.drs/drs.config.yaml`:
+
+```yaml
+# Skills configuration
+skills:
+  enabled: true                    # Enable/disable skills (default: true)
+  directory: .drs/skills           # Skills directory (default: .drs/skills)
+  global:                          # Skills available to all agents
+    - code-review-best-practices
+    - company-standards
+
+review:
+  agents:
+    # Simple agent config - uses global skills only
+    - security
+
+    # Agent with specific skills
+    - name: quality
+      model: anthropic/claude-sonnet-4-5-20250929
+      skills:
+        - testing-guidelines
+        - architecture-patterns
+
+    # Agent using both global and specific skills
+    - name: style
+      skills:
+        - naming-conventions
+```
+
+#### Environment Variables
+
+Control skills via environment variables:
+
+```bash
+# Enable/disable skills
+export SKILLS_ENABLED=true
+
+# Custom skills directory
+export SKILLS_DIRECTORY=custom/skills/path
+
+# Global skills (comma-separated)
+export SKILLS_GLOBAL=skill1,skill2,skill3
+```
+
+#### How Skills Work
+
+1. **Discovery**: DRS scans the skills directory for subdirectories containing `SKILL.md` files
+2. **Loading**: Skills are loaded based on global and agent-specific configuration
+3. **Integration**: Loaded skills are injected into agent prompts before review execution
+4. **Application**: Agents use skill instructions alongside their default behavior
+
+#### Use Cases
+
+- **Company Standards**: Share coding standards across all reviews
+- **Domain Knowledge**: Provide context about specific frameworks or libraries
+- **Best Practices**: Document team-specific best practices
+- **Project Rules**: Encode project-specific requirements and patterns
+- **Security Patterns**: Share security guidelines and common vulnerabilities
+- **Cross-Agent Knowledge**: Share knowledge between multiple agents
+
+#### Example: Security Skill
+
+```markdown
+# Security Patterns
+
+## Authentication
+
+Always check for:
+- JWT token expiration validation
+- Proper session management
+- Secure password hashing (bcrypt/argon2)
+
+## Data Validation
+
+All user input must be:
+1. Type-validated
+2. Length-checked
+3. Sanitized for XSS
+4. Validated against business rules
+
+## References
+
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- Internal Security Wiki: https://wiki.company.com/security
+```
+
 ## Review Domains
 
 ### Security Analysis
