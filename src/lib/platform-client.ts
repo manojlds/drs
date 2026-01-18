@@ -42,7 +42,7 @@ export interface PullRequest {
   /** Head commit SHA */
   headSha: string;
   /** Additional platform-specific data */
-  platformData?: any;
+  platformData?: unknown;
 }
 
 /**

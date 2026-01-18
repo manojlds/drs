@@ -128,21 +128,25 @@ function extractJsonObjects(text: string): string[] {
 /**
  * Validate that an object has the required ReviewIssue fields
  */
-function isValidIssue(obj: any): obj is ReviewIssue {
+function isValidIssue(obj: unknown): obj is ReviewIssue {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+
+  const record = obj as Record<string, unknown>;
+
   return (
-    obj &&
-    typeof obj === 'object' &&
-    typeof obj.category === 'string' &&
-    ['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE', 'DOCUMENTATION'].includes(obj.category) &&
-    typeof obj.severity === 'string' &&
-    ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(obj.severity) &&
-    typeof obj.title === 'string' &&
-    typeof obj.file === 'string' &&
-    typeof obj.problem === 'string' &&
-    typeof obj.solution === 'string' &&
-    (obj.line === undefined || typeof obj.line === 'number') &&
-    (obj.references === undefined || Array.isArray(obj.references)) &&
-    (obj.agent === undefined || typeof obj.agent === 'string')
+    typeof record.category === 'string' &&
+    ['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE', 'DOCUMENTATION'].includes(record.category) &&
+    typeof record.severity === 'string' &&
+    ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(record.severity) &&
+    typeof record.title === 'string' &&
+    typeof record.file === 'string' &&
+    typeof record.problem === 'string' &&
+    typeof record.solution === 'string' &&
+    (record.line === undefined || typeof record.line === 'number') &&
+    (record.references === undefined || Array.isArray(record.references)) &&
+    (record.agent === undefined || typeof record.agent === 'string')
   );
 }
 

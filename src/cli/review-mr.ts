@@ -80,7 +80,13 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   }
 
   // Create line validator - only allow comments on lines that are in the diff
-  const diffRefs: any = mr.diff_refs;
+  const diffRefs = mr.diff_refs as
+    | {
+        base_sha?: string;
+        head_sha?: string;
+        start_sha?: string;
+      }
+    | undefined;
   const lineValidator: LineValidator = {
     isValidLine(file: string, line: number): boolean {
       if (!diffRefs?.base_sha || !diffRefs.head_sha || !diffRefs.start_sha) {
@@ -92,14 +98,20 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
   };
 
   // Create inline position builder
-  const createInlinePosition = (issue: ReviewIssue, platformData: any): InlineCommentPosition => {
-    const refs = platformData.diff_refs;
+  const createInlinePosition = (
+    issue: ReviewIssue,
+    platformData: unknown
+  ): InlineCommentPosition => {
+    const data = platformData as {
+      diff_refs?: { base_sha?: string; head_sha?: string; start_sha?: string };
+    };
+    const refs = data.diff_refs;
     return {
       path: issue.file,
       line: issue.line!,
-      baseSha: refs.base_sha,
-      headSha: refs.head_sha,
-      startSha: refs.start_sha,
+      baseSha: refs?.base_sha,
+      headSha: refs?.head_sha,
+      startSha: refs?.start_sha,
     };
   };
 

@@ -88,11 +88,15 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   };
 
   // Create inline position builder
-  const createInlinePosition = (issue: ReviewIssue, platformData: any): InlineCommentPosition => {
+  const createInlinePosition = (
+    issue: ReviewIssue,
+    platformData: unknown
+  ): InlineCommentPosition => {
+    const data = platformData as { head: { sha: string } };
     return {
       path: issue.file,
       line: issue.line!,
-      commitSha: platformData.head.sha,
+      commitSha: data.head.sha,
     };
   };
 

@@ -232,7 +232,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
 /**
  * Merge a config section, skipping undefined values
  */
-function mergeSection<T extends Record<string, any>>(
+function mergeSection<T extends Record<string, unknown>>(
   base: T | undefined,
   override?: Partial<T>
 ): T {
@@ -241,8 +241,10 @@ function mergeSection<T extends Record<string, any>>(
 
   const result = { ...safeBase };
   for (const key in override) {
-    if (override[key] !== undefined) {
-      result[key] = override[key] as any;
+    const value = override[key];
+    if (value !== undefined) {
+      // TypeScript knows that value is T[Extract<keyof T, string>] which is assignable to T[keyof T]
+      result[key] = value;
     }
   }
   return result;

@@ -14,6 +14,26 @@ import type {
 import { GitLabPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
 /**
+ * Extended GitLab MergeRequest type with optional diff_refs
+ * GitLab API may return diff_refs depending on the endpoint and API version
+ */
+interface GitLabMergeRequest {
+  iid: number;
+  title: string;
+  description?: string;
+  author?: {
+    name?: string;
+    username?: string;
+  };
+  source_branch: string;
+  target_branch: string;
+  sha?: string;
+  diff_refs?: {
+    head_sha?: string;
+  };
+}
+
+/**
  * Adapter that wraps GitLabClient to implement PlatformClient interface
  */
 export class GitLabPlatformAdapter implements PlatformClient {
@@ -22,16 +42,16 @@ export class GitLabPlatformAdapter implements PlatformClient {
   constructor(private client: GitLabClient) {}
 
   async getPullRequest(projectId: string, prNumber: number): Promise<PullRequest> {
-    const mr = await this.client.getMergeRequest(projectId, prNumber);
+    const mr = (await this.client.getMergeRequest(projectId, prNumber)) as GitLabMergeRequest;
 
     return {
       number: mr.iid,
       title: mr.title,
-      description: mr.description || undefined,
-      author: (mr.author?.name || mr.author?.username || 'Unknown') as string,
+      description: mr.description ?? undefined,
+      author: mr.author?.name ?? mr.author?.username ?? 'Unknown',
       sourceBranch: mr.source_branch,
       targetBranch: mr.target_branch,
-      headSha: (mr as any).diff_refs?.head_sha || (mr as any).sha || '',
+      headSha: mr.diff_refs?.head_sha ?? mr.sha ?? '',
       platformData: mr,
     };
   }
@@ -144,10 +164,11 @@ export class GitLabPlatformAdapter implements PlatformClient {
               `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
             )
           );
-        } catch (error: any) {
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           console.warn(
             chalk.yellow(
-              `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${error.message}`
+              `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${errorMessage}`
             )
           );
           throw error; // Re-throw to mark as rejected

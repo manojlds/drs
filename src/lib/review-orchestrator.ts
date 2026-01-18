@@ -35,7 +35,7 @@ export interface ReviewSource {
   /** Optional: files with their diff patches (if available, passed directly to agents) */
   filesWithDiffs?: Array<{ filename: string; patch: string }>;
   /** Additional context to pass to review agents */
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
   /** Debug mode - print OpenCode configuration */

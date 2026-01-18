@@ -22,7 +22,7 @@ export interface PostCommentsOptions {
 }
 
 function parseReviewJson(raw: string, inputPath: string): ReviewJsonOutput {
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
@@ -35,15 +35,17 @@ function parseReviewJson(raw: string, inputPath: string): ReviewJsonOutput {
     throw new Error(`Invalid review JSON in ${inputPath}: expected an object`);
   }
 
-  if (!parsed.summary || typeof parsed.summary !== 'object') {
+  const obj = parsed as Record<string, unknown>;
+
+  if (!obj.summary || typeof obj.summary !== 'object') {
     throw new Error(`Invalid review JSON in ${inputPath}: missing summary`);
   }
 
-  if (!Array.isArray(parsed.issues)) {
+  if (!Array.isArray(obj.issues)) {
     throw new Error(`Invalid review JSON in ${inputPath}: issues must be an array`);
   }
 
-  return parsed as ReviewJsonOutput;
+  return obj as unknown as ReviewJsonOutput;
 }
 
 function parseNumber(value: string | number | undefined, label: string): number {
@@ -161,11 +163,15 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
       },
     };
 
-    const createInlinePosition = (issue: ReviewIssue, platformData: any): InlineCommentPosition => {
+    const createInlinePosition = (
+      issue: ReviewIssue,
+      platformData: unknown
+    ): InlineCommentPosition => {
+      const data = platformData as { head: { sha: string } };
       return {
         path: issue.file,
         line: issue.line!,
-        commitSha: platformData.head.sha,
+        commitSha: data.head.sha,
       };
     };
 
@@ -208,8 +214,14 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     },
   };
 
-  const createInlinePosition = (issue: ReviewIssue, platformData: any): InlineCommentPosition => {
-    const refs = platformData.diff_refs;
+  const createInlinePosition = (
+    issue: ReviewIssue,
+    platformData: unknown
+  ): InlineCommentPosition => {
+    const data = platformData as {
+      diff_refs: { base_sha: string; head_sha: string; start_sha: string };
+    };
+    const refs = data.diff_refs;
     return {
       path: issue.file,
       line: issue.line!,
