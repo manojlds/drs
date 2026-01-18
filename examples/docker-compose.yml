@@ -1,57 +1,29 @@
-# Docker Compose setup for DRS webhook server
+# Docker Compose setup for running a dedicated OpenCode server
 #
-# This configuration runs a dedicated OpenCode server alongside DRS.
+# This configuration provides a standalone OpenCode server that can be shared
+# across multiple DRS instances or other OpenCode-based tools.
+#
 # For local/CLI usage, you can omit OPENCODE_SERVER and DRS will start
 # an in-process server automatically.
 
 version: '3.8'
 
 services:
-  # OpenCode Server (optional - can be removed to use in-process server)
+  # OpenCode Server
   opencode:
     image: anomalyco/opencode:latest
     ports:
       - "3000:3000"
     environment:
-      - OPENCODE_API_KEY=${ANTHROPIC_API_KEY}
+      # Set your provider API key here (Anthropic, OpenAI, ZhipuAI, etc.)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Uncomment for other providers:
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ZHIPU_API_KEY=${ZHIPU_API_KEY}
     volumes:
       - opencode-config:/root/.config/opencode
       - ./custom-agents:/workspace/.opencode/agent
     restart: unless-stopped
 
-  # DRS Webhook Server
-  drs-webhook:
-    build: ..
-    ports:
-      - "8080:8080"
-    environment:
-      - OPENCODE_SERVER=http://opencode:3000
-      - GITLAB_URL=${GITLAB_URL:-https://gitlab.com}
-      - GITLAB_TOKEN=${GITLAB_TOKEN}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - opencode
-      - redis
-    restart: unless-stopped
-
-  # Redis for job queue
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-
-  # Redis Commander (optional - for monitoring)
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    ports:
-      - "8081:8081"
-    depends_on:
-      - redis
-
 volumes:
   opencode-config:
-  redis-data:
