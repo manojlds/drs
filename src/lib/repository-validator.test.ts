@@ -218,6 +218,12 @@ describe('repository-validator', () => {
 
     beforeEach(() => {
       process.env = { ...originalEnv };
+      // Clear all branch-related env vars for test isolation
+      delete process.env.DRS_BASE_BRANCH;
+      delete process.env.GITHUB_BASE_REF;
+      delete process.env.GITHUB_HEAD_REF;
+      delete process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME;
+      delete process.env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME;
     });
 
     afterEach(() => {
@@ -299,6 +305,12 @@ describe('repository-validator', () => {
 
     beforeEach(() => {
       process.env = { ...originalEnv };
+      // Clear all branch-related env vars for test isolation
+      delete process.env.DRS_BASE_BRANCH;
+      delete process.env.GITHUB_BASE_REF;
+      delete process.env.GITHUB_HEAD_REF;
+      delete process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME;
+      delete process.env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME;
     });
 
     afterEach(() => {
