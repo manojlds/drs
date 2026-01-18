@@ -469,11 +469,11 @@ The following critical modules lack tests:
 #### 6.1 Webhook Server Implementation
 **Severity:** ~~MEDIUM~~ **RESOLVED**
 
-**Resolution:** Webhook server documentation has been removed since the feature is not implemented.
+**Resolution:** Webhook server documentation and dependencies have been removed since the feature is not implemented.
 - ✅ Removed webhook mode from README.md
 - ✅ Updated `examples/docker-compose.yml` to be a simple OpenCode server example
 - ✅ Removed webhook configuration from `.env.example`
-- Note: BullMQ, Hono, and Redis dependencies remain in package.json for potential future use
+- ✅ Removed BullMQ, Hono, and Redis dependencies from package.json
 
 #### 6.2 Extensibility
 **Severity:** LOW
