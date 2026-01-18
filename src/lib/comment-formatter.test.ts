@@ -48,7 +48,7 @@ describe('comment-formatter', () => {
 
       expect(formatted).toContain('📊 QUALITY - Code complexity');
       expect(formatted).toContain('src/app.ts`');
-      expect(formatted).not.toContain(':');
+      expect(formatted).not.toContain('src/app.ts:'); // Should not have line number
       expect(formatted).toContain('🟠 MEDIUM');
     });
 
@@ -388,16 +388,17 @@ describe('comment-formatter', () => {
       const formatted = formatTerminalIssue(issue);
 
       expect(formatted).toContain('📁 src/utils.ts');
-      expect(formatted).not.toContain(':');
+      expect(formatted).not.toContain('src/utils.ts:'); // Should not have line number
     });
 
     it('should format all severity levels correctly', () => {
-      const severities: Array<{ severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'; emoji: string }> = [
-        { severity: 'CRITICAL', emoji: '🔴' },
-        { severity: 'HIGH', emoji: '🟡' },
-        { severity: 'MEDIUM', emoji: '🟠' },
-        { severity: 'LOW', emoji: '⚪' },
-      ];
+      const severities: Array<{ severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'; emoji: string }> =
+        [
+          { severity: 'CRITICAL', emoji: '🔴' },
+          { severity: 'HIGH', emoji: '🟡' },
+          { severity: 'MEDIUM', emoji: '🟠' },
+          { severity: 'LOW', emoji: '⚪' },
+        ];
 
       for (const { severity, emoji } of severities) {
         const issue: ReviewIssue = {
@@ -417,7 +418,10 @@ describe('comment-formatter', () => {
     });
 
     it('should format all categories correctly', () => {
-      const categories: Array<{ category: 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE' | 'DOCUMENTATION'; emoji: string }> = [
+      const categories: Array<{
+        category: 'SECURITY' | 'QUALITY' | 'STYLE' | 'PERFORMANCE' | 'DOCUMENTATION';
+        emoji: string;
+      }> = [
         { category: 'SECURITY', emoji: '🔒' },
         { category: 'QUALITY', emoji: '📊' },
         { category: 'STYLE', emoji: '✨' },

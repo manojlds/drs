@@ -29,10 +29,7 @@ describe('describe-core', () => {
     });
 
     it('should build instructions without diff content', () => {
-      const files: FileWithDiff[] = [
-        { filename: 'src/app.ts' },
-        { filename: 'src/utils.ts' },
-      ];
+      const files: FileWithDiff[] = [{ filename: 'src/app.ts' }, { filename: 'src/utils.ts' }];
 
       const instructions = buildDescribeInstructions('MR !456', files);
 

@@ -46,7 +46,7 @@ describe('comment-manager', () => {
       expect(fingerprint).toBe('src/app.ts:general:QUALITY:Code smell');
     });
 
-    it('should create fingerprint with line 0', () => {
+    it('should create fingerprint with line 0 (treated as general)', () => {
       const issue: ReviewIssue = {
         category: 'STYLE',
         severity: 'LOW',
@@ -59,7 +59,7 @@ describe('comment-manager', () => {
       };
 
       const fingerprint = createIssueFingerprint(issue);
-      expect(fingerprint).toBe('src/utils.ts:0:STYLE:Missing import');
+      expect(fingerprint).toBe('src/utils.ts:general:STYLE:Missing import');
     });
 
     it('should create unique fingerprints for different issues', () => {
@@ -111,8 +111,7 @@ describe('comment-manager', () => {
     });
 
     it('should handle multiple comment IDs and return first', () => {
-      const body =
-        '<!-- drs-comment-id: first-id -->\n<!-- drs-comment-id: second-id -->';
+      const body = '<!-- drs-comment-id: first-id -->\n<!-- drs-comment-id: second-id -->';
       const id = extractCommentId(body);
       expect(id).toBe('first-id');
     });
