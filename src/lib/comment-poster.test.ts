@@ -9,8 +9,8 @@ import type { PlatformClient } from './platform-client.js';
 
 // Mock dependencies
 vi.mock('./comment-formatter.js', () => ({
-  formatSummaryComment: vi.fn((summary, issues, botId, changeSummary) => 'formatted summary'),
-  formatIssueComment: vi.fn((issue, fingerprint) => `formatted issue: ${issue.title}`),
+  formatSummaryComment: vi.fn((_summary, _issues, _botId, _changeSummary) => 'formatted summary'),
+  formatIssueComment: vi.fn((issue, _fingerprint) => `formatted issue: ${issue.title}`),
 }));
 
 vi.mock('./comment-manager.js', () => ({
@@ -20,7 +20,9 @@ vi.mock('./comment-manager.js', () => ({
     return comments.find((c: any) => c.body.includes('<!-- DRS-REVIEW-BOT -->'));
   }),
   prepareIssuesForPosting: vi.fn((issues: any[], allComments: any[], lineValidator: any) => {
-    const criticalHigh = issues.filter((i: any) => i.severity === 'CRITICAL' || i.severity === 'HIGH');
+    const criticalHigh = issues.filter(
+      (i: any) => i.severity === 'CRITICAL' || i.severity === 'HIGH'
+    );
     const inlineIssues = criticalHigh.filter((i: any) => i.line && lineValidator(i));
     return {
       inlineIssues,
@@ -151,7 +153,7 @@ describe('comment-poster', () => {
 
     it('should post inline comments for CRITICAL/HIGH issues', async () => {
       const mockLineValidator = {
-        isValidLine: vi.fn((file: string, line: number) => true),
+        isValidLine: vi.fn((_file: string, _line: number) => true),
       };
 
       const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({

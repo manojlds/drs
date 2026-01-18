@@ -16,11 +16,7 @@ import {
   prepareIssuesForPosting,
   type PlatformComment,
 } from './comment-manager.js';
-import type {
-  PlatformClient,
-  LineValidator,
-  InlineCommentPosition,
-} from './platform-client.js';
+import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 
 /**
  * Post review comments to a PR/MR

@@ -19,16 +19,8 @@ import {
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
-import {
-  buildBaseInstructions,
-  runReviewPipeline,
-  displayReviewSummary,
-} from './review-core.js';
-import type {
-  PlatformClient,
-  LineValidator,
-  InlineCommentPosition,
-} from './platform-client.js';
+import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
+import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import {
@@ -259,7 +251,6 @@ export async function executeUnifiedReview(
     await opencode.shutdown();
   }
 }
-
 
 /**
  * Generate and write GitLab code quality report

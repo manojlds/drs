@@ -320,11 +320,7 @@ describe('unified-review-executor', () => {
 
       await executeUnifiedReview(mockConfig, options);
 
-      expect(writeReviewJson).toHaveBeenCalledWith(
-        expect.any(Object),
-        'output.json',
-        '/test/dir'
-      );
+      expect(writeReviewJson).toHaveBeenCalledWith(expect.any(Object), 'output.json', '/test/dir');
     });
 
     it('should exit with error code when critical issues found', async () => {

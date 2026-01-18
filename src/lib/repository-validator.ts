@@ -68,7 +68,10 @@ export function parseRemoteUrl(remoteUrl: string): RepoInfo | null {
 /**
  * Extract expected repository info from PR/MR platform data
  */
-export function getExpectedRepoInfo(pr: { platformData?: unknown }, projectId: string): RepoInfo | null {
+export function getExpectedRepoInfo(
+  pr: { platformData?: unknown },
+  projectId: string
+): RepoInfo | null {
   const data = pr?.platformData as
     | {
         base?: {
@@ -122,7 +125,10 @@ export function normalizeBaseBranch(baseBranch?: string): string | undefined {
 /**
  * Resolve the base branch from CLI, environment variables, or PR/MR data
  */
-export function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseBranchResolution {
+export function resolveBaseBranch(
+  cliBaseBranch?: string,
+  targetBranch?: string
+): BaseBranchResolution {
   // CLI argument takes highest priority
   if (cliBaseBranch) {
     const resolved = normalizeBaseBranch(cliBaseBranch);

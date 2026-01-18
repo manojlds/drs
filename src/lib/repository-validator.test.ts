@@ -2,7 +2,7 @@
  * Tests for repository-validator.ts
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   normalizeRepoPath,
   parseRemoteUrl,
@@ -11,7 +11,6 @@ import {
   resolveBaseBranch,
   getCanonicalDiffCommand,
   enforceRepoBranchMatch,
-  type RepoInfo,
   type BaseBranchResolution,
 } from './repository-validator.js';
 import type { PullRequest } from './platform-client.js';
