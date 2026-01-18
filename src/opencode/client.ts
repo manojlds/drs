@@ -23,7 +23,7 @@ const SERVER_START_TIMEOUT_MS = 10000;
 export interface SessionCreateOptions {
   agent: string;
   message: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 export interface SessionMessage {
@@ -69,7 +69,7 @@ export class OpencodeClient {
       // Start server in-process
       // Build OpenCode config programmatically from DRS config
 
-      const opencodeConfig: any = {
+      const opencodeConfig: Record<string, unknown> = {
         // Tools available to DRS review agents
         tools: {
           Read: true,
@@ -92,16 +92,17 @@ export class OpencodeClient {
 
       // Apply model overrides from DRS config
       if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
-        opencodeConfig.agent = {};
+        const agentConfig: Record<string, { model: string }> = {};
 
         console.log('📋 Agent model configuration:');
 
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
-          opencodeConfig.agent[agentName] = { model };
+          agentConfig[agentName] = { model };
           console.log(`  • ${agentName}: ${model}`);
         }
 
+        opencodeConfig.agent = agentConfig;
         console.log('');
       }
 
@@ -196,11 +197,11 @@ export class OpencodeClient {
 
     try {
       // Step 1: Create empty session
-      const createResponse: any = await this.client.session.create({
+      const createResponse = (await this.client.session.create({
         query: {
           directory: this.directory,
         },
-      });
+      })) as { data?: { id?: string } };
 
       const sessionId = createResponse.data?.id;
       if (!sessionId) {
@@ -258,19 +259,28 @@ export class OpencodeClient {
         attempts++;
 
         // Get current messages
-        const messagesResponse: any = await this.client.session.messages({
+        interface SessionMessage {
+          info?: {
+            id?: string;
+            role?: string;
+            time?: { completed?: number };
+            error?: unknown;
+          };
+          parts?: Array<{ text?: string }>;
+        }
+        const messagesResponse = (await this.client.session.messages({
           path: { id: sessionId },
-        });
+        })) as { data?: SessionMessage[] };
 
-        const messages = messagesResponse.data || [];
+        const messages = messagesResponse.data ?? [];
 
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
           const msg = messages[i];
           yield {
-            id: msg.info?.id || 'msg-' + Date.now(),
-            role: (msg.info?.role || 'assistant') as 'user' | 'assistant' | 'system',
-            content: msg.parts?.map((p: any) => p.text || '').join('') || '',
+            id: msg.info?.id ?? 'msg-' + Date.now(),
+            role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system',
+            content: msg.parts?.map((p) => p.text ?? '').join('') ?? '',
             timestamp: new Date(),
           };
         }
@@ -278,16 +288,14 @@ export class OpencodeClient {
         lastMessageCount = messages.length;
 
         // Check if the last assistant message has completed
-        const lastAssistantMsg = [...messages]
-          .reverse()
-          .find((m: any) => m.info?.role === 'assistant');
+        const lastAssistantMsg = [...messages].reverse().find((m) => m.info?.role === 'assistant');
 
         if (lastAssistantMsg) {
           const isComplete = lastAssistantMsg.info?.time?.completed !== undefined;
           const hasError = lastAssistantMsg.info?.error !== undefined;
 
           if (hasError) {
-            throw new Error(`Agent error: ${JSON.stringify(lastAssistantMsg.info.error)}`);
+            throw new Error(`Agent error: ${JSON.stringify(lastAssistantMsg.info?.error)}`);
           }
 
           if (isComplete) {
@@ -406,7 +414,7 @@ export class OpencodeClient {
     }
 
     if (obj !== null && typeof obj === 'object') {
-      const resolved: any = {};
+      const resolved: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
         resolved[key] = this.resolveEnvReferences(value);
       }

@@ -97,8 +97,21 @@ function parseRemoteUrl(remoteUrl: string): RepoInfo | null {
   return null;
 }
 
-function getExpectedRepoInfo(pr: any, projectId: string): RepoInfo | null {
-  const data = pr?.platformData;
+function getExpectedRepoInfo(pr: { platformData?: unknown }, projectId: string): RepoInfo | null {
+  const data = pr?.platformData as
+    | {
+        base?: {
+          repo?: {
+            full_name?: string;
+            html_url?: string;
+            clone_url?: string;
+            ssh_url?: string;
+          };
+        };
+        project?: { path_with_namespace?: string; web_url?: string };
+        web_url?: string;
+      }
+    | undefined;
 
   if (data?.base?.repo?.full_name) {
     const hostUrl = data.base.repo.html_url || data.base.repo.clone_url || data.base.repo.ssh_url;
@@ -368,7 +381,7 @@ export interface UnifiedReviewOptions {
   /** Optional line validator for checking which lines can be commented */
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
-  createInlinePosition?: (issue: ReviewIssue, platformData: any) => InlineCommentPosition;
+  createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition;
   /** Working directory for file access */
   workingDir?: string;
   /** Generate PR/MR description during review */
@@ -575,9 +588,9 @@ export async function postReviewComments(
   summary: ReturnType<typeof calculateSummary>,
   issues: ReviewIssue[],
   changeSummary: ChangeSummary | undefined,
-  platformData: any,
+  platformData: unknown,
   lineValidator?: LineValidator,
-  createInlinePosition?: (issue: ReviewIssue, platformData: any) => InlineCommentPosition
+  createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition
 ): Promise<void> {
   console.log(chalk.gray('Fetching existing comments...\n'));
 

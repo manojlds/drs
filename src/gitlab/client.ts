@@ -35,10 +35,19 @@ export class GitLabClient {
    * Get merge request changes (diffs)
    */
   async getMRChanges(projectId: string, mrIid: number): Promise<MRChange[]> {
-    const mr: any = await this.client.MergeRequests.changes(projectId, mrIid);
+    const mr = (await this.client.MergeRequests.changes(projectId, mrIid)) as {
+      changes?: Array<{
+        old_path: string;
+        new_path: string;
+        new_file: boolean;
+        renamed_file: boolean;
+        deleted_file: boolean;
+        diff: string;
+      }>;
+    };
     if (!mr.changes) return [];
 
-    return mr.changes.map((change: any) => ({
+    return mr.changes.map((change) => ({
       oldPath: change.old_path,
       newPath: change.new_path,
       newFile: change.new_file,

@@ -142,8 +142,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
         reviewComments
       );
       console.log(chalk.green(`✓ Posted ${comments.length} inline comment(s) in a single review`));
-    } catch (error: any) {
-      console.warn(chalk.yellow(`⚠ Could not post bulk review: ${error.message}`));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(chalk.yellow(`⚠ Could not post bulk review: ${errorMessage}`));
       console.log(chalk.gray('Falling back to individual comment posting...\n'));
 
       // Fallback to individual comments in parallel
@@ -156,10 +157,11 @@ export class GitHubPlatformAdapter implements PlatformClient {
                 `  ✓ Posted inline comment for ${comment.position.path}:${comment.position.line}`
               )
             );
-          } catch (err: any) {
+          } catch (err) {
+            const errMessage = err instanceof Error ? err.message : String(err);
             console.warn(
               chalk.yellow(
-                `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${err.message}`
+                `  ⚠ Could not post inline comment for ${comment.position.path}:${comment.position.line} - ${errMessage}`
               )
             );
             throw err; // Re-throw to mark as rejected

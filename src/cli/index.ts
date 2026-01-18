@@ -12,7 +12,7 @@ import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, type DRSConfig, type ReviewMode } from '../lib/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,10 +57,10 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode,
+          mode: options.reviewMode as ReviewMode | undefined,
           unified: unifiedOverride,
-        },
-      } as any);
+        } as Partial<DRSConfig['review']>,
+      } as Partial<DRSConfig>);
 
       await reviewLocal(config, {
         staged: options.staged || false,
@@ -114,10 +114,10 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode,
+          mode: options.reviewMode as ReviewMode | undefined,
           unified: unifiedOverride,
-        },
-      } as any);
+        } as Partial<DRSConfig['review']>,
+      } as Partial<DRSConfig>);
 
       await reviewMR(config, {
         projectId: options.project,
@@ -187,10 +187,10 @@ program
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode,
+          mode: options.reviewMode as ReviewMode | undefined,
           unified: unifiedOverride,
-        },
-      } as any);
+        } as Partial<DRSConfig['review']>,
+      } as Partial<DRSConfig>);
 
       await reviewPR(config, {
         owner: options.owner,
