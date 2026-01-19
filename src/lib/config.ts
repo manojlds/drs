@@ -405,9 +405,7 @@ export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
 
   const unifiedModel =
-    config.review.unified?.model ??
-    process.env.REVIEW_UNIFIED_MODEL ??
-    getDefaultModel(config);
+    config.review.unified?.model ?? process.env.REVIEW_UNIFIED_MODEL ?? getDefaultModel(config);
 
   if (unifiedModel) {
     overrides['review/unified-reviewer'] = unifiedModel;
@@ -429,9 +427,7 @@ export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
 
   // Check for describer-specific model
   const describerModel =
-    config.describe?.model ??
-    process.env.DESCRIBE_MODEL ??
-    getDefaultModel(config);
+    config.describe?.model ?? process.env.DESCRIBE_MODEL ?? getDefaultModel(config);
 
   if (describerModel) {
     overrides['describe/pr-describer'] = describerModel;
