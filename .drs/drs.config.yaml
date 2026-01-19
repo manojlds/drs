@@ -24,6 +24,7 @@ review:
     model: opencode/glm-4.7-free
     skills:
       - cli-testing
+      - review-done
 
   # Review mode
   # Options: multi-agent | unified | hybrid
