@@ -1,64 +1,27 @@
-# DRS Project Context
+# DRS Project Context (Review Focus)
 
-## Architecture
-DRS (Diff Review System) is a code review automation tool that integrates with GitHub and GitLab. It uses OpenCode agents to perform AI-powered code reviews on pull requests and merge requests.
+## What DRS Is
+DRS (Diff Review System) is a Node/TypeScript CLI that runs AI code reviews for GitHub PRs and GitLab MRs using OpenCode agents.
 
-### Key Components
-- **CLI Tool**: Command-line interface for running reviews
-- **GitHub Client**: Wrapper around Octokit for GitHub API interactions
-- **Review Agents**: Specialized AI agents (security, quality, style, performance)
-- **OpenCode Integration**: Uses OpenCode SDK to communicate with AI agents
+## Core Flow (Review)
+- CLI commands in `src/cli/` gather diff + metadata.
+- Review orchestration lives in `src/lib/`.
+- OpenCode client/agent integration is in `src/opencode/`.
+- Platform integrations: `src/github/` and `src/gitlab/`.
 
-## Technology Stack
-- **Language**: TypeScript (Node.js)
-- **GitHub API**: Octokit (@octokit/rest)
-- **AI Framework**: OpenCode SDK (@opencode-ai/sdk)
-- **CLI Framework**: Commander.js
-- **Build Tool**: TypeScript compiler (tsc)
+## Review Agents & Skills
+- Built-in agents live under `.opencode/agent/review/`.
+- Project overrides can live in `.drs/agents/` (agent.md per agent).
+- Project skills live in `.drs/skills/<skill-name>/SKILL.md`.
+- Default skills are configured in `.drs/drs.config.yaml` under `review.default.skills`.
 
-## Trust Boundaries
+## Config & Defaults
+- Main config: `.drs/drs.config.yaml`.
+- Default review mode: `review.mode: unified`.
+- Default model: `review.default.model`.
+- Ignore patterns: `review.ignorePatterns`.
 
-### Trusted Inputs
-- **GitHub API responses**: All PR data, file paths, and diff content come from GitHub's API (already validated)
-- **Environment variables**: Tokens and configuration from env vars are standard practice for CLI tools
-- **Local file system**: The tool reads files from the local repository (developer's machine)
-
-### User Inputs (Limited)
-- **CLI flags**: Owner, repo, PR number, etc. (validated by Commander.js)
-- **Configuration files**: `.drs/drs.config.yaml` (YAML parsing with validation)
-
-### NOT Web-Facing
-- This is a CLI tool used by developers in trusted environments
-- No public web interface or untrusted user inputs
-- Not designed to handle malicious or adversarial inputs
-
-## Security Context
-
-### Standard Practices (NOT Security Issues)
-- ✅ `process.env.GITHUB_TOKEN` - Correct way to handle GitHub tokens
-- ✅ `process.env.OPENCODE_SERVER` - Standard configuration approach
-- ✅ File paths from GitHub API - These are validated by GitHub
-- ✅ Markdown content in GitHub comments - Safely rendered by GitHub
-- ✅ Simple regex for parsing git diffs - No ReDoS risk
-- ✅ HTML comments for bot identification - Industry standard (Danger, Reviewdog)
-
-### What Actually Matters
-- Command injection if we add shell command execution
-- Arbitrary code execution vulnerabilities
-- Leaking tokens in logs or error messages
-- Path traversal with user-controlled file paths (not GitHub API paths)
-
-## Review Guidelines
-
-### Focus Areas
-- Code quality and maintainability
-- Proper error handling
-- Type safety (avoid `any` types)
-- Performance optimizations (parallelization, caching)
-- Clear, understandable code
-
-### Avoid Over-Flagging
-- Don't flag standard Node.js/TypeScript patterns as security issues
-- Don't flag GitHub API usage patterns as security issues
-- Consider the CLI tool context when evaluating severity
-- Focus on real, actionable issues rather than theoretical concerns
+## Review Focus
+- Review only the diff and its direct impact.
+- Prioritize correctness, safety, clarity, and maintainability.
+- Avoid flagging standard CLI/TypeScript patterns as issues unless they introduce real risk.

@@ -1,7 +1,13 @@
-# CLI Testing
+---
+name: cli-testing
+description: CLI review and testing checklist
+---
 
-Focus on validating command-line interfaces:
+# CLI Review
 
-- Ensure commands, flags, and help output behave as documented.
-- Check for clear error messages and exit codes.
-- Highlight missing usage examples or unclear defaults.
+Focus on CLI behavior and UX:
+
+- Verify command/flag behavior, defaults, and help output.
+- Check exit codes and error messages are clear and actionable.
+- Ensure docs/examples match actual CLI behavior.
+- Note missing validation or confusing option precedence.
