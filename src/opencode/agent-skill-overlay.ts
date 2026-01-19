@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
-import { existsSync, readdirSync, statSync } from 'fs';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { tmpdir } from 'os';
 import * as yaml from 'yaml';
@@ -80,25 +80,24 @@ async function writeFileWithSkills(
   await writeFile(targetPath, updatedContent);
 }
 
-function traverseDirectory(
+async function traverseDirectory(
   currentPath: string,
   fileFilter: (entry: string, fullPath: string) => boolean
-): string[] {
+): Promise<string[]> {
   const files: string[] = [];
 
   if (!existsSync(currentPath)) {
     return files;
   }
 
-  const entries = readdirSync(currentPath);
+  const entries = await readdir(currentPath, { withFileTypes: true });
 
   for (const entry of entries) {
-    const fullPath = join(currentPath, entry);
-    const stat = statSync(fullPath);
+    const fullPath = join(currentPath, entry.name);
 
-    if (stat.isDirectory()) {
-      files.push(...traverseDirectory(fullPath, fileFilter));
-    } else if (stat.isFile() && fileFilter(entry, fullPath)) {
+    if (entry.isDirectory()) {
+      files.push(...(await traverseDirectory(fullPath, fileFilter)));
+    } else if (entry.isFile() && fileFilter(entry.name, fullPath)) {
       files.push(fullPath);
     }
   }
@@ -113,7 +112,7 @@ function resolveOverrideAgentName(overrideRoot: string, filePath: string): strin
 }
 
 async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConfig): Promise<void> {
-  const files = traverseDirectory(builtInAgentPath, (entry) => entry.endsWith('.md'));
+  const files = await traverseDirectory(builtInAgentPath, (entry) => entry.endsWith('.md'));
 
   await Promise.all(
     files.map(async (filePath) => {
@@ -131,7 +130,7 @@ async function copyOverrideAgents(
   skillConfig: SkillConfig
 ): Promise<void> {
   const overrideRoot = join(projectPath, '.drs', 'agents');
-  const files = traverseDirectory(overrideRoot, (entry) => entry === 'agent.md');
+  const files = await traverseDirectory(overrideRoot, (entry) => entry === 'agent.md');
 
   await Promise.all(
     files.map(async (filePath) => {
