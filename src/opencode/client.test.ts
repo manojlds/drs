@@ -3,20 +3,6 @@ import { OpencodeClient, createOpencodeClient, createOpencodeClientInstance } fr
 
 // Mock the OpenCode SDK
 vi.mock('@opencode-ai/sdk', () => ({
-  createOpencode: vi.fn(async () => ({
-    server: {
-      url: 'http://localhost:3000',
-      close: vi.fn(),
-    },
-    client: {
-      session: {
-        create: vi.fn(async () => ({ data: { id: 'session-123' } })),
-        prompt: vi.fn(async () => {}),
-        messages: vi.fn(async () => ({ data: [] })),
-        delete: vi.fn(async () => {}),
-      },
-    },
-  })),
   createOpencodeClient: vi.fn((_config: any) => ({
     session: {
       create: vi.fn(async () => ({ data: { id: 'session-456' } })),

@@ -6,7 +6,8 @@
  * 2. Start an OpenCode server in-process (when baseUrl is not provided)
  */
 
-import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import { createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
+import { spawn } from 'node:child_process';
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
@@ -22,6 +23,14 @@ export interface OpencodeConfig {
 }
 
 const SERVER_START_TIMEOUT_MS = 10000;
+
+type InProcessServer = {
+  server: {
+    url: string;
+    close: () => void;
+  };
+  client: ReturnType<typeof createSDKClient>;
+};
 
 export interface SessionCreateOptions {
   agent: string;
@@ -48,7 +57,7 @@ export interface Session {
 export class OpencodeClient {
   private baseUrl?: string;
   private directory?: string;
-  private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
+  private inProcessServer?: InProcessServer;
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
   private overlay?: Awaited<ReturnType<typeof createAgentSkillOverlay>>;
@@ -225,9 +234,14 @@ export class OpencodeClient {
 
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      this.inProcessServer = await createOpencode({
+      if (this.config.debug) {
+        opencodeConfig.logLevel = 'DEBUG';
+      }
+
+      const server = await startInProcessServer({
         timeout: SERVER_START_TIMEOUT_MS,
         config: opencodeConfig,
+        debug: this.config.debug ?? false,
       });
 
       // Restore original working directory
@@ -235,8 +249,14 @@ export class OpencodeClient {
         process.chdir(originalCwd);
       }
 
-      this.client = this.inProcessServer.client;
-      this.baseUrl = this.inProcessServer.server.url;
+      this.client = createSDKClient({
+        baseUrl: server.url,
+      });
+      this.inProcessServer = {
+        server,
+        client: this.client,
+      };
+      this.baseUrl = server.url;
       const ready = await waitForServerReady(this.baseUrl);
       if (!ready) {
         console.warn(
@@ -506,6 +526,123 @@ function parseServerEndpoint(baseUrl: string): { host: string; port: number } | 
   } catch {
     return null;
   }
+}
+
+interface StartServerOptions {
+  timeout: number;
+  config: Record<string, unknown>;
+  debug: boolean;
+}
+
+async function startInProcessServer(options: StartServerOptions): Promise<{
+  url: string;
+  close: () => void;
+}> {
+  const args = ['serve', '--hostname=127.0.0.1', '--port=4096'];
+
+  if (typeof options.config.logLevel === 'string') {
+    args.push(`--log-level=${options.config.logLevel}`);
+  }
+
+  const proc = spawn('opencode', args, {
+    env: {
+      ...process.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
+    },
+  });
+
+  const outputChunks: string[] = [];
+  let outputBuffer = '';
+  let resolved = false;
+
+  const parseOutput = (chunk: Buffer | string, isError: boolean) => {
+    const text = chunk.toString();
+    outputChunks.push(text);
+    if (options.debug) {
+      const stream = isError ? process.stderr : process.stdout;
+      stream.write(text);
+    }
+
+    outputBuffer += text;
+    const lines = outputBuffer.split('\n');
+    outputBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.startsWith('opencode server listening')) {
+        const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
+        if (match) {
+          resolved = true;
+          return match[1];
+        }
+      }
+    }
+    return null;
+  };
+
+  return await new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          `Timeout waiting for server to start after ${options.timeout}ms. Output: ${outputChunks.join(
+            ''
+          )}`
+        )
+      );
+    }, options.timeout);
+
+    const finalize = (url: string) => {
+      clearTimeout(timeoutId);
+      resolve({
+        url,
+        close: () => proc.kill(),
+      });
+    };
+
+    proc.stdout?.on('data', (chunk) => {
+      if (resolved) {
+        if (options.debug) {
+          process.stdout.write(chunk);
+        }
+        return;
+      }
+      const url = parseOutput(chunk, false);
+      if (url) {
+        finalize(url);
+      }
+    });
+
+    proc.stderr?.on('data', (chunk) => {
+      if (resolved) {
+        if (options.debug) {
+          process.stderr.write(chunk);
+        }
+        return;
+      }
+      const url = parseOutput(chunk, true);
+      if (url) {
+        finalize(url);
+      }
+    });
+
+    proc.on('exit', (code) => {
+      clearTimeout(timeoutId);
+      if (resolved) {
+        return;
+      }
+      reject(
+        new Error(
+          `Server exited with code ${code}. Output: ${outputChunks.join('') || 'No output'}`
+        )
+      );
+    });
+
+    proc.on('error', (error) => {
+      clearTimeout(timeoutId);
+      if (resolved) {
+        return;
+      }
+      reject(error);
+    });
+  });
 }
 
 async function isServerReachable(baseUrl: string): Promise<boolean> {
