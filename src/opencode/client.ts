@@ -8,7 +8,8 @@
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
 import net from 'net';
-import type { CustomProvider } from '../lib/config.js';
+import type { CustomProvider, DRSConfig } from '../lib/config.js';
+import { createAgentSkillOverlay } from './agent-skill-overlay.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -16,6 +17,7 @@ export interface OpencodeConfig {
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
+  skills?: DRSConfig['skills'];
 }
 
 const SERVER_START_TIMEOUT_MS = 10000;
@@ -48,6 +50,7 @@ export class OpencodeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
+  private overlay?: Awaited<ReturnType<typeof createAgentSkillOverlay>>;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -159,9 +162,11 @@ export class OpencodeClient {
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
       const projectDir = this.directory || originalCwd;
+      this.overlay = await createAgentSkillOverlay(projectDir, this.config.skills);
+      const discoveryRoot = this.overlay?.root ?? projectDir;
 
-      if (projectDir !== originalCwd) {
-        process.chdir(projectDir);
+      if (discoveryRoot !== originalCwd) {
+        process.chdir(discoveryRoot);
       }
 
       // OpenCode SDK reads provider-specific API keys from environment automatically
@@ -172,7 +177,7 @@ export class OpencodeClient {
       });
 
       // Restore original working directory
-      if (projectDir !== originalCwd) {
+      if (discoveryRoot !== originalCwd) {
         process.chdir(originalCwd);
       }
 
@@ -377,6 +382,10 @@ export class OpencodeClient {
       this.inProcessServer.server.close();
       // Give server time to clean up connections
       await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.overlay) {
+      await this.overlay.cleanup();
+      this.overlay = undefined;
     }
   }
 
