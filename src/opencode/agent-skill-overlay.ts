@@ -114,7 +114,7 @@ function resolveOverrideAgentName(overrideRoot: string, filePath: string): strin
 async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConfig): Promise<void> {
   const files = await traverseDirectory(builtInAgentPath, (entry) => entry.endsWith('.md'));
 
-  await Promise.all(
+  const results = await Promise.allSettled(
     files.map(async (filePath) => {
       const relativePath = relative(builtInAgentPath, filePath).replace(/\\/g, '/');
       const agentName = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
@@ -122,6 +122,11 @@ async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConf
       await writeFileWithSkills(filePath, targetPath, agentName, skillConfig);
     })
   );
+
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length > 0) {
+    throw new Error(`Failed to prepare ${failures.length} built-in agent(s)`);
+  }
 }
 
 async function copyOverrideAgents(
@@ -132,13 +137,18 @@ async function copyOverrideAgents(
   const overrideRoot = join(projectPath, '.drs', 'agents');
   const files = await traverseDirectory(overrideRoot, (entry) => entry === 'agent.md');
 
-  await Promise.all(
+  const results = await Promise.allSettled(
     files.map(async (filePath) => {
       const agentName = resolveOverrideAgentName(overrideRoot, filePath);
       const targetPath = join(destinationRoot, `${agentName}.md`);
       await writeFileWithSkills(filePath, targetPath, agentName, skillConfig);
     })
   );
+
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length > 0) {
+    throw new Error(`Failed to prepare ${failures.length} override agent(s)`);
+  }
 }
 
 async function copyProjectSkills(
@@ -147,7 +157,7 @@ async function copyProjectSkills(
 ): Promise<SkillDefinition[]> {
   const skills = loadProjectSkills(projectPath);
 
-  await Promise.all(
+  const results = await Promise.allSettled(
     skills.map(async (skill) => {
       const targetPath = join(destinationRoot, skill.name, SKILL_FILE_NAME);
       const content = await readFile(skill.path, 'utf-8');
@@ -155,6 +165,11 @@ async function copyProjectSkills(
       await writeFile(targetPath, content);
     })
   );
+
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length > 0) {
+    throw new Error(`Failed to prepare ${failures.length} skill file(s)`);
+  }
 
   return skills;
 }
@@ -179,9 +194,14 @@ export async function createAgentSkillOverlay(
   await mkdir(agentRoot, { recursive: true });
   await mkdir(skillRoot, { recursive: true });
 
-  await copyBuiltInAgents(agentRoot, skillConfig);
-  await copyOverrideAgents(projectPath, agentRoot, skillConfig);
-  await copyProjectSkills(projectPath, skillRoot);
+  try {
+    await copyBuiltInAgents(agentRoot, skillConfig);
+    await copyOverrideAgents(projectPath, agentRoot, skillConfig);
+    await copyProjectSkills(projectPath, skillRoot);
+  } catch (error) {
+    await rm(overlayRoot, { recursive: true, force: true });
+    throw error;
+  }
 
   return {
     root: overlayRoot,
