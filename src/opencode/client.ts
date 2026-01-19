@@ -9,6 +9,7 @@
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
+import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
 import { createAgentSkillOverlay } from './agent-skill-overlay.js';
 
 export interface OpencodeConfig {
@@ -107,6 +108,31 @@ export class OpencodeClient {
 
         opencodeConfig.agent = agentConfig;
         console.log('');
+      }
+
+      if (this.config.config) {
+        const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
+        const defaultSkills = getDefaultSkills(this.config.config);
+        const agentSkills = normalizedAgents
+          .map((agent) => {
+            const combined = new Set([
+              ...defaultSkills,
+              ...(agent.skills ? agent.skills.map(String) : []),
+            ]);
+            return {
+              name: agent.name,
+              skills: Array.from(combined).filter((skill) => skill.length > 0),
+            };
+          })
+          .filter((agent) => agent.skills.length > 0);
+
+        if (agentSkills.length > 0) {
+          console.log('🧩 Agent skill configuration:');
+          for (const agent of agentSkills) {
+            console.log(`  • review/${agent.name}: ${agent.skills.join(', ')}`);
+          }
+          console.log('');
+        }
       }
 
       // Debug: Print final OpenCode config

@@ -50,7 +50,11 @@ export interface DRSConfig {
   // Review behavior
   review: {
     agents: (string | AgentConfig)[];
-    defaultModel: string;
+    default?: {
+      model?: string;
+      skills?: string[];
+    };
+    defaultModel?: string;
     ignorePatterns: string[];
     includePatterns?: string[];
     mode?: ReviewMode;
@@ -96,7 +100,10 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
   review: {
     agents: ['security', 'quality', 'style', 'performance', 'documentation'],
-    defaultModel: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
+    default: {
+      model: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
+      skills: [],
+    },
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -172,6 +179,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
   if (process.env.REVIEW_DEFAULT_MODEL) {
     config.review.defaultModel = process.env.REVIEW_DEFAULT_MODEL;
+    config.review.default = mergeSection(config.review.default, {
+      model: process.env.REVIEW_DEFAULT_MODEL,
+    });
   }
   if (process.env.REVIEW_MODE) {
     config.review.mode = process.env.REVIEW_MODE as ReviewMode;
@@ -190,9 +200,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   // Validate required fields
-  if (!config.review.defaultModel) {
+  if (!getDefaultModel(config)) {
     throw new Error(
-      'Default model is required. Set defaultModel in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
+      'Default model is required. Set review.default.model or defaultModel in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
         'Run "drs init" to configure your project.'
     );
   }
@@ -274,7 +284,7 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
     }
   }
 
-  if (!config.review.defaultModel) {
+  if (!getDefaultModel(config)) {
     throw new Error(
       'Default model is required. Run "drs init" to configure or set REVIEW_DEFAULT_MODEL environment variable.'
     );
@@ -327,6 +337,22 @@ export function normalizeAgentConfig(agents: (string | AgentConfig)[]): AgentCon
   });
 }
 
+export function getDefaultModel(config: DRSConfig): string | undefined {
+  return (
+    config.review.default?.model ??
+    config.review.defaultModel ??
+    process.env.REVIEW_DEFAULT_MODEL ??
+    undefined
+  );
+}
+
+export function getDefaultSkills(config: DRSConfig): string[] {
+  if (!Array.isArray(config.review.default?.skills)) {
+    return [];
+  }
+  return config.review.default.skills.map(String).filter((skill) => skill.length > 0);
+}
+
 /**
  * Extract agent names from configuration
  */
@@ -348,7 +374,7 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const normalizedAgents = normalizeAgentConfig(config.review.agents);
 
   // Get default model from config or environment
-  const defaultModel = config.review.defaultModel || process.env.REVIEW_DEFAULT_MODEL || undefined;
+  const defaultModel = getDefaultModel(config);
 
   for (const agent of normalizedAgents) {
     // Check per-agent environment variable (e.g., REVIEW_AGENT_SECURITY_MODEL)
@@ -381,8 +407,7 @@ export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
   const unifiedModel =
     config.review.unified?.model ??
     process.env.REVIEW_UNIFIED_MODEL ??
-    config.review.defaultModel ??
-    process.env.REVIEW_DEFAULT_MODEL;
+    getDefaultModel(config);
 
   if (unifiedModel) {
     overrides['review/unified-reviewer'] = unifiedModel;
@@ -406,8 +431,7 @@ export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
   const describerModel =
     config.describe?.model ??
     process.env.DESCRIBE_MODEL ??
-    config.review.defaultModel ??
-    process.env.REVIEW_DEFAULT_MODEL;
+    getDefaultModel(config);
 
   if (describerModel) {
     overrides['describe/pr-describer'] = describerModel;
