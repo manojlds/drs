@@ -52,6 +52,7 @@ export class OpencodeClient {
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
   private overlay?: Awaited<ReturnType<typeof createAgentSkillOverlay>>;
+  private projectRootEnv?: string;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -211,6 +212,8 @@ export class OpencodeClient {
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
       const projectDir = this.directory || originalCwd;
+      this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
+      process.env.DRS_PROJECT_ROOT = projectDir;
       if (this.config.config) {
         this.overlay = await createAgentSkillOverlay(projectDir, this.config.config);
       }
@@ -437,6 +440,11 @@ export class OpencodeClient {
     if (this.overlay) {
       await this.overlay.cleanup();
       this.overlay = undefined;
+    }
+    if (this.projectRootEnv === undefined) {
+      delete process.env.DRS_PROJECT_ROOT;
+    } else {
+      process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
     }
   }
 
