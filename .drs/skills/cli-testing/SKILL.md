@@ -1,4 +1,5 @@
 ---
+name: cli-testing
 description: CLI review and testing checklist
 ---
 
