@@ -111,6 +111,14 @@ jobs:
             --post-comments \
             --debug
 
+      - name: Upload OpenCode session artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-sessions-trusted
+          path: .drs/*-session.json
+          if-no-files-found: warn
+
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
     runs-on: ubuntu-latest
@@ -183,6 +191,14 @@ jobs:
             --pr ${{ github.event.pull_request.number }} \
             --post-comments \
             --debug
+
+      - name: Upload OpenCode session artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-sessions-external
+          path: .drs/*-session.json
+          if-no-files-found: warn
 
   # Notify when external PR is waiting for approval
   notify-external:

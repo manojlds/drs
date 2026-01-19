@@ -13,9 +13,10 @@ import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { OpencodeClient, SessionMessage } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
+import { writeSessionDebugOutput } from './opencode-session-export.js';
 
 /**
  * File with optional diff content
@@ -308,9 +309,11 @@ export async function runUnifiedReviewAgent(
     });
 
     const agentIssues: ReviewIssue[] = [];
+    const sessionMessages: SessionMessage[] = [];
     let fullResponse = '';
 
     for await (const message of opencode.streamMessages(session.id)) {
+      sessionMessages.push(message);
       if (message.role === 'assistant') {
         fullResponse += message.content;
         if (debug) {
@@ -327,6 +330,7 @@ export async function runUnifiedReviewAgent(
     }
 
     await opencode.closeSession(session.id);
+    await writeSessionDebugOutput(workingDir, agentName, session, sessionMessages, debug);
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -422,10 +426,12 @@ export async function runReviewAgents(
       });
 
       const agentIssues: ReviewIssue[] = [];
+      const sessionMessages: SessionMessage[] = [];
       let fullResponse = '';
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
+        sessionMessages.push(message);
         if (message.role === 'assistant') {
           fullResponse += message.content;
           if (debug) {
@@ -442,6 +448,7 @@ export async function runReviewAgents(
       }
 
       await opencode.closeSession(session.id);
+      await writeSessionDebugOutput(workingDir, agentName, session, sessionMessages, debug);
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {

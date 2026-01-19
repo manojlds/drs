@@ -13,6 +13,8 @@ import {
 import type { FileChange } from '../lib/platform-client.js';
 import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
+import { writeSessionDebugOutput } from '../lib/opencode-session-export.js';
+import type { SessionMessage } from '../opencode/client.js';
 
 export interface DescribePROptions {
   owner: string;
@@ -90,12 +92,23 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     });
 
     // Collect all assistant messages from the session
+    const sessionMessages: SessionMessage[] = [];
     let fullResponse = '';
     for await (const message of opencode.streamMessages(session.id)) {
+      sessionMessages.push(message);
       if (message.role === 'assistant') {
         fullResponse += message.content;
       }
     }
+
+    await opencode.closeSession(session.id);
+    await writeSessionDebugOutput(
+      process.cwd(),
+      'describe/pr-describer',
+      session,
+      sessionMessages,
+      options.debug
+    );
 
     // Parse the JSON output from the agent
     let description;

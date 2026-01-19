@@ -19,7 +19,8 @@ import {
   type Platform,
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { OpencodeClient, SessionMessage } from '../opencode/client.js';
+import { writeSessionDebugOutput } from './opencode-session-export.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -72,12 +73,23 @@ export async function runDescribeIfEnabled(
     message: instructions,
   });
 
+  const sessionMessages: SessionMessage[] = [];
   let fullResponse = '';
   for await (const message of opencode.streamMessages(session.id)) {
+    sessionMessages.push(message);
     if (message.role === 'assistant') {
       fullResponse += message.content;
     }
   }
+
+  await opencode.closeSession(session.id);
+  await writeSessionDebugOutput(
+    workingDir,
+    'describe/pr-describer',
+    session,
+    sessionMessages,
+    debug
+  );
 
   // Parse agent output
   let descriptionPayload: Description;
