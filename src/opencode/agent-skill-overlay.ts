@@ -3,7 +3,8 @@ import { existsSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { tmpdir } from 'os';
 import * as yaml from 'yaml';
-import type { DRSConfig } from '../lib/config.js';
+import type { AgentConfig, DRSConfig } from '../lib/config.js';
+import { normalizeAgentConfig } from '../lib/config.js';
 import { builtInAgentPath } from './opencode-paths.js';
 import { loadProjectSkills, type SkillDefinition } from './skill-loader.js';
 
@@ -12,7 +13,7 @@ export interface AgentSkillOverlay {
   cleanup: () => Promise<void>;
 }
 
-export type SkillConfig = DRSConfig['skills'];
+export type SkillConfig = AgentConfig[];
 
 const SKILL_FILE_NAME = 'SKILL.md';
 
@@ -24,19 +25,20 @@ function normalizeSkillList(skills: unknown): string[] {
 }
 
 function resolveConfiguredSkills(skillConfig: SkillConfig, agentName: string): string[] {
-  if (!skillConfig) {
+  if (!skillConfig || skillConfig.length === 0) {
     return [];
   }
 
   const normalizedName = agentName.startsWith('review/') ? agentName.slice(7) : agentName;
-  const defaultSkills = normalizeSkillList(skillConfig.default);
-  const normalizedAgentSkills = normalizeSkillList(skillConfig.agents?.[normalizedName]);
-  const perAgentSkills =
-    normalizedAgentSkills.length > 0
-      ? normalizedAgentSkills
-      : normalizeSkillList(skillConfig.agents?.[agentName]);
+  const entry =
+    skillConfig.find((agent) => agent.name === normalizedName) ??
+    skillConfig.find((agent) => agent.name === agentName);
 
-  return Array.from(new Set([...defaultSkills, ...perAgentSkills]));
+  if (!entry) {
+    return [];
+  }
+
+  return normalizeSkillList(entry.skills);
 }
 
 function upsertAgentSkills(content: string, skills: string[]): string {
@@ -176,9 +178,10 @@ async function copyProjectSkills(
 
 export async function createAgentSkillOverlay(
   projectPath: string,
-  skillConfig: SkillConfig
+  config: DRSConfig
 ): Promise<AgentSkillOverlay | null> {
-  const hasSkillConfig = Boolean(skillConfig?.default?.length || skillConfig?.agents);
+  const normalizedAgents = normalizeAgentConfig(config.review.agents);
+  const hasSkillConfig = normalizedAgents.some((agent) => (agent.skills ?? []).length > 0);
   const skills = loadProjectSkills(projectPath);
 
   if (!hasSkillConfig && skills.length === 0) {
@@ -195,8 +198,8 @@ export async function createAgentSkillOverlay(
     await mkdir(agentRoot, { recursive: true });
     await mkdir(skillRoot, { recursive: true });
 
-    await copyBuiltInAgents(agentRoot, skillConfig);
-    await copyOverrideAgents(projectPath, agentRoot, skillConfig);
+    await copyBuiltInAgents(agentRoot, normalizedAgents);
+    await copyOverrideAgents(projectPath, agentRoot, normalizedAgents);
     await copyProjectSkills(projectPath, skillRoot);
   } catch (error) {
     await rm(overlayRoot, { recursive: true, force: true });

@@ -8,6 +8,7 @@ import * as yaml from 'yaml';
 export interface AgentConfig {
   name: string;
   model?: string;
+  skills?: string[];
 }
 
 /**
@@ -33,12 +34,6 @@ export interface DRSConfig {
   opencode: {
     serverUrl?: string;
     provider?: Record<string, CustomProvider>;
-  };
-
-  // Skills configuration
-  skills?: {
-    default?: string[];
-    agents?: Record<string, string[]>;
   };
 
   // GitLab configuration
@@ -92,7 +87,6 @@ const DEFAULT_CONFIG: DRSConfig = {
   opencode: {
     serverUrl: process.env.OPENCODE_SERVER || undefined,
   },
-  skills: undefined,
   gitlab: {
     url: process.env.GITLAB_URL || 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN || '',
@@ -228,7 +222,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
 function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
     opencode: mergeSection(base.opencode, override.opencode),
-    skills: mergeSection(base.skills, override.skills),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),

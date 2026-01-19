@@ -17,7 +17,7 @@ export interface OpencodeConfig {
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
-  skills?: DRSConfig['skills'];
+  config?: DRSConfig;
 }
 
 const SERVER_START_TIMEOUT_MS = 10000;
@@ -162,7 +162,9 @@ export class OpencodeClient {
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
       const projectDir = this.directory || originalCwd;
-      this.overlay = await createAgentSkillOverlay(projectDir, this.config.skills);
+      if (this.config.config) {
+        this.overlay = await createAgentSkillOverlay(projectDir, this.config.config);
+      }
       const discoveryRoot = this.overlay?.root ?? projectDir;
 
       if (discoveryRoot !== originalCwd) {
