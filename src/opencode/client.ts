@@ -181,6 +181,29 @@ export class OpencodeClient {
         }
         console.log('Config being passed to OpenCode:');
         console.log(JSON.stringify(sanitizedConfig, null, 2));
+
+        if (this.config.config) {
+          const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
+          const defaultSkills = getDefaultSkills(this.config.config);
+          const agentSkills = normalizedAgents
+            .map((agent) => {
+              const combined = new Set([
+                ...defaultSkills,
+                ...(agent.skills ? agent.skills.map(String) : []),
+              ]);
+              return {
+                name: `review/${agent.name}`,
+                skills: Array.from(combined).filter((skill) => skill.length > 0),
+              };
+            })
+            .filter((agent) => agent.skills.length > 0);
+
+          if (agentSkills.length > 0) {
+            console.log('Agent skills (applied via overlay frontmatter):');
+            console.log(JSON.stringify(agentSkills, null, 2));
+          }
+        }
+
         console.log('─'.repeat(50));
         console.log('');
       }
