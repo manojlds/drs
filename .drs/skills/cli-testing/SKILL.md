@@ -1,3 +1,7 @@
+---
+description: CLI review and testing checklist
+---
+
 # CLI Review
 
 Focus on CLI behavior and UX:
