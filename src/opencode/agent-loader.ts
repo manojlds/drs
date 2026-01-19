@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
-import { dirname, join, relative } from 'path';
-import { fileURLToPath } from 'url';
+import { join, relative } from 'path';
 import * as yaml from 'yaml';
+import { builtInAgentPath } from './opencode-paths.js';
 
 export interface AgentDefinition {
   name: string;
@@ -12,11 +12,6 @@ export interface AgentDefinition {
   tools?: Record<string, boolean>;
   hidden?: boolean;
 }
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const packageRoot = join(__dirname, '..', '..');
-const builtInAgentPath = join(packageRoot, '.opencode', 'agent');
 
 /**
  * Load review agents from a project directory
