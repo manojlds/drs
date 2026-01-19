@@ -8,7 +8,9 @@
 
 import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
 import net from 'net';
-import type { CustomProvider } from '../lib/config.js';
+import type { CustomProvider, DRSConfig } from '../lib/config.js';
+import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { createAgentSkillOverlay } from './agent-skill-overlay.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -16,6 +18,7 @@ export interface OpencodeConfig {
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print OpenCode config for debugging
+  config?: DRSConfig;
 }
 
 const SERVER_START_TIMEOUT_MS = 10000;
@@ -48,6 +51,8 @@ export class OpencodeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
+  private overlay?: Awaited<ReturnType<typeof createAgentSkillOverlay>>;
+  private projectRootEnv?: string;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -106,6 +111,31 @@ export class OpencodeClient {
         console.log('');
       }
 
+      if (this.config.config) {
+        const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
+        const defaultSkills = getDefaultSkills(this.config.config);
+        const agentSkills = normalizedAgents
+          .map((agent) => {
+            const combined = new Set([
+              ...defaultSkills,
+              ...(agent.skills ? agent.skills.map(String) : []),
+            ]);
+            return {
+              name: agent.name,
+              skills: Array.from(combined).filter((skill) => skill.length > 0),
+            };
+          })
+          .filter((agent) => agent.skills.length > 0);
+
+        if (agentSkills.length > 0) {
+          console.log('🧩 Agent skill configuration:');
+          for (const agent of agentSkills) {
+            console.log(`  • review/${agent.name}: ${agent.skills.join(', ')}`);
+          }
+          console.log('');
+        }
+      }
+
       // Debug: Print final OpenCode config
       if (this.config.debug) {
         console.log('🔧 DEBUG: Final OpenCode configuration (after env resolution):');
@@ -152,6 +182,29 @@ export class OpencodeClient {
         }
         console.log('Config being passed to OpenCode:');
         console.log(JSON.stringify(sanitizedConfig, null, 2));
+
+        if (this.config.config) {
+          const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
+          const defaultSkills = getDefaultSkills(this.config.config);
+          const agentSkills = normalizedAgents
+            .map((agent) => {
+              const combined = new Set([
+                ...defaultSkills,
+                ...(agent.skills ? agent.skills.map(String) : []),
+              ]);
+              return {
+                name: `review/${agent.name}`,
+                skills: Array.from(combined).filter((skill) => skill.length > 0),
+              };
+            })
+            .filter((agent) => agent.skills.length > 0);
+
+          if (agentSkills.length > 0) {
+            console.log('Agent skills (applied via overlay frontmatter):');
+            console.log(JSON.stringify(agentSkills, null, 2));
+          }
+        }
+
         console.log('─'.repeat(50));
         console.log('');
       }
@@ -159,9 +212,15 @@ export class OpencodeClient {
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
       const projectDir = this.directory || originalCwd;
+      this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
+      process.env.DRS_PROJECT_ROOT = projectDir;
+      if (this.config.config) {
+        this.overlay = await createAgentSkillOverlay(projectDir, this.config.config);
+      }
+      const discoveryRoot = this.overlay?.root ?? projectDir;
 
-      if (projectDir !== originalCwd) {
-        process.chdir(projectDir);
+      if (discoveryRoot !== originalCwd) {
+        process.chdir(discoveryRoot);
       }
 
       // OpenCode SDK reads provider-specific API keys from environment automatically
@@ -172,7 +231,7 @@ export class OpencodeClient {
       });
 
       // Restore original working directory
-      if (projectDir !== originalCwd) {
+      if (discoveryRoot !== originalCwd) {
         process.chdir(originalCwd);
       }
 
@@ -377,6 +436,15 @@ export class OpencodeClient {
       this.inProcessServer.server.close();
       // Give server time to clean up connections
       await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.overlay) {
+      await this.overlay.cleanup();
+      this.overlay = undefined;
+    }
+    if (this.projectRootEnv === undefined) {
+      delete process.env.DRS_PROJECT_ROOT;
+    } else {
+      process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
     }
   }
 

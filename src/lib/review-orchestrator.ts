@@ -92,6 +92,7 @@ export async function connectToOpenCode(
       directory: workingDir || process.cwd(),
       modelOverrides,
       provider: config.opencode.provider,
+      config,
       debug: options?.debug,
     });
   } catch (error) {

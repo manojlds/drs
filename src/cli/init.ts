@@ -87,7 +87,8 @@ opencode:
 
   yaml += `review:
   # Default model for all agents
-  defaultModel: ${config.defaultModel}
+  default:
+    model: ${config.defaultModel}
 
   # Review mode: multi-agent | unified | hybrid
   # mode: multi-agent

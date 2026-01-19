@@ -247,6 +247,7 @@ describe('review-orchestrator', () => {
 
       expect(createOpencodeClientInstance).toHaveBeenCalledWith({
         baseUrl: undefined,
+        config,
         directory: '/test/dir',
         modelOverrides: {
           'review/security': 'claude-opus-4',
@@ -269,6 +270,7 @@ describe('review-orchestrator', () => {
 
       expect(createOpencodeClientInstance).toHaveBeenCalledWith(
         expect.objectContaining({
+          config,
           directory: process.cwd(),
         })
       );

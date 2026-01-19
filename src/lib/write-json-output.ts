@@ -57,7 +57,7 @@ export async function writeJsonOutput({
   const spacing = pretty === false ? undefined : (indent ?? DEFAULT_INDENT);
   const jsonContent = JSON.stringify(jsonValue, null, spacing);
   const resolvedPath = resolveWithinWorkingDir(
-    workingDir ?? process.cwd(),
+    workingDir ?? process.env.DRS_PROJECT_ROOT ?? process.cwd(),
     OUTPUT_PATHS[outputType]
   );
   await mkdir(dirname(resolvedPath), { recursive: true });
