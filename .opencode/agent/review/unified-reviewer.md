@@ -2,6 +2,8 @@
 description: Unified review agent covering security, quality, style, performance, and documentation
 color: "#6B46C1"
 hidden: false
+skills:
+  - cli-testing
 tools:
   Read: true
   Glob: true
