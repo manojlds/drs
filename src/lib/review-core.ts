@@ -330,7 +330,14 @@ export async function runUnifiedReviewAgent(
     }
 
     await opencode.closeSession(session.id);
-    await writeSessionDebugOutput(workingDir, agentName, session, sessionMessages, debug);
+    await writeSessionDebugOutput(
+      workingDir,
+      agentName,
+      session,
+      sessionMessages,
+      reviewPrompt,
+      debug
+    );
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -448,7 +455,14 @@ export async function runReviewAgents(
       }
 
       await opencode.closeSession(session.id);
-      await writeSessionDebugOutput(workingDir, agentName, session, sessionMessages, debug);
+      await writeSessionDebugOutput(
+        workingDir,
+        agentName,
+        session,
+        sessionMessages,
+        reviewPrompt,
+        debug
+      );
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {

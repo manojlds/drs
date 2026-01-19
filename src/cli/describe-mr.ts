@@ -103,6 +103,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
       'describe/pr-describer',
       session,
       sessionMessages,
+      instructions,
       options.debug
     );
 

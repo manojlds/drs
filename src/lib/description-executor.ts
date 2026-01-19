@@ -88,6 +88,7 @@ export async function runDescribeIfEnabled(
     'describe/pr-describer',
     session,
     sessionMessages,
+    instructions,
     debug
   );
 

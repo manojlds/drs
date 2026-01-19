@@ -107,6 +107,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
       'describe/pr-describer',
       session,
       sessionMessages,
+      instructions,
       options.debug
     );
 

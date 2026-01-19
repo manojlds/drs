@@ -12,6 +12,7 @@ export async function writeSessionDebugOutput(
   agentName: string,
   session: Session,
   messages: SessionMessage[],
+  prompt: string,
   debug?: boolean
 ): Promise<string | null> {
   if (!debug) {
@@ -28,6 +29,7 @@ export async function writeSessionDebugOutput(
       agent: session.agent,
       createdAt: session.createdAt.toISOString(),
     },
+    prompt,
     messages: messages.map((message) => ({
       id: message.id,
       role: message.role,
