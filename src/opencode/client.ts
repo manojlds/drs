@@ -544,11 +544,16 @@ async function startInProcessServer(options: StartServerOptions): Promise<{
     args.push(`--log-level=${options.config.logLevel}`);
   }
 
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
+  };
+  if (options.debug && !env.OPENCODE_LOG_LEVEL) {
+    env.OPENCODE_LOG_LEVEL = 'DEBUG';
+  }
+
   const proc = spawn('opencode', args, {
-    env: {
-      ...process.env,
-      OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
-    },
+    env,
   });
 
   const outputChunks: string[] = [];
