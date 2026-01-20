@@ -87,6 +87,19 @@ export class OpencodeClient {
         },
       };
 
+      // Set log level from environment variable
+      // OPENCODE_LOG_LEVEL=DEBUG will show full system prompts, tools, etc.
+      const logLevel = process.env.OPENCODE_LOG_LEVEL as
+        | 'DEBUG'
+        | 'INFO'
+        | 'WARN'
+        | 'ERROR'
+        | undefined;
+      if (logLevel) {
+        opencodeConfig.logLevel = logLevel;
+        console.log(`🔍 OpenCode log level: ${logLevel}`);
+      }
+
       // Add custom provider if configured in DRS config
       if (this.config.provider && Object.keys(this.config.provider).length > 0) {
         // Deep clone and resolve environment variable references

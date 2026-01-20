@@ -57,12 +57,21 @@ function upsertAgentSkills(content: string, skills: string[]): string {
   const parsed = frontmatterMatch ? yaml.parse(frontmatterMatch[1]) : {};
   const frontmatter = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
 
-  const existingSkills = normalizeSkillList(frontmatter?.skills);
-  const mergedSkills = Array.from(new Set([...existingSkills, ...skills]));
-
+  // Enable the skill tool and set permissions for configured skills
+  // OpenCode uses on-demand skill loading via the 'skill' tool, not preloaded skills
   const updatedFrontmatter = {
     ...frontmatter,
-    skills: mergedSkills,
+    tools: {
+      ...(frontmatter.tools || {}),
+      skill: true, // Enable the skill tool
+    },
+    permission: {
+      ...(frontmatter.permission || {}),
+      skill: {
+        // Allow all skills by default - could be made more granular if needed
+        '*': 'allow',
+      },
+    },
   };
 
   const frontmatterText = yaml.stringify(updatedFrontmatter).trimEnd();
