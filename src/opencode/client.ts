@@ -87,6 +87,13 @@ export class OpencodeClient {
         },
       };
 
+      // Set log level to DEBUG when --debug flag is used
+      // This shows full system prompts, tools, API calls, etc. from OpenCode
+      if (this.config.debug) {
+        opencodeConfig.logLevel = 'DEBUG';
+        console.log('🔍 OpenCode debug logging enabled');
+      }
+
       // Add custom provider if configured in DRS config
       if (this.config.provider && Object.keys(this.config.provider).length > 0) {
         // Deep clone and resolve environment variable references
