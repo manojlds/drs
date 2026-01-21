@@ -432,6 +432,52 @@ REVIEW_AGENTS=security,quality,style,performance
 2. `.gitlab-review.yml` - Alternative location
 3. `.opencode/opencode.jsonc` - OpenCode configuration
 
+## Debugging
+
+DRS includes comprehensive debugging capabilities to help troubleshoot issues with skills, agents, and OpenCode integration.
+
+### Quick Debug Mode
+
+Enable verbose logging with the `--debug` flag:
+
+```bash
+drs review-local --debug
+drs review-pr --owner myorg --repo myrepo --pr 123 --debug
+```
+
+Debug mode shows:
+- Tools available to agents
+- Agent overlay creation (when skills are configured)
+- Skills configuration and how they work
+- OpenCode configuration details
+- Full agent prompts and responses
+
+### Testing Skills
+
+Verify your skills are configured correctly:
+
+```bash
+# Build first
+npm run build
+
+# Test overlay creation
+node test-overlay.js
+
+# With detailed output
+node test-overlay.js --debug
+```
+
+### Comprehensive Guide
+
+See **[DEBUGGING.md](DEBUGGING.md)** for:
+- Complete debugging workflow
+- Understanding how skills work (on-demand loading)
+- Common issues and solutions
+- Inspecting overlay structure
+- OpenCode internal logging
+- Environment variables
+- Step-by-step troubleshooting
+
 ## Examples
 
 See the `examples/` directory for:
@@ -476,6 +522,7 @@ Apache-2.0
 
 ## Documentation
 
+- [Debugging Guide](DEBUGGING.md) - Comprehensive debugging and troubleshooting guide
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Design Document](DESIGN.md) - Original design using Claude Agent SDK

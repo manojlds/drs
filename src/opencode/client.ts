@@ -140,7 +140,22 @@ export class OpencodeClient {
             console.log(`  • review/${agent.name}: ${agent.skills.join(', ')}`);
           }
           console.log('');
+          console.log('ℹ️  Note: Skills are loaded on-demand via the "skill" tool.');
+          console.log('   Agents must actively call the skill tool to access skills.');
+          console.log('   Skills are NOT preloaded into the agent context.');
+          console.log('');
         }
+      }
+
+      // Debug: Print tools configuration
+      if (this.config.debug) {
+        console.log('🛠️  DEBUG: Tools available to agents:');
+        const tools = opencodeConfig.tools as Record<string, boolean>;
+        for (const [toolName, enabled] of Object.entries(tools)) {
+          const status = enabled ? '✓ enabled' : '✗ disabled';
+          console.log(`  ${status}: ${toolName}`);
+        }
+        console.log('');
       }
 
       // Debug: Print final OpenCode config
@@ -222,7 +237,7 @@ export class OpencodeClient {
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
       process.env.DRS_PROJECT_ROOT = projectDir;
       if (this.config.config) {
-        this.overlay = await createAgentSkillOverlay(projectDir, this.config.config);
+        this.overlay = await createAgentSkillOverlay(projectDir, this.config.config, this.config.debug);
       }
       const discoveryRoot = this.overlay?.root ?? projectDir;
 

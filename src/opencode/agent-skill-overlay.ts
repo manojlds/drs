@@ -88,11 +88,16 @@ async function writeFileWithSkills(
   sourcePath: string,
   targetPath: string,
   agentName: string,
-  skillConfig: SkillConfig
+  skillConfig: SkillConfig,
+  debug?: boolean
 ): Promise<void> {
   const content = await readFile(sourcePath, 'utf-8');
   const skills = resolveConfiguredSkills(skillConfig, agentName);
   const updatedContent = upsertAgentSkills(content, skills);
+
+  if (debug && skills.length > 0) {
+    console.log(`  📝 ${agentName}: skill tool enabled, ${skills.length} skill(s) configured`);
+  }
 
   await mkdir(dirname(targetPath), { recursive: true });
   await writeFile(targetPath, updatedContent);
@@ -129,7 +134,7 @@ function resolveOverrideAgentName(overrideRoot: string, filePath: string): strin
   return stripped.startsWith('review/') ? stripped : `review/${stripped}`;
 }
 
-async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConfig): Promise<void> {
+async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConfig, debug?: boolean): Promise<void> {
   const files = await traverseDirectory(builtInAgentPath, (entry) => entry.endsWith('.md'));
 
   const results = await Promise.allSettled(
@@ -137,7 +142,7 @@ async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConf
       const relativePath = relative(builtInAgentPath, filePath).replace(/\\/g, '/');
       const agentName = relativePath.replace(/\.md$/, '').replace(/\\/g, '/');
       const targetPath = join(destinationRoot, relativePath);
-      await writeFileWithSkills(filePath, targetPath, agentName, skillConfig);
+      await writeFileWithSkills(filePath, targetPath, agentName, skillConfig, debug);
     })
   );
 
@@ -150,7 +155,8 @@ async function copyBuiltInAgents(destinationRoot: string, skillConfig: SkillConf
 async function copyOverrideAgents(
   projectPath: string,
   destinationRoot: string,
-  skillConfig: SkillConfig
+  skillConfig: SkillConfig,
+  debug?: boolean
 ): Promise<void> {
   const overrideRoot = join(projectPath, '.drs', 'agents');
   const files = await traverseDirectory(overrideRoot, (entry) => entry === 'agent.md');
@@ -159,7 +165,7 @@ async function copyOverrideAgents(
     files.map(async (filePath) => {
       const agentName = resolveOverrideAgentName(overrideRoot, filePath);
       const targetPath = join(destinationRoot, `${agentName}.md`);
-      await writeFileWithSkills(filePath, targetPath, agentName, skillConfig);
+      await writeFileWithSkills(filePath, targetPath, agentName, skillConfig, debug);
     })
   );
 
@@ -194,7 +200,8 @@ async function copyProjectSkills(
 
 export async function createAgentSkillOverlay(
   projectPath: string,
-  config: DRSConfig
+  config: DRSConfig,
+  debug?: boolean
 ): Promise<AgentSkillOverlay | null> {
   const normalizedAgents = normalizeAgentConfig(config.review.agents);
   const defaultSkills = getDefaultSkills(config);
@@ -220,9 +227,22 @@ export async function createAgentSkillOverlay(
       defaultSkills,
       agents: normalizedAgents,
     };
-    await copyBuiltInAgents(agentRoot, skillConfig);
-    await copyOverrideAgents(projectPath, agentRoot, skillConfig);
+
+    if (debug) {
+      console.log('🔍 DEBUG: Creating agent overlay with skills:');
+      console.log(`  Overlay directory: ${overlayRoot}`);
+      console.log(`  Default skills: ${defaultSkills.join(', ') || 'none'}`);
+      console.log(`  Project skills found: ${skills.map(s => s.name).join(', ') || 'none'}`);
+      console.log('  Agent modifications:');
+    }
+
+    await copyBuiltInAgents(agentRoot, skillConfig, debug);
+    await copyOverrideAgents(projectPath, agentRoot, skillConfig, debug);
     await copyProjectSkills(projectPath, skillRoot);
+
+    if (debug) {
+      console.log('');
+    }
   } catch (error) {
     await rm(overlayRoot, { recursive: true, force: true });
     throw error;
