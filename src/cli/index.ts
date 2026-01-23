@@ -31,8 +31,12 @@ function printBanner() {
 
   console.log('');
   console.log(chalk.bold.cyan(`  ╭${'─'.repeat(bannerWidth)}╮`));
-  console.log(chalk.bold.cyan('  │') + chalk.bold.white(title) + titlePadding + chalk.bold.cyan('│'));
-  console.log(chalk.bold.cyan('  │') + chalk.gray(versionText) + versionPadding + chalk.bold.cyan('│'));
+  console.log(
+    chalk.bold.cyan('  │') + chalk.bold.white(title) + titlePadding + chalk.bold.cyan('│')
+  );
+  console.log(
+    chalk.bold.cyan('  │') + chalk.gray(versionText) + versionPadding + chalk.bold.cyan('│')
+  );
   console.log(chalk.bold.cyan(`  ╰${'─'.repeat(bannerWidth)}╯`));
   console.log('');
 }
