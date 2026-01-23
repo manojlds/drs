@@ -22,6 +22,21 @@ const packageJsonPath = join(__dirname, '..', '..', 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const version = packageJson.version;
 
+function printBanner() {
+  const bannerWidth = 42;
+  const title = '  DRS - Intelligent Code Review';
+  const versionText = `  Version: ${version}`;
+  const titlePadding = ' '.repeat(bannerWidth - title.length);
+  const versionPadding = ' '.repeat(bannerWidth - versionText.length);
+
+  console.log('');
+  console.log(chalk.bold.cyan(`  ╭${'─'.repeat(bannerWidth)}╮`));
+  console.log(chalk.bold.cyan('  │') + chalk.bold.white(title) + titlePadding + chalk.bold.cyan('│'));
+  console.log(chalk.bold.cyan('  │') + chalk.gray(versionText) + versionPadding + chalk.bold.cyan('│'));
+  console.log(chalk.bold.cyan(`  ╰${'─'.repeat(bannerWidth)}╯`));
+  console.log('');
+}
+
 const program = new Command();
 
 program
@@ -377,6 +392,14 @@ program
       process.exit(1);
     }
   });
+
+// Print banner if a command is being executed
+const isHelpOrVersion = process.argv.some((arg) =>
+  ['--version', '-V', '--help', '-h', 'help'].includes(arg)
+);
+if (process.argv.length > 2 && !isHelpOrVersion) {
+  printBanner();
+}
 
 // Parse arguments
 program.parse(process.argv);
