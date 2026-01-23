@@ -1,6 +1,6 @@
 {
   "name": "@diff-review-system/drs",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Intelligent code review platform for GitLab and GitHub - Enterprise-grade automated analysis",
   "type": "module",
   "main": "dist/index.js",
