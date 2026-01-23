@@ -39,4 +39,31 @@ describe('Config', () => {
       expect(isValid).toBe(true);
     });
   });
+
+  it('should respect skipRepoCheck config option', () => {
+    const config = loadConfig(process.cwd(), {
+      review: {
+        skipRepoCheck: true,
+      } as any,
+    });
+
+    expect(config.review.skipRepoCheck).toBe(true);
+  });
+
+  it('should respect skipBranchCheck config option', () => {
+    const config = loadConfig(process.cwd(), {
+      review: {
+        skipBranchCheck: true,
+      } as any,
+    });
+
+    expect(config.review.skipBranchCheck).toBe(true);
+  });
+
+  it('should default skipRepoCheck and skipBranchCheck to undefined', () => {
+    const config = loadConfig(process.cwd());
+
+    expect(config.review.skipRepoCheck).toBeUndefined();
+    expect(config.review.skipBranchCheck).toBeUndefined();
+  });
 });

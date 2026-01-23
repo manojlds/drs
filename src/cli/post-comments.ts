@@ -19,6 +19,7 @@ export interface PostCommentsOptions {
   mrIid?: number;
   workingDir?: string;
   skipRepoCheck?: boolean;
+  skipBranchCheck?: boolean;
 }
 
 function parseReviewJson(raw: string, inputPath: string): ReviewJsonOutput {
@@ -143,8 +144,11 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     const platformClient = new GitHubPlatformAdapter(githubClient);
 
     const pr = await platformClient.getPullRequest(projectId, prNumber);
-    if (!options.skipRepoCheck) {
-      await enforceRepoBranchMatch(workingDir, projectId, pr);
+    if (!options.skipRepoCheck || !options.skipBranchCheck) {
+      await enforceRepoBranchMatch(workingDir, projectId, pr, {
+        skipRepoCheck: options.skipRepoCheck,
+        skipBranchCheck: options.skipBranchCheck,
+      });
     }
 
     const files = await githubClient.getPRFiles(owner, repo, prNumber);
@@ -194,8 +198,11 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
   const platformClient = new GitLabPlatformAdapter(gitlabClient);
 
   const pr = await platformClient.getPullRequest(projectId, mrIid);
-  if (!options.skipRepoCheck) {
-    await enforceRepoBranchMatch(workingDir, projectId, pr);
+  if (!options.skipRepoCheck || !options.skipBranchCheck) {
+    await enforceRepoBranchMatch(workingDir, projectId, pr, {
+      skipRepoCheck: options.skipRepoCheck,
+      skipBranchCheck: options.skipBranchCheck,
+    });
   }
 
   const changes = await gitlabClient.getMRChanges(projectId, mrIid);
