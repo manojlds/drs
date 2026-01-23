@@ -178,7 +178,11 @@ describe('unified-review-executor', () => {
       expect(enforceRepoBranchMatch).toHaveBeenCalledWith(
         '/test/dir',
         'owner/repo',
-        expect.objectContaining({ number: 123 })
+        expect.objectContaining({ number: 123 }),
+        expect.objectContaining({
+          skipRepoCheck: undefined,
+          skipBranchCheck: undefined,
+        })
       );
     });
 
@@ -391,7 +395,11 @@ describe('unified-review-executor', () => {
       expect(enforceRepoBranchMatch).toHaveBeenCalledWith(
         process.cwd(),
         'owner/repo',
-        expect.any(Object)
+        expect.any(Object),
+        expect.objectContaining({
+          skipRepoCheck: undefined,
+          skipBranchCheck: undefined,
+        })
       );
     });
 

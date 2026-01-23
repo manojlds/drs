@@ -66,6 +66,8 @@ export interface DRSConfig {
       enabled?: boolean;
       postDescription?: boolean;
     };
+    skipRepoCheck?: boolean;
+    skipBranchCheck?: boolean;
   };
 
   // Describe behavior (PR/MR description generation)
@@ -197,6 +199,12 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
       ...config.review.unified,
       severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
     };
+  }
+  if (process.env.REVIEW_SKIP_REPO_CHECK === 'true') {
+    config.review.skipRepoCheck = true;
+  }
+  if (process.env.REVIEW_SKIP_BRANCH_CHECK === 'true') {
+    config.review.skipBranchCheck = true;
   }
 
   // Validate required fields

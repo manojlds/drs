@@ -288,7 +288,8 @@ program
   .option('--owner <owner>', 'GitHub repository owner (e.g., "octocat")')
   .option('--repo <repo>', 'GitHub repository name (e.g., "hello-world")')
   .option('--pr <number>', 'GitHub pull request number')
-  .option('--skip-repo-check', 'Skip repository and branch validation')
+  .option('--skip-repo-check', 'Skip repository validation')
+  .option('--skip-branch-check', 'Skip branch validation')
   .action(async (options) => {
     try {
       await postCommentsFromJson({
@@ -299,6 +300,7 @@ program
         repo: options.repo,
         prNumber: options.pr ? parseInt(options.pr, 10) : undefined,
         skipRepoCheck: options.skipRepoCheck || false,
+        skipBranchCheck: options.skipBranchCheck || false,
         workingDir: process.cwd(),
       });
       process.exit(0);

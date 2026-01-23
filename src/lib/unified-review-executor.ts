@@ -82,7 +82,10 @@ export async function executeUnifiedReview(
 
   const pr = await platformClient.getPullRequest(projectId, prNumber);
 
-  await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr);
+  await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr, {
+    skipRepoCheck: config.review.skipRepoCheck,
+    skipBranchCheck: config.review.skipBranchCheck,
+  });
 
   const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
 

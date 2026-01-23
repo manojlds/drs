@@ -221,12 +221,15 @@ export function getCanonicalDiffCommand(
  *
  * This prevents accidentally reviewing the wrong repository or branch.
  *
+ * @param skipRepoCheck - If true, skip repository validation (default: false)
+ * @param skipBranchCheck - If true, skip branch validation (default: false)
  * @throws Error if repository or branch doesn't match
  */
 export async function enforceRepoBranchMatch(
   workingDir: string,
   projectId: string,
-  pr: PullRequest
+  pr: PullRequest,
+  options?: { skipRepoCheck?: boolean; skipBranchCheck?: boolean }
 ): Promise<void> {
   const git = simpleGit({ baseDir: workingDir });
 
@@ -261,35 +264,39 @@ export async function enforceRepoBranchMatch(
     throw new Error('Unable to determine expected repository from PR/MR data.');
   }
 
-  // Validate repository match
-  const localRepoPath = normalizeRepoPath(localRepo.repoPath);
-  const expectedRepoPath = normalizeRepoPath(expectedRepo.repoPath);
-  const hostMismatch =
-    expectedRepo.host &&
-    localRepo.host &&
-    expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
-  const repoMismatch = localRepoPath !== expectedRepoPath;
+  // Validate repository match (unless skipRepoCheck is enabled)
+  if (!options?.skipRepoCheck) {
+    const localRepoPath = normalizeRepoPath(localRepo.repoPath);
+    const expectedRepoPath = normalizeRepoPath(expectedRepo.repoPath);
+    const hostMismatch =
+      expectedRepo.host &&
+      localRepo.host &&
+      expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
+    const repoMismatch = localRepoPath !== expectedRepoPath;
 
-  if (hostMismatch || repoMismatch) {
-    throw new Error(
-      `Repository mismatch for PR/MR review.\n` +
-        `Local repo: ${localRepo.host ? `${localRepo.host}/` : ''}${localRepoPath}\n` +
-        `Expected: ${expectedRepo.host ? `${expectedRepo.host}/` : ''}${expectedRepoPath}\n` +
-        `Run the review from the PR/MR repository checkout.`
-    );
+    if (hostMismatch || repoMismatch) {
+      throw new Error(
+        `Repository mismatch for PR/MR review.\n` +
+          `Local repo: ${localRepo.host ? `${localRepo.host}/` : ''}${localRepoPath}\n` +
+          `Expected: ${expectedRepo.host ? `${expectedRepo.host}/` : ''}${expectedRepoPath}\n` +
+          `Run the review from the PR/MR repository checkout.`
+      );
+    }
   }
 
-  // Validate branch match
-  const expectedBranch = pr.sourceBranch;
-  const branchMatches = currentBranch === expectedBranch;
-  const shaMatches = pr.headSha ? headSha === pr.headSha : false;
+  // Validate branch match (unless skipBranchCheck is enabled)
+  if (!options?.skipBranchCheck) {
+    const expectedBranch = pr.sourceBranch;
+    const branchMatches = currentBranch === expectedBranch;
+    const shaMatches = pr.headSha ? headSha === pr.headSha : false;
 
-  if (!branchMatches && !shaMatches) {
-    throw new Error(
-      `Branch mismatch for PR/MR review.\n` +
-        `Local branch: ${currentBranch ?? '(unknown)'}\n` +
-        `Expected branch: ${expectedBranch}\n` +
-        `Check out the PR/MR source branch before running the review.`
-    );
+    if (!branchMatches && !shaMatches) {
+      throw new Error(
+        `Branch mismatch for PR/MR review.\n` +
+          `Local branch: ${currentBranch ?? '(unknown)'}\n` +
+          `Expected branch: ${expectedBranch}\n` +
+          `Check out the PR/MR source branch before running the review.`
+      );
+    }
   }
 }
