@@ -24,7 +24,7 @@ const version = packageJson.version;
 
 function printBanner() {
   const bannerWidth = 42;
-  const title = '  DRS - Intelligent Code Review';
+  const title = '  DRS - Diff Review System';
   const versionText = `  Version: ${version}`;
   const titlePadding = ' '.repeat(bannerWidth - title.length);
   const versionPadding = ' '.repeat(bannerWidth - versionText.length);
