@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises';
-import { existsSync } from 'fs';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from 'fs/promises';
+import { existsSync, lstatSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { tmpdir } from 'os';
 import * as yaml from 'yaml';
@@ -10,6 +10,7 @@ import { loadProjectSkills, type SkillDefinition } from './skill-loader.js';
 
 export interface AgentSkillOverlay {
   root: string;
+  skillSymlink?: string; // Path to symlink in project directory
   cleanup: () => Promise<void>;
 }
 
@@ -192,6 +193,48 @@ async function copyProjectSkills(
   return skills;
 }
 
+/**
+ * Create a symlink in the project's .opencode/skills directory pointing to
+ * the overlay's skills directory. This allows OpenCode to discover skills
+ * when sessions run with the project directory as their working directory.
+ */
+async function createSkillSymlink(
+  projectPath: string,
+  overlaySkillRoot: string
+): Promise<string | undefined> {
+  const projectOpencodeDir = join(projectPath, '.opencode');
+  const projectSkillsPath = join(projectOpencodeDir, 'skills');
+
+  // Check if .opencode/skills already exists in the project
+  if (existsSync(projectSkillsPath)) {
+    // Check if it's already a symlink (from a previous run that didn't clean up)
+    try {
+      const stats = lstatSync(projectSkillsPath);
+      if (stats.isSymbolicLink()) {
+        // Remove stale symlink and create fresh one
+        await unlink(projectSkillsPath);
+      } else {
+        // It's a real directory - don't modify it
+        console.warn(
+          '⚠️  Project already has .opencode/skills directory - skills may not be discoverable'
+        );
+        return undefined;
+      }
+    } catch {
+      // Couldn't stat, skip symlink creation
+      return undefined;
+    }
+  }
+
+  // Create .opencode directory if it doesn't exist
+  await mkdir(projectOpencodeDir, { recursive: true });
+
+  // Create symlink: project/.opencode/skills -> overlay/.opencode/skills
+  await symlink(overlaySkillRoot, projectSkillsPath, 'dir');
+
+  return projectSkillsPath;
+}
+
 export async function createAgentSkillOverlay(
   projectPath: string,
   config: DRSConfig
@@ -212,6 +255,8 @@ export async function createAgentSkillOverlay(
   const agentRoot = join(opencodeRoot, 'agent');
   const skillRoot = join(opencodeRoot, 'skills');
 
+  let skillSymlink: string | undefined;
+
   try {
     await mkdir(agentRoot, { recursive: true });
     await mkdir(skillRoot, { recursive: true });
@@ -223,14 +268,29 @@ export async function createAgentSkillOverlay(
     await copyBuiltInAgents(agentRoot, skillConfig);
     await copyOverrideAgents(projectPath, agentRoot, skillConfig);
     await copyProjectSkills(projectPath, skillRoot);
+
+    // Create symlink so skills are discoverable from project directory
+    // (OpenCode sessions run with project dir, not overlay dir)
+    if (skills.length > 0) {
+      skillSymlink = await createSkillSymlink(projectPath, skillRoot);
+    }
   } catch (error) {
+    // Clean up symlink if it was created
+    if (skillSymlink) {
+      await unlink(skillSymlink).catch(() => {});
+    }
     await rm(overlayRoot, { recursive: true, force: true });
     throw error;
   }
 
   return {
     root: overlayRoot,
+    skillSymlink,
     cleanup: async () => {
+      // Clean up symlink first
+      if (skillSymlink) {
+        await unlink(skillSymlink).catch(() => {});
+      }
       await rm(overlayRoot, { recursive: true, force: true });
     },
   };
