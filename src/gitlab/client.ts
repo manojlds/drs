@@ -86,6 +86,13 @@ export class GitLabClient {
   }
 
   /**
+   * Delete an existing note (comment) on an MR
+   */
+  async deleteMRNote(projectId: string, mrIid: number, noteId: number) {
+    return await this.client.MergeRequestNotes.remove(projectId, mrIid, noteId);
+  }
+
+  /**
    * Create a discussion thread on a specific line
    */
   async createMRDiscussionThread(

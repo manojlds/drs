@@ -110,6 +110,11 @@ export interface PlatformClient {
   ): Promise<void>;
 
   /**
+   * Delete an existing comment
+   */
+  deleteComment(projectId: string, prNumber: number, commentId: number | string): Promise<void>;
+
+  /**
    * Create an inline comment at a specific line
    */
   createInlineComment(

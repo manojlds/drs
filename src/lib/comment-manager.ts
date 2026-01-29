@@ -7,6 +7,9 @@ import type { ReviewIssue } from './comment-formatter.js';
 // Bot identifier for tracking our comments
 export const BOT_COMMENT_ID = 'drs-review-summary';
 
+// Error comment identifier for tracking error notifications
+export const ERROR_COMMENT_ID = 'drs-error';
+
 /**
  * Create a unique fingerprint for an issue to detect duplicates
  */
@@ -69,6 +72,13 @@ export interface PlatformComment {
  */
 export function findExistingSummaryComment(comments: PlatformComment[]): PlatformComment | null {
   return comments.find((c) => extractCommentId(c.body) === BOT_COMMENT_ID) || null;
+}
+
+/**
+ * Find existing error comment using error marker
+ */
+export function findExistingErrorComment(comments: PlatformComment[]): PlatformComment | null {
+  return comments.find((c) => extractCommentId(c.body) === ERROR_COMMENT_ID) || null;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
 import { runDescribeIfEnabled } from './description-executor.js';
+import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
 export { enforceRepoBranchMatch } from './repository-validator.js';
@@ -44,6 +45,8 @@ export interface UnifiedReviewOptions {
   prNumber: number;
   /** Whether to post comments to the platform */
   postComments: boolean;
+  /** Whether to post an error comment if the review fails */
+  postErrorComment?: boolean;
   /** Optional path to output GitLab code quality report JSON */
   codeQualityReport?: string;
   /** Optional path to write JSON results file */
@@ -189,6 +192,9 @@ export async function executeUnifiedReview(
 
     // Post comments to platform if requested
     if (postComments) {
+      // Remove any previous error comment on successful review
+      await removeErrorComment(platformClient, projectId, prNumber);
+
       await postReviewComments(
         platformClient,
         projectId,
@@ -243,6 +249,18 @@ export async function executeUnifiedReview(
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Post error comment if enabled
+    if (options.postErrorComment) {
+      try {
+        await postErrorComment(platformClient, projectId, prNumber, errorMessage);
+      } catch (postError) {
+        const postErrorMessage = postError instanceof Error ? postError.message : String(postError);
+        console.warn(chalk.yellow(`Could not post error comment: ${postErrorMessage}`));
+      }
+    }
+
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
       await opencode.shutdown();

@@ -68,6 +68,7 @@ export interface DRSConfig {
     };
     skipRepoCheck?: boolean;
     skipBranchCheck?: boolean;
+    postErrorComment?: boolean;
   };
 
   // Describe behavior (PR/MR description generation)
@@ -123,6 +124,7 @@ const DEFAULT_CONFIG: DRSConfig = {
       enabled: false,
       postDescription: false,
     },
+    postErrorComment: false,
   },
   contextCompression: {
     enabled: true,
@@ -205,6 +207,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
   if (process.env.REVIEW_SKIP_BRANCH_CHECK === 'true') {
     config.review.skipBranchCheck = true;
+  }
+  if (process.env.REVIEW_POST_ERROR_COMMENT === 'true') {
+    config.review.postErrorComment = true;
   }
 
   // Validate required fields

@@ -221,6 +221,21 @@ export class GitHubClient {
       body,
     });
   }
+
+  /**
+   * Delete an existing comment
+   */
+  async deleteComment(
+    owner: string,
+    repo: string,
+    commentId: number
+  ): Promise<RestEndpointMethodTypes['issues']['deleteComment']['response']> {
+    return await this.octokit.issues.deleteComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
+  }
 }
 
 /**
