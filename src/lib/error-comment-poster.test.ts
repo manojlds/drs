@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
+import { postErrorComment, removeErrorComment, sanitizeErrorMessage } from './error-comment-poster.js';
 import { ERROR_COMMENT_ID } from './comment-manager.js';
 import type { PlatformClient } from './platform-client.js';
 
@@ -13,6 +13,103 @@ vi.mock('chalk', () => ({
 }));
 
 describe('error-comment-poster', () => {
+  describe('sanitizeErrorMessage', () => {
+    it('should pass through simple error messages unchanged', () => {
+      const message = 'Connection failed';
+      expect(sanitizeErrorMessage(message)).toBe('Connection failed');
+    });
+
+    it('should redact API tokens with token= format', () => {
+      const message = 'Error: token=abc123def456xyz789';
+      expect(sanitizeErrorMessage(message)).toBe('Error: [REDACTED]');
+    });
+
+    it('should redact API keys with key= format', () => {
+      const message = 'Failed with api_key=supersecretkey123';
+      expect(sanitizeErrorMessage(message)).toBe('Failed with [REDACTED]');
+    });
+
+    it('should redact Bearer tokens', () => {
+      const message = 'Auth failed: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
+      expect(sanitizeErrorMessage(message)).toBe('Auth failed: Bearer [REDACTED]');
+    });
+
+    it('should redact GitHub tokens', () => {
+      const message = 'GitHub error with ghp_1234567890abcdefghij';
+      expect(sanitizeErrorMessage(message)).toBe('GitHub error with [REDACTED]');
+    });
+
+    it('should redact GitLab tokens', () => {
+      const message = 'GitLab error with glpat-abcdef123456789';
+      expect(sanitizeErrorMessage(message)).toBe('GitLab error with [REDACTED]');
+    });
+
+    it('should mask absolute Unix file paths', () => {
+      const message = 'Error in /home/developer/projects/myapp/src/index.ts';
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).not.toContain('/home/developer/projects/myapp/src');
+      expect(sanitized).toContain('index.ts');
+    });
+
+    it('should mask home directory paths', () => {
+      const message = 'File not found: /home/johnsmith/secret/config.json';
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).not.toContain('johnsmith');
+      expect(sanitized).not.toContain('/home/johnsmith');
+      // Path is sanitized to just the filename
+      expect(sanitized).toContain('config.json');
+    });
+
+    it('should mask Windows file paths', () => {
+      const message = 'Error in C:\\Users\\Developer\\Projects\\app\\src\\main.ts';
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).not.toContain('Developer\\Projects\\app\\src');
+    });
+
+    it('should truncate stack traces', () => {
+      const message = `Error: Something went wrong
+    at Object.<anonymous> (/path/to/file.js:10:5)
+    at Module._compile (internal/modules/cjs/loader.js:1085:14)
+    at Object.Module._extensions..js (internal/modules/cjs/loader.js:1114:10)`;
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).toContain('Error: Something went wrong');
+      expect(sanitized).toContain('[Stack trace truncated]');
+      expect(sanitized).not.toContain('Module._compile');
+    });
+
+    it('should redact environment variable patterns', () => {
+      const message = 'Config error: $DATABASE_URL=postgres://secret';
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).toContain('[ENV_VAR]');
+      expect(sanitized).not.toContain('postgres://secret');
+    });
+
+    it('should truncate very long messages', () => {
+      const longMessage = 'Error: ' + 'x'.repeat(600);
+      const sanitized = sanitizeErrorMessage(longMessage);
+      expect(sanitized.length).toBeLessThanOrEqual(520); // 500 + '... [truncated]'
+      expect(sanitized).toContain('[truncated]');
+    });
+
+    it('should handle multiple sensitive items in one message', () => {
+      const message =
+        'Failed at /home/user/app/src/index.ts with token=abc123def456 and Bearer xyz789abc';
+      const sanitized = sanitizeErrorMessage(message);
+      expect(sanitized).not.toContain('abc123def456');
+      expect(sanitized).not.toContain('xyz789abc');
+      expect(sanitized).not.toContain('/home/user/app/src');
+    });
+
+    it('should handle empty messages', () => {
+      expect(sanitizeErrorMessage('')).toBe('');
+    });
+
+    it('should redact password patterns', () => {
+      const message = 'Database connection failed: password=mysecretpassword123';
+      expect(sanitizeErrorMessage(message)).toBe('Database connection failed: [REDACTED]');
+    });
+  });
+
   // Mock platform client
   const createMockPlatformClient = (overrides?: Partial<PlatformClient>): PlatformClient => ({
     getPullRequest: vi.fn(),
