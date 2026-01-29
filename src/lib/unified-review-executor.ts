@@ -250,6 +250,8 @@ export async function executeUnifiedReview(
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
+
+    throw new Error('Intentional error to test error comment posting.');
   } catch (error) {
     // Post error comment if enabled (note: error details are logged to CI, not in comment)
     if (options.postErrorComment) {
