@@ -143,10 +143,7 @@ program
         projectId: options.project,
         mrIid: parseInt(options.mr, 10),
         postComments: options.postComments || false,
-        postErrorComment:
-          options.postErrorComment === true
-            ? true
-            : (config.review.postErrorComment ?? false),
+        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
         codeQualityReport:
           options.codeQualityReport === true
             ? 'gl-code-quality-report.json'
@@ -222,10 +219,7 @@ program
         repo: options.repo,
         prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
-        postErrorComment:
-          options.postErrorComment === true
-            ? true
-            : (config.review.postErrorComment ?? false),
+        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
