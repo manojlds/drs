@@ -251,12 +251,10 @@ export async function executeUnifiedReview(
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    // Post error comment if enabled
+    // Post error comment if enabled (note: error details are logged to CI, not in comment)
     if (options.postErrorComment) {
       try {
-        await postErrorComment(platformClient, projectId, prNumber, errorMessage);
+        await postErrorComment(platformClient, projectId, prNumber);
       } catch (postError) {
         const postErrorMessage = postError instanceof Error ? postError.message : String(postError);
         console.warn(chalk.yellow(`Could not post error comment: ${postErrorMessage}`));

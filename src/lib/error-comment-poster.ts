@@ -15,74 +15,16 @@ import {
 import type { PlatformClient } from './platform-client.js';
 
 /**
- * Sanitize error messages to prevent exposure of sensitive information
- * in public comments. Removes/masks:
- * - API keys and tokens
- * - Absolute file paths
- * - Environment variable values
- * - Stack traces (keeps only first meaningful line)
- */
-export function sanitizeErrorMessage(message: string): string {
-  let sanitized = message;
-
-  // Remove potential API keys and tokens (various formats)
-  // Matches: token=xxx, key=xxx, api_key=xxx, Bearer xxx, etc.
-  sanitized = sanitized.replace(
-    /(?:token|key|api_key|apikey|secret|password|auth|bearer)\s*[=:]\s*['"]?[a-zA-Z0-9_\-./+]{8,}['"]?/gi,
-    '[REDACTED]'
-  );
-
-  // Remove Bearer tokens
-  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9_\-./+]+/gi, 'Bearer [REDACTED]');
-
-  // Remove GitHub/GitLab tokens (ghp_, glpat-, etc.)
-  sanitized = sanitized.replace(/(?:ghp_|gho_|ghu_|ghs_|ghr_|glpat-)[a-zA-Z0-9_]+/g, '[REDACTED]');
-
-  // Mask absolute file paths (Unix and Windows)
-  // Keep only the filename, not the full path
-  sanitized = sanitized.replace(/(?:\/[\w.-]+)+\/([^\/\s:]+)/g, '.../$1');
-  sanitized = sanitized.replace(/[A-Za-z]:\\(?:[\w.-]+\\)+([^\\\s:]+)/g, '...\\$1');
-
-  // Remove home directory paths
-  sanitized = sanitized.replace(/\/home\/[^\/\s]+/g, '/home/[user]');
-  sanitized = sanitized.replace(/\/Users\/[^\/\s]+/g, '/Users/[user]');
-  sanitized = sanitized.replace(/C:\\Users\\[^\\\s]+/gi, 'C:\\Users\\[user]');
-
-  // Truncate stack traces - keep only first line of stack
-  const stackTraceStart = sanitized.search(/\n\s+at\s+/);
-  if (stackTraceStart !== -1) {
-    // Find the first "at" line and keep just one
-    const firstAtMatch = sanitized.match(/\n(\s+at\s+[^\n]+)/);
-    if (firstAtMatch) {
-      sanitized = sanitized.substring(0, stackTraceStart) + '\n[Stack trace truncated]';
-    }
-  }
-
-  // Remove environment variable patterns
-  sanitized = sanitized.replace(/\$\{?[A-Z_][A-Z0-9_]*\}?=[^\s]+/g, '[ENV_VAR]');
-
-  // Limit message length to prevent overly verbose error exposure
-  const maxLength = 500;
-  if (sanitized.length > maxLength) {
-    sanitized = sanitized.substring(0, maxLength) + '... [truncated]';
-  }
-
-  return sanitized.trim();
-}
-
-/**
  * Post or update an error comment on a PR/MR
+ * Note: Error details are intentionally not included in the comment
+ * to avoid exposing sensitive information. Users should check CI/CD logs.
  */
 export async function postErrorComment(
   platformClient: PlatformClient,
   projectId: string,
-  prNumber: number,
-  errorMessage: string
+  prNumber: number
 ): Promise<void> {
   console.log(chalk.gray('Posting error comment...\n'));
-
-  // Sanitize the error message to prevent sensitive data exposure
-  const sanitizedMessage = sanitizeErrorMessage(errorMessage);
 
   // Fetch existing comments to check for existing error comment
   const existingComments = await platformClient.getComments(projectId, prNumber);
@@ -92,7 +34,7 @@ export async function postErrorComment(
   }));
 
   const existingError = findExistingErrorComment(mappedComments);
-  const errorComment = formatErrorComment(sanitizedMessage, ERROR_COMMENT_ID);
+  const errorComment = formatErrorComment(ERROR_COMMENT_ID);
 
   if (existingError) {
     await platformClient.updateComment(projectId, prNumber, existingError.id, errorComment);

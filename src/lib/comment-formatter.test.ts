@@ -698,50 +698,36 @@ describe('comment-formatter', () => {
   });
 
   describe('formatErrorComment', () => {
-    it('should format error comment with message', () => {
-      const formatted = formatErrorComment('Connection timeout');
+    it('should format error comment with standard message', () => {
+      const formatted = formatErrorComment();
 
       expect(formatted).toContain(':warning: DRS Review Failed');
       expect(formatted).toContain('automated code review encountered an error');
-      expect(formatted).toContain('Connection timeout');
-      expect(formatted).toContain('```');
+      expect(formatted).toContain('check the CI/CD logs');
       expect(formatted).toContain('automatically removed when the review succeeds');
       expect(formatted).toContain('DRS');
     });
 
     it('should include comment ID when provided', () => {
-      const formatted = formatErrorComment('Some error', 'drs-error');
+      const formatted = formatErrorComment('drs-error');
 
       expect(formatted).toContain('<!-- drs-comment-id: drs-error -->');
     });
 
     it('should not include comment ID when not provided', () => {
-      const formatted = formatErrorComment('Some error');
+      const formatted = formatErrorComment();
 
       expect(formatted).not.toContain('<!-- drs-comment-id:');
     });
 
-    it('should handle multiline error messages', () => {
-      const multilineError = 'Error line 1\nError line 2\nError line 3';
-      const formatted = formatErrorComment(multilineError);
+    it('should not expose error details in comment', () => {
+      // Error details should not be in the comment - users should check CI/CD logs
+      const formatted = formatErrorComment('drs-error');
 
-      expect(formatted).toContain('Error line 1');
-      expect(formatted).toContain('Error line 2');
-      expect(formatted).toContain('Error line 3');
-    });
-
-    it('should handle empty error message', () => {
-      const formatted = formatErrorComment('');
-
-      expect(formatted).toContain(':warning: DRS Review Failed');
-      expect(formatted).toContain('```\n\n```');
-    });
-
-    it('should handle error messages with special characters', () => {
-      const specialError = 'Error: Cannot find module "foo" at <anonymous>';
-      const formatted = formatErrorComment(specialError);
-
-      expect(formatted).toContain(specialError);
+      // Should contain the log directive
+      expect(formatted).toContain('Please check the CI/CD logs for error details');
+      // Should not have a code block for error messages
+      expect(formatted).not.toContain('```');
     });
   });
 });
