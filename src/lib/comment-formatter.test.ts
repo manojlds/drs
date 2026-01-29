@@ -3,6 +3,7 @@ import {
   formatIssueComment,
   formatSummaryComment,
   formatTerminalIssue,
+  formatErrorComment,
   calculateSummary,
   type ReviewIssue,
   type ReviewSummary,
@@ -693,6 +694,40 @@ describe('comment-formatter', () => {
       expect(summary.bySeverity.HIGH).toBe(1);
       expect(summary.bySeverity.MEDIUM).toBe(1);
       expect(summary.bySeverity.LOW).toBe(2);
+    });
+  });
+
+  describe('formatErrorComment', () => {
+    it('should format error comment with standard message', () => {
+      const formatted = formatErrorComment();
+
+      expect(formatted).toContain(':warning: DRS Review Failed');
+      expect(formatted).toContain('automated code review encountered an error');
+      expect(formatted).toContain('check the CI/CD logs');
+      expect(formatted).toContain('automatically removed when the review succeeds');
+      expect(formatted).toContain('DRS');
+    });
+
+    it('should include comment ID when provided', () => {
+      const formatted = formatErrorComment('drs-error');
+
+      expect(formatted).toContain('<!-- drs-comment-id: drs-error -->');
+    });
+
+    it('should not include comment ID when not provided', () => {
+      const formatted = formatErrorComment();
+
+      expect(formatted).not.toContain('<!-- drs-comment-id:');
+    });
+
+    it('should not expose error details in comment', () => {
+      // Error details should not be in the comment - users should check CI/CD logs
+      const formatted = formatErrorComment('drs-error');
+
+      // Should contain the log directive
+      expect(formatted).toContain('Please check the CI/CD logs for error details');
+      // Should not have a code block for error messages
+      expect(formatted).not.toContain('```');
     });
   });
 });

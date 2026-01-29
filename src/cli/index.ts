@@ -107,6 +107,7 @@ program
     'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
   )
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
+  .option('--post-error-comment', 'Post a comment if the review fails (requires GITLAB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
   .option('--skip-describe', 'Skip PR/MR description during review')
   .option('--post-description', 'Post generated description to the MR (requires GITLAB_TOKEN)')
@@ -142,6 +143,7 @@ program
         projectId: options.project,
         mrIid: parseInt(options.mr, 10),
         postComments: options.postComments || false,
+        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
         codeQualityReport:
           options.codeQualityReport === true
             ? 'gl-code-quality-report.json'
@@ -184,6 +186,7 @@ program
     'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
   )
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('--post-error-comment', 'Post a comment if the review fails (requires GITHUB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
   .option('--skip-describe', 'Skip PR/MR description during review')
   .option('--post-description', 'Post generated description to the PR (requires GITHUB_TOKEN)')
@@ -216,6 +219,7 @@ program
         repo: options.repo,
         prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
+        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,

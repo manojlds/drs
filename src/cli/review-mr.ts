@@ -9,6 +9,7 @@ export interface ReviewMROptions {
   projectId: string;
   mrIid: number;
   postComments: boolean;
+  postErrorComment: boolean;
   describe: boolean;
   postDescription: boolean;
   codeQualityReport?: string; // Optional path to output code quality report JSON
@@ -121,6 +122,7 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     projectId: options.projectId,
     prNumber: options.mrIid,
     postComments: options.postComments,
+    postErrorComment: options.postErrorComment,
     codeQualityReport: options.codeQualityReport,
     outputPath: options.outputPath,
     jsonOutput: options.jsonOutput,

@@ -6,9 +6,11 @@ import {
   filterCriticalAndHigh,
   filterDuplicateIssues,
   findExistingSummaryComment,
+  findExistingErrorComment,
   collectExistingFingerprints,
   prepareIssuesForPosting,
   BOT_COMMENT_ID,
+  ERROR_COMMENT_ID,
   type PlatformComment,
 } from './comment-manager.js';
 import type { ReviewIssue } from './comment-formatter.js';
@@ -435,6 +437,78 @@ describe('comment-manager', () => {
       const comments: PlatformComment[] = [];
       const found = findExistingSummaryComment(comments);
       expect(found).toBeNull();
+    });
+  });
+
+  describe('findExistingErrorComment', () => {
+    it('should find error comment with error marker', () => {
+      const comments: PlatformComment[] = [
+        { id: 1, body: 'Regular comment' },
+        {
+          id: 2,
+          body: `Error!\n<!-- drs-comment-id: ${ERROR_COMMENT_ID} -->\nError details`,
+        },
+        { id: 3, body: 'Another comment' },
+      ];
+
+      const found = findExistingErrorComment(comments);
+      expect(found).not.toBeNull();
+      expect(found?.id).toBe(2);
+    });
+
+    it('should return null if no error comment exists', () => {
+      const comments: PlatformComment[] = [
+        { id: 1, body: 'Regular comment 1' },
+        { id: 2, body: 'Regular comment 2' },
+        {
+          id: 3,
+          body: `Summary\n<!-- drs-comment-id: ${BOT_COMMENT_ID} -->`,
+        },
+      ];
+
+      const found = findExistingErrorComment(comments);
+      expect(found).toBeNull();
+    });
+
+    it('should return first error comment if multiple exist', () => {
+      const comments: PlatformComment[] = [
+        {
+          id: 1,
+          body: `Error 1\n<!-- drs-comment-id: ${ERROR_COMMENT_ID} -->`,
+        },
+        {
+          id: 2,
+          body: `Error 2\n<!-- drs-comment-id: ${ERROR_COMMENT_ID} -->`,
+        },
+      ];
+
+      const found = findExistingErrorComment(comments);
+      expect(found?.id).toBe(1);
+    });
+
+    it('should handle empty comments array', () => {
+      const comments: PlatformComment[] = [];
+      const found = findExistingErrorComment(comments);
+      expect(found).toBeNull();
+    });
+
+    it('should distinguish between error and summary comments', () => {
+      const comments: PlatformComment[] = [
+        {
+          id: 1,
+          body: `Summary\n<!-- drs-comment-id: ${BOT_COMMENT_ID} -->`,
+        },
+        {
+          id: 2,
+          body: `Error\n<!-- drs-comment-id: ${ERROR_COMMENT_ID} -->`,
+        },
+      ];
+
+      const errorComment = findExistingErrorComment(comments);
+      const summaryComment = findExistingSummaryComment(comments);
+
+      expect(errorComment?.id).toBe(2);
+      expect(summaryComment?.id).toBe(1);
     });
   });
 

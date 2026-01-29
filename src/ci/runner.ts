@@ -85,6 +85,7 @@ export async function runCIReview(): Promise<void> {
       projectId: env.projectId,
       mrIid: env.mrIid,
       postComments: true, // Always post comments in CI
+      postErrorComment: config.review.postErrorComment ?? false,
       describe: config.review.describe?.enabled ?? false,
       postDescription: config.review.describe?.postDescription ?? false,
     });

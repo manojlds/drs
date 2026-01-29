@@ -30,6 +30,7 @@ import {
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
 import { runDescribeIfEnabled } from './description-executor.js';
+import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
 export { enforceRepoBranchMatch } from './repository-validator.js';
@@ -44,6 +45,8 @@ export interface UnifiedReviewOptions {
   prNumber: number;
   /** Whether to post comments to the platform */
   postComments: boolean;
+  /** Whether to post an error comment if the review fails */
+  postErrorComment?: boolean;
   /** Optional path to output GitLab code quality report JSON */
   codeQualityReport?: string;
   /** Optional path to write JSON results file */
@@ -75,72 +78,74 @@ export async function executeUnifiedReview(
 ): Promise<void> {
   const { platformClient, projectId, prNumber, postComments } = options;
 
-  console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
-
-  // Fetch PR/MR details
-  console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
-
-  const pr = await platformClient.getPullRequest(projectId, prNumber);
-
-  await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr, {
-    skipRepoCheck: config.review.skipRepoCheck,
-    skipBranchCheck: config.review.skipBranchCheck,
-  });
-
-  const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
-
-  console.log(chalk.bold(`PR/MR: ${pr.title}`));
-  console.log(chalk.gray(`Author: ${pr.author}`));
-  console.log(chalk.gray(`Branch: ${pr.sourceBranch} → ${pr.targetBranch}`));
-  console.log(chalk.gray(`Files changed: ${allFiles.length}\n`));
-
-  if (allFiles.length === 0) {
-    console.log(chalk.yellow('✓ No changes to review\n'));
-    return;
-  }
-
-  // Get list of changed files (excluding deleted files)
-  const changedFileNames = allFiles
-    .filter((file) => file.status !== 'removed')
-    .map((file) => file.filename);
-
-  if (changedFileNames.length === 0) {
-    console.log(chalk.yellow('✓ No files to review after filtering\n'));
-    return;
-  }
-
-  // Filter files by ignore patterns
-  const filteredFileNames = filterIgnoredFiles(changedFileNames, config);
-  const filteredFiles = filteredFileNames;
-  const ignoredCount = changedFileNames.length - filteredFiles.length;
-
-  if (ignoredCount > 0) {
-    console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns\n`));
-  }
-
-  if (filteredFiles.length === 0) {
-    console.log(chalk.yellow('✓ No files to review after filtering\n'));
-    return;
-  }
-
-  const reviewOverrides = {
-    ...getModelOverrides(config),
-    ...getUnifiedModelOverride(config),
-  };
-  const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
-  const postDescriptionEnabled =
-    options.postDescription ?? config.review.describe?.postDescription ?? false;
-
-  const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
-  const modelOverrides = { ...reviewOverrides, ...describeOverrides };
-
-  // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
-    debug: options.debug,
-    modelOverrides,
-  });
+  // Track OpenCode instance for cleanup
+  let opencode: Awaited<ReturnType<typeof connectToOpenCode>> | null = null;
 
   try {
+    console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
+
+    // Fetch PR/MR details
+    console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
+
+    const pr = await platformClient.getPullRequest(projectId, prNumber);
+
+    await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr, {
+      skipRepoCheck: config.review.skipRepoCheck,
+      skipBranchCheck: config.review.skipBranchCheck,
+    });
+
+    const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
+
+    console.log(chalk.bold(`PR/MR: ${pr.title}`));
+    console.log(chalk.gray(`Author: ${pr.author}`));
+    console.log(chalk.gray(`Branch: ${pr.sourceBranch} → ${pr.targetBranch}`));
+    console.log(chalk.gray(`Files changed: ${allFiles.length}\n`));
+
+    if (allFiles.length === 0) {
+      console.log(chalk.yellow('✓ No changes to review\n'));
+      return;
+    }
+
+    // Get list of changed files (excluding deleted files)
+    const changedFileNames = allFiles
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
+
+    if (changedFileNames.length === 0) {
+      console.log(chalk.yellow('✓ No files to review after filtering\n'));
+      return;
+    }
+
+    // Filter files by ignore patterns
+    const filteredFileNames = filterIgnoredFiles(changedFileNames, config);
+    const filteredFiles = filteredFileNames;
+    const ignoredCount = changedFileNames.length - filteredFiles.length;
+
+    if (ignoredCount > 0) {
+      console.log(chalk.gray(`Ignoring ${ignoredCount} file(s) based on patterns\n`));
+    }
+
+    if (filteredFiles.length === 0) {
+      console.log(chalk.yellow('✓ No files to review after filtering\n'));
+      return;
+    }
+
+    const reviewOverrides = {
+      ...getModelOverrides(config),
+      ...getUnifiedModelOverride(config),
+    };
+    const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
+    const postDescriptionEnabled =
+      options.postDescription ?? config.review.describe?.postDescription ?? false;
+
+    const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
+    const modelOverrides = { ...reviewOverrides, ...describeOverrides };
+
+    // Connect to OpenCode
+    opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
+      debug: options.debug,
+      modelOverrides,
+    });
     const filesForDescribe = allFiles.map((file) => ({
       filename: file.filename,
       patch: file.patch,
@@ -189,6 +194,9 @@ export async function executeUnifiedReview(
 
     // Post comments to platform if requested
     if (postComments) {
+      // Remove any previous error comment on successful review
+      await removeErrorComment(platformClient, projectId, prNumber);
+
       await postReviewComments(
         platformClient,
         projectId,
@@ -243,15 +251,29 @@ export async function executeUnifiedReview(
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
   } catch (error) {
+    // Post error comment if enabled (note: error details are logged to CI, not in comment)
+    if (options.postErrorComment) {
+      try {
+        await postErrorComment(platformClient, projectId, prNumber);
+      } catch (postError) {
+        const postErrorMessage = postError instanceof Error ? postError.message : String(postError);
+        console.warn(chalk.yellow(`Could not post error comment: ${postErrorMessage}`));
+      }
+    }
+
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      await opencode.shutdown();
+      if (opencode) {
+        await opencode.shutdown();
+      }
       process.exit(1);
     }
     throw error;
   } finally {
-    // Shutdown OpenCode
-    await opencode.shutdown();
+    // Shutdown OpenCode if it was initialized
+    if (opencode) {
+      await opencode.shutdown();
+    }
   }
 }
 

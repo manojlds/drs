@@ -117,6 +117,14 @@ export class GitLabPlatformAdapter implements PlatformClient {
     await this.client.updateMRNote(projectId, prNumber, Number(commentId), body);
   }
 
+  async deleteComment(
+    projectId: string,
+    prNumber: number,
+    commentId: number | string
+  ): Promise<void> {
+    await this.client.deleteMRNote(projectId, prNumber, Number(commentId));
+  }
+
   async createInlineComment(
     projectId: string,
     prNumber: number,

@@ -189,6 +189,28 @@ export function formatTerminalIssue(issue: ReviewIssue): string {
 }
 
 /**
+ * Format an error comment for when DRS fails
+ * Does not include error details to avoid exposing sensitive information.
+ * Users should check CI/CD logs for the actual error.
+ * @param commentId Optional comment ID to embed for identification
+ */
+export function formatErrorComment(commentId?: string): string {
+  let comment = '';
+  if (commentId) {
+    comment += `<!-- drs-comment-id: ${commentId} -->\n`;
+  }
+
+  comment += `# :warning: DRS Review Failed\n\n`;
+  comment += `The automated code review encountered an error and could not complete.\n\n`;
+  comment += `Please check the CI/CD logs for error details.\n\n`;
+  comment += `---\n\n`;
+  comment += `*This comment will be automatically removed when the review succeeds.*\n`;
+  comment += `*Reported by **DRS** | Diff Review System*\n`;
+
+  return comment;
+}
+
+/**
  * Calculate review summary from issues
  */
 export function calculateSummary(filesReviewed: number, issues: ReviewIssue[]): ReviewSummary {

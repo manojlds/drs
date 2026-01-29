@@ -86,6 +86,15 @@ export class GitHubPlatformAdapter implements PlatformClient {
     await this.client.updateComment(owner, repo, Number(commentId), body);
   }
 
+  async deleteComment(
+    projectId: string,
+    prNumber: number,
+    commentId: number | string
+  ): Promise<void> {
+    const [owner, repo] = this.parseProjectId(projectId);
+    await this.client.deleteComment(owner, repo, Number(commentId));
+  }
+
   async createInlineComment(
     projectId: string,
     prNumber: number,
