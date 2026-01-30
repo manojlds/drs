@@ -42,6 +42,7 @@ function readSkill(skillName: string): SkillPayload {
   const content = readFileSync(skillPath, 'utf-8');
   const instructions = parseSkillInstructions(content);
   const skillDir = dirname(skillPath);
+  console.log(`[drs_skill] Loaded skill "${skillName}" from ${skillPath}`);
 
   return {
     skill_name: skillName,
