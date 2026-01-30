@@ -90,5 +90,5 @@ export function buildSkillPromptSection(
   }
 
   const prompt = buildSkillsPrompt(availableSkills, promptFormat);
-  return `# Skills\n\n${prompt}\n\nUse the ${TOOL_NAME} tool to load a skill. Select the most relevant skill based on the files changed and the type of work being reviewed.`;
+  return `# Skills\n\n${prompt}\n\nBefore reviewing, you MUST call the ${TOOL_NAME} tool for the most relevant skill based on the files changed and the type of work being reviewed.`;
 }
