@@ -12,6 +12,10 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogFormat = 'human' | 'json';
 
 export interface LogContext {
+  /** Log source (e.g., 'opencode-server', 'drs') */
+  source?: string;
+  /** Event type for server logs */
+  eventType?: string;
   /** Agent type (e.g., 'security', 'unified-reviewer') */
   agent?: string;
   /** Tool name (e.g., 'drs_skill', 'write_json_output') */
@@ -172,7 +176,10 @@ class Logger {
       prefix += chalk.gray(`[${entry.timestamp}] `);
     }
 
-    // Add context prefix (agent/tool/skill)
+    // Add context prefix (source/agent/tool/skill)
+    if (entry.context?.source) {
+      prefix += chalk.blue(`[${entry.context.source}] `);
+    }
     if (entry.context?.agent) {
       prefix += chalk.cyan(`[${entry.context.agent}] `);
     }
@@ -262,6 +269,55 @@ class Logger {
    */
   noSkillCalls(agent: string): void {
     this.warn(`No skill tool calls detected during review`, { agent });
+  }
+
+  /**
+   * Log OpenCode server event
+   */
+  serverLog(eventType: string, message: string, data?: unknown, level: LogLevel = 'debug'): void {
+    this.log(level, message, { source: 'opencode-server', eventType }, data);
+  }
+
+  /**
+   * Log OpenCode server event (raw event)
+   */
+  serverEvent(event: { type?: string; properties?: Record<string, unknown> }): void {
+    const eventType = event.type || 'unknown';
+    const props = event.properties || {};
+
+    // Format message based on event type
+    let message = `Server event: ${eventType}`;
+    let level: LogLevel = 'debug';
+
+    // Extract meaningful info based on common event types
+    if (eventType === 'log' && props.message) {
+      message = String(props.message);
+      level = this.mapServerLogLevel(props.level);
+    } else if (eventType === 'session.created' && props.sessionId) {
+      message = `Session created: ${props.sessionId}`;
+    } else if (eventType === 'session.completed' && props.sessionId) {
+      message = `Session completed: ${props.sessionId}`;
+    } else if (eventType === 'tool.start' && props.tool) {
+      message = `Tool started: ${props.tool}`;
+    } else if (eventType === 'tool.complete' && props.tool) {
+      message = `Tool completed: ${props.tool}`;
+    } else if (eventType === 'message' && props.content) {
+      message = `Message: ${String(props.content).substring(0, 100)}...`;
+    }
+
+    this.serverLog(eventType, message, Object.keys(props).length > 0 ? props : undefined, level);
+  }
+
+  /**
+   * Map server log level to DRS log level
+   */
+  private mapServerLogLevel(level: unknown): LogLevel {
+    if (typeof level !== 'string') return 'debug';
+    const normalized = level.toLowerCase();
+    if (normalized === 'error' || normalized === 'fatal') return 'error';
+    if (normalized === 'warn' || normalized === 'warning') return 'warn';
+    if (normalized === 'info') return 'info';
+    return 'debug';
   }
 }
 

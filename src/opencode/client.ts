@@ -10,6 +10,7 @@ import { createOpencode, createOpencodeClient as createSDKClient } from '@openco
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { getLogger } from '../lib/logger.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -51,6 +52,8 @@ export class OpencodeClient {
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
   private projectRootEnv?: string;
+  private eventSubscriptionActive = false;
+  private eventAbortController?: AbortController;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -247,6 +250,11 @@ export class OpencodeClient {
         );
       }
     }
+
+    // Start event subscription in debug mode to capture server logs
+    if (this.config.debug) {
+      this.startEventSubscription();
+    }
   }
 
   /**
@@ -434,6 +442,9 @@ export class OpencodeClient {
    * Shutdown - close in-process server if applicable
    */
   async shutdown(): Promise<void> {
+    // Stop event subscription first
+    this.stopEventSubscription();
+
     if (this.inProcessServer) {
       // Close the OpenCode server
       this.inProcessServer.server.close();
@@ -444,6 +455,87 @@ export class OpencodeClient {
       delete process.env.DRS_PROJECT_ROOT;
     } else {
       process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
+    }
+  }
+
+  /**
+   * Start subscribing to server events and route them through DRS logger
+   * This runs in the background and logs events as they arrive
+   */
+  startEventSubscription(): void {
+    if (this.eventSubscriptionActive || !this.client) {
+      return;
+    }
+
+    this.eventSubscriptionActive = true;
+    this.eventAbortController = new AbortController();
+    const logger = getLogger();
+
+    logger.serverLog('subscription', 'Starting OpenCode server event subscription');
+
+    // Start event subscription in background (fire and forget)
+    this.subscribeToEvents(logger).catch((error) => {
+      // Only log if not aborted intentionally
+      if (this.eventSubscriptionActive) {
+        logger.serverLog(
+          'subscription.error',
+          `Event subscription error: ${error instanceof Error ? error.message : String(error)}`,
+          undefined,
+          'warn'
+        );
+      }
+    });
+  }
+
+  /**
+   * Stop the event subscription
+   */
+  stopEventSubscription(): void {
+    if (this.eventAbortController) {
+      this.eventAbortController.abort();
+    }
+    this.eventSubscriptionActive = false;
+  }
+
+  /**
+   * Internal method to subscribe to events
+   */
+  private async subscribeToEvents(logger: ReturnType<typeof getLogger>): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+
+    try {
+      // Subscribe to server events using the SDK
+      const events = await (this.client as any).event?.subscribe?.();
+
+      if (!events?.stream) {
+        logger.serverLog(
+          'subscription.unavailable',
+          'Server event subscription not available',
+          undefined,
+          'debug'
+        );
+        return;
+      }
+
+      // Process events as they arrive
+      for await (const event of events.stream) {
+        // Check if we should stop
+        if (!this.eventSubscriptionActive) {
+          break;
+        }
+
+        // Route event through DRS logger
+        if (event && typeof event === 'object') {
+          logger.serverEvent(event as { type?: string; properties?: Record<string, unknown> });
+        }
+      }
+    } catch (error) {
+      // Rethrow if not an abort error
+      if (error instanceof Error && error.name !== 'AbortError') {
+        throw error;
+      }
     }
   }
 
