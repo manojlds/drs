@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
+import { buildSkillPromptSection } from './skills-prompt.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
@@ -280,12 +281,14 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.gray('Running unified review...\n'));
 
   try {
+    const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
     const reviewPrompt = buildReviewPrompt(
       agentType,
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      workingDir
+      workingDir,
+      skillPrompt
     );
 
     if (debug) {
@@ -311,7 +314,19 @@ export async function runUnifiedReviewAgent(
     let fullResponse = '';
 
     for await (const message of opencode.streamMessages(session.id)) {
+      if (message.role === 'tool') {
+        if (debug) {
+          console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
+          console.log(message.content.trim() ? message.content : '[no tool output]');
+          console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+        }
+        continue;
+      }
+
       if (message.role === 'assistant') {
+        if (!message.content.trim()) {
+          continue;
+        }
         fullResponse += message.content;
         if (debug) {
           console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
@@ -394,12 +409,14 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
+      const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
       const reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles,
-        workingDir
+        workingDir,
+        skillPrompt
       );
 
       if (debug) {
@@ -426,7 +443,19 @@ export async function runReviewAgents(
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
+        if (message.role === 'tool') {
+          if (debug) {
+            console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
+            console.log(message.content.trim() ? message.content : '[no tool output]');
+            console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+          }
+          continue;
+        }
+
         if (message.role === 'assistant') {
+          if (!message.content.trim()) {
+            continue;
+          }
           fullResponse += message.content;
           if (debug) {
             console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));

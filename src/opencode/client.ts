@@ -10,7 +10,6 @@ import { createOpencode, createOpencodeClient as createSDKClient } from '@openco
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
-import { createAgentSkillOverlay } from './agent-skill-overlay.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -31,7 +30,7 @@ export interface SessionCreateOptions {
 
 export interface SessionMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: Date;
 }
@@ -51,7 +50,6 @@ export class OpencodeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
   private client?: ReturnType<typeof createSDKClient>;
   private config: OpencodeConfig;
-  private overlay?: Awaited<ReturnType<typeof createAgentSkillOverlay>>;
   private projectRootEnv?: string;
 
   constructor(config: OpencodeConfig) {
@@ -82,6 +80,8 @@ export class OpencodeClient {
           Grep: true,
           Bash: true,
           write_json_output: true,
+          drs_skill: true,
+          skill: false,
           Write: false,
           Edit: false,
         },
@@ -207,7 +207,7 @@ export class OpencodeClient {
             .filter((agent) => agent.skills.length > 0);
 
           if (agentSkills.length > 0) {
-            console.log('Agent skills (applied via overlay frontmatter):');
+            console.log('Agent skills configuration:');
             console.log(JSON.stringify(agentSkills, null, 2));
           }
         }
@@ -221,11 +221,7 @@ export class OpencodeClient {
       const projectDir = this.directory || originalCwd;
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
       process.env.DRS_PROJECT_ROOT = projectDir;
-      if (this.config.config) {
-        this.overlay = await createAgentSkillOverlay(projectDir, this.config.config);
-      }
-      const discoveryRoot = this.overlay?.root ?? projectDir;
-
+      const discoveryRoot = projectDir;
       if (discoveryRoot !== originalCwd) {
         process.chdir(discoveryRoot);
       }
@@ -345,7 +341,7 @@ export class OpencodeClient {
           const msg = messages[i];
           yield {
             id: msg.info?.id ?? 'msg-' + Date.now(),
-            role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system',
+            role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
             content: msg.parts?.map((p) => p.text ?? '').join('') ?? '',
             timestamp: new Date(),
           };
@@ -443,10 +439,6 @@ export class OpencodeClient {
       this.inProcessServer.server.close();
       // Give server time to clean up connections
       await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (this.overlay) {
-      await this.overlay.cleanup();
-      this.overlay = undefined;
     }
     if (this.projectRootEnv === undefined) {
       delete process.env.DRS_PROJECT_ROOT;

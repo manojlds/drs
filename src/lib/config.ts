@@ -53,6 +53,7 @@ export interface DRSConfig {
     default?: {
       model?: string;
       skills?: string[];
+      skillsPromptFormat?: 'text' | 'xml';
     };
     defaultModel?: string;
     ignorePatterns: string[];
