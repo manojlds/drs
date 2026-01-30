@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
+import { buildSkillPromptSection } from './skills-prompt.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
@@ -280,12 +281,14 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.gray('Running unified review...\n'));
 
   try {
+    const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
     const reviewPrompt = buildReviewPrompt(
       agentType,
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      workingDir
+      workingDir,
+      skillPrompt
     );
 
     if (debug) {
@@ -394,12 +397,14 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
+      const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
       const reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles,
-        workingDir
+        workingDir,
+        skillPrompt
       );
 
       if (debug) {

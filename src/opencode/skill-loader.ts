@@ -1,9 +1,19 @@
-import { existsSync, readdirSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { dirname, join, relative } from 'path';
+import * as yaml from 'yaml';
 
-export interface SkillDefinition {
+export interface SkillMetadata {
   name: string;
+  description: string;
   path: string;
+  dir: string;
+}
+
+export interface SkillDefinition extends SkillMetadata {
+  instructions: string;
+  hasScripts: boolean;
+  hasReferences: boolean;
+  hasAssets: boolean;
 }
 
 const skillFileNames = new Set(['SKILL.md', 'skill.md']);
@@ -42,12 +52,75 @@ function resolveSkillName(skillsRoot: string, filePath: string): string {
   return segments[segments.length - 1] ?? parentDir;
 }
 
-export function loadProjectSkills(projectPath: string): SkillDefinition[] {
+function parseSkillFrontmatter(content: string): { description: string; instructions: string } {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!frontmatterMatch) {
+    return { description: '', instructions: content.trim() };
+  }
+
+  const parsed = yaml.parse(frontmatterMatch[1]);
+  const frontmatter =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : ({} as Record<string, unknown>);
+
+  const description =
+    typeof frontmatter.description === 'string' ? frontmatter.description.trim() : '';
+  const instructions = content.slice(frontmatterMatch[0].length).trim();
+
+  return { description, instructions };
+}
+
+function buildSkillMetadata(skillsRoot: string, filePath: string): SkillMetadata {
+  const content = readFileSync(filePath, 'utf-8');
+  const { description } = parseSkillFrontmatter(content);
+  const name = resolveSkillName(skillsRoot, filePath);
+  const dir = dirname(filePath);
+
+  return {
+    name,
+    description,
+    path: filePath,
+    dir,
+  };
+}
+
+export function loadProjectSkills(projectPath: string): SkillMetadata[] {
   const skillsRoot = join(projectPath, '.drs', 'skills');
   const files = traverseDirectory(skillsRoot, skillsRoot, (entry) => skillFileNames.has(entry));
 
-  return files.map((filePath) => ({
-    name: resolveSkillName(skillsRoot, filePath),
-    path: filePath,
-  }));
+  return files.map((filePath) => buildSkillMetadata(skillsRoot, filePath));
+}
+
+function resolveSkillFilePath(projectPath: string, skillName: string): string | null {
+  const skillRoot = join(projectPath, '.drs', 'skills', skillName);
+  for (const fileName of skillFileNames) {
+    const candidate = join(skillRoot, fileName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function loadSkillByName(projectPath: string, skillName: string): SkillDefinition | null {
+  const skillPath = resolveSkillFilePath(projectPath, skillName);
+  if (!skillPath) {
+    return null;
+  }
+
+  const content = readFileSync(skillPath, 'utf-8');
+  const { description, instructions } = parseSkillFrontmatter(content);
+  const dir = dirname(skillPath);
+
+  return {
+    name: skillName,
+    description,
+    instructions,
+    path: skillPath,
+    dir,
+    hasScripts: existsSync(join(dir, 'scripts')),
+    hasReferences: existsSync(join(dir, 'references')),
+    hasAssets: existsSync(join(dir, 'assets')),
+  };
 }
