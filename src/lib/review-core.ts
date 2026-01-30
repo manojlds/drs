@@ -102,7 +102,6 @@ function parseSkillToolResult(content: string): SkillToolCall | null {
   return null;
 }
 
-
 /**
  * Build base review instructions for agents
  *

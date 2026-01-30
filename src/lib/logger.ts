@@ -222,7 +222,11 @@ class Logger {
    * Log a skill tool call
    */
   skillLoaded(skillName: string, agent: string, metadata?: Record<string, unknown>): void {
-    this.info(`Loaded skill: ${skillName}`, { agent, tool: 'drs_skill', skill: skillName }, metadata);
+    this.info(
+      `Loaded skill: ${skillName}`,
+      { agent, tool: 'drs_skill', skill: skillName },
+      metadata
+    );
   }
 
   /**
