@@ -30,7 +30,7 @@ export interface SessionCreateOptions {
 
 export interface SessionMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: Date;
 }
@@ -341,7 +341,7 @@ export class OpencodeClient {
           const msg = messages[i];
           yield {
             id: msg.info?.id ?? 'msg-' + Date.now(),
-            role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system',
+            role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
             content: msg.parts?.map((p) => p.text ?? '').join('') ?? '',
             timestamp: new Date(),
           };

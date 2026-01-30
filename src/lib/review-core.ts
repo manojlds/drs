@@ -314,6 +314,15 @@ export async function runUnifiedReviewAgent(
     let fullResponse = '';
 
     for await (const message of opencode.streamMessages(session.id)) {
+      if (message.role === 'tool') {
+        if (debug) {
+          console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
+          console.log(message.content);
+          console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+        }
+        continue;
+      }
+
       if (message.role === 'assistant') {
         fullResponse += message.content;
         if (debug) {
@@ -431,6 +440,15 @@ export async function runReviewAgents(
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
+        if (message.role === 'tool') {
+          if (debug) {
+            console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
+            console.log(message.content);
+            console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+          }
+          continue;
+        }
+
         if (message.role === 'assistant') {
           fullResponse += message.content;
           if (debug) {
