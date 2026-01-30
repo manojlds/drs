@@ -17,6 +17,7 @@ import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
+import { getLogger } from './logger.js';
 
 /**
  * File with optional diff content
@@ -56,6 +57,50 @@ const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
   HIGH: 3,
   CRITICAL: 4,
 };
+
+/**
+ * Parsed skill tool call result
+ */
+interface SkillToolCall {
+  skillName: string;
+  hasInstructions: boolean;
+  hasScripts: boolean;
+  hasReferences: boolean;
+  hasAssets: boolean;
+}
+
+/**
+ * Try to parse a tool message as a drs_skill tool result
+ * Returns the skill info if it's a skill tool call, null otherwise
+ */
+function parseSkillToolResult(content: string): SkillToolCall | null {
+  try {
+    const parsed = JSON.parse(content);
+    // Check for the _tool identifier we added
+    if (parsed._tool === 'drs_skill' && parsed.skill_name) {
+      return {
+        skillName: parsed.skill_name,
+        hasInstructions: Boolean(parsed.instructions),
+        hasScripts: Boolean(parsed.has_scripts),
+        hasReferences: Boolean(parsed.has_references),
+        hasAssets: Boolean(parsed.has_assets),
+      };
+    }
+    // Fallback: check for skill_name field even without _tool marker
+    if (parsed.skill_name && parsed.instructions !== undefined) {
+      return {
+        skillName: parsed.skill_name,
+        hasInstructions: Boolean(parsed.instructions),
+        hasScripts: Boolean(parsed.has_scripts),
+        hasReferences: Boolean(parsed.has_references),
+        hasAssets: Boolean(parsed.has_assets),
+      };
+    }
+  } catch {
+    // Not JSON or not a skill tool result
+  }
+  return null;
+}
 
 /**
  * Build base review instructions for agents
@@ -312,13 +357,23 @@ export async function runUnifiedReviewAgent(
 
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
+    const skillCalls: SkillToolCall[] = [];
+
+    const logger = getLogger();
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        if (debug) {
-          console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-          console.log(message.content.trim() ? message.content : '[no tool output]');
-          console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+        // Check if this is a skill tool call
+        const skillResult = parseSkillToolResult(message.content);
+        if (skillResult) {
+          skillCalls.push(skillResult);
+          logger.skillLoaded(skillResult.skillName, agentType, {
+            hasScripts: skillResult.hasScripts,
+            hasReferences: skillResult.hasReferences,
+            hasAssets: skillResult.hasAssets,
+          });
+        } else {
+          logger.toolOutput('unknown', agentType, message.content);
         }
         continue;
       }
@@ -342,6 +397,11 @@ export async function runUnifiedReviewAgent(
     }
 
     await opencode.closeSession(session.id);
+
+    // Log skill usage summary if no skills were used (warning)
+    if (skillCalls.length === 0) {
+      logger.noSkillCalls(agentType);
+    }
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -440,14 +500,24 @@ export async function runReviewAgents(
 
       const agentIssues: ReviewIssue[] = [];
       let fullResponse = '';
+      const skillCalls: SkillToolCall[] = [];
+
+      const logger = getLogger();
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          if (debug) {
-            console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-            console.log(message.content.trim() ? message.content : '[no tool output]');
-            console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+          // Check if this is a skill tool call
+          const skillResult = parseSkillToolResult(message.content);
+          if (skillResult) {
+            skillCalls.push(skillResult);
+            logger.skillLoaded(skillResult.skillName, agentType, {
+              hasScripts: skillResult.hasScripts,
+              hasReferences: skillResult.hasReferences,
+              hasAssets: skillResult.hasAssets,
+            });
+          } else {
+            logger.toolOutput('unknown', agentType, message.content);
           }
           continue;
         }
@@ -471,6 +541,11 @@ export async function runReviewAgents(
       }
 
       await opencode.closeSession(session.id);
+
+      // Log skill usage summary if no skills were used (warning)
+      if (skillCalls.length === 0) {
+        logger.noSkillCalls(agentType);
+      }
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {

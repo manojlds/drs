@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { tool } from '@opencode-ai/plugin';
 
 type SkillPayload = {
+  _tool: 'drs_skill'; // Tool identifier for log parsing
   skill_name: string;
   instructions: string;
   base_directory: string;
@@ -45,6 +46,7 @@ function readSkill(skillName: string): SkillPayload {
   console.log(`[drs_skill] Loaded skill "${skillName}" from ${skillPath}`);
 
   return {
+    _tool: 'drs_skill',
     skill_name: skillName,
     instructions,
     base_directory: skillDir,
