@@ -317,13 +317,16 @@ export async function runUnifiedReviewAgent(
       if (message.role === 'tool') {
         if (debug) {
           console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-          console.log(message.content);
+          console.log(message.content.trim() ? message.content : '[no tool output]');
           console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
         }
         continue;
       }
 
       if (message.role === 'assistant') {
+        if (!message.content.trim()) {
+          continue;
+        }
         fullResponse += message.content;
         if (debug) {
           console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
@@ -443,13 +446,16 @@ export async function runReviewAgents(
         if (message.role === 'tool') {
           if (debug) {
             console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-            console.log(message.content);
+            console.log(message.content.trim() ? message.content : '[no tool output]');
             console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
           }
           continue;
         }
 
         if (message.role === 'assistant') {
+          if (!message.content.trim()) {
+            continue;
+          }
           fullResponse += message.content;
           if (debug) {
             console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
