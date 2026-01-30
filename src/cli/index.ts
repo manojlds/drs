@@ -13,6 +13,7 @@ import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
 import { loadConfig, type DRSConfig, type ReviewMode } from '../lib/config.js';
+import { configureLogger, type LogFormat } from '../lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,8 +63,16 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
+      // Configure logger based on options
+      configureLogger({
+        level: options.debug ? 'debug' : 'info',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
       const unifiedOverride =
         options.unifiedModel || options.unifiedThreshold
           ? {
@@ -120,8 +129,16 @@ program
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
+      // Configure logger based on options
+      configureLogger({
+        level: options.debug ? 'debug' : 'info',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
       const unifiedOverride =
         options.unifiedModel || options.unifiedThreshold
           ? {
@@ -195,8 +212,16 @@ program
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
+      // Configure logger based on options
+      configureLogger({
+        level: options.debug ? 'debug' : 'info',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
       const unifiedOverride =
         options.unifiedModel || options.unifiedThreshold
           ? {

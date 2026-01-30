@@ -17,6 +17,7 @@ import type { ChangeSummary } from './change-summary.js';
 import type { OpencodeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
+import { getLogger } from './logger.js';
 
 /**
  * File with optional diff content
@@ -359,22 +360,21 @@ export async function runUnifiedReviewAgent(
     let fullResponse = '';
     const skillCalls: SkillToolCall[] = [];
 
+    const logger = getLogger();
+
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
         // Check if this is a skill tool call
         const skillResult = parseSkillToolResult(message.content);
         if (skillResult) {
           skillCalls.push(skillResult);
-          console.log(
-            chalk.cyan(`🧩 [${agentType}] Loaded skill: ${skillResult.skillName}`)
-          );
-          if (debug) {
-            console.log(chalk.gray(`   └── has_scripts: ${skillResult.hasScripts}, has_references: ${skillResult.hasReferences}, has_assets: ${skillResult.hasAssets}`));
-          }
-        } else if (debug) {
-          console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-          console.log(message.content.trim() ? message.content : '[no tool output]');
-          console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+          logger.skillLoaded(skillResult.skillName, agentType, {
+            hasScripts: skillResult.hasScripts,
+            hasReferences: skillResult.hasReferences,
+            hasAssets: skillResult.hasAssets,
+          });
+        } else {
+          logger.toolOutput('unknown', agentType, message.content);
         }
         continue;
       }
@@ -400,8 +400,8 @@ export async function runUnifiedReviewAgent(
     await opencode.closeSession(session.id);
 
     // Log skill usage summary if no skills were used (warning)
-    if (skillCalls.length === 0 && debug) {
-      console.log(chalk.yellow(`⚠️  [${agentType}] Warning: No skill tool calls detected during review`));
+    if (skillCalls.length === 0) {
+      logger.noSkillCalls(agentType);
     }
 
     try {
@@ -503,6 +503,8 @@ export async function runReviewAgents(
       let fullResponse = '';
       const skillCalls: SkillToolCall[] = [];
 
+      const logger = getLogger();
+
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
@@ -510,16 +512,13 @@ export async function runReviewAgents(
           const skillResult = parseSkillToolResult(message.content);
           if (skillResult) {
             skillCalls.push(skillResult);
-            console.log(
-              chalk.cyan(`🧩 [${agentType}] Loaded skill: ${skillResult.skillName}`)
-            );
-            if (debug) {
-              console.log(chalk.gray(`   └── has_scripts: ${skillResult.hasScripts}, has_references: ${skillResult.hasReferences}, has_assets: ${skillResult.hasAssets}`));
-            }
-          } else if (debug) {
-            console.log(chalk.gray(`┌── DEBUG: Tool output from ${agentName}`));
-            console.log(message.content.trim() ? message.content : '[no tool output]');
-            console.log(chalk.gray(`└── End tool output for ${agentName}\n`));
+            logger.skillLoaded(skillResult.skillName, agentType, {
+              hasScripts: skillResult.hasScripts,
+              hasReferences: skillResult.hasReferences,
+              hasAssets: skillResult.hasAssets,
+            });
+          } else {
+            logger.toolOutput('unknown', agentType, message.content);
           }
           continue;
         }
@@ -545,8 +544,8 @@ export async function runReviewAgents(
       await opencode.closeSession(session.id);
 
       // Log skill usage summary if no skills were used (warning)
-      if (skillCalls.length === 0 && debug) {
-        console.log(chalk.yellow(`⚠️  [${agentType}] Warning: No skill tool calls detected during review`));
+      if (skillCalls.length === 0) {
+        logger.noSkillCalls(agentType);
       }
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
