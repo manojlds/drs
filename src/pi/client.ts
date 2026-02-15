@@ -6,8 +6,10 @@
  */
 
 import { Agent } from '@mariozechner/pi-agent-core';
+import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
 import { getEnvApiKey } from '@mariozechner/pi-ai/dist/env-api-keys.js';
+import { readTool, bashTool } from '@mariozechner/coding-agent';
 import { readFileSync } from 'fs';
 import type { DRSConfig } from '../lib/config.js';
 import { writeJsonOutputTool } from './tools/write-json-output.js';
@@ -138,12 +140,21 @@ export class PiClient {
       );
     }
 
+    // Build tool list: built-in coding tools + DRS write_json_output
+    // The coding-agent tools use a different AgentTool type internally,
+    // but are structurally compatible with pi-agent-core's AgentTool.
+    const tools: AgentTool<any>[] = [
+      readTool as unknown as AgentTool<any>,
+      bashTool as unknown as AgentTool<any>,
+      writeJsonOutputTool,
+    ];
+
     // Create the agent with API key resolution from environment variables
     const agent = new Agent({
       initialState: {
         systemPrompt,
         model,
-        tools: [writeJsonOutputTool],
+        tools,
       },
       getApiKey: async (providerName: string) => getEnvApiKey(providerName),
     });
