@@ -7,6 +7,7 @@
 
 import { Agent } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
+import { getEnvApiKey } from '@mariozechner/pi-ai/dist/env-api-keys.js';
 import { readFileSync } from 'fs';
 import type { DRSConfig } from '../lib/config.js';
 import { writeJsonOutputTool } from './tools/write-json-output.js';
@@ -137,13 +138,14 @@ export class PiClient {
       );
     }
 
-    // Create the agent
+    // Create the agent with API key resolution from environment variables
     const agent = new Agent({
       initialState: {
         systemPrompt,
         model,
         tools: [writeJsonOutputTool],
       },
+      getApiKey: async (providerName: string) => getEnvApiKey(providerName),
     });
 
     // Store session (prompt is deferred to streamMessages)
