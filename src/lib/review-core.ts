@@ -50,6 +50,39 @@ export interface AgentResult {
   issues: ReviewIssue[];
 }
 
+/**
+ * Log a helpful hint when an agent fails due to common model/auth issues
+ */
+function logModelError(errorMsg: string): void {
+  const lower = errorMsg.toLowerCase();
+  if (
+    lower.includes('api key') ||
+    lower.includes('apikey') ||
+    lower.includes('unauthorized') ||
+    lower.includes('401') ||
+    lower.includes('authentication') ||
+    lower.includes('auth')
+  ) {
+    console.error(
+      chalk.yellow(
+        '  💡 Hint: This looks like a missing or invalid API key.\n' +
+          '     Set the appropriate environment variable (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY).\n'
+      )
+    );
+  } else if (
+    lower.includes('failed to resolve model') ||
+    lower.includes('model') ||
+    lower.includes('not found')
+  ) {
+    console.error(
+      chalk.yellow(
+        '  💡 Hint: The configured model could not be resolved.\n' +
+          '     Check your model setting in .drs/drs.config.yaml (format: "provider/model-id").\n'
+      )
+    );
+  }
+}
+
 const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
   LOW: 1,
   MEDIUM: 2,
@@ -364,7 +397,12 @@ export async function runUnifiedReviewAgent(
       agentResults: [{ agentType, success: true, issues: agentIssues }],
     };
   } catch (error) {
-    console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`✗ unified-reviewer agent failed: ${errorMsg}`));
+    if (error instanceof Error && error.stack && debug) {
+      console.error(chalk.dim(error.stack));
+    }
+    logModelError(errorMsg);
     return {
       issues: [],
       summary: calculateSummary(filteredFiles.length, []),
@@ -472,7 +510,12 @@ export async function runReviewAgents(
       }
       agentResults.push({ agentType, success: true, issues: agentIssues });
     } catch (error) {
-      console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`✗ ${agentType} agent failed: ${errorMsg}`));
+      if (error instanceof Error && error.stack && debug) {
+        console.error(chalk.dim(error.stack));
+      }
+      logModelError(errorMsg);
       agentResults.push({ agentType, success: false, issues: [] });
     }
   }
