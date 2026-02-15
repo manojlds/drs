@@ -86,7 +86,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   review: {
     agents: ['security', 'quality', 'style', 'performance', 'documentation'],
     default: {
-      model: process.env.REVIEW_DEFAULT_MODEL || 'minimax/minimax-m2.5-free',
+      model: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
       skills: [],
     },
     ignorePatterns: [

@@ -108,7 +108,8 @@ export class PiClient {
     const sessionId = `pi-session-${++this.sessionCounter}-${Date.now()}`;
 
     // Resolve model for this agent
-    const modelStr = this.config.modelOverrides?.[options.agent] || 'minimax/minimax-m2.5-free';
+    const modelStr =
+      this.config.modelOverrides?.[options.agent] || 'anthropic/claude-sonnet-4-5-20250929';
     const { provider, modelId } = parseModelString(modelStr);
 
     if (this.config.debug) {
