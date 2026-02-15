@@ -156,7 +156,15 @@ export class PiClient {
         model,
         tools,
       },
-      getApiKey: async (providerName: string) => getEnvApiKey(providerName),
+      getApiKey: async (providerName: string) => {
+        const key = getEnvApiKey(providerName);
+        if (key) return key;
+        // Fallback: the CI secret may still be named OPENCODE_ZEN_API_KEY
+        if (providerName === 'opencode') {
+          return process.env.OPENCODE_ZEN_API_KEY;
+        }
+        return undefined;
+      },
     });
 
     // Store session (prompt is deferred to streamMessages)
