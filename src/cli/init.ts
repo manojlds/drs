@@ -70,17 +70,9 @@ function generateConfigYaml(config: InitConfig): string {
   // Add custom provider if configured
   if (config.useCustomProvider && config.provider) {
     yaml += `# Custom AI Provider
-opencode:
-  provider:
-    ${config.provider.name}:
-      npm: "${config.provider.npm}"
-      name: "${config.provider.name}"
-      options:
-        baseURL: "${config.provider.baseURL}"
-        apiKey: "{env:${config.provider.apiKeyEnvVar}}"
-      models:
-        ${config.provider.modelId}:
-          name: "${config.provider.modelDisplayName}"
+# Note: pi-mono reads API keys from environment variables automatically.
+# Set ${config.provider.apiKeyEnvVar}=your-key in your environment.
+# Base URL: ${config.provider.baseURL}
 
 `;
   }

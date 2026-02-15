@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
-import { builtInAgentPath } from './opencode-paths.js';
+import { builtInAgentPath } from './paths.js';
 
 export interface AgentDefinition {
   name: string;

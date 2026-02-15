@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   filterIgnoredFiles,
-  connectToOpenCode,
+  connectToPi,
   executeReview,
   type ReviewSource,
 } from './review-orchestrator.js';
@@ -32,11 +32,11 @@ vi.mock('./config.js', async () => {
 });
 
 // Store mock client instance for verification
-let mockOpencodeClient: any;
+let mockPiClient: any;
 
-vi.mock('../opencode/client.js', () => ({
-  createOpencodeClientInstance: vi.fn(async () => {
-    mockOpencodeClient = {
+vi.mock('../pi/client.js', () => ({
+  createPiClientInstance: vi.fn(async () => {
+    mockPiClient = {
       createSession: vi.fn(async () => ({ id: 'session-1' })),
       streamMessages: vi.fn(async function* () {
         yield {
@@ -59,7 +59,7 @@ vi.mock('../opencode/client.js', () => ({
       closeSession: vi.fn(async () => {}),
       shutdown: vi.fn(async () => {}),
     };
-    return mockOpencodeClient;
+    return mockPiClient;
   }),
 }));
 
@@ -151,7 +151,7 @@ describe('review-orchestrator', () => {
 
     it('should return all files when no ignore patterns', () => {
       const config = {
-        opencode: {},
+        pi: {},
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: {
@@ -194,16 +194,14 @@ describe('review-orchestrator', () => {
     });
   });
 
-  describe('connectToOpenCode', () => {
-    it('should connect to OpenCode server successfully', async () => {
+  describe('connectToPi', () => {
+    it('should initialize Pi agent successfully', async () => {
       const config: DRSConfig = {
-        opencode: {
-          serverUrl: 'http://localhost:3000',
-        },
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      const client = await connectToOpenCode(config, '/test/dir');
+      const client = await connectToPi(config, '/test/dir');
 
       expect(client).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -213,22 +211,22 @@ describe('review-orchestrator', () => {
     });
 
     it('should handle connection failure', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
-      vi.mocked(createOpencodeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
+      const { createPiClientInstance } = await import('../pi/client.js');
+      vi.mocked(createPiClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await expect(connectToOpenCode(config)).rejects.toThrow('Connection failed');
+      await expect(connectToPi(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to connect to OpenCode server')
+        expect.stringContaining('Failed to initialize Pi agent')
       );
     });
 
-    it('should pass model overrides to OpenCode client', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+    it('should pass model overrides to Pi client', async () => {
+      const { createPiClientInstance } = await import('../pi/client.js');
       const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
 
       vi.mocked(getModelOverrides).mockReturnValue({
@@ -239,36 +237,34 @@ describe('review-orchestrator', () => {
       });
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config, '/test/dir', { debug: true });
+      await connectToPi(config, '/test/dir', { debug: true });
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith({
-        baseUrl: undefined,
+      expect(createPiClientInstance).toHaveBeenCalledWith({
         config,
         directory: '/test/dir',
         modelOverrides: {
           'review/security': 'claude-opus-4',
           'review/unified-reviewer': 'claude-sonnet-4',
         },
-        provider: undefined,
         debug: true,
       });
     });
 
     it('should use process.cwd() when no working directory provided', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+      const { createPiClientInstance } = await import('../pi/client.js');
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config);
+      await connectToPi(config);
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith(
+      expect(createPiClientInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           config,
           directory: process.cwd(),
@@ -282,7 +278,7 @@ describe('review-orchestrator', () => {
 
     beforeEach(() => {
       mockConfig = {
-        opencode: {},
+        pi: {},
         review: {
           agents: ['security', 'quality'],
           ignorePatterns: ['*.test.ts'],
@@ -472,7 +468,7 @@ describe('review-orchestrator', () => {
       );
     });
 
-    it('should shutdown OpenCode client after review', async () => {
+    it('should shutdown Pi client after review', async () => {
       const source: ReviewSource = {
         name: 'Test review',
         files: ['src/app.ts'],
@@ -482,10 +478,10 @@ describe('review-orchestrator', () => {
       await executeReview(mockConfig, source);
 
       // Verify shutdown was called on the mock client
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockPiClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode client even on error', async () => {
+    it('should shutdown Pi client even on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Review failed'));
 
@@ -498,7 +494,7 @@ describe('review-orchestrator', () => {
       await expect(executeReview(mockConfig, source)).rejects.toThrow('Review failed');
 
       // Verify shutdown was called even on error
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockPiClient.shutdown).toHaveBeenCalled();
     });
 
     it('should handle "All review agents failed" error specially', async () => {

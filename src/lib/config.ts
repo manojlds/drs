@@ -16,25 +16,9 @@ export interface AgentConfig {
  */
 export type ModelOverrides = Record<string, string>;
 
-/**
- * Custom OpenAI-compatible provider configuration
- */
-export interface CustomProvider {
-  npm: string;
-  name: string;
-  options: {
-    baseURL: string;
-    apiKey: string;
-  };
-  models: Record<string, { name: string }>;
-}
-
 export interface DRSConfig {
-  // OpenCode configuration
-  opencode: {
-    serverUrl?: string;
-    provider?: Record<string, CustomProvider>;
-  };
+  // Pi agent configuration
+  pi: Record<string, never>;
 
   // GitLab configuration
   gitlab: {
@@ -53,7 +37,6 @@ export interface DRSConfig {
     default?: {
       model?: string;
       skills?: string[];
-      skillsPromptFormat?: 'text' | 'xml';
     };
     defaultModel?: string;
     ignorePatterns: string[];
@@ -92,9 +75,7 @@ export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
 export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
-  opencode: {
-    serverUrl: process.env.OPENCODE_SERVER || undefined,
-  },
+  pi: {},
   gitlab: {
     url: process.env.GITLAB_URL || 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN || '',
@@ -166,9 +147,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   // Apply environment variable overrides
-  if (process.env.OPENCODE_SERVER) {
-    config.opencode.serverUrl = process.env.OPENCODE_SERVER;
-  }
   if (process.env.GITLAB_URL) {
     config.gitlab.url = process.env.GITLAB_URL;
   }
@@ -245,7 +223,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
  */
 function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
-    opencode: mergeSection(base.opencode, override.opencode),
+    pi: mergeSection(base.pi, override.pi),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),

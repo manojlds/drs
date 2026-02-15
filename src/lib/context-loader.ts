@@ -74,8 +74,7 @@ export function buildReviewPrompt(
   basePrompt: string,
   reviewLabel: string,
   changedFiles: string[],
-  projectRoot: string = process.cwd(),
-  skillPrompt?: string | null
+  projectRoot: string = process.cwd()
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentName, projectRoot);
@@ -85,10 +84,6 @@ export function buildReviewPrompt(
   // If agent is fully overridden, use that instead of base prompt
   if (agentContext.source === 'override' && agentContext.agentDefinition) {
     prompt = agentContext.agentDefinition;
-
-    if (skillPrompt) {
-      prompt += `\n\n${skillPrompt}\n`;
-    }
 
     // Add task details
     prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
@@ -114,10 +109,6 @@ export function buildReviewPrompt(
   if (agentContext.agentContext) {
     prompt += `# ${agentName.charAt(0).toUpperCase() + agentName.slice(1)} Agent Context\n\n`;
     prompt += `${agentContext.agentContext}\n\n`;
-  }
-
-  if (skillPrompt) {
-    prompt += `${skillPrompt}\n\n`;
   }
 
   // 3. Base agent instructions

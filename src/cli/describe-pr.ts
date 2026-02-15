@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
-import { createOpencodeClientInstance } from '../opencode/client.js';
+import { createPiClientInstance } from '../pi/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
 import { loadGlobalContext } from '../lib/context-loader.js';
 import {
@@ -70,13 +70,11 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Initialize OpenCode client with model overrides
+  // Initialize Pi client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
-  const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl ?? undefined,
+  const opencode = await createPiClientInstance({
     directory: process.cwd(),
     modelOverrides,
-    provider: config.opencode.provider,
     debug: options.debug,
   });
 

@@ -10,7 +10,7 @@ import {
   type AgentReviewResult,
 } from './review-core.js';
 import type { DRSConfig } from './config.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { PiClient } from '../pi/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', () => ({
@@ -75,7 +75,7 @@ vi.mock('./comment-formatter.js', () => ({
   })),
 }));
 
-vi.mock('../opencode/agent-loader.js', () => ({
+vi.mock('../pi/agent-loader.js', () => ({
   loadReviewAgents: vi.fn(() => [
     { name: 'review/security', description: 'Security review' },
     { name: 'review/quality', description: 'Code quality review' },
@@ -164,7 +164,7 @@ describe('review-core', () => {
   });
 
   describe('runUnifiedReviewAgent', () => {
-    let mockOpencode: OpencodeClient;
+    let mockOpencode: PiClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
@@ -302,7 +302,7 @@ describe('review-core', () => {
   });
 
   describe('runReviewAgents', () => {
-    let mockOpencode: OpencodeClient;
+    let mockOpencode: PiClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
@@ -424,7 +424,7 @@ describe('review-core', () => {
   });
 
   describe('runReviewPipeline', () => {
-    let mockOpencode: OpencodeClient;
+    let mockOpencode: PiClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
