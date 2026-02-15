@@ -42,6 +42,7 @@ interface ActiveSession {
   id: string;
   agent: Agent;
   agentName: string;
+  _message: string;
 }
 
 /**
@@ -145,31 +146,13 @@ export class PiClient {
       },
     });
 
-    // Store session
+    // Store session (prompt is deferred to streamMessages)
     this.sessions.set(sessionId, {
       id: sessionId,
       agent,
       agentName: options.agent,
+      _message: options.message,
     });
-
-    // Send the initial prompt (don't await — we'll collect via streamMessages)
-    // Attach a no-op catch to prevent unhandled promise rejection if the prompt
-    // fails before streamMessages is called (e.g., missing API key).
-    const promptPromise = agent.prompt(options.message);
-    let promptError: Error | null = null;
-    let promptErrorCallback: (() => void) | null = null;
-    promptPromise.catch((err) => {
-      promptError = err instanceof Error ? err : new Error(String(err));
-      promptErrorCallback?.();
-    });
-
-    // Store the promise and error ref so streamMessages can access them
-    const sessionEntry = this.sessions.get(sessionId) as any;
-    sessionEntry._promptPromise = promptPromise;
-    sessionEntry._getPromptError = () => promptError;
-    sessionEntry._setPromptErrorCallback = (cb: () => void) => {
-      promptErrorCallback = cb;
-    };
 
     return {
       id: sessionId,
@@ -188,19 +171,16 @@ export class PiClient {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    const { agent } = session;
-    const promptPromise = (session as any)._promptPromise as Promise<void>;
-    const getPromptError = (session as any)._getPromptError as () => Error | null;
-    const setPromptErrorCallback = (session as any)._setPromptErrorCallback as (
-      cb: () => void
-    ) => void;
+    const { agent, _message: message } = session;
 
     // Collect messages via events
     const pendingMessages: SessionMessage[] = [];
     let resolveWaiting: (() => void) | null = null;
     let done = false;
+    let promptError: Error | null = null;
     let msgCounter = 0;
 
+    // Subscribe to events BEFORE sending the prompt
     const unsubscribe = agent.subscribe((event) => {
       if (event.type === 'message_end') {
         const msg = event.message;
@@ -209,7 +189,6 @@ export class PiClient {
 
         if (msg.role === 'assistant') {
           role = 'assistant';
-          // Extract text content from assistant message
           if (Array.isArray(msg.content)) {
             content = msg.content
               .filter((c: any) => c.type === 'text')
@@ -242,7 +221,6 @@ export class PiClient {
       }
 
       if (event.type === 'tool_execution_end') {
-        // Yield tool results so review-core.ts can see them
         let content = '';
         const result = event.result;
         if (result && typeof result === 'object' && Array.isArray(result.content)) {
@@ -271,13 +249,30 @@ export class PiClient {
       }
     });
 
+    // pi-mono's agentLoop uses a fire-and-forget async IIFE internally.
+    // If the LLM provider throws (e.g., missing API key), the error becomes
+    // an unhandled rejection that crashes Node.js. We install a temporary
+    // process handler to capture these errors gracefully.
+    const unhandledHandler = (reason: unknown) => {
+      const err = reason instanceof Error ? reason : new Error(String(reason));
+      if (!promptError) {
+        promptError = err;
+        done = true;
+        resolveWaiting?.();
+      }
+    };
+    process.on('unhandledRejection', unhandledHandler);
+
+    const promptPromise = agent.prompt(message).catch((err) => {
+      promptError = err instanceof Error ? err : new Error(String(err));
+      done = true;
+      resolveWaiting?.();
+    });
+
     try {
-      // Yield messages as they come in
       while (true) {
-        // Check if the prompt errored (e.g., missing API key)
-        const promptErr = getPromptError();
-        if (promptErr) {
-          throw promptErr;
+        if (promptError) {
+          throw promptError;
         }
 
         if (pendingMessages.length > 0) {
@@ -289,11 +284,14 @@ export class PiClient {
           break;
         }
 
-        // Wait for next message, completion, or prompt error
         await new Promise<void>((resolve) => {
           resolveWaiting = resolve;
-          setPromptErrorCallback(resolve);
         });
+      }
+
+      // Check for error one more time after loop exits
+      if (promptError) {
+        throw promptError;
       }
 
       // Yield any remaining messages
@@ -301,14 +299,9 @@ export class PiClient {
         yield pendingMessages.shift()!;
       }
 
-      // Make sure the prompt has completed (re-throws if it failed)
-      await promptPromise.catch(() => {
-        // Already handled via getPromptError above; if we get here
-        // and there's an error, throw it now
-        const err = getPromptError();
-        if (err) throw err;
-      });
+      await promptPromise;
     } finally {
+      process.removeListener('unhandledRejection', unhandledHandler);
       unsubscribe();
     }
   }
