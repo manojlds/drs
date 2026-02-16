@@ -8,8 +8,11 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { FileWithDiff } from './review-core.js';
-import { buildDescribeInstructions } from './describe-core.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import {
+  buildDescribeInstructions,
+  buildDescribeInstructionsFromSummaries,
+} from './describe-core.js';
+import { compressFilesWithDiffs } from './context-compression.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
 import {
   displayDescription,
@@ -20,6 +23,7 @@ import {
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
 import type { PiClient } from '../pi/client.js';
+import { collectFileChanges } from '../pi/subagent-adapter.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -51,14 +55,16 @@ export async function runDescribeIfEnabled(
   console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
 
   const label = `${detectPlatform(pr)} #${pr.number}`;
-  const compression = compressFilesWithDiffs(files, config.contextCompression);
-  const compressionSummary = formatCompressionSummary(compression);
 
-  if (compressionSummary) {
-    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
-  }
-
-  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
+  const instructions = await buildDescribeInstructionsWithSubagents(
+    opencode,
+    label,
+    files,
+    pr,
+    workingDir,
+    debug,
+    config.describe?.concurrency
+  );
 
   if (debug) {
     console.log(chalk.yellow('\n=== Describe Agent Instructions ==='));
@@ -104,4 +110,42 @@ export async function runDescribeIfEnabled(
   }
 
   return description;
+}
+
+/**
+ * Build describe instructions using subagent-based file analysis.
+ *
+ * Spawns file-analyzer subagents in parallel to collect per-file change
+ * summaries, then builds instructions from those summaries instead of
+ * embedding raw diffs. This avoids context compression / token budget
+ * trimming and provides full coverage of all changed files.
+ */
+async function buildDescribeInstructionsWithSubagents(
+  opencode: PiClient,
+  label: string,
+  files: FileWithDiff[],
+  pr: PullRequest,
+  workingDir: string,
+  debug?: boolean,
+  concurrency?: number
+): Promise<string> {
+  const filenames = files.map((f) => f.filename);
+  const diffCommand = `${pr.targetBranch}...${pr.sourceBranch}`;
+
+  const result = await collectFileChanges(opencode, filenames, diffCommand, workingDir, {
+    concurrency,
+    debug,
+  });
+
+  if (result.filesAnalyzed === 0) {
+    console.log(
+      chalk.yellow(
+        '⚠ No files were successfully analyzed by subagents, falling back to direct mode.\n'
+      )
+    );
+    const compression = compressFilesWithDiffs(files, {});
+    return buildDescribeInstructions(label, compression.files);
+  }
+
+  return buildDescribeInstructionsFromSummaries(label, result.combinedMarkdown);
 }

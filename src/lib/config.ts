@@ -59,6 +59,7 @@ export interface DRSConfig {
   describe?: {
     model?: string;
     includeProjectContext?: boolean;
+    concurrency?: number;
   };
 
   // Context compression (diff size management)
@@ -117,6 +118,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
   describe: {
     includeProjectContext: true,
+    concurrency: 1,
   },
 };
 
@@ -190,7 +192,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (process.env.REVIEW_POST_ERROR_COMMENT === 'true') {
     config.review.postErrorComment = true;
   }
-
   // Validate required fields
   if (!getDefaultModel(config)) {
     throw new Error(

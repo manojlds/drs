@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildDescribeInstructions } from './describe-core.js';
+import {
+  buildDescribeInstructions,
+  buildDescribeInstructionsFromSummaries,
+} from './describe-core.js';
 import type { FileWithDiff } from './review-core.js';
 
 describe('describe-core', () => {
@@ -255,6 +258,60 @@ describe('describe-core', () => {
 
       const instructionsMR = buildDescribeInstructions('MR !456', files);
       expect(instructionsMR).toContain('MR !456');
+    });
+  });
+
+  describe('buildDescribeInstructionsFromSummaries', () => {
+    it('should build instructions with file summaries markdown', () => {
+      const summariesMarkdown = '## src/app.ts\n\nAdded new endpoint for users.';
+      const instructions = buildDescribeInstructionsFromSummaries('PR #123', summariesMarkdown);
+
+      expect(instructions).toContain('PR #123');
+      expect(instructions).toContain('Per-File Change Summaries');
+    });
+
+    it('should include the summaries markdown in the output', () => {
+      const summariesMarkdown =
+        '## src/app.ts\n\nAdded endpoint.\n\n---\n\n## src/db.ts\n\nNew migration.';
+      const instructions = buildDescribeInstructionsFromSummaries('PR #123', summariesMarkdown);
+
+      expect(instructions).toContain('Added endpoint.');
+      expect(instructions).toContain('New migration.');
+    });
+
+    it('should include output schema requirements', () => {
+      const instructions = buildDescribeInstructionsFromSummaries('PR #123', 'some summary');
+
+      expect(instructions).toContain('write_json_output');
+      expect(instructions).toContain('describe_output');
+      expect(instructions).toContain('type');
+      expect(instructions).toContain('title');
+      expect(instructions).toContain('summary');
+      expect(instructions).toContain('walkthrough');
+      expect(instructions).toContain('labels');
+      expect(instructions).toContain('recommendations');
+      expect(instructions).toContain('changeType');
+      expect(instructions).toContain('semanticLabel');
+      expect(instructions).toContain('significance');
+    });
+
+    it('should include project context when provided', () => {
+      const instructions = buildDescribeInstructionsFromSummaries(
+        'PR #123',
+        'some summary',
+        'This is a Node.js project using Express.'
+      );
+
+      expect(instructions).toContain('Project Context');
+      expect(instructions).toContain('This is a Node.js project using Express.');
+    });
+
+    it('should handle empty summaries', () => {
+      const instructions = buildDescribeInstructionsFromSummaries('PR #123', '');
+
+      expect(instructions).toContain('PR #123');
+      expect(instructions).toContain('Per-File Change Summaries');
+      expect(instructions).toContain('write_json_output');
     });
   });
 });
