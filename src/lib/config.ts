@@ -424,6 +424,7 @@ export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
 
   if (describerModel) {
     overrides['describe/pr-describer'] = describerModel;
+    overrides['describe/file-analyzer'] = describerModel;
   }
 
   return overrides;
