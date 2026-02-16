@@ -24,9 +24,15 @@ export interface CollectFileChangesResult {
 }
 
 const FILE_ANALYZER_AGENT = 'describe/file-analyzer';
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 2000;
 
 function sanitizeFilename(filepath: string): string {
   return filepath.replace(/\//g, '__').replace(/^\.+/, '');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function analyzeFile(
@@ -51,28 +57,42 @@ async function analyzeFile(
     console.error(chalk.gray(`  📄 Analyzing: ${filename}`));
   }
 
-  const session = await opencode.createSession({
-    agent: FILE_ANALYZER_AGENT,
-    message,
-  });
-
-  try {
-    const messages: SessionMessage[] = [];
-    for await (const msg of opencode.streamMessages(session.id)) {
-      messages.push(msg);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = RETRY_DELAY_MS * attempt;
+      console.error(
+        chalk.gray(`  ↻ Retry ${attempt}/${MAX_RETRIES} for ${filename} (waiting ${delayMs}ms)`)
+      );
+      await delay(delayMs);
     }
 
-    const assistantMessages = messages.filter((m) => m.role === 'assistant');
-    const summary = assistantMessages.map((m) => m.content).join('\n\n');
+    const session = await opencode.createSession({
+      agent: FILE_ANALYZER_AGENT,
+      message,
+    });
 
-    if (!summary.trim()) {
-      return { filename, summary: '', success: false };
+    try {
+      const messages: SessionMessage[] = [];
+      for await (const msg of opencode.streamMessages(session.id)) {
+        messages.push(msg);
+      }
+
+      const assistantMessages = messages.filter((m) => m.role === 'assistant');
+      const summary = assistantMessages.map((m) => m.content).join('\n\n');
+
+      if (summary.trim()) {
+        return { filename, summary: summary.trim(), success: true };
+      }
+
+      if (debug) {
+        console.error(chalk.yellow(`  ⚠ Empty response for ${filename} (attempt ${attempt + 1})`));
+      }
+    } finally {
+      await opencode.closeSession(session.id);
     }
-
-    return { filename, summary: summary.trim(), success: true };
-  } finally {
-    await opencode.closeSession(session.id);
   }
+
+  return { filename, summary: '', success: false };
 }
 
 export async function collectFileChanges(

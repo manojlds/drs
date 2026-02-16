@@ -81,6 +81,7 @@ describe('subagent-adapter', () => {
     });
 
     it('should handle failed analysis when agent returns empty content', async () => {
+      vi.useFakeTimers();
       const mockClient = createMockClient();
 
       mockClient.createSession.mockResolvedValue({
@@ -91,18 +92,26 @@ describe('subagent-adapter', () => {
       mockClient.streamMessages.mockImplementation(() => mockStream([]));
       mockClient.closeSession.mockResolvedValue(undefined);
 
-      const result = await collectFileChanges(
+      const resultPromise = collectFileChanges(
         mockClient,
         ['src/empty.ts'],
         'HEAD~1',
         '/tmp/project'
       );
 
+      // Advance timers past retry delays
+      await vi.advanceTimersByTimeAsync(10000);
+      const result = await resultPromise;
+
+      // Should have retried (1 initial + 2 retries = 3 sessions)
+      expect(mockClient.createSession).toHaveBeenCalledTimes(3);
       expect(result.summaries).toHaveLength(1);
       expect(result.summaries[0].success).toBe(false);
       expect(result.summaries[0].summary).toBe('');
       expect(result.filesFailed).toBe(1);
       expect(result.filesAnalyzed).toBe(0);
+
+      vi.useRealTimers();
     });
 
     it('should handle agent errors (promise rejection)', async () => {
@@ -141,36 +150,48 @@ describe('subagent-adapter', () => {
     });
 
     it('should return correct combined markdown and stats', async () => {
+      vi.useFakeTimers();
       const mockClient = createMockClient();
-      let callCount = 0;
 
-      mockClient.createSession.mockResolvedValue({
-        id: 'sess-1',
-        agent: 'describe/file-analyzer',
-        createdAt: new Date(),
+      // Track which file each createSession call is for
+      const sessionFiles: string[] = [];
+      mockClient.createSession.mockImplementation((opts: any) => {
+        // Extract filename from the message
+        const match = (opts.message as string).match(/`([^`]+)`/);
+        sessionFiles.push(match?.[1] ?? '');
+        return Promise.resolve({
+          id: `sess-${sessionFiles.length}`,
+          agent: 'describe/file-analyzer',
+          createdAt: new Date(),
+        });
       });
       mockClient.streamMessages.mockImplementation(() => {
-        callCount++;
-        if (callCount === 2) {
+        const currentFile = sessionFiles[sessionFiles.length - 1];
+        // b.ts always returns empty (simulates persistent failure)
+        if (currentFile === 'b.ts') {
           return mockStream([]);
         }
-        return mockStream([{ role: 'assistant', content: `Summary ${callCount}` }]);
+        return mockStream([{ role: 'assistant', content: `Summary for ${currentFile}` }]);
       });
       mockClient.closeSession.mockResolvedValue(undefined);
 
-      const result = await collectFileChanges(
+      const resultPromise = collectFileChanges(
         mockClient,
         ['a.ts', 'b.ts', 'c.ts'],
         'HEAD~1',
         '/tmp/project'
       );
 
+      await vi.advanceTimersByTimeAsync(20000);
+      const result = await resultPromise;
+
       expect(result.filesAnalyzed).toBe(2);
       expect(result.filesFailed).toBe(1);
-      expect(result.combinedMarkdown).toContain('Summary 1');
-      expect(result.combinedMarkdown).toContain('Summary 3');
-      expect(result.combinedMarkdown).not.toContain('Summary 2');
+      expect(result.combinedMarkdown).toContain('Summary for a.ts');
+      expect(result.combinedMarkdown).toContain('Summary for c.ts');
       expect(result.combinedMarkdown).toContain('---');
+
+      vi.useRealTimers();
     });
 
     it('should sanitize filenames correctly', async () => {
