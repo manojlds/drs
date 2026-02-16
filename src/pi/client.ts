@@ -12,9 +12,10 @@ import {
   type AgentSession,
   AuthStorage,
   createAgentSession,
+  createReadTool,
+  createBashTool,
+  DefaultResourceLoader,
   ModelRegistry,
-  readTool,
-  bashTool,
   SessionManager,
   SettingsManager,
 } from '@mariozechner/pi-coding-agent';
@@ -106,7 +107,7 @@ function logAgentEvent(event: AgentEvent, agentName: string): void {
       const msg = event.message as any;
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
         if (msg.content.length === 0) {
-          console.error(chalk.gray('│   📝 Assistant message: (empty content array)'));
+          console.error(chalk.gray('│   📝 Assistant message: (no content blocks)'));
         }
         for (const block of msg.content) {
           const blockType = block.type;
@@ -272,12 +273,29 @@ export class PiClient {
 
     const modelRegistry = new ModelRegistry(authStorage);
 
+    // Use DefaultResourceLoader with systemPromptOverride to properly integrate
+    // the agent's system prompt with the SDK's built-in prompt (tool descriptions, etc.)
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: projectDir,
+      systemPromptOverride: () => systemPrompt || undefined,
+      appendSystemPromptOverride: () => [],
+      noSkills: true,
+      noExtensions: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      agentsFilesOverride: () => ({ agentsFiles: [] }),
+    });
+    await resourceLoader.reload();
+
     // Create the agent session via the SDK
+    // Use factory functions for tools to ensure correct cwd path resolution
     const { session: agentSession } = await createAgentSession({
+      cwd: projectDir,
       model,
       thinkingLevel: 'off',
-      tools: [readTool, bashTool],
+      tools: [createReadTool(projectDir), createBashTool(projectDir)],
       customTools: [createWriteJsonOutputTool(projectDir)],
+      resourceLoader,
       sessionManager: SessionManager.inMemory(),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
@@ -286,9 +304,6 @@ export class PiClient {
       authStorage,
       modelRegistry,
     });
-
-    // Set the system prompt from the agent definition
-    agentSession.agent.setSystemPrompt(systemPrompt);
 
     // Store session (prompt is deferred to streamMessages)
     this.sessions.set(sessionId, {
