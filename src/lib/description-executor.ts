@@ -13,6 +13,7 @@ import {
   buildDescribeInstructionsFromSummaries,
 } from './describe-core.js';
 import { compressFilesWithDiffs } from './context-compression.js';
+import { getCanonicalDiffCommand } from './repository-validator.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
 import {
   displayDescription,
@@ -130,7 +131,13 @@ async function buildDescribeInstructionsWithSubagents(
   concurrency?: number
 ): Promise<string> {
   const filenames = files.map((f) => f.filename);
-  const diffCommand = `${pr.targetBranch}...${pr.sourceBranch}`;
+
+  // Use the same diff command logic as the review pipeline, which handles
+  // GitHub Actions (GITHUB_BASE_REF/GITHUB_HEAD_REF), GitLab CI, and
+  // direct PR data with origin/ prefixes.
+  const canonicalCommand = getCanonicalDiffCommand(pr, {});
+  // Strip "git diff " prefix and " -- <file>" suffix to get just the ref args
+  const diffCommand = canonicalCommand.replace(/^git diff\s+/, '').replace(/\s+--\s+<file>$/, '');
 
   const result = await collectFileChanges(opencode, filenames, diffCommand, workingDir, {
     concurrency,
