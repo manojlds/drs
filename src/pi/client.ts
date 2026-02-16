@@ -6,13 +6,14 @@
  */
 
 import { Agent } from '@mariozechner/pi-agent-core';
-import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
 import { getEnvApiKey } from '@mariozechner/pi-ai/dist/env-api-keys.js';
 import { readTool, bashTool } from '@mariozechner/coding-agent';
+import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import type { DRSConfig } from '../lib/config.js';
-import { writeJsonOutputTool } from './tools/write-json-output.js';
+import { createWriteJsonOutputTool } from './tools/write-json-output.js';
 import { getAgent } from './agent-loader.js';
 
 export interface PiClientConfig {
@@ -78,6 +79,101 @@ function loadSystemPrompt(agentPath: string): string {
 }
 
 /**
+ * Log agent events in debug mode for full visibility into agent turns,
+ * tool calls, and responses.
+ */
+function logAgentEvent(event: AgentEvent, agentName: string): void {
+  switch (event.type) {
+    case 'agent_start':
+      console.error(chalk.gray(`\n┌── 🚀 Agent started: ${agentName}`));
+      break;
+    case 'turn_start':
+      console.error(chalk.gray('│'));
+      console.error(chalk.gray('├── 🔄 New turn'));
+      break;
+    case 'message_start':
+      console.error(chalk.gray(`├── 💬 Message start [${event.message.role}]`));
+      break;
+    case 'message_end': {
+      const msg = event.message;
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        if (msg.content.length === 0) {
+          console.error(chalk.gray('│   📝 Assistant message: (empty content array)'));
+        }
+        for (const block of msg.content) {
+          const blockType = (block as any).type;
+          if (blockType === 'text') {
+            const text = (block as any).text || '';
+            const preview = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+            console.error(chalk.gray('│   📝 Assistant text:'));
+            for (const line of preview.split('\n')) {
+              console.error(chalk.gray(`│     ${line}`));
+            }
+          } else if (blockType === 'toolCall') {
+            const tc = block as any;
+            console.error(chalk.magenta(`│   🔧 Tool call: ${tc.name} (id: ${tc.id})`));
+            const argsStr = JSON.stringify(tc.arguments, null, 2);
+            const argsPreview = argsStr.length > 1000 ? `${argsStr.slice(0, 1000)}…` : argsStr;
+            for (const line of argsPreview.split('\n')) {
+              console.error(chalk.gray(`│     ${line}`));
+            }
+          } else if (blockType === 'thinking') {
+            const text = (block as any).thinking || '';
+            const preview = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+            console.error(chalk.gray('│   🧠 Thinking:'));
+            for (const line of preview.split('\n')) {
+              console.error(chalk.gray(`│     ${line}`));
+            }
+          } else {
+            console.error(
+              chalk.gray(`│   📦 Block type="${blockType}": ${JSON.stringify(block).slice(0, 300)}`)
+            );
+          }
+        }
+      } else {
+        const contentStr =
+          typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const preview = contentStr.length > 500 ? `${contentStr.slice(0, 500)}…` : contentStr;
+        console.error(chalk.gray(`│   Message end [${msg.role}]: ${preview || '(empty)'}`));
+      }
+      break;
+    }
+    case 'tool_execution_start':
+      console.error(
+        chalk.magenta(`├── ⚙️  Tool executing: ${event.toolName} (id: ${event.toolCallId})`)
+      );
+      break;
+    case 'tool_execution_end': {
+      const status = event.isError ? chalk.red('❌ error') : chalk.green('✅ ok');
+      console.error(chalk.gray(`├── Tool result [${event.toolName}]: ${status}`));
+      let resultText = '';
+      const r = event.result;
+      if (r && typeof r === 'object' && Array.isArray(r.content)) {
+        resultText = r.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text || '')
+          .join('');
+      } else if (typeof r === 'string') {
+        resultText = r;
+      }
+      if (resultText) {
+        const preview = resultText.length > 500 ? `${resultText.slice(0, 500)}…` : resultText;
+        for (const line of preview.split('\n')) {
+          console.error(chalk.gray(`│     ${line}`));
+        }
+      }
+      break;
+    }
+    case 'turn_end':
+      console.error(chalk.gray('├── 🏁 Turn end'));
+      break;
+    case 'agent_end':
+      console.error(chalk.gray(`└── ✅ Agent finished: ${agentName}\n`));
+      break;
+  }
+}
+
+/**
  * Pi-mono client for DRS agent execution
  */
 export class PiClient {
@@ -130,11 +226,28 @@ export class PiClient {
       systemPrompt = loadSystemPrompt(agentDef.path);
     }
 
+    if (this.config.debug) {
+      console.log(chalk.gray('┌── DEBUG: System prompt'));
+      console.log(chalk.gray(`│ Agent definition: ${agentDef?.path ?? 'not found'}`));
+      console.log(chalk.gray('│ System prompt:'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(systemPrompt || '(empty)');
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(chalk.gray('└── End system prompt\n'));
+      console.log(chalk.gray(`📨 User message (${options.message.length} chars):`));
+      console.log(chalk.gray('─'.repeat(60)));
+      const msgPreview =
+        options.message.length > 2000
+          ? `${options.message.slice(0, 2000)}\n… (${options.message.length} chars total)`
+          : options.message;
+      console.log(msgPreview);
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log('');
+    }
+
     // Resolve the model
-    let model;
-    try {
-      model = getModel(provider as any, modelId as any);
-    } catch {
+    const model = getModel(provider as any, modelId as any);
+    if (!model) {
       throw new Error(
         `Failed to resolve model "${provider}/${modelId}". Check your model configuration.`
       );
@@ -146,7 +259,7 @@ export class PiClient {
     const tools: AgentTool<any>[] = [
       readTool as unknown as AgentTool<any>,
       bashTool as unknown as AgentTool<any>,
-      writeJsonOutputTool,
+      createWriteJsonOutputTool(projectDir),
     ];
 
     // Create the agent with API key resolution from environment variables
@@ -192,7 +305,8 @@ export class PiClient {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    const { agent, _message: message } = session;
+    const { agent, agentName, _message: message } = session;
+    const debugMode = this.config.debug;
 
     // Collect messages via events
     const pendingMessages: SessionMessage[] = [];
@@ -203,6 +317,10 @@ export class PiClient {
 
     // Subscribe to events BEFORE sending the prompt
     const unsubscribe = agent.subscribe((event) => {
+      if (debugMode) {
+        logAgentEvent(event, agentName);
+      }
+
       if (event.type === 'message_end') {
         const msg = event.message;
         let role: SessionMessage['role'] = 'assistant';

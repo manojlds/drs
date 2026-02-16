@@ -9,28 +9,31 @@ interface WriteJsonOutputParams {
   indent?: number;
 }
 
-export const writeJsonOutputTool: AgentTool<any> = {
-  name: 'write_json_output',
-  label: 'Write JSON Output',
-  description: 'Write validated JSON output for DRS agents.',
-  parameters: Type.Object({
-    outputType: Type.Union([Type.Literal('describe_output'), Type.Literal('review_output')]),
-    payload: Type.Any({ description: 'JSON value or JSON string to write' }),
-    pretty: Type.Optional(Type.Boolean({ description: 'Pretty-print JSON output' })),
-    indent: Type.Optional(
-      Type.Number({ description: 'Indent size when pretty-printing', minimum: 2, maximum: 8 })
-    ),
-  }) as any,
-  execute: async (_toolCallId: string, params: WriteJsonOutputParams) => {
-    const pointer = await writeJsonOutput({
-      outputType: params.outputType,
-      payload: params.payload,
-      pretty: params.pretty,
-      indent: params.indent,
-    });
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(pointer) }],
-      details: {},
-    };
-  },
-};
+export function createWriteJsonOutputTool(workingDir?: string): AgentTool<any> {
+  return {
+    name: 'write_json_output',
+    label: 'Write JSON Output',
+    description: 'Write validated JSON output for DRS agents.',
+    parameters: Type.Object({
+      outputType: Type.Union([Type.Literal('describe_output'), Type.Literal('review_output')]),
+      payload: Type.Any({ description: 'JSON value or JSON string to write' }),
+      pretty: Type.Optional(Type.Boolean({ description: 'Pretty-print JSON output' })),
+      indent: Type.Optional(
+        Type.Number({ description: 'Indent size when pretty-printing', minimum: 2, maximum: 8 })
+      ),
+    }) as any,
+    execute: async (_toolCallId: string, params: WriteJsonOutputParams) => {
+      const pointer = await writeJsonOutput({
+        outputType: params.outputType,
+        payload: params.payload,
+        pretty: params.pretty,
+        indent: params.indent,
+        workingDir,
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(pointer) }],
+        details: {},
+      };
+    },
+  };
+}
