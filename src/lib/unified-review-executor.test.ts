@@ -26,7 +26,7 @@ vi.mock('./repository-validator.js', () => ({
 
 vi.mock('./review-orchestrator.js', () => ({
   filterIgnoredFiles: vi.fn((files) => files),
-  connectToOpenCode: vi.fn(() => ({
+  connectToPi: vi.fn(() => ({
     createSession: vi.fn(),
     streamMessages: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
@@ -129,7 +129,7 @@ describe('unified-review-executor', () => {
       contextCompression: {
         maxTokens: 10000,
       },
-      opencode: {},
+      pi: {},
       gitlab: {
         url: 'https://gitlab.com',
         token: 'mock-token',
@@ -403,12 +403,12 @@ describe('unified-review-executor', () => {
       );
     });
 
-    it('should shutdown OpenCode on completion', async () => {
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
+    it('should shutdown Pi client on completion', async () => {
+      const { connectToPi } = await import('./review-orchestrator.js');
       const mockOpencode = {
         shutdown: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToPi).mockResolvedValueOnce(mockOpencode as any);
 
       const options: UnifiedReviewOptions = {
         platformClient: mockPlatformClient,
@@ -422,14 +422,14 @@ describe('unified-review-executor', () => {
       expect(mockOpencode.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode on error', async () => {
+    it('should shutdown Pi client on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
+      const { connectToPi } = await import('./review-orchestrator.js');
 
       const mockOpencode = {
         shutdown: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToPi).mockResolvedValueOnce(mockOpencode as any);
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Test error'));
 
       const options: UnifiedReviewOptions = {

@@ -49,7 +49,7 @@ describe('Model Override Precedence', () => {
     }
 
     return {
-      opencode: {},
+      pi: {},
       gitlab: { url: '', token: '' },
       github: { token: '' },
       review: {

@@ -69,37 +69,17 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install OpenCode CLI
-        run: npm install -g opencode-ai
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build DRS
         run: npm run build
 
-      - name: Setup OpenCode Zen Authentication
-        if: env.OPENCODE_ZEN_API_KEY != ''
-        env:
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
-        run: |
-          echo "🔑 Setting up OpenCode Zen authentication..."
-          mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json <<EOF
-          {
-            "opencode": {
-              "type": "api",
-              "key": "${OPENCODE_ZEN_API_KEY}"
-            }
-          }
-          EOF
-          echo "✅ OpenCode Zen auth.json created"
-
       - name: Review Pull Request (Trusted Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           echo "🚀 Starting PR review for trusted contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (trusted)"
@@ -142,37 +122,17 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install OpenCode CLI
-        run: npm install -g opencode-ai
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build DRS
         run: npm run build
 
-      - name: Setup OpenCode Zen Authentication
-        if: env.OPENCODE_ZEN_API_KEY != ''
-        env:
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
-        run: |
-          echo "🔑 Setting up OpenCode Zen authentication..."
-          mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json <<EOF
-          {
-            "opencode": {
-              "type": "api",
-              "key": "${OPENCODE_ZEN_API_KEY}"
-            }
-          }
-          EOF
-          echo "✅ OpenCode Zen auth.json created"
-
       - name: Review Pull Request (External Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           echo "🚀 Starting PR review for external contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (external - approved)"

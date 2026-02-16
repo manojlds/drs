@@ -13,7 +13,7 @@ import {
   getUnifiedModelOverride,
   type ModelOverrides,
 } from './config.js';
-import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
+import { createPiClientInstance, type PiClient } from '../pi/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
@@ -38,7 +38,7 @@ export interface ReviewSource {
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print agent configuration */
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
@@ -71,36 +71,31 @@ export interface ConnectOptions {
 }
 
 /**
- * Connect to OpenCode server (or start in-process)
+ * Initialize Pi agent client
  */
-export async function connectToOpenCode(
+export async function connectToPi(
   config: DRSConfig,
   workingDir?: string,
   options?: ConnectOptions
-): Promise<OpencodeClient> {
-  console.log(chalk.gray('Connecting to OpenCode server...\n'));
+): Promise<PiClient> {
+  console.log(chalk.gray('Initializing Pi agent...\n'));
 
   try {
-    // Get model overrides from DRS config
     const modelOverrides = options?.modelOverrides ?? {
       ...getModelOverrides(config),
       ...getUnifiedModelOverride(config),
     };
 
-    return await createOpencodeClientInstance({
-      baseUrl: config.opencode.serverUrl || undefined,
+    return await createPiClientInstance({
       directory: workingDir || process.cwd(),
       modelOverrides,
-      provider: config.opencode.provider,
       config,
       debug: options?.debug,
     });
   } catch (error) {
-    console.error(chalk.red('✗ Failed to connect to OpenCode server'));
+    console.error(chalk.red('✗ Failed to initialize Pi agent'));
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
-    console.log(
-      chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n')
-    );
+    console.log(chalk.yellow('Please check your model configuration and API credentials.\n'));
     throw error;
   }
 }
@@ -145,8 +140,8 @@ export async function executeReview(
 
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
-  // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, source.workingDir, { debug: source.debug });
+  // Connect to Pi
+  const opencode = await connectToPi(config, source.workingDir, { debug: source.debug });
 
   try {
     // Build instructions - use provided diffs if available, otherwise fall back to git command

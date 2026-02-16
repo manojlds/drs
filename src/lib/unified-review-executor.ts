@@ -18,7 +18,7 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
+import { connectToPi, filterIgnoredFiles } from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
@@ -65,7 +65,7 @@ export interface UnifiedReviewOptions {
   describe?: boolean;
   /** Post generated description during review */
   postDescription?: boolean;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print agent configuration */
   debug?: boolean;
 }
 
@@ -79,7 +79,7 @@ export async function executeUnifiedReview(
   const { platformClient, projectId, prNumber, postComments } = options;
 
   // Track OpenCode instance for cleanup
-  let opencode: Awaited<ReturnType<typeof connectToOpenCode>> | null = null;
+  let opencode: Awaited<ReturnType<typeof connectToPi>> | null = null;
 
   try {
     console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
@@ -142,7 +142,7 @@ export async function executeUnifiedReview(
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
     // Connect to OpenCode
-    opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
+    opencode = await connectToPi(config, options.workingDir || process.cwd(), {
       debug: options.debug,
       modelOverrides,
     });

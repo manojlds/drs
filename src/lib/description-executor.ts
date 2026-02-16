@@ -19,7 +19,7 @@ import {
   type Platform,
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { PiClient } from '../pi/client.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -38,7 +38,7 @@ export function detectPlatform(pr: PullRequest): Platform {
  * @returns The generated description, or null if description generation is disabled
  */
 export async function runDescribeIfEnabled(
-  opencode: OpencodeClient,
+  opencode: PiClient,
   config: DRSConfig,
   platformClient: PlatformClient,
   projectId: string,

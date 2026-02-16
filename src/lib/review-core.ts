@@ -9,13 +9,12 @@ import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
-import { buildSkillPromptSection } from './skills-prompt.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { OpencodeClient } from '../opencode/client.js';
-import { loadReviewAgents } from '../opencode/agent-loader.js';
+import type { PiClient } from '../pi/client.js';
+import { loadReviewAgents } from '../pi/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
 
@@ -51,56 +50,45 @@ export interface AgentResult {
   issues: ReviewIssue[];
 }
 
+/**
+ * Log a helpful hint when an agent fails due to common model/auth issues
+ */
+function logModelError(errorMsg: string): void {
+  const lower = errorMsg.toLowerCase();
+  if (
+    lower.includes('api key') ||
+    lower.includes('apikey') ||
+    lower.includes('unauthorized') ||
+    lower.includes('401') ||
+    lower.includes('authentication') ||
+    lower.includes('auth')
+  ) {
+    console.error(
+      chalk.yellow(
+        '  💡 Hint: This looks like a missing or invalid API key.\n' +
+          '     Set the appropriate environment variable (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY).\n'
+      )
+    );
+  } else if (
+    lower.includes('failed to resolve model') ||
+    lower.includes('model') ||
+    lower.includes('not found')
+  ) {
+    console.error(
+      chalk.yellow(
+        '  💡 Hint: The configured model could not be resolved.\n' +
+          '     Check your model setting in .drs/drs.config.yaml (format: "provider/model-id").\n'
+      )
+    );
+  }
+}
+
 const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
   LOW: 1,
   MEDIUM: 2,
   HIGH: 3,
   CRITICAL: 4,
 };
-
-/**
- * Parsed skill tool call result
- */
-interface SkillToolCall {
-  skillName: string;
-  hasInstructions: boolean;
-  hasScripts: boolean;
-  hasReferences: boolean;
-  hasAssets: boolean;
-}
-
-/**
- * Try to parse a tool message as a drs_skill tool result
- * Returns the skill info if it's a skill tool call, null otherwise
- */
-function parseSkillToolResult(content: string): SkillToolCall | null {
-  try {
-    const parsed = JSON.parse(content);
-    // Check for the _tool identifier we added
-    if (parsed._tool === 'drs_skill' && parsed.skill_name) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-    // Fallback: check for skill_name field even without _tool marker
-    if (parsed.skill_name && parsed.instructions !== undefined) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-  } catch {
-    // Not JSON or not a skill tool result
-  }
-  return null;
-}
 
 /**
  * Build base review instructions for agents
@@ -310,7 +298,7 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
 }
 
 export async function runUnifiedReviewAgent(
-  opencode: OpencodeClient,
+  opencode: PiClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -326,14 +314,12 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.gray('Running unified review...\n'));
 
   try {
-    const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
     const reviewPrompt = buildReviewPrompt(
       agentType,
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      workingDir,
-      skillPrompt
+      workingDir
     );
 
     if (debug) {
@@ -357,24 +343,12 @@ export async function runUnifiedReviewAgent(
 
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
-    const skillCalls: SkillToolCall[] = [];
 
     const logger = getLogger();
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        // Check if this is a skill tool call
-        const skillResult = parseSkillToolResult(message.content);
-        if (skillResult) {
-          skillCalls.push(skillResult);
-          logger.skillLoaded(skillResult.skillName, agentType, {
-            hasScripts: skillResult.hasScripts,
-            hasReferences: skillResult.hasReferences,
-            hasAssets: skillResult.hasAssets,
-          });
-        } else {
-          logger.toolOutput('unknown', agentType, message.content);
-        }
+        logger.toolOutput('tool', agentType, message.content);
         continue;
       }
 
@@ -397,11 +371,6 @@ export async function runUnifiedReviewAgent(
     }
 
     await opencode.closeSession(session.id);
-
-    // Log skill usage summary if no skills were used (warning)
-    if (skillCalls.length === 0) {
-      logger.noSkillCalls(agentType);
-    }
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -428,7 +397,12 @@ export async function runUnifiedReviewAgent(
       agentResults: [{ agentType, success: true, issues: agentIssues }],
     };
   } catch (error) {
-    console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`✗ unified-reviewer agent failed: ${errorMsg}`));
+    if (error instanceof Error && error.stack && debug) {
+      console.error(chalk.dim(error.stack));
+    }
+    logModelError(errorMsg);
     return {
       issues: [],
       summary: calculateSummary(filteredFiles.length, []),
@@ -439,7 +413,7 @@ export async function runUnifiedReviewAgent(
 }
 
 export async function runReviewAgents(
-  opencode: OpencodeClient,
+  opencode: PiClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -469,14 +443,12 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
-      const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
       const reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles,
-        workingDir,
-        skillPrompt
+        workingDir
       );
 
       if (debug) {
@@ -500,25 +472,13 @@ export async function runReviewAgents(
 
       const agentIssues: ReviewIssue[] = [];
       let fullResponse = '';
-      const skillCalls: SkillToolCall[] = [];
 
       const logger = getLogger();
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          // Check if this is a skill tool call
-          const skillResult = parseSkillToolResult(message.content);
-          if (skillResult) {
-            skillCalls.push(skillResult);
-            logger.skillLoaded(skillResult.skillName, agentType, {
-              hasScripts: skillResult.hasScripts,
-              hasReferences: skillResult.hasReferences,
-              hasAssets: skillResult.hasAssets,
-            });
-          } else {
-            logger.toolOutput('unknown', agentType, message.content);
-          }
+          logger.toolOutput('tool', agentType, message.content);
           continue;
         }
 
@@ -542,10 +502,6 @@ export async function runReviewAgents(
 
       await opencode.closeSession(session.id);
 
-      // Log skill usage summary if no skills were used (warning)
-      if (skillCalls.length === 0) {
-        logger.noSkillCalls(agentType);
-      }
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {
@@ -554,7 +510,12 @@ export async function runReviewAgents(
       }
       agentResults.push({ agentType, success: true, issues: agentIssues });
     } catch (error) {
-      console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`✗ ${agentType} agent failed: ${errorMsg}`));
+      if (error instanceof Error && error.stack && debug) {
+        console.error(chalk.dim(error.stack));
+      }
+      logModelError(errorMsg);
       agentResults.push({ agentType, success: false, issues: [] });
     }
   }
@@ -600,7 +561,7 @@ export async function runReviewAgents(
 }
 
 export async function runReviewPipeline(
-  opencode: OpencodeClient,
+  opencode: PiClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
