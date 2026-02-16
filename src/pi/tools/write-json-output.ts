@@ -1,5 +1,5 @@
 import { Type } from '@mariozechner/pi-ai';
-import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import { writeJsonOutput } from '../../lib/write-json-output.js';
 
 interface WriteJsonOutputParams {
@@ -9,7 +9,7 @@ interface WriteJsonOutputParams {
   indent?: number;
 }
 
-export function createWriteJsonOutputTool(workingDir?: string): AgentTool<any> {
+export function createWriteJsonOutputTool(workingDir?: string): ToolDefinition {
   return {
     name: 'write_json_output',
     label: 'Write JSON Output',
@@ -22,7 +22,13 @@ export function createWriteJsonOutputTool(workingDir?: string): AgentTool<any> {
         Type.Number({ description: 'Indent size when pretty-printing', minimum: 2, maximum: 8 })
       ),
     }) as any,
-    execute: async (_toolCallId: string, params: WriteJsonOutputParams) => {
+    execute: async (
+      _toolCallId: string,
+      params: WriteJsonOutputParams,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: unknown
+    ) => {
       const pointer = await writeJsonOutput({
         outputType: params.outputType,
         payload: params.payload,

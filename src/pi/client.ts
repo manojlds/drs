@@ -1,15 +1,23 @@
 /**
  * Pi-mono Agent client wrapper for DRS
  *
- * Uses @mariozechner/pi-agent-core Agent class for direct in-process
- * agent execution. No HTTP server needed.
+ * Uses @mariozechner/pi-coding-agent SDK (createAgentSession) for
+ * in-process agent execution. No HTTP server needed.
  */
 
-import { Agent } from '@mariozechner/pi-agent-core';
-import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core';
+import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import { getModel } from '@mariozechner/pi-ai';
 import { getEnvApiKey } from '@mariozechner/pi-ai/dist/env-api-keys.js';
-import { readTool, bashTool } from '@mariozechner/coding-agent';
+import {
+  type AgentSession,
+  AuthStorage,
+  createAgentSession,
+  ModelRegistry,
+  readTool,
+  bashTool,
+  SessionManager,
+  SettingsManager,
+} from '@mariozechner/pi-coding-agent';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import type { DRSConfig } from '../lib/config.js';
@@ -44,7 +52,7 @@ export interface Session {
 
 interface ActiveSession {
   id: string;
-  agent: Agent;
+  agentSession: AgentSession;
   agentName: string;
   _message: string;
 }
@@ -95,22 +103,22 @@ function logAgentEvent(event: AgentEvent, agentName: string): void {
       console.error(chalk.gray(`├── 💬 Message start [${event.message.role}]`));
       break;
     case 'message_end': {
-      const msg = event.message;
+      const msg = event.message as any;
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
         if (msg.content.length === 0) {
           console.error(chalk.gray('│   📝 Assistant message: (empty content array)'));
         }
         for (const block of msg.content) {
-          const blockType = (block as any).type;
+          const blockType = block.type;
           if (blockType === 'text') {
-            const text = (block as any).text || '';
+            const text = block.text || '';
             const preview = text.length > 500 ? `${text.slice(0, 500)}…` : text;
             console.error(chalk.gray('│   📝 Assistant text:'));
             for (const line of preview.split('\n')) {
               console.error(chalk.gray(`│     ${line}`));
             }
           } else if (blockType === 'toolCall') {
-            const tc = block as any;
+            const tc = block;
             console.error(chalk.magenta(`│   🔧 Tool call: ${tc.name} (id: ${tc.id})`));
             const argsStr = JSON.stringify(tc.arguments, null, 2);
             const argsPreview = argsStr.length > 1000 ? `${argsStr.slice(0, 1000)}…` : argsStr;
@@ -118,7 +126,7 @@ function logAgentEvent(event: AgentEvent, agentName: string): void {
               console.error(chalk.gray(`│     ${line}`));
             }
           } else if (blockType === 'thinking') {
-            const text = (block as any).thinking || '';
+            const text = block.thinking || '';
             const preview = text.length > 500 ? `${text.slice(0, 500)}…` : text;
             console.error(chalk.gray('│   🧠 Thinking:'));
             for (const line of preview.split('\n')) {
@@ -202,7 +210,7 @@ export class PiClient {
   }
 
   /**
-   * Create a session - instantiates an Agent and sends the initial prompt
+   * Create a session - creates an AgentSession via the SDK and sends the initial prompt
    */
   async createSession(options: SessionCreateOptions): Promise<Session> {
     const sessionId = `pi-session-${++this.sessionCounter}-${Date.now()}`;
@@ -253,37 +261,39 @@ export class PiClient {
       );
     }
 
-    // Build tool list: built-in coding tools + DRS write_json_output
-    // The coding-agent tools use a different AgentTool type internally,
-    // but are structurally compatible with pi-agent-core's AgentTool.
-    const tools: AgentTool<any>[] = [
-      readTool as unknown as AgentTool<any>,
-      bashTool as unknown as AgentTool<any>,
-      createWriteJsonOutputTool(projectDir),
-    ];
+    // Set up auth storage with API key from environment
+    const authStorage = new AuthStorage();
+    const envKey = getEnvApiKey(provider);
+    if (envKey) authStorage.setRuntimeApiKey(provider, envKey);
+    if (provider === 'opencode') {
+      const zenKey = process.env.OPENCODE_ZEN_API_KEY;
+      if (zenKey) authStorage.setRuntimeApiKey('opencode', zenKey);
+    }
 
-    // Create the agent with API key resolution from environment variables
-    const agent = new Agent({
-      initialState: {
-        systemPrompt,
-        model,
-        tools,
-      },
-      getApiKey: async (providerName: string) => {
-        const key = getEnvApiKey(providerName);
-        if (key) return key;
-        // Fallback: the CI secret may still be named OPENCODE_ZEN_API_KEY
-        if (providerName === 'opencode') {
-          return process.env.OPENCODE_ZEN_API_KEY;
-        }
-        return undefined;
-      },
+    const modelRegistry = new ModelRegistry(authStorage);
+
+    // Create the agent session via the SDK
+    const { session: agentSession } = await createAgentSession({
+      model,
+      thinkingLevel: 'off',
+      tools: [readTool, bashTool],
+      customTools: [createWriteJsonOutputTool(projectDir)],
+      sessionManager: SessionManager.inMemory(),
+      settingsManager: SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: false },
+      }),
+      authStorage,
+      modelRegistry,
     });
+
+    // Set the system prompt from the agent definition
+    agentSession.agent.setSystemPrompt(systemPrompt);
 
     // Store session (prompt is deferred to streamMessages)
     this.sessions.set(sessionId, {
       id: sessionId,
-      agent,
+      agentSession,
       agentName: options.agent,
       _message: options.message,
     });
@@ -305,7 +315,7 @@ export class PiClient {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    const { agent, agentName, _message: message } = session;
+    const { agentSession, agentName, _message: message } = session;
     const debugMode = this.config.debug;
 
     // Collect messages via events
@@ -316,13 +326,14 @@ export class PiClient {
     let msgCounter = 0;
 
     // Subscribe to events BEFORE sending the prompt
-    const unsubscribe = agent.subscribe((event) => {
-      if (debugMode) {
-        logAgentEvent(event, agentName);
+    const unsubscribe = agentSession.subscribe((event) => {
+      // AgentSessionEvent is a superset of AgentEvent; filter to core events for logging
+      if (debugMode && 'type' in event) {
+        logAgentEvent(event as AgentEvent, agentName);
       }
 
       if (event.type === 'message_end') {
-        const msg = event.message;
+        const msg = (event as any).message;
         let role: SessionMessage['role'] = 'assistant';
         let content = '';
 
@@ -361,7 +372,7 @@ export class PiClient {
 
       if (event.type === 'tool_execution_end') {
         let content = '';
-        const result = event.result;
+        const result = (event as any).result;
         if (result && typeof result === 'object' && Array.isArray(result.content)) {
           content = result.content
             .filter((c: any) => c.type === 'text')
@@ -388,25 +399,13 @@ export class PiClient {
       }
     });
 
-    // pi-mono's agentLoop uses a fire-and-forget async IIFE internally.
-    // If the LLM provider throws (e.g., missing API key), the error becomes
-    // an unhandled rejection that crashes Node.js. We install a temporary
-    // process handler to capture these errors gracefully.
-    const unhandledHandler = (reason: unknown) => {
-      const err = reason instanceof Error ? reason : new Error(String(reason));
-      if (!promptError) {
-        promptError = err;
+    const promptPromise = agentSession
+      .prompt(message, { expandPromptTemplates: false })
+      .catch((err) => {
+        promptError = err instanceof Error ? err : new Error(String(err));
         done = true;
         resolveWaiting?.();
-      }
-    };
-    process.on('unhandledRejection', unhandledHandler);
-
-    const promptPromise = agent.prompt(message).catch((err) => {
-      promptError = err instanceof Error ? err : new Error(String(err));
-      done = true;
-      resolveWaiting?.();
-    });
+      });
 
     try {
       while (true) {
@@ -440,7 +439,6 @@ export class PiClient {
 
       await promptPromise;
     } finally {
-      process.removeListener('unhandledRejection', unhandledHandler);
       unsubscribe();
     }
   }
@@ -457,9 +455,13 @@ export class PiClient {
   }
 
   /**
-   * Close a session - clean up the agent
+   * Close a session - clean up the agent session
    */
   async closeSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.agentSession.dispose();
+    }
     this.sessions.delete(sessionId);
   }
 
@@ -467,6 +469,9 @@ export class PiClient {
    * Shutdown - clean up all sessions
    */
   async shutdown(): Promise<void> {
+    for (const session of this.sessions.values()) {
+      session.agentSession.dispose();
+    }
     this.sessions.clear();
   }
 }
