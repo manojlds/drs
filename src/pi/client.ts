@@ -21,7 +21,9 @@ import {
 } from '@mariozechner/pi-coding-agent';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
+import { join } from 'path';
 import type { DRSConfig } from '../lib/config.js';
+import { getDefaultSkills } from '../lib/config.js';
 import { createWriteJsonOutputTool } from './tools/write-json-output.js';
 import { getAgent } from './agent-loader.js';
 
@@ -273,13 +275,22 @@ export class PiClient {
 
     const modelRegistry = new ModelRegistry(authStorage);
 
+    // Resolve configured skills from .drs/skills/
+    const configuredSkills = this.config.config ? getDefaultSkills(this.config.config) : [];
+    const skillsDir = join(projectDir, '.drs', 'skills');
+
     // Use DefaultResourceLoader with systemPromptOverride to properly integrate
     // the agent's system prompt with the SDK's built-in prompt (tool descriptions, etc.)
     const resourceLoader = new DefaultResourceLoader({
       cwd: projectDir,
       systemPromptOverride: () => systemPrompt || undefined,
       appendSystemPromptOverride: () => [],
-      noSkills: true,
+      noSkills: false,
+      additionalSkillPaths: [skillsDir],
+      skillsOverride: (base) => ({
+        skills: base.skills.filter((s) => configuredSkills.includes(s.name)),
+        diagnostics: base.diagnostics,
+      }),
       noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
