@@ -10,7 +10,7 @@ DRS (Diff Review System) is a Node/TypeScript CLI that runs AI code reviews for 
 - Platform integrations: `src/github/` and `src/gitlab/`.
 
 ## Review Agents & Skills
-- Built-in agents live under `.opencode/agent/review/`.
+- Built-in agents live under `agents/review/`.
 - Project overrides can live in `.drs/agents/` (agent.md per agent).
 - Project skills live in `.drs/skills/<skill-name>/SKILL.md`.
 - Default skills are configured in `.drs/drs.config.yaml` under `review.default.skills`.

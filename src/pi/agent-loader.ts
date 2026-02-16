@@ -18,7 +18,7 @@ export interface AgentDefinition {
  *
  * Priority order:
  * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
- * 2. Built-in agents shipped with DRS (.opencode/agent)
+ * 2. Built-in agents shipped with DRS (agents/)
  */
 export function loadReviewAgents(projectPath: string): AgentDefinition[] {
   const agents: AgentDefinition[] = [];

@@ -5,4 +5,4 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..');
 
-export const builtInAgentPath = join(packageRoot, '.opencode', 'agent');
+export const builtInAgentPath = join(packageRoot, 'agents');
