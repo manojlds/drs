@@ -1,0 +1,28 @@
+# vaibhav ralph configuration
+# Auto-generated - edit as needed
+
+project:
+  name: 'drs'
+  language: 'TypeScript'
+
+commands:
+  test: 'npm test'
+  lint: 'npm run lint'
+  build: 'npm run build'
+  typecheck: 'npm run type-check'
+
+rules:
+  - 'Run npm run check:all after every code change before committing.'
+  - 'Use Vitest for tests and keep test files in src/**/*.test.ts.'
+  - 'Use ESM imports with explicit .js extensions for local TypeScript modules.'
+  - 'Keep TypeScript strict mode compatibility and avoid introducing implicit any.'
+  - 'Follow ESLint and Prettier defaults from .eslintrc.json and .prettierrc.json.'
+  - 'Keep CLI command entrypoints under src/cli and shared logic under src/lib.'
+
+boundaries:
+  never_touch:
+    - '*.lock'
+    - '.env*'
+
+engine: 'opencode'
+max_retries: 3
