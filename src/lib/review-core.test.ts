@@ -421,6 +421,23 @@ describe('review-core', () => {
         )
       ).rejects.toThrow('All review agents failed');
     });
+
+    it('should fail fast when config includes unknown agents', async () => {
+      mockConfig.review.agents = ['security', 'unknown-agent'];
+
+      await expect(
+        runReviewAgents(
+          mockOpencode,
+          mockConfig,
+          'Review these files',
+          'PR #123',
+          ['src/app.ts'],
+          {},
+          '/test/dir',
+          false
+        )
+      ).rejects.toThrow('Unknown review agent(s) configured: unknown-agent');
+    });
   });
 
   describe('runReviewPipeline', () => {

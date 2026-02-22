@@ -70,7 +70,7 @@ function generateConfigYaml(config: InitConfig): string {
   // Add custom provider if configured
   if (config.useCustomProvider && config.provider) {
     yaml += `# Custom AI Provider
-opencode:
+pi:
   provider:
     ${config.provider.name}:
       npm: "${config.provider.npm}"

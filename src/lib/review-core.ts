@@ -9,12 +9,11 @@ import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
 import { getAgentNames } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
-import { buildSkillPromptSection } from './skills-prompt.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
@@ -57,50 +56,6 @@ const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
   HIGH: 3,
   CRITICAL: 4,
 };
-
-/**
- * Parsed skill tool call result
- */
-interface SkillToolCall {
-  skillName: string;
-  hasInstructions: boolean;
-  hasScripts: boolean;
-  hasReferences: boolean;
-  hasAssets: boolean;
-}
-
-/**
- * Try to parse a tool message as a drs_skill tool result
- * Returns the skill info if it's a skill tool call, null otherwise
- */
-function parseSkillToolResult(content: string): SkillToolCall | null {
-  try {
-    const parsed = JSON.parse(content);
-    // Check for the _tool identifier we added
-    if (parsed._tool === 'drs_skill' && parsed.skill_name) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-    // Fallback: check for skill_name field even without _tool marker
-    if (parsed.skill_name && parsed.instructions !== undefined) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-  } catch {
-    // Not JSON or not a skill tool result
-  }
-  return null;
-}
 
 /**
  * Build base review instructions for agents
@@ -256,7 +211,7 @@ function getConfiguredAgentInfo(
   workingDir: string
 ): Array<{ name: string; description: string }> {
   const configuredNames = getAgentNames(config);
-  const allAgents = loadReviewAgents(workingDir);
+  const allAgents = loadReviewAgents(workingDir, config);
 
   return configuredNames
     .map((name) => {
@@ -270,17 +225,23 @@ function getConfiguredAgentInfo(
     .filter((a) => a !== null);
 }
 
-function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return '';
+function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): void {
+  const configuredNames = getAgentNames(config);
+  const availableAgents = new Set(
+    loadReviewAgents(workingDir, config)
+      .filter((agent) => agent.name.startsWith('review/'))
+      .map((agent) => agent.name.replace(/^review\//, ''))
+  );
+
+  const missingAgents = configuredNames.filter((name) => !availableAgents.has(name));
+  if (missingAgents.length === 0) {
+    return;
   }
 
-  const lines = trimmed.split('\n');
-  const limitedLines = lines.slice(0, maxLines).join('\n');
-  const limitedChars =
-    limitedLines.length > maxChars ? `${limitedLines.slice(0, maxChars)}…` : limitedLines;
-  return limitedChars;
+  const availableList = Array.from(availableAgents).sort();
+  throw new Error(
+    `Unknown review agent(s) configured: ${missingAgents.join(', ')}. Available agents: ${availableList.join(', ')}`
+  );
 }
 
 function resolveReviewMode(config: DRSConfig): ReviewMode {
@@ -310,7 +271,7 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
 }
 
 export async function runUnifiedReviewAgent(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -326,15 +287,16 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.gray('Running unified review...\n'));
 
   try {
-    const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
     const reviewPrompt = buildReviewPrompt(
       agentType,
       baseInstructions,
       reviewLabel,
       filteredFiles,
       workingDir,
-      skillPrompt
+      config
     );
+
+    const logger = getLogger();
 
     if (debug) {
       console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
@@ -344,6 +306,8 @@ export async function runUnifiedReviewAgent(
       console.log(reviewPrompt);
       console.log(chalk.gray('─'.repeat(60)));
       console.log(chalk.gray(`└── End message for ${agentName}\n`));
+    } else {
+      logger.agentInput(agentType, reviewPrompt);
     }
 
     const session = await opencode.createSession({
@@ -357,24 +321,10 @@ export async function runUnifiedReviewAgent(
 
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
-    const skillCalls: SkillToolCall[] = [];
-
-    const logger = getLogger();
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        // Check if this is a skill tool call
-        const skillResult = parseSkillToolResult(message.content);
-        if (skillResult) {
-          skillCalls.push(skillResult);
-          logger.skillLoaded(skillResult.skillName, agentType, {
-            hasScripts: skillResult.hasScripts,
-            hasReferences: skillResult.hasReferences,
-            hasAssets: skillResult.hasAssets,
-          });
-        } else {
-          logger.toolOutput('unknown', agentType, message.content);
-        }
+        logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
         continue;
       }
 
@@ -388,20 +338,12 @@ export async function runUnifiedReviewAgent(
           console.log(message.content);
           console.log(chalk.gray(`└── End response for ${agentName}\n`));
         } else {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[unified] ${snippet}\n`));
-          }
+          logger.agentMessage(agentType, message.content);
         }
       }
     }
 
     await opencode.closeSession(session.id);
-
-    // Log skill usage summary if no skills were used (warning)
-    if (skillCalls.length === 0) {
-      logger.noSkillCalls(agentType);
-    }
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -439,7 +381,7 @@ export async function runUnifiedReviewAgent(
 }
 
 export async function runReviewAgents(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -449,6 +391,8 @@ export async function runReviewAgents(
   debug = false
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
+
+  validateConfiguredReviewAgents(config, workingDir);
 
   const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
   if (configuredAgentInfo.length > 0) {
@@ -469,15 +413,16 @@ export async function runReviewAgents(
 
     try {
       // Build prompt with global and agent-specific context
-      const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
       const reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles,
         workingDir,
-        skillPrompt
+        config
       );
+
+      const logger = getLogger();
 
       if (debug) {
         console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
@@ -487,6 +432,8 @@ export async function runReviewAgents(
         console.log(reviewPrompt);
         console.log(chalk.gray('─'.repeat(60)));
         console.log(chalk.gray(`└── End message for ${agentName}\n`));
+      } else {
+        logger.agentInput(agentType, reviewPrompt);
       }
 
       const session = await opencode.createSession({
@@ -500,25 +447,11 @@ export async function runReviewAgents(
 
       const agentIssues: ReviewIssue[] = [];
       let fullResponse = '';
-      const skillCalls: SkillToolCall[] = [];
-
-      const logger = getLogger();
 
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          // Check if this is a skill tool call
-          const skillResult = parseSkillToolResult(message.content);
-          if (skillResult) {
-            skillCalls.push(skillResult);
-            logger.skillLoaded(skillResult.skillName, agentType, {
-              hasScripts: skillResult.hasScripts,
-              hasReferences: skillResult.hasReferences,
-              hasAssets: skillResult.hasAssets,
-            });
-          } else {
-            logger.toolOutput('unknown', agentType, message.content);
-          }
+          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
           continue;
         }
 
@@ -532,20 +465,13 @@ export async function runReviewAgents(
             console.log(message.content);
             console.log(chalk.gray(`└── End response for ${agentName}\n`));
           } else {
-            const snippet = renderAgentMessage(message.content);
-            if (snippet) {
-              console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
-            }
+            logger.agentMessage(agentType, message.content);
           }
         }
       }
 
       await opencode.closeSession(session.id);
 
-      // Log skill usage summary if no skills were used (warning)
-      if (skillCalls.length === 0) {
-        logger.noSkillCalls(agentType);
-      }
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {
@@ -600,7 +526,7 @@ export async function runReviewAgents(
 }
 
 export async function runReviewPipeline(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,

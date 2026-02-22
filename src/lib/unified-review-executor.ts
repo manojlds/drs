@@ -18,9 +18,15 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
+import { connectToRuntime, filterIgnoredFiles } from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
-import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type {
+  PlatformClient,
+  PullRequest,
+  FileChange,
+  LineValidator,
+  InlineCommentPosition,
+} from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import {
@@ -43,6 +49,10 @@ export interface UnifiedReviewOptions {
   projectId: string;
   /** PR/MR number */
   prNumber: number;
+  /** Optional pre-fetched PR/MR details (used to avoid duplicate platform calls) */
+  pullRequest?: PullRequest;
+  /** Optional pre-fetched changed files (used to avoid duplicate platform calls) */
+  changedFiles?: FileChange[];
   /** Whether to post comments to the platform */
   postComments: boolean;
   /** Whether to post an error comment if the review fails */
@@ -78,8 +88,8 @@ export async function executeUnifiedReview(
 ): Promise<void> {
   const { platformClient, projectId, prNumber, postComments } = options;
 
-  // Track OpenCode instance for cleanup
-  let opencode: Awaited<ReturnType<typeof connectToOpenCode>> | null = null;
+  // Track runtime client for cleanup
+  let runtimeClient: Awaited<ReturnType<typeof connectToRuntime>> | null = null;
 
   try {
     console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
@@ -87,14 +97,15 @@ export async function executeUnifiedReview(
     // Fetch PR/MR details
     console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
 
-    const pr = await platformClient.getPullRequest(projectId, prNumber);
+    const pr = options.pullRequest ?? (await platformClient.getPullRequest(projectId, prNumber));
 
     await enforceRepoBranchMatch(options.workingDir ?? process.cwd(), projectId, pr, {
       skipRepoCheck: config.review.skipRepoCheck,
       skipBranchCheck: config.review.skipBranchCheck,
     });
 
-    const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
+    const allFiles =
+      options.changedFiles ?? (await platformClient.getChangedFiles(projectId, prNumber));
 
     console.log(chalk.bold(`PR/MR: ${pr.title}`));
     console.log(chalk.gray(`Author: ${pr.author}`));
@@ -141,8 +152,8 @@ export async function executeUnifiedReview(
     const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
-    // Connect to OpenCode
-    opencode = await connectToOpenCode(config, options.workingDir ?? process.cwd(), {
+    // Connect to runtime
+    runtimeClient = await connectToRuntime(config, options.workingDir ?? process.cwd(), {
       debug: options.debug,
       modelOverrides,
     });
@@ -152,7 +163,7 @@ export async function executeUnifiedReview(
     }));
     if (describeEnabled) {
       await runDescribeIfEnabled(
-        opencode,
+        runtimeClient,
         config,
         platformClient,
         projectId,
@@ -168,7 +179,11 @@ export async function executeUnifiedReview(
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
     const fallbackDiffCommand = getCanonicalDiffCommand(pr, baseBranchResolution);
-    const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
+    const patchByFilename = new Map(allFiles.map((file) => [file.filename, file.patch]));
+    const filesForInstructions = filteredFiles.map((filename) => ({
+      filename,
+      patch: patchByFilename.get(filename),
+    }));
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
       filesForInstructions,
@@ -179,7 +194,7 @@ export async function executeUnifiedReview(
     }
     // Run agents using shared core logic
     const result = await runReviewPipeline(
-      opencode,
+      runtimeClient,
       config,
       baseInstructions,
       reviewLabel,
@@ -245,7 +260,7 @@ export async function executeUnifiedReview(
     // Exit with error code if critical issues found
     if (result.summary.bySeverity.CRITICAL > 0) {
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
-      await opencode.shutdown();
+      await runtimeClient.shutdown();
       process.exit(1);
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
@@ -263,16 +278,16 @@ export async function executeUnifiedReview(
 
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      if (opencode) {
-        await opencode.shutdown();
+      if (runtimeClient) {
+        await runtimeClient.shutdown();
       }
       process.exit(1);
     }
     throw error;
   } finally {
-    // Shutdown OpenCode if it was initialized
-    if (opencode) {
-      await opencode.shutdown();
+    // Shutdown runtime client if it was initialized
+    if (runtimeClient) {
+      await runtimeClient.shutdown();
     }
   }
 }

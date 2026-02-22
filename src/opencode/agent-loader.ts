@@ -1,12 +1,15 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
-import { builtInAgentPath } from './opencode-paths.js';
+import type { DRSConfig } from '../lib/config.js';
+import { getBuiltInAgentPaths } from './opencode-paths.js';
+import { resolveReviewPaths } from './path-config.js';
 
 export interface AgentDefinition {
   name: string;
   path: string;
   description: string;
+  prompt?: string;
   color?: string;
   model?: string;
   tools?: Record<string, boolean>;
@@ -18,15 +21,15 @@ export interface AgentDefinition {
  *
  * Priority order:
  * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
- * 2. Built-in agents shipped with DRS (.opencode/agent)
+ * 2. Built-in agents shipped with DRS (.pi/agents)
  */
-export function loadReviewAgents(projectPath: string): AgentDefinition[] {
+export function loadReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
   const discovered = new Set<string>();
+  const { agentsPath } = resolveReviewPaths(projectPath, config);
 
-  const overridePath = join(projectPath, '.drs', 'agents');
-  const overrideAgents = discoverOverrideAgents(overridePath, overridePath);
+  const overrideAgents = discoverOverrideAgents(agentsPath, agentsPath);
   for (const agent of overrideAgents) {
     if (!discovered.has(agent.name)) {
       agents.push(agent);
@@ -34,11 +37,13 @@ export function loadReviewAgents(projectPath: string): AgentDefinition[] {
     }
   }
 
-  const builtInAgents = discoverAgents(builtInAgentPath, builtInAgentPath);
-  for (const agent of builtInAgents) {
-    if (!discovered.has(agent.name)) {
-      agents.push(agent);
-      discovered.add(agent.name);
+  for (const builtInPath of getBuiltInAgentPaths()) {
+    const builtInAgents = discoverAgents(builtInPath, builtInPath);
+    for (const agent of builtInAgents) {
+      if (!discovered.has(agent.name)) {
+        agents.push(agent);
+        discovered.add(agent.name);
+      }
     }
   }
 
@@ -95,23 +100,26 @@ function parseAgentFile(
     const content = readFileSync(filePath, 'utf-8');
 
     // Extract YAML frontmatter
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
 
     if (!frontmatterMatch) {
       console.warn(`No frontmatter found in ${filePath}`);
       return null;
     }
 
-    const frontmatter = yaml.parse(frontmatterMatch[1]);
+    const frontmatter = yaml.parse(frontmatterMatch[1]) ?? {};
 
     // Generate agent name from relative path
     const agentName =
       nameOverride ?? relative(basePath, filePath).replace(/\.md$/, '').replace(/\\/g, '/');
 
+    const prompt = content.slice(frontmatterMatch[0].length).trim();
+
     return {
       name: agentName,
       path: filePath,
       description: frontmatter.description || '',
+      prompt,
       color: frontmatter.color,
       model: frontmatter.model,
       tools: frontmatter.tools,
@@ -142,23 +150,27 @@ function discoverOverrideAgents(basePath: string, currentPath: string): AgentDef
 /**
  * Get a specific agent by name
  */
-export function getAgent(projectPath: string, agentName: string): AgentDefinition | null {
-  const agents = loadReviewAgents(projectPath);
+export function getAgent(
+  projectPath: string,
+  agentName: string,
+  config?: DRSConfig
+): AgentDefinition | null {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.find((a) => a.name === agentName) ?? null;
 }
 
 /**
  * Get all review agents (security, quality, style, performance, documentation)
  */
-export function getReviewAgents(projectPath: string): AgentDefinition[] {
-  const agents = loadReviewAgents(projectPath);
+export function getReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.filter((a) => a.name.startsWith('review/'));
 }
 
 /**
  * List all available agents
  */
-export function listAgents(projectPath: string): string[] {
-  const agents = loadReviewAgents(projectPath);
+export function listAgents(projectPath: string, config?: DRSConfig): string[] {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.map((a) => a.name);
 }

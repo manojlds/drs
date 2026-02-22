@@ -2,7 +2,7 @@
 
 **Intelligent Code Review Platform for GitLab and GitHub**
 
-Enterprise-grade automated code review for Merge Requests and Pull Requests, powered by OpenCode SDK and Claude.
+Enterprise-grade automated code review for Merge Requests and Pull Requests, powered by Pi SDK and Claude.
 
 ## Features
 
@@ -20,11 +20,8 @@ Enterprise-grade automated code review for Merge Requests and Pull Requests, pow
 
 ### 1. Prerequisites
 
-Install OpenCode CLI (required for in-process server mode):
-
-```bash
-npm install -g opencode-ai
-```
+- Node.js 20+
+- API key for your chosen model provider (Anthropic/OpenAI/ZhipuAI/etc.)
 
 ### 2. Install DRS
 
@@ -48,7 +45,7 @@ cp .env.example .env
 # Edit .env and set:
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
 # - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
-# - OPENCODE_SERVER: URL of your OpenCode instance (optional - will start in-process if not set)
+# - Pi runtime runs in-process automatically (no PI_SERVER/OPENCODE_SERVER needed)
 # - Provider API Key: Set the API key for your chosen model provider
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
@@ -56,7 +53,9 @@ cp .env.example .env
 #   - See .env.example for all supported providers
 ```
 
-**Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
+DRS CLI now loads `.env` automatically from your current working directory.
+
+**Note**: DRS runs Pi in-process by default and does not require a remote runtime endpoint.
 
 ### 5. Review Local Changes
 
@@ -135,7 +134,7 @@ ai_review:
 ```
 
 **See [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md)** for:
-- Using the official OpenCode container (`ghcr.io/anomalyco/opencode`)
+- Pi-based CI setup examples
 - Parallel pipeline strategies (child pipelines, DAG with needs)
 - Complete examples that don't block your main pipeline
 
@@ -153,7 +152,6 @@ DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-revi
 
 1. **Configure API Keys** in repository Settings → Secrets:
    - `ANTHROPIC_API_KEY` (for Claude models), or
-   - `OPENCODE_ZEN_API_KEY` (for OpenCode Zen), or
    - `ZHIPU_API_KEY` (for ZhipuAI GLM models), or
    - `OPENAI_API_KEY` (for OpenAI models)
 
@@ -214,7 +212,7 @@ code_review:
   stage: review
   image: node:20-alpine
   before_script:
-    - npm install -g @diff-review-system/drs opencode-ai
+    - npm install -g @diff-review-system/drs
   script:
     - drs review-mr --project $CI_PROJECT_PATH --mr $CI_MERGE_REQUEST_IID
         --code-quality-report gl-code-quality-report.json
@@ -258,68 +256,38 @@ DRS generates reports in GitLab's CodeClimate-compatible format:
 
 For more details, see [GitLab Code Quality Documentation](https://docs.gitlab.com/ci/testing/code_quality/).
 
-## OpenCode Server Configuration
+## Pi Runtime Configuration
 
-DRS supports two modes of OpenCode server operation:
+DRS runs on Pi SDK as the sole review runtime.
 
-### In-Process Server (Default)
+### In-Process Runtime (Default)
 
-If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server within the same process. **Note**: This still requires the OpenCode CLI to be installed globally.
+By default, DRS starts Pi runtime in-process:
 
 ```bash
-# Install OpenCode CLI first (required)
-npm install -g opencode-ai
-
-# Then run DRS (server starts automatically)
 drs review-local
 ```
 
-**Pros:**
-- Minimal configuration required (just install CLI)
-- Automatic startup/shutdown
-- Simpler deployment
-- Lower latency
+### Runtime Mode
 
-**Cons:**
-- Requires OpenCode CLI installation
-- Server lifetime tied to CLI process
-- Cannot share across multiple tools
-- Uses process resources
-
-### Remote Server (Optional)
-
-For production deployments or when sharing across multiple tools, run a dedicated OpenCode server:
-
-```bash
-# Set the server URL
-export OPENCODE_SERVER=http://opencode.internal:3000
-drs review-local
-```
-
-**Pros:**
-- Persistent server
-- Shared across multiple tools
-- Better for CI/CD pipelines
-- Can be scaled separately
-
-**Cons:**
-- Requires separate service setup
-- Additional infrastructure
+DRS uses Pi in-process runtime only.
 
 ## Architecture
 
-DRS uses OpenCode SDK with markdown-based agent definitions:
+DRS uses Pi runtime wiring with markdown-based agent definitions:
 
 ```
-.opencode/
-├── agent/
-│   └── review/
-│       ├── security.md          # Security specialist
-│       ├── quality.md           # Code quality expert
-│       ├── style.md             # Style checker
-│       └── performance.md       # Performance analyzer
-└── opencode.jsonc               # Configuration
+.pi/
+└── agents/
+    └── review/
+        ├── security.md          # Security specialist
+        ├── quality.md           # Code quality expert
+        ├── style.md             # Style checker
+        ├── performance.md       # Performance analyzer
+        └── documentation.md     # Documentation reviewer
 ```
+
+Built-in agent definitions live under `.pi/agents`.
 
 ## Customization
 
@@ -333,7 +301,7 @@ mkdir -p .drs/agents/security
 cat > .drs/agents/security/agent.md << 'EOF'
 ---
 description: Custom security reviewer
-model: opencode/claude-sonnet-4-5
+model: anthropic/claude-sonnet-4-5-20250929
 ---
 
 You are a security expert for this specific application.
@@ -360,13 +328,43 @@ review:
     postDescription: false
 
 describe:
-  model: opencode/glm-4.7-free
+  model: zhipuai/glm-4.7
 ```
 
 Notes:
 - `review.describe` controls auto-description when running `review-mr` or `review-pr`.
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
+- `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
+- Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
+- Unknown agent names fail fast with a validation error before review execution starts.
+
+### Pi-Native Skill Discovery
+
+DRS now auto-discovers review skills from both directories when `review.paths.skills` is not set:
+
+1. `.drs/skills` (project-level overrides)
+2. `.pi/skills` (Pi-native skills)
+
+If the same skill name exists in both locations, `.drs/skills` wins.
+
+Example layout:
+
+```text
+.drs/skills/
+  secure-fetch/SKILL.md        # Project override (preferred)
+.pi/skills/
+  secure-fetch/SKILL.md        # Pi-native fallback
+  db-indexing/SKILL.md         # Additional Pi-native skill
+```
+
+To force a single custom skills directory, set `review.paths.skills`:
+
+```yaml
+review:
+  paths:
+    skills: config/review-skills
+```
 
 ## Review Domains
 
@@ -421,7 +419,6 @@ ZHIPU_API_KEY=xxx                   # For ZhipuAI GLM models
 OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
-OPENCODE_SERVER=http://localhost:3000  # Leave empty to start in-process server
 GITLAB_URL=https://gitlab.com
 REVIEW_AGENTS=security,quality,style,performance
 ```
@@ -430,7 +427,7 @@ REVIEW_AGENTS=security,quality,style,performance
 
 1. `.drs/drs.config.yaml` - DRS-specific configuration
 2. `.gitlab-review.yml` - Alternative location
-3. `.opencode/opencode.jsonc` - OpenCode configuration
+3. Environment variables (for provider credentials and platform tokens)
 
 ## Examples
 
@@ -463,12 +460,10 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
-- OpenCode CLI (`npm install -g opencode-ai`) - Required even for in-process mode
-- Anthropic API key (for Claude AI)
+- API key for your selected provider (Anthropic/OpenAI/ZhipuAI/etc.)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)
 - Git 2.30+ (for local mode)
-- OpenCode server instance (optional - will start in-process if not provided)
 
 ## License
 
@@ -476,12 +471,13 @@ Apache-2.0
 
 ## Documentation
 
+- [Pi Migration, Upgrade, and Validation Guide](docs/PI_MIGRATION.md) - Breaking changes, upgrade steps, and review-flow validation matrix
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Design Document](DESIGN.md) - Original design using Claude Agent SDK
-- [Architecture Document](ARCHITECTURE.md) - OpenCode SDK architecture
+- [Architecture Document](ARCHITECTURE.md) - Pi runtime architecture
 - [Publishing Guide](PUBLISHING_SETUP.md) - How to publish to npm
-- [OpenCode Documentation](https://opencode.ai/docs)
+- [Pi Documentation](https://github.com/badlogic/pi-mono)
 - [GitLab API](https://docs.gitlab.com/ee/api/)
 
 ## Contributing

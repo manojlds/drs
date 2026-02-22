@@ -34,8 +34,8 @@ vi.mock('./config.js', async () => {
 // Store mock client instance for verification
 let mockOpencodeClient: any;
 
-vi.mock('../opencode/client.js', () => ({
-  createOpencodeClientInstance: vi.fn(async () => {
+vi.mock('../opencode/client.js', () => {
+  const createRuntimeClientInstance = vi.fn(async () => {
     mockOpencodeClient = {
       createSession: vi.fn(async () => ({ id: 'session-1' })),
       streamMessages: vi.fn(async function* () {
@@ -60,8 +60,13 @@ vi.mock('../opencode/client.js', () => ({
       shutdown: vi.fn(async () => {}),
     };
     return mockOpencodeClient;
-  }),
-}));
+  });
+
+  return {
+    createRuntimeClientInstance,
+    createOpencodeClientInstance: createRuntimeClientInstance,
+  };
+});
 
 vi.mock('./review-core.js', () => ({
   buildBaseInstructions: vi.fn((label: string) => `Instructions for ${label}`),
@@ -195,11 +200,9 @@ describe('review-orchestrator', () => {
   });
 
   describe('connectToOpenCode', () => {
-    it('should connect to OpenCode server successfully', async () => {
+    it('should connect to in-process Pi runtime successfully', async () => {
       const config: DRSConfig = {
-        opencode: {
-          serverUrl: 'http://localhost:3000',
-        },
+        pi: {},
         review: {},
       } as DRSConfig;
 
@@ -212,23 +215,38 @@ describe('review-orchestrator', () => {
       expect(client.shutdown).toBeDefined();
     });
 
+    it('should ignore configured runtime endpoints and keep in-process execution', async () => {
+      const config: DRSConfig = {
+        pi: {
+          serverUrl: 'http://localhost:3000',
+        },
+        review: {},
+      } as DRSConfig;
+
+      await connectToOpenCode(config, '/test/dir');
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Ignoring configured runtime endpoint')
+      );
+    });
+
     it('should handle connection failure', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
-      vi.mocked(createOpencodeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
+      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      vi.mocked(createRuntimeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
       await expect(connectToOpenCode(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to connect to OpenCode server')
+        expect.stringContaining('Failed to connect to Pi runtime')
       );
     });
 
-    it('should pass model overrides to OpenCode client', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+    it('should pass model overrides to runtime client', async () => {
+      const { createRuntimeClientInstance } = await import('../opencode/client.js');
       const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
 
       vi.mocked(getModelOverrides).mockReturnValue({
@@ -239,14 +257,13 @@ describe('review-orchestrator', () => {
       });
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
       await connectToOpenCode(config, '/test/dir', { debug: true });
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith({
-        baseUrl: undefined,
+      expect(createRuntimeClientInstance).toHaveBeenCalledWith({
         config,
         directory: '/test/dir',
         modelOverrides: {
@@ -259,16 +276,16 @@ describe('review-orchestrator', () => {
     });
 
     it('should use process.cwd() when no working directory provided', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../opencode/client.js');
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
       await connectToOpenCode(config);
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith(
+      expect(createRuntimeClientInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           config,
           directory: process.cwd(),
@@ -309,7 +326,7 @@ describe('review-orchestrator', () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
 
-    it('should filter ignored files', async () => {
+    it('should filter ignored files before executing review agents', async () => {
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['src/app.ts', 'src/app.test.ts', 'src/utils.ts'],
@@ -317,12 +334,28 @@ describe('review-orchestrator', () => {
       };
 
       const result = await executeReview(mockConfig, source);
+      const { runReviewPipeline } = await import('./review-core.js');
 
-      // Should have filtered out .test.ts file
+      // Should have filtered out .test.ts file before review execution
       expect(result.filesReviewed).toBe(2);
+      expect(runReviewPipeline).toHaveBeenCalledWith(
+        expect.anything(),
+        mockConfig,
+        expect.anything(),
+        'Local diff',
+        ['src/app.ts', 'src/utils.ts'],
+        {},
+        process.cwd(),
+        false
+      );
     });
 
     it('should return empty result when all files are ignored', async () => {
+      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      const { runReviewPipeline } = await import('./review-core.js');
+      vi.mocked(createRuntimeClientInstance).mockClear();
+      vi.mocked(runReviewPipeline).mockClear();
+
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['test1.test.ts', 'test2.test.ts'],
@@ -334,6 +367,8 @@ describe('review-orchestrator', () => {
       expect(result.issues).toEqual([]);
       expect(result.filesReviewed).toBe(0);
       expect(result.summary.issuesFound).toBe(0);
+      expect(createRuntimeClientInstance).not.toHaveBeenCalled();
+      expect(runReviewPipeline).not.toHaveBeenCalled();
     });
 
     it('should handle staged diff command', async () => {

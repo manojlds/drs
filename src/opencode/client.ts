@@ -1,24 +1,32 @@
 /**
- * OpenCode SDK client wrapper for DRS with in-process server support
+ * Agent runtime client wrapper for DRS with in-process server support.
  *
- * This client can either:
- * 1. Connect to an existing remote OpenCode server (when baseUrl is provided)
- * 2. Start an OpenCode server in-process (when baseUrl is not provided)
+ * This client maintains the existing internal interface used by review orchestration
+ * while delegating SDK calls through the Pi integration adapter in src/pi/sdk.ts.
  */
 
-import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
-import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { loadReviewAgents } from './agent-loader.js';
+import { resolveReviewPaths } from './path-config.js';
+import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
 
-export interface OpencodeConfig {
-  baseUrl?: string; // Optional - will start in-process if not provided
+export interface RuntimeClientConfig {
+  /**
+   * @deprecated DRS runs Pi in-process only. Providing a remote endpoint is unsupported.
+   */
+  baseUrl?: string;
   directory?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
-  debug?: boolean; // Print OpenCode config for debugging
+  debug?: boolean; // Print runtime config for debugging
   config?: DRSConfig;
 }
+
+/**
+ * @deprecated Use RuntimeClientConfig.
+ */
+export type OpencodeConfig = RuntimeClientConfig;
 
 const SERVER_START_TIMEOUT_MS = 10000;
 
@@ -33,6 +41,8 @@ export interface SessionMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: Date;
+  toolName?: string;
+  toolCallId?: string;
 }
 
 export interface Session {
@@ -41,212 +51,275 @@ export interface Session {
   createdAt: Date;
 }
 
+function mapPiRuntimeError(operation: string, error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  const connectionError =
+    normalized.includes('fetch failed') ||
+    normalized.includes('econnrefused') ||
+    normalized.includes('connection refused');
+
+  if (connectionError) {
+    return new Error(
+      `Failed to ${operation}: ${message}. Verify local Pi runtime setup and model provider connectivity.`
+    );
+  }
+
+  const authError =
+    normalized.includes('unauthorized') ||
+    normalized.includes('authentication') ||
+    normalized.includes('api key') ||
+    normalized.includes('401');
+
+  if (authError) {
+    return new Error(
+      `Failed to ${operation}: Authentication failed with the configured model provider. Verify API keys and provider settings. (Details: ${message})`
+    );
+  }
+
+  const modelError =
+    normalized.includes('failed to resolve model') ||
+    (normalized.includes('model') && normalized.includes('not found'));
+
+  if (modelError) {
+    return new Error(
+      `Failed to ${operation}: Model configuration is invalid or unavailable. Check configured provider/model names and overrides. (Details: ${message})`
+    );
+  }
+
+  return new Error(`Failed to ${operation}: ${message}`);
+}
+
 /**
- * OpenCode client that can start a server in-process or connect to remote
+ * Runtime client wrapper for DRS backed by in-process Pi sessions.
  */
-export class OpencodeClient {
+export class RuntimeClient {
   private baseUrl?: string;
   private directory?: string;
-  private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
-  private client?: ReturnType<typeof createSDKClient>;
-  private config: OpencodeConfig;
-  private projectRootEnv?: string;
+  private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
+  private client?: PiClient;
+  private config: RuntimeClientConfig;
 
-  constructor(config: OpencodeConfig) {
+  constructor(config: RuntimeClientConfig) {
     this.baseUrl = config.baseUrl;
     this.directory = config.directory;
     this.config = config;
   }
 
   /**
-   * Initialize - either connect to remote server or start in-process
+   * Initialize in-process Pi runtime.
    */
   async initialize(): Promise<void> {
     if (this.baseUrl) {
-      // Connect to existing remote server
-      this.client = createSDKClient({
-        baseUrl: this.baseUrl,
-      });
-      console.log(`Connected to OpenCode server at ${this.baseUrl}`);
-    } else {
-      // Start server in-process
-      // Build OpenCode config programmatically from DRS config
+      throw new Error(
+        `Remote Pi runtime endpoints are not supported by DRS. Remove baseUrl/PI_SERVER/opencode.serverUrl (received: ${this.baseUrl}).`
+      );
+    }
 
-      const opencodeConfig: Record<string, unknown> = {
-        // Tools available to DRS review agents
-        tools: {
-          Read: true,
-          Glob: true,
-          Grep: true,
-          Bash: true,
-          write_json_output: true,
-          drs_skill: true,
-          skill: false,
-          Write: false,
-          Edit: false,
-        },
-      };
+    // Start server in-process
+    // Build runtime config programmatically from DRS config
+    const originalCwd = process.cwd();
+    const projectDir = this.directory ?? originalCwd;
+    const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
 
-      // Set log level to DEBUG when --debug flag is used
-      // This shows full system prompts, tools, API calls, etc. from OpenCode
-      if (this.config.debug) {
-        opencodeConfig.logLevel = 'DEBUG';
-        console.log('🔍 OpenCode debug logging enabled');
-      }
+    const opencodeConfig: Record<string, unknown> = {
+      // Tools available to DRS review agents
+      tools: {
+        Read: true,
+        Glob: true,
+        Grep: true,
+        Bash: true,
+        write_json_output: true,
+        skill: false,
+        Write: false,
+        Edit: false,
+      },
+    };
 
-      // Add custom provider if configured in DRS config
-      if (this.config.provider && Object.keys(this.config.provider).length > 0) {
-        // Deep clone and resolve environment variable references
-        opencodeConfig.provider = this.resolveEnvReferences(this.config.provider);
-        const providerNames = Object.keys(this.config.provider);
-        console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
-      }
+    const agentConfig: Record<string, Record<string, unknown>> = {};
 
-      // Apply model overrides from DRS config
-      if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
-        const agentConfig: Record<string, { model: string }> = {};
+    if (this.config.config) {
+      const runtimeAgents = loadReviewAgents(projectDir, this.config.config);
+      for (const agent of runtimeAgents) {
+        const runtimeEntry: Record<string, unknown> = {};
+        if (agent.model) runtimeEntry.model = agent.model;
+        if (agent.prompt) runtimeEntry.prompt = agent.prompt;
+        if (agent.description) runtimeEntry.description = agent.description;
+        if (agent.color) runtimeEntry.color = agent.color;
+        if (agent.tools) runtimeEntry.tools = agent.tools;
 
-        console.log('📋 Agent model configuration:');
-
-        // Merge model overrides into agent configuration
-        for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
-          agentConfig[agentName] = { model };
-          console.log(`  • ${agentName}: ${model}`);
+        if (Object.keys(runtimeEntry).length > 0) {
+          agentConfig[agent.name] = runtimeEntry;
         }
+      }
 
-        opencodeConfig.agent = agentConfig;
+      if (runtimeAgents.length > 0) {
+        console.log(`🧠 Loaded ${runtimeAgents.length} agent definitions for Pi runtime.`);
+      }
+    }
+
+    // Set log level to DEBUG when --debug flag is used
+    // This shows full system prompts, tools, and provider calls from Pi runtime.
+    if (this.config.debug) {
+      opencodeConfig.logLevel = 'DEBUG';
+      console.log('🔍 Pi runtime debug logging enabled');
+    }
+
+    // Add custom provider if configured in DRS config
+    if (this.config.provider && Object.keys(this.config.provider).length > 0) {
+      // Deep clone and resolve environment variable references
+      opencodeConfig.provider = this.resolveEnvReferences(this.config.provider);
+      const providerNames = Object.keys(this.config.provider);
+      console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
+    }
+
+    // Apply model overrides from DRS config
+    if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
+      console.log('📋 Agent model configuration:');
+
+      // Merge model overrides into agent configuration
+      for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
+        const entry = agentConfig[agentName] ?? {};
+        agentConfig[agentName] = {
+          ...entry,
+          model,
+        };
+        console.log(`  • ${agentName}: ${model}`);
+      }
+
+      console.log('');
+    }
+
+    if (Object.keys(agentConfig).length > 0) {
+      opencodeConfig.agent = agentConfig;
+    }
+
+    opencodeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
+
+    if (this.config.config) {
+      const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
+      const defaultSkills = getDefaultSkills(this.config.config);
+      const agentSkills = normalizedAgents
+        .map((agent) => {
+          const combined = new Set([
+            ...defaultSkills,
+            ...(agent.skills ? agent.skills.map(String) : []),
+          ]);
+          const fullAgentName = agent.name.startsWith('review/')
+            ? agent.name
+            : `review/${agent.name}`;
+
+          return {
+            name: fullAgentName,
+            skills: Array.from(combined).filter((skill) => skill.length > 0),
+          };
+        })
+        .filter((agent) => agent.skills.length > 0);
+
+      if (agentSkills.length > 0) {
+        console.log('🧩 Agent skill configuration:');
+        for (const agent of agentSkills) {
+          console.log(`  • ${agent.name}: ${agent.skills.join(', ')}`);
+        }
         console.log('');
-      }
 
-      if (this.config.config) {
-        const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
-        const defaultSkills = getDefaultSkills(this.config.config);
-        const agentSkills = normalizedAgents
-          .map((agent) => {
-            const combined = new Set([
-              ...defaultSkills,
-              ...(agent.skills ? agent.skills.map(String) : []),
-            ]);
-            return {
-              name: agent.name,
-              skills: Array.from(combined).filter((skill) => skill.length > 0),
-            };
-          })
-          .filter((agent) => agent.skills.length > 0);
-
-        if (agentSkills.length > 0) {
-          console.log('🧩 Agent skill configuration:');
-          for (const agent of agentSkills) {
-            console.log(`  • review/${agent.name}: ${agent.skills.join(', ')}`);
-          }
-          console.log('');
-        }
-      }
-
-      // Debug: Print final OpenCode config
-      if (this.config.debug) {
-        console.log('🔧 DEBUG: Final OpenCode configuration (after env resolution):');
-        console.log('─'.repeat(50));
-
-        // Show environment variable status for custom providers
-        if (this.config.provider) {
-          console.log('\n📍 Environment variable status:');
-          for (const [providerName, provider] of Object.entries(this.config.provider)) {
-            const apiKeyConfig = provider.options?.apiKey;
-            if (apiKeyConfig && typeof apiKeyConfig === 'string') {
-              const envMatch = apiKeyConfig.match(/^\{env:([^}]+)\}$/);
-              if (envMatch) {
-                const envVarName = envMatch[1];
-                const envValue = process.env[envVarName];
-                if (envValue) {
-                  console.log(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
-                } else {
-                  console.log(`  ✗ ${envVarName}: NOT SET`);
-                }
-              } else {
-                console.log(`  • ${providerName}: API key is hardcoded (not env var)`);
-              }
-            }
-          }
-          console.log('');
-        }
-
-        // Sanitize config to hide API keys
-        const sanitizedConfig = JSON.parse(JSON.stringify(opencodeConfig));
-        if (sanitizedConfig.provider) {
-          for (const providerName of Object.keys(sanitizedConfig.provider)) {
-            if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
-              const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
-              // Always redact since we've resolved env vars
-              if (apiKey && apiKey.length > 0) {
-                sanitizedConfig.provider[providerName].options.apiKey =
-                  `***REDACTED (${apiKey.length} chars)***`;
-              } else {
-                sanitizedConfig.provider[providerName].options.apiKey = '***EMPTY***';
-              }
-            }
-          }
-        }
-        console.log('Config being passed to OpenCode:');
-        console.log(JSON.stringify(sanitizedConfig, null, 2));
-
-        if (this.config.config) {
-          const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
-          const defaultSkills = getDefaultSkills(this.config.config);
-          const agentSkills = normalizedAgents
-            .map((agent) => {
-              const combined = new Set([
-                ...defaultSkills,
-                ...(agent.skills ? agent.skills.map(String) : []),
-              ]);
-              return {
-                name: `review/${agent.name}`,
-                skills: Array.from(combined).filter((skill) => skill.length > 0),
-              };
-            })
-            .filter((agent) => agent.skills.length > 0);
-
-          if (agentSkills.length > 0) {
-            console.log('Agent skills configuration:');
-            console.log(JSON.stringify(agentSkills, null, 2));
-          }
-        }
-
-        console.log('─'.repeat(50));
-        console.log('');
-      }
-
-      // Change to project directory so OpenCode can discover agents
-      const originalCwd = process.cwd();
-      const projectDir = this.directory ?? originalCwd;
-      this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
-      process.env.DRS_PROJECT_ROOT = projectDir;
-      const discoveryRoot = projectDir;
-      if (discoveryRoot !== originalCwd) {
-        process.chdir(discoveryRoot);
-      }
-
-      // OpenCode SDK reads provider-specific API keys from environment automatically
-      // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      this.inProcessServer = await createOpencode({
-        timeout: SERVER_START_TIMEOUT_MS,
-        config: opencodeConfig,
-      });
-
-      // Restore original working directory
-      if (discoveryRoot !== originalCwd) {
-        process.chdir(originalCwd);
-      }
-
-      this.client = this.inProcessServer.client;
-      this.baseUrl = this.inProcessServer.server.url;
-      const ready = await waitForServerReady(this.baseUrl);
-      if (!ready) {
-        console.warn(
-          `⚠️  OpenCode server did not become ready at ${this.baseUrl}. Review requests may fail.`
+        opencodeConfig.agentSkills = Object.fromEntries(
+          agentSkills.map((agent) => [agent.name, agent.skills])
         );
       }
     }
+
+    // Debug: Print final runtime config
+    if (this.config.debug) {
+      console.log('🔧 DEBUG: Final Pi runtime configuration (after env resolution):');
+      console.log('─'.repeat(50));
+
+      // Show environment variable status for custom providers
+      if (this.config.provider) {
+        console.log('\n📍 Environment variable status:');
+        for (const [providerName, provider] of Object.entries(this.config.provider)) {
+          const apiKeyConfig = provider.options?.apiKey;
+          if (apiKeyConfig && typeof apiKeyConfig === 'string') {
+            const envMatch = apiKeyConfig.match(/^\{env:([^}]+)\}$/);
+            if (envMatch) {
+              const envVarName = envMatch[1];
+              const envValue = process.env[envVarName];
+              if (envValue) {
+                console.log(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
+              } else {
+                console.log(`  ✗ ${envVarName}: NOT SET`);
+              }
+            } else {
+              console.log(`  • ${providerName}: API key is hardcoded (not env var)`);
+            }
+          }
+        }
+        console.log('');
+      }
+
+      // Sanitize config to hide API keys
+      const sanitizedConfig = JSON.parse(JSON.stringify(opencodeConfig));
+      if (sanitizedConfig.provider) {
+        for (const providerName of Object.keys(sanitizedConfig.provider)) {
+          if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
+            const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
+            // Always redact since we've resolved env vars
+            if (apiKey && apiKey.length > 0) {
+              sanitizedConfig.provider[providerName].options.apiKey =
+                `***REDACTED (${apiKey.length} chars)***`;
+            } else {
+              sanitizedConfig.provider[providerName].options.apiKey = '***EMPTY***';
+            }
+          }
+        }
+      }
+
+      if (sanitizedConfig.agent) {
+        for (const agentName of Object.keys(sanitizedConfig.agent)) {
+          const prompt = sanitizedConfig.agent[agentName]?.prompt;
+          if (typeof prompt === 'string' && prompt.length > 0) {
+            sanitizedConfig.agent[agentName].prompt = `***OMITTED (${prompt.length} chars)***`;
+          }
+        }
+      }
+
+      console.log('Config being passed to Pi runtime:');
+      console.log(JSON.stringify(sanitizedConfig, null, 2));
+
+      const configuredAgentSkills = opencodeConfig.agentSkills as
+        | Record<string, string[]>
+        | undefined;
+
+      if (configuredAgentSkills && Object.keys(configuredAgentSkills).length > 0) {
+        console.log('Agent skills configuration:');
+        console.log(JSON.stringify(configuredAgentSkills, null, 2));
+      }
+
+      console.log('─'.repeat(50));
+      console.log('');
+    }
+
+    // Change to project directory so the Pi runtime can resolve project-relative assets
+    const discoveryRoot = projectDir;
+    if (discoveryRoot !== originalCwd) {
+      process.chdir(discoveryRoot);
+    }
+
+    // Pi SDK reads provider-specific API keys from environment automatically
+    // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
+    this.inProcessServer = await createPiInProcessServer({
+      timeout: SERVER_START_TIMEOUT_MS,
+      config: opencodeConfig,
+    });
+
+    // Restore original working directory
+    if (discoveryRoot !== originalCwd) {
+      process.chdir(originalCwd);
+    }
+
+    this.client = this.inProcessServer.client;
+    this.baseUrl = this.inProcessServer.server.url;
   }
 
   /**
@@ -293,13 +366,7 @@ export class OpencodeClient {
         createdAt: new Date(),
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const connectionHint =
-        message.includes('fetch failed') || message.includes('ECONNREFUSED')
-          ? ` Check the OpenCode server URL (${this.baseUrl ?? 'in-process'}) and ensure it is reachable.`
-          : '';
-
-      throw new Error(`Failed to create session: ${message}${connectionHint}`);
+      throw mapPiRuntimeError('create session', error);
     }
   }
 
@@ -321,18 +388,9 @@ export class OpencodeClient {
         attempts++;
 
         // Get current messages
-        interface SessionMessage {
-          info?: {
-            id?: string;
-            role?: string;
-            time?: { completed?: number };
-            error?: unknown;
-          };
-          parts?: Array<{ text?: string }>;
-        }
         const messagesResponse = (await this.client.session.messages({
           path: { id: sessionId },
-        })) as { data?: SessionMessage[] };
+        })) as { data?: PiSessionMessage[] };
 
         const messages = messagesResponse.data ?? [];
 
@@ -344,6 +402,8 @@ export class OpencodeClient {
             role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
             content: msg.parts?.map((p) => p.text ?? '').join('') ?? '',
             timestamp: new Date(),
+            toolName: msg.info?.toolName,
+            toolCallId: msg.info?.toolCallId,
           };
         }
 
@@ -373,9 +433,7 @@ export class OpencodeClient {
         throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
       }
     } catch (error) {
-      throw new Error(
-        `Failed to get messages: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('get messages', error);
     }
   }
 
@@ -399,24 +457,23 @@ export class OpencodeClient {
     }
 
     try {
-      // Send message using OpenCode SDK
-      const clientWithSendMessage = this.client as ReturnType<typeof createSDKClient> & {
-        session: {
-          sendMessage: (args: {
-            path: { id: string };
-            body: { content: string };
-          }) => Promise<unknown>;
-        };
+      const sessionWithSendMessage = this.client.session as PiClient['session'] & {
+        sendMessage?: (args: {
+          path: { id: string };
+          body: { content: string };
+        }) => Promise<unknown>;
       };
 
-      await clientWithSendMessage.session.sendMessage({
+      if (!sessionWithSendMessage.sendMessage) {
+        throw new Error('Pi runtime does not support follow-up messages for active sessions');
+      }
+
+      await sessionWithSendMessage.sendMessage({
         path: { id: sessionId },
         body: { content },
       });
     } catch (error) {
-      throw new Error(
-        `Failed to send message: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('send message', error);
     }
   }
 
@@ -433,9 +490,7 @@ export class OpencodeClient {
         path: { id: sessionId },
       });
     } catch (error) {
-      throw new Error(
-        `Failed to close session: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('close session', error);
     }
   }
 
@@ -444,15 +499,10 @@ export class OpencodeClient {
    */
   async shutdown(): Promise<void> {
     if (this.inProcessServer) {
-      // Close the OpenCode server
+      // Close the in-process Pi runtime
       this.inProcessServer.server.close();
       // Give server time to clean up connections
       await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (this.projectRootEnv === undefined) {
-      delete process.env.DRS_PROJECT_ROOT;
-    } else {
-      process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
     }
   }
 
@@ -501,67 +551,41 @@ export class OpencodeClient {
   }
 }
 
-function parseServerEndpoint(baseUrl: string): { host: string; port: number } | null {
-  try {
-    const url = new URL(baseUrl);
-    const port = url.port !== '' ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
-
-    if (!url.hostname || Number.isNaN(port)) {
-      return null;
-    }
-
-    return { host: url.hostname, port };
-  } catch {
-    return null;
-  }
-}
-
-async function isServerReachable(baseUrl: string): Promise<boolean> {
-  const endpoint = parseServerEndpoint(baseUrl);
-  if (!endpoint) {
-    return false;
-  }
-
-  return new Promise((resolve) => {
-    const socket = net.createConnection(endpoint, () => {
-      socket.end();
-      resolve(true);
-    });
-
-    socket.setTimeout(1000);
-    socket.on('timeout', () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.on('error', () => resolve(false));
-  });
-}
-
-async function waitForServerReady(baseUrl: string, attempts = 10, delayMs = 200): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await isServerReachable(baseUrl)) {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-  return false;
+/**
+ * Create a runtime client with the given configuration.
+ */
+export function createRuntimeClient(config: RuntimeClientConfig): RuntimeClient {
+  return new RuntimeClient(config);
 }
 
 /**
- * Create an OpenCode client with the given configuration
- * @deprecated Use createOpencodeClientInstance instead, which properly initializes the client
+ * Create and initialize a runtime client with the given configuration.
  */
-export function createOpencodeClient(config: OpencodeConfig): OpencodeClient {
-  return new OpencodeClient(config);
-}
-
-/**
- * Create and initialize an OpenCode client with the given configuration
- */
-export async function createOpencodeClientInstance(
-  config: OpencodeConfig
-): Promise<OpencodeClient> {
-  const client = new OpencodeClient(config);
+export async function createRuntimeClientInstance(
+  config: RuntimeClientConfig
+): Promise<RuntimeClient> {
+  const client = new RuntimeClient(config);
   await client.initialize();
   return client;
+}
+
+/**
+ * @deprecated Use RuntimeClient.
+ */
+export { RuntimeClient as OpencodeClient };
+
+/**
+ * @deprecated Use createRuntimeClient instead.
+ */
+export function createOpencodeClient(config: RuntimeClientConfig): RuntimeClient {
+  return createRuntimeClient(config);
+}
+
+/**
+ * @deprecated Use createRuntimeClientInstance instead.
+ */
+export async function createOpencodeClientInstance(
+  config: RuntimeClientConfig
+): Promise<RuntimeClient> {
+  return createRuntimeClientInstance(config);
 }
