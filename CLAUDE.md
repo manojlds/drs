@@ -1,4 +1,4 @@
-# Claude.md - DRS Repository Guide
+# CLAUDE.md - DRS Repository Guide
 
 ## ⚠️ CRITICAL: Run Checks After EVERY Change
 
@@ -214,7 +214,7 @@ npm run lint         # Check remaining issues
 - **README.md** - User guide and quick start
 - **ARCHITECTURE.md** - Technical architecture details
 - **DEVELOPMENT.md** - Local testing guide
-- **Claude.md** - This file (AI assistant reference)
+- **CLAUDE.md** - This file (AI assistant reference)
 
 ---
 

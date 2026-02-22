@@ -24,5 +24,5 @@ boundaries:
     - '*.lock'
     - '.env*'
 
-engine: 'opencode'
+engine: 'pi'
 max_retries: 3
