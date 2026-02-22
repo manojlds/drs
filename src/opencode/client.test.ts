@@ -27,6 +27,10 @@ vi.mock('../pi/sdk.js', () => ({
   })),
 }));
 
+vi.mock('./agent-loader.js', () => ({
+  loadReviewAgents: vi.fn(() => []),
+}));
+
 describe('OpencodeClient', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -78,6 +82,62 @@ describe('OpencodeClient', () => {
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
+    });
+  });
+
+  describe('initialize', () => {
+    it('wires Pi runtime agent prompts and model overrides', async () => {
+      const { createPiInProcessServer } = await import('../pi/sdk.js');
+      const { loadReviewAgents } = await import('./agent-loader.js');
+
+      vi.mocked(loadReviewAgents).mockReturnValue([
+        {
+          name: 'review/security',
+          path: '/tmp/security.md',
+          description: 'Security specialist',
+          prompt: 'Security prompt',
+          tools: { Read: true },
+        },
+        {
+          name: 'review/quality',
+          path: '/tmp/quality.md',
+          description: 'Quality specialist',
+          prompt: 'Quality prompt',
+        },
+      ] as any);
+
+      const client = await createOpencodeClientInstance({
+        directory: process.cwd(),
+        config: {
+          review: {
+            agents: ['security', 'quality'],
+            default: {
+              skills: [],
+            },
+          },
+        } as any,
+        modelOverrides: {
+          'review/security': 'anthropic/claude-security',
+        },
+      });
+
+      expect(createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agent: expect.objectContaining({
+              'review/security': expect.objectContaining({
+                prompt: 'Security prompt',
+                model: 'anthropic/claude-security',
+              }),
+              'review/quality': expect.objectContaining({
+                prompt: 'Quality prompt',
+              }),
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
     });
   });
 

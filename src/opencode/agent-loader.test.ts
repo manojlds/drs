@@ -51,6 +51,23 @@ describe('agent-loader path resolution', () => {
     expect(agents.some((agent) => agent.name === 'review/quality')).toBe(true);
   });
 
+  it('loads built-in Pi-native review agents and keeps all core categories', () => {
+    const agents = loadReviewAgents(process.cwd());
+    const reviewAgentNames = new Set(
+      agents.filter((agent) => agent.name.startsWith('review/')).map((agent) => agent.name)
+    );
+
+    expect(reviewAgentNames.has('review/security')).toBe(true);
+    expect(reviewAgentNames.has('review/quality')).toBe(true);
+    expect(reviewAgentNames.has('review/style')).toBe(true);
+    expect(reviewAgentNames.has('review/performance')).toBe(true);
+    expect(reviewAgentNames.has('review/documentation')).toBe(true);
+
+    const securityAgent = agents.find((agent) => agent.name === 'review/security');
+    expect(securityAgent?.prompt).toContain('Security Vulnerability Assessment');
+    expect(securityAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]security\.md$/);
+  });
+
   it('throws actionable error when configured agent path is invalid', () => {
     const projectRoot = createTempDir('drs-agent-loader-invalid-');
 

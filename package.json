@@ -25,6 +25,7 @@
     "dist",
     "README.md",
     "LICENSE",
+    ".pi",
     ".opencode"
   ],
   "repository": {

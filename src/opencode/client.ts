@@ -8,6 +8,7 @@
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { loadReviewAgents } from './agent-loader.js';
 import { resolveReviewPaths } from './path-config.js';
 import {
   createPiInProcessServer,
@@ -118,6 +119,9 @@ export class OpencodeClient {
     } else {
       // Start server in-process
       // Build OpenCode config programmatically from DRS config
+      const originalCwd = process.cwd();
+      const projectDir = this.directory ?? originalCwd;
+      const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
 
       const opencodeConfig: Record<string, unknown> = {
         // Tools available to DRS review agents
@@ -133,6 +137,28 @@ export class OpencodeClient {
           Edit: false,
         },
       };
+
+      const agentConfig: Record<string, Record<string, unknown>> = {};
+
+      if (this.config.config) {
+        const runtimeAgents = loadReviewAgents(projectDir, this.config.config);
+        for (const agent of runtimeAgents) {
+          const runtimeEntry: Record<string, unknown> = {};
+          if (agent.model) runtimeEntry.model = agent.model;
+          if (agent.prompt) runtimeEntry.prompt = agent.prompt;
+          if (agent.description) runtimeEntry.description = agent.description;
+          if (agent.color) runtimeEntry.color = agent.color;
+          if (agent.tools) runtimeEntry.tools = agent.tools;
+
+          if (Object.keys(runtimeEntry).length > 0) {
+            agentConfig[agent.name] = runtimeEntry;
+          }
+        }
+
+        if (runtimeAgents.length > 0) {
+          console.log(`🧠 Loaded ${runtimeAgents.length} agent definitions for Pi runtime.`);
+        }
+      }
 
       // Set log level to DEBUG when --debug flag is used
       // This shows full system prompts, tools, API calls, etc. from OpenCode
@@ -151,18 +177,23 @@ export class OpencodeClient {
 
       // Apply model overrides from DRS config
       if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
-        const agentConfig: Record<string, { model: string }> = {};
-
         console.log('📋 Agent model configuration:');
 
         // Merge model overrides into agent configuration
         for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
-          agentConfig[agentName] = { model };
+          const entry = agentConfig[agentName] ?? {};
+          agentConfig[agentName] = {
+            ...entry,
+            model,
+          };
           console.log(`  • ${agentName}: ${model}`);
         }
 
-        opencodeConfig.agent = agentConfig;
         console.log('');
+      }
+
+      if (Object.keys(agentConfig).length > 0) {
+        opencodeConfig.agent = agentConfig;
       }
 
       if (this.config.config) {
@@ -234,6 +265,16 @@ export class OpencodeClient {
             }
           }
         }
+
+        if (sanitizedConfig.agent) {
+          for (const agentName of Object.keys(sanitizedConfig.agent)) {
+            const prompt = sanitizedConfig.agent[agentName]?.prompt;
+            if (typeof prompt === 'string' && prompt.length > 0) {
+              sanitizedConfig.agent[agentName].prompt = `***OMITTED (${prompt.length} chars)***`;
+            }
+          }
+        }
+
         console.log('Config being passed to OpenCode:');
         console.log(JSON.stringify(sanitizedConfig, null, 2));
 
@@ -263,10 +304,7 @@ export class OpencodeClient {
         console.log('');
       }
 
-      // Change to project directory so OpenCode can discover agents
-      const originalCwd = process.cwd();
-      const projectDir = this.directory ?? originalCwd;
-      const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
+      // Change to project directory so the Pi runtime can resolve project-relative assets
 
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
       this.agentsRootEnv = process.env.DRS_AGENTS_ROOT;

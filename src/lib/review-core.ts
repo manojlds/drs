@@ -270,6 +270,25 @@ function getConfiguredAgentInfo(
     .filter((a) => a !== null);
 }
 
+function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): void {
+  const configuredNames = getAgentNames(config);
+  const availableAgents = new Set(
+    loadReviewAgents(workingDir, config)
+      .filter((agent) => agent.name.startsWith('review/'))
+      .map((agent) => agent.name.replace(/^review\//, ''))
+  );
+
+  const missingAgents = configuredNames.filter((name) => !availableAgents.has(name));
+  if (missingAgents.length === 0) {
+    return;
+  }
+
+  const availableList = Array.from(availableAgents).sort();
+  throw new Error(
+    `Unknown review agent(s) configured: ${missingAgents.join(', ')}. Available agents: ${availableList.join(', ')}`
+  );
+}
+
 function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
   const trimmed = content.trim();
   if (!trimmed) {
@@ -450,6 +469,8 @@ export async function runReviewAgents(
   debug = false
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
+
+  validateConfiguredReviewAgents(config, workingDir);
 
   const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
   if (configuredAgentInfo.length > 0) {

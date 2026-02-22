@@ -308,18 +308,20 @@ drs review-local
 
 ## Architecture
 
-DRS uses OpenCode SDK with markdown-based agent definitions:
+DRS uses Pi runtime wiring with markdown-based agent definitions:
 
 ```
-.opencode/
-├── agent/
-│   └── review/
-│       ├── security.md          # Security specialist
-│       ├── quality.md           # Code quality expert
-│       ├── style.md             # Style checker
-│       └── performance.md       # Performance analyzer
-└── opencode.jsonc               # Configuration
+.pi/
+└── agents/
+    └── review/
+        ├── security.md          # Security specialist
+        ├── quality.md           # Code quality expert
+        ├── style.md             # Style checker
+        ├── performance.md       # Performance analyzer
+        └── documentation.md     # Documentation reviewer
 ```
+
+Legacy `.opencode/agent` paths are still recognized as a fallback during migration.
 
 ## Customization
 
@@ -367,6 +369,9 @@ Notes:
 - `review.describe` controls auto-description when running `review-mr` or `review-pr`.
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
+- `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
+- Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
+- Unknown agent names fail fast with a validation error before review execution starts.
 
 ## Review Domains
 
