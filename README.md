@@ -477,6 +477,7 @@ Apache-2.0
 
 ## Documentation
 
+- [Pi Migration, Upgrade, and Validation Guide](docs/PI_MIGRATION.md) - Breaking changes, upgrade steps, and review-flow validation matrix
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Design Document](DESIGN.md) - Original design using Claude Agent SDK

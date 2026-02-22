@@ -44,6 +44,22 @@ npm run dev -- describe-pr --owner octocat --repo hello-world --pr 456
 npm run dev -- describe-mr --project org/repo --mr 123
 ```
 
+## End-to-End Validation (Pi Review Flows)
+
+Primary CLI flow tests:
+
+- `src/cli/review-local.test.ts`
+- `src/cli/review-mr.test.ts`
+- `src/cli/review-pr.test.ts`
+
+Run full validation and quality gates:
+
+```bash
+npm run check:all
+```
+
+For migration-specific breaking changes and upgrade steps, see [docs/PI_MIGRATION.md](docs/PI_MIGRATION.md).
+
 ## Environment Variables
 
 Required (platform/model dependent):
