@@ -162,6 +162,60 @@ describe('unified-review-executor', () => {
       expect(mockPlatformClient.getChangedFiles).toHaveBeenCalledWith('owner/repo', 123);
     });
 
+    it('should use pre-fetched PR and file data when provided', async () => {
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+        pullRequest: {
+          number: 123,
+          title: 'Preloaded PR',
+          author: 'test-user',
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+          headSha: 'head-sha',
+          platformData: {},
+        },
+        changedFiles: [
+          {
+            filename: 'src/preloaded.ts',
+            status: 'modified',
+            additions: 1,
+            deletions: 0,
+            patch: '+preloaded change',
+          },
+        ],
+      };
+
+      await executeUnifiedReview(mockConfig, options);
+
+      expect(mockPlatformClient.getPullRequest).not.toHaveBeenCalled();
+      expect(mockPlatformClient.getChangedFiles).not.toHaveBeenCalled();
+    });
+
+    it('should include platform patches in review instructions when available', async () => {
+      const { buildBaseInstructions } = await import('./review-core.js');
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(mockConfig, options);
+
+      expect(buildBaseInstructions).toHaveBeenCalledWith(
+        'PR/MR #123',
+        expect.arrayContaining([
+          expect.objectContaining({ filename: 'src/test.ts', patch: '+added line' }),
+          expect.objectContaining({ filename: 'src/utils.ts', patch: '+new file' }),
+        ]),
+        'git diff origin/main origin/feature -- <file>'
+      );
+    });
+
     it('should enforce repository branch match', async () => {
       const { enforceRepoBranchMatch } = await import('./repository-validator.js');
 

@@ -20,7 +20,13 @@ import {
 import type { ReviewIssue } from './comment-formatter.js';
 import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
-import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type {
+  PlatformClient,
+  PullRequest,
+  FileChange,
+  LineValidator,
+  InlineCommentPosition,
+} from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import {
@@ -43,6 +49,10 @@ export interface UnifiedReviewOptions {
   projectId: string;
   /** PR/MR number */
   prNumber: number;
+  /** Optional pre-fetched PR/MR details (used to avoid duplicate platform calls) */
+  pullRequest?: PullRequest;
+  /** Optional pre-fetched changed files (used to avoid duplicate platform calls) */
+  changedFiles?: FileChange[];
   /** Whether to post comments to the platform */
   postComments: boolean;
   /** Whether to post an error comment if the review fails */
@@ -87,14 +97,15 @@ export async function executeUnifiedReview(
     // Fetch PR/MR details
     console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
 
-    const pr = await platformClient.getPullRequest(projectId, prNumber);
+    const pr = options.pullRequest ?? (await platformClient.getPullRequest(projectId, prNumber));
 
     await enforceRepoBranchMatch(options.workingDir ?? process.cwd(), projectId, pr, {
       skipRepoCheck: config.review.skipRepoCheck,
       skipBranchCheck: config.review.skipBranchCheck,
     });
 
-    const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
+    const allFiles =
+      options.changedFiles ?? (await platformClient.getChangedFiles(projectId, prNumber));
 
     console.log(chalk.bold(`PR/MR: ${pr.title}`));
     console.log(chalk.gray(`Author: ${pr.author}`));
@@ -168,7 +179,11 @@ export async function executeUnifiedReview(
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
     const fallbackDiffCommand = getCanonicalDiffCommand(pr, baseBranchResolution);
-    const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
+    const patchByFilename = new Map(allFiles.map((file) => [file.filename, file.patch]));
+    const filesForInstructions = filteredFiles.map((filename) => ({
+      filename,
+      patch: patchByFilename.get(filename),
+    }));
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
       filesForInstructions,
