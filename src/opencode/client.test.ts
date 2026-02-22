@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OpencodeClient, createOpencodeClient, createOpencodeClientInstance } from './client.js';
 
-// Mock the OpenCode SDK
-vi.mock('@opencode-ai/sdk', () => ({
-  createOpencode: vi.fn(async () => ({
+// Mock the Pi SDK compatibility layer
+vi.mock('../pi/sdk.js', () => ({
+  createPiInProcessServer: vi.fn(async () => ({
     server: {
       url: 'http://localhost:3000',
       close: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('@opencode-ai/sdk', () => ({
       },
     },
   })),
-  createOpencodeClient: vi.fn((_config: any) => ({
+  createPiRemoteClient: vi.fn((_config: { baseUrl: string }) => ({
     session: {
       create: vi.fn(async () => ({ data: { id: 'session-456' } })),
       prompt: vi.fn(async () => {}),
@@ -91,6 +91,84 @@ describe('OpencodeClient', () => {
           message: 'Review this code',
         })
       ).rejects.toThrow('OpenCode client not initialized');
+    });
+
+    it('should map authentication errors to actionable messages', async () => {
+      const { createPiRemoteClient } = await import('../pi/sdk.js');
+
+      vi.mocked(createPiRemoteClient).mockReturnValueOnce({
+        session: {
+          create: vi.fn(async () => {
+            throw new Error('401 Unauthorized');
+          }),
+          prompt: vi.fn(async () => {}),
+          messages: vi.fn(async () => ({ data: [] })),
+          delete: vi.fn(async () => {}),
+        },
+      } as any);
+
+      const client = await createOpencodeClientInstance({
+        baseUrl: 'http://localhost:3000',
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).rejects.toThrow('Authentication failed with the configured model provider');
+    });
+
+    it('should map model resolution errors to actionable messages', async () => {
+      const { createPiRemoteClient } = await import('../pi/sdk.js');
+
+      vi.mocked(createPiRemoteClient).mockReturnValueOnce({
+        session: {
+          create: vi.fn(async () => {
+            throw new Error('Failed to resolve model "anthropic/does-not-exist"');
+          }),
+          prompt: vi.fn(async () => {}),
+          messages: vi.fn(async () => ({ data: [] })),
+          delete: vi.fn(async () => {}),
+        },
+      } as any);
+
+      const client = await createOpencodeClientInstance({
+        baseUrl: 'http://localhost:3000',
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).rejects.toThrow('Model configuration is invalid or unavailable');
+    });
+
+    it('should include connection hint when runtime is unreachable', async () => {
+      const { createPiRemoteClient } = await import('../pi/sdk.js');
+
+      vi.mocked(createPiRemoteClient).mockReturnValueOnce({
+        session: {
+          create: vi.fn(async () => {
+            throw new Error('fetch failed');
+          }),
+          prompt: vi.fn(async () => {}),
+          messages: vi.fn(async () => ({ data: [] })),
+          delete: vi.fn(async () => {}),
+        },
+      } as any);
+
+      const client = await createOpencodeClientInstance({
+        baseUrl: 'http://localhost:3000',
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).rejects.toThrow('Check the Pi runtime server URL (http://localhost:3000)');
     });
   });
 
@@ -299,10 +377,10 @@ describe('OpencodeClient', () => {
     });
 
     it('should create and initialize client with createOpencodeClientInstance', async () => {
-      const { createOpencodeClient: createSDKClient } = await import('@opencode-ai/sdk');
+      const { createPiRemoteClient } = await import('../pi/sdk.js');
 
       // Mock for remote server
-      vi.mocked(createSDKClient).mockReturnValueOnce({
+      vi.mocked(createPiRemoteClient).mockReturnValueOnce({
         session: {
           create: vi.fn(async () => ({ data: { id: 'session-789' } })),
           prompt: vi.fn(async () => {}),
@@ -316,7 +394,7 @@ describe('OpencodeClient', () => {
       });
 
       expect(client).toBeInstanceOf(OpencodeClient);
-      expect(createSDKClient).toHaveBeenCalledWith({
+      expect(createPiRemoteClient).toHaveBeenCalledWith({
         baseUrl: 'http://localhost:3000',
       });
     });

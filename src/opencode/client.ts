@@ -1,15 +1,19 @@
 /**
- * OpenCode SDK client wrapper for DRS with in-process server support
+ * Agent runtime client wrapper for DRS with in-process server support.
  *
- * This client can either:
- * 1. Connect to an existing remote OpenCode server (when baseUrl is provided)
- * 2. Start an OpenCode server in-process (when baseUrl is not provided)
+ * This client maintains the existing internal interface used by review orchestration
+ * while delegating SDK calls through the Pi integration adapter in src/pi/sdk.ts.
  */
 
-import { createOpencode, createOpencodeClient as createSDKClient } from '@opencode-ai/sdk';
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import {
+  createPiInProcessServer,
+  createPiRemoteClient,
+  type PiClient,
+  type PiSessionMessage,
+} from '../pi/sdk.js';
 
 export interface OpencodeConfig {
   baseUrl?: string; // Optional - will start in-process if not provided
@@ -41,14 +45,54 @@ export interface Session {
   createdAt: Date;
 }
 
+function mapPiRuntimeError(operation: string, error: unknown, baseUrl?: string): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  const connectionError =
+    normalized.includes('fetch failed') ||
+    normalized.includes('econnrefused') ||
+    normalized.includes('connection refused');
+
+  if (connectionError) {
+    return new Error(
+      `Failed to ${operation}: ${message}. Check the Pi runtime server URL (${baseUrl ?? 'in-process'}) and ensure it is reachable.`
+    );
+  }
+
+  const authError =
+    normalized.includes('unauthorized') ||
+    normalized.includes('authentication') ||
+    normalized.includes('api key') ||
+    normalized.includes('401');
+
+  if (authError) {
+    return new Error(
+      `Failed to ${operation}: Authentication failed with the configured model provider. Verify API keys and provider settings. (Details: ${message})`
+    );
+  }
+
+  const modelError =
+    normalized.includes('failed to resolve model') ||
+    (normalized.includes('model') && normalized.includes('not found'));
+
+  if (modelError) {
+    return new Error(
+      `Failed to ${operation}: Model configuration is invalid or unavailable. Check configured provider/model names and overrides. (Details: ${message})`
+    );
+  }
+
+  return new Error(`Failed to ${operation}: ${message}`);
+}
+
 /**
  * OpenCode client that can start a server in-process or connect to remote
  */
 export class OpencodeClient {
   private baseUrl?: string;
   private directory?: string;
-  private inProcessServer?: Awaited<ReturnType<typeof createOpencode>>;
-  private client?: ReturnType<typeof createSDKClient>;
+  private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
+  private client?: PiClient;
   private config: OpencodeConfig;
   private projectRootEnv?: string;
 
@@ -64,7 +108,7 @@ export class OpencodeClient {
   async initialize(): Promise<void> {
     if (this.baseUrl) {
       // Connect to existing remote server
-      this.client = createSDKClient({
+      this.client = createPiRemoteClient({
         baseUrl: this.baseUrl,
       });
       console.log(`Connected to OpenCode server at ${this.baseUrl}`);
@@ -228,7 +272,7 @@ export class OpencodeClient {
 
       // OpenCode SDK reads provider-specific API keys from environment automatically
       // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
-      this.inProcessServer = await createOpencode({
+      this.inProcessServer = await createPiInProcessServer({
         timeout: SERVER_START_TIMEOUT_MS,
         config: opencodeConfig,
       });
@@ -293,13 +337,7 @@ export class OpencodeClient {
         createdAt: new Date(),
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const connectionHint =
-        message.includes('fetch failed') || message.includes('ECONNREFUSED')
-          ? ` Check the OpenCode server URL (${this.baseUrl ?? 'in-process'}) and ensure it is reachable.`
-          : '';
-
-      throw new Error(`Failed to create session: ${message}${connectionHint}`);
+      throw mapPiRuntimeError('create session', error, this.baseUrl);
     }
   }
 
@@ -321,18 +359,9 @@ export class OpencodeClient {
         attempts++;
 
         // Get current messages
-        interface SessionMessage {
-          info?: {
-            id?: string;
-            role?: string;
-            time?: { completed?: number };
-            error?: unknown;
-          };
-          parts?: Array<{ text?: string }>;
-        }
         const messagesResponse = (await this.client.session.messages({
           path: { id: sessionId },
-        })) as { data?: SessionMessage[] };
+        })) as { data?: PiSessionMessage[] };
 
         const messages = messagesResponse.data ?? [];
 
@@ -373,9 +402,7 @@ export class OpencodeClient {
         throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
       }
     } catch (error) {
-      throw new Error(
-        `Failed to get messages: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('get messages', error, this.baseUrl);
     }
   }
 
@@ -399,24 +426,23 @@ export class OpencodeClient {
     }
 
     try {
-      // Send message using OpenCode SDK
-      const clientWithSendMessage = this.client as ReturnType<typeof createSDKClient> & {
-        session: {
-          sendMessage: (args: {
-            path: { id: string };
-            body: { content: string };
-          }) => Promise<unknown>;
-        };
+      const sessionWithSendMessage = this.client.session as PiClient['session'] & {
+        sendMessage?: (args: {
+          path: { id: string };
+          body: { content: string };
+        }) => Promise<unknown>;
       };
 
-      await clientWithSendMessage.session.sendMessage({
+      if (!sessionWithSendMessage.sendMessage) {
+        throw new Error('Pi runtime does not support follow-up messages for active sessions');
+      }
+
+      await sessionWithSendMessage.sendMessage({
         path: { id: sessionId },
         body: { content },
       });
     } catch (error) {
-      throw new Error(
-        `Failed to send message: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('send message', error, this.baseUrl);
     }
   }
 
@@ -433,9 +459,7 @@ export class OpencodeClient {
         path: { id: sessionId },
       });
     } catch (error) {
-      throw new Error(
-        `Failed to close session: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw mapPiRuntimeError('close session', error, this.baseUrl);
     }
   }
 
