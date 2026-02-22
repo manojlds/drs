@@ -12,6 +12,7 @@ vi.mock('./config.js', () => ({
   getModelOverrides: vi.fn(() => ({})),
   getUnifiedModelOverride: vi.fn(() => ({})),
   getDescriberModelOverride: vi.fn(() => ({})),
+  getDefaultModel: vi.fn(() => undefined),
 }));
 
 vi.mock('./repository-validator.js', () => ({
@@ -29,6 +30,7 @@ vi.mock('./review-orchestrator.js', () => {
     createSession: vi.fn(),
     streamMessages: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
+    getMinContextWindow: vi.fn(() => undefined),
   }));
 
   return {
@@ -91,6 +93,7 @@ vi.mock('./json-output.js', () => ({
 vi.mock('./context-compression.js', () => ({
   prepareDiffsForAgent: vi.fn((files: any[]) => ({ files, generated: [] })),
   formatCompressionSummary: vi.fn(() => ''),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
 
 vi.mock('fs/promises', () => ({
@@ -472,6 +475,7 @@ describe('unified-review-executor', () => {
       const { connectToRuntime } = await import('./review-orchestrator.js');
       const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
       vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
 
@@ -493,6 +497,7 @@ describe('unified-review-executor', () => {
 
       const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
       vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Test error'));

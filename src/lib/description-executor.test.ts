@@ -12,6 +12,7 @@ vi.mock('./describe-core.js', () => ({
 vi.mock('./context-compression.js', () => ({
   prepareDiffsForAgent: vi.fn((files: FileWithDiff[]) => ({ files, generated: [] })),
   formatCompressionSummary: vi.fn(() => undefined),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
 
 vi.mock('./review-orchestrator.js', () => ({
@@ -57,6 +58,7 @@ describe('description-executor', () => {
           timestamp: new Date(),
         };
       }),
+      getMinContextWindow: vi.fn(() => undefined),
     } as unknown as RuntimeClient;
 
     platformClient = {} as unknown as PlatformClient;

@@ -12,6 +12,7 @@ import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import {
+  getDefaultModel,
   getDescriberModelOverride,
   getModelOverrides,
   getUnifiedModelOverride,
@@ -35,9 +36,13 @@ import {
   getCanonicalDiffCommand,
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
-import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
 import { runDescribeIfEnabled } from './description-executor.js';
-import type { Description } from './description-formatter.js';
+import { formatDescribeSummary, type Description } from './description-formatter.js';
 import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
@@ -185,27 +190,7 @@ export async function executeUnifiedReview(
     }
 
     // Build change context from describe output for review agents
-    let describeSummary: string | undefined;
-    if (describeResult) {
-      const parts: string[] = [];
-      if (describeResult.title) {
-        parts.push(`**${describeResult.type ?? 'change'}**: ${describeResult.title}`);
-      }
-      if (describeResult.summary && describeResult.summary.length > 0) {
-        parts.push(describeResult.summary.map((s: string) => `- ${s}`).join('\n'));
-      }
-      if (describeResult.walkthrough && describeResult.walkthrough.length > 0) {
-        const majorFiles = describeResult.walkthrough
-          .filter((w: { significance?: string }) => w.significance === 'major')
-          .map((w: { file: string; title: string }) => `- **${w.file}**: ${w.title}`);
-        if (majorFiles.length > 0) {
-          parts.push('Key changes:\n' + majorFiles.join('\n'));
-        }
-      }
-      if (parts.length > 0) {
-        describeSummary = parts.join('\n\n');
-      }
-    }
+    const describeSummary = describeResult ? formatDescribeSummary(describeResult) : undefined;
 
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
@@ -217,7 +202,13 @@ export async function executeUnifiedReview(
       patch: patchByFilename.get(filename),
     }));
 
-    const compression = prepareDiffsForAgent(filesForInstructions, config.contextCompression);
+    const reviewModelIds = [
+      ...new Set([...Object.values(reviewOverrides), getDefaultModel(config)]),
+    ].filter((id): id is string => !!id);
+    const contextWindow = runtimeClient.getMinContextWindow(reviewModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
     const compressionSummary = formatCompressionSummary(compression);
 
     if (compressionSummary) {

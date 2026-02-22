@@ -4,6 +4,7 @@ import {
   filterGeneratedFiles,
   formatCompressionSummary,
   prepareDiffsForAgent,
+  resolveCompressionBudget,
   stripDeletionOnlyHunks,
 } from './context-compression.js';
 
@@ -78,6 +79,57 @@ describe('filterGeneratedFiles', () => {
     const { kept, generated } = filterGeneratedFiles(files);
     expect(kept).toHaveLength(1);
     expect(generated).toHaveLength(0);
+  });
+});
+
+describe('resolveCompressionBudget', () => {
+  it('computes maxTokens from thresholdPercent and contextWindow', () => {
+    const result = resolveCompressionBudget(200000, { thresholdPercent: 0.15, maxTokens: 32000 });
+    expect(result.maxTokens).toBe(30000);
+  });
+
+  it('falls back to static maxTokens when contextWindow is undefined', () => {
+    const result = resolveCompressionBudget(undefined, {
+      thresholdPercent: 0.15,
+      maxTokens: 32000,
+    });
+    expect(result.maxTokens).toBe(32000);
+  });
+
+  it('falls back to static maxTokens when thresholdPercent is zero', () => {
+    const result = resolveCompressionBudget(200000, { thresholdPercent: 0, maxTokens: 32000 });
+    expect(result.maxTokens).toBe(32000);
+  });
+
+  it('falls back to static maxTokens when thresholdPercent is not set', () => {
+    const result = resolveCompressionBudget(200000, { maxTokens: 32000 });
+    expect(result.maxTokens).toBe(32000);
+  });
+
+  it('returns empty options when options is undefined', () => {
+    const result = resolveCompressionBudget(200000);
+    expect(result).toEqual({});
+  });
+
+  it('scales with different context window sizes', () => {
+    const small = resolveCompressionBudget(8000, { thresholdPercent: 0.2, maxTokens: 32000 });
+    const large = resolveCompressionBudget(1000000, { thresholdPercent: 0.2, maxTokens: 32000 });
+    expect(small.maxTokens).toBe(1600);
+    expect(large.maxTokens).toBe(200000);
+  });
+
+  it('preserves other options when overriding maxTokens', () => {
+    const result = resolveCompressionBudget(100000, {
+      thresholdPercent: 0.1,
+      maxTokens: 32000,
+      softBufferTokens: 1500,
+      hardBufferTokens: 1000,
+      tokenEstimateDivisor: 4,
+    });
+    expect(result.maxTokens).toBe(10000);
+    expect(result.softBufferTokens).toBe(1500);
+    expect(result.hardBufferTokens).toBe(1000);
+    expect(result.tokenEstimateDivisor).toBe(4);
   });
 });
 

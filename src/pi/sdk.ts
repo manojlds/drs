@@ -63,6 +63,7 @@ export interface PiSessionApi {
 
 export interface PiClient {
   session: PiSessionApi;
+  getModelContextWindow?: (modelId: string) => number | undefined;
 }
 
 export interface PiInProcessServer {
@@ -394,6 +395,15 @@ class PiSessionRuntime {
     return model;
   }
 
+  getModelContextWindow(modelId: string): number | undefined {
+    if (!modelId) return undefined;
+    const parts = modelId.split('/');
+    if (parts.length < 2) return undefined;
+    const [provider, ...rest] = parts;
+    const model = this.modelRegistry.find(provider, rest.join('/'));
+    return model?.contextWindow;
+  }
+
   private isToolEnabled(toolName: string, defaultValue: boolean): boolean {
     const value = this.runtimeConfig.tools?.[toolName];
     return typeof value === 'boolean' ? value : defaultValue;
@@ -664,6 +674,7 @@ export function createPiInProcessServer(options: {
     },
     client: {
       session: runtime.sessionApi,
+      getModelContextWindow: (modelId: string) => runtime.getModelContextWindow(modelId),
     },
   });
 }

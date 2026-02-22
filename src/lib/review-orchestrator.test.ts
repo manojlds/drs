@@ -58,6 +58,7 @@ vi.mock('../opencode/client.js', () => {
       }),
       closeSession: vi.fn(async () => {}),
       shutdown: vi.fn(async () => {}),
+      getMinContextWindow: vi.fn(() => undefined),
     };
     return mockOpencodeClient;
   });
@@ -126,6 +127,7 @@ vi.mock('./context-compression.js', () => ({
     omitted: { deletionsOnly: [], dueToBudget: [], generated: [] },
   })),
   formatCompressionSummary: vi.fn(() => null),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
 
 describe('review-orchestrator', () => {

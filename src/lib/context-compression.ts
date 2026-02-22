@@ -3,6 +3,7 @@ import type { FileWithDiff } from './review-core.js';
 export interface ContextCompressionOptions {
   enabled?: boolean;
   maxTokens?: number;
+  thresholdPercent?: number;
   softBufferTokens?: number;
   hardBufferTokens?: number;
   tokenEstimateDivisor?: number;
@@ -20,6 +21,7 @@ export interface ContextCompressionResult {
 const DEFAULT_COMPRESSION_OPTIONS: Required<ContextCompressionOptions> = {
   enabled: true,
   maxTokens: 8000,
+  thresholdPercent: 0,
   softBufferTokens: 1500,
   hardBufferTokens: 1000,
   tokenEstimateDivisor: 4,
@@ -230,6 +232,21 @@ export function compressFilesWithDiffs(
       generated: [],
     },
   };
+}
+
+export function resolveCompressionBudget(
+  contextWindow: number | undefined,
+  options?: ContextCompressionOptions
+): ContextCompressionOptions {
+  if (!options) return {};
+  const threshold = options.thresholdPercent;
+  if (threshold && threshold > 0 && contextWindow && contextWindow > 0) {
+    return {
+      ...options,
+      maxTokens: Math.floor(contextWindow * threshold),
+    };
+  }
+  return options;
 }
 
 export function prepareDiffsForAgent(

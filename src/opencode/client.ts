@@ -119,6 +119,21 @@ export class RuntimeClient {
     this.config = config;
   }
 
+  getModelContextWindow(modelId: string): number | undefined {
+    return this.inProcessServer?.client.getModelContextWindow?.(modelId);
+  }
+
+  getMinContextWindow(modelIds: string[]): number | undefined {
+    let min: number | undefined;
+    for (const id of modelIds) {
+      const w = this.getModelContextWindow(id);
+      if (w !== undefined) {
+        min = min === undefined ? w : Math.min(min, w);
+      }
+    }
+    return min;
+  }
+
   private getConfiguredModelPricing(provider?: string, model?: string) {
     const pricing = this.config.config?.pricing?.models;
     if (!pricing) {

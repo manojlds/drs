@@ -11,6 +11,8 @@ import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
+  getDefaultModel,
+  getDescriberModelOverride,
   getRuntimeConfig,
   getUnifiedModelOverride,
   type ModelOverrides,
@@ -24,8 +26,14 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
 } from './review-core.js';
-import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
 import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
+import { runDescribeAgent } from './description-executor.js';
+import { formatDescribeSummary } from './description-formatter.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -162,8 +170,20 @@ export async function executeReview(
 
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
+  // Include describer model overrides if describe is enabled
+  const describeEnabled = config.review.describe?.enabled ?? false;
+  const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
+  const reviewOverrides = {
+    ...getModelOverrides(config),
+    ...getUnifiedModelOverride(config),
+    ...describeOverrides,
+  };
+
   // Connect to Pi runtime
-  const runtimeClient = await connectToRuntime(config, source.workingDir, { debug: source.debug });
+  const runtimeClient = await connectToRuntime(config, source.workingDir, {
+    debug: source.debug,
+    modelOverrides: reviewOverrides,
+  });
 
   try {
     // Build instructions - use provided diffs if available, otherwise fall back to git command
@@ -181,7 +201,40 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    const compression = prepareDiffsForAgent(filesForInstructions, config.contextCompression);
+    // Run describe pass if enabled — gives review agents change context
+    let describeSummary: string | undefined;
+    if (describeEnabled && filesForInstructions.some((f) => f.patch)) {
+      try {
+        console.log(chalk.bold.blue('🔍 Running describe pass for change context\n'));
+        const { description } = await runDescribeAgent(
+          runtimeClient,
+          config,
+          source.name,
+          filesForInstructions,
+          source.workingDir ?? process.cwd(),
+          source.debug
+        );
+        describeSummary = formatDescribeSummary(description);
+      } catch (describeError) {
+        console.warn(
+          chalk.yellow(
+            `⚠ Describe pass failed, continuing review without change context: ${describeError instanceof Error ? describeError.message : String(describeError)}\n`
+          )
+        );
+      }
+    }
+
+    const modelIds = [
+      ...new Set([
+        ...Object.values(getModelOverrides(config)),
+        ...Object.values(getUnifiedModelOverride(config)),
+        getDefaultModel(config),
+      ]),
+    ].filter((id): id is string => !!id);
+    const contextWindow = runtimeClient.getMinContextWindow(modelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
     const compressionSummary = formatCompressionSummary(compression);
 
     if (compressionSummary) {
@@ -202,7 +255,7 @@ export async function executeReview(
       baseInstructions,
       source.name,
       filteredFiles,
-      source.context,
+      { ...source.context, describeSummary },
       source.workingDir ?? process.cwd(),
       source.debug ?? false
     );

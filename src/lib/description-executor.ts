@@ -9,7 +9,11 @@ import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { FileWithDiff } from './review-core.js';
 import { buildDescribeInstructions } from './describe-core.js';
-import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
 import { filterIgnoredFiles } from './review-orchestrator.js';
 import { loadGlobalContext } from './context-loader.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
@@ -23,6 +27,7 @@ import {
 import { parseDescribeOutput } from './describe-parser.js';
 import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
 import type { RuntimeClient } from '../opencode/client.js';
+import { getDescriberModelOverride, getDefaultModel } from './config.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -36,24 +41,22 @@ export function detectPlatform(pr: PullRequest): Platform {
 }
 
 /**
- * Generate and optionally post a PR/MR description
- *
- * @returns The generated description, or null if description generation is disabled
+ * Run the describe agent and return a normalized Description.
+ * Platform-independent — handles compression, context loading, agent execution, and parsing.
  */
-export async function runDescribeIfEnabled(
+export interface DescribeAgentResult {
+  description: Description;
+  usage: ReturnType<typeof createAgentUsageSummary>;
+}
+
+export async function runDescribeAgent(
   runtimeClient: RuntimeClient,
   config: DRSConfig,
-  platformClient: PlatformClient,
-  projectId: string,
-  pr: PullRequest,
+  label: string,
   files: FileWithDiff[],
-  shouldPostDescription: boolean,
   workingDir: string,
   debug?: boolean
-): Promise<Description | null> {
-  console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
-
-  const label = `${detectPlatform(pr)} #${pr.number}`;
+): Promise<DescribeAgentResult> {
   const filteredFileNames = new Set(
     filterIgnoredFiles(
       files.map((f) => f.filename),
@@ -61,7 +64,13 @@ export async function runDescribeIfEnabled(
     )
   );
   const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
-  const compression = prepareDiffsForAgent(filteredFiles, config.contextCompression);
+  const describeModelIds = [
+    ...new Set([...Object.values(getDescriberModelOverride(config)), getDefaultModel(config)]),
+  ].filter((id): id is string => !!id);
+  const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+  const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+  const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
   const compressionSummary = formatCompressionSummary(compression);
 
   if (compressionSummary) {
@@ -83,7 +92,6 @@ export async function runDescribeIfEnabled(
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Run describe agent
   const agentType = 'describe/pr-describer';
   const session = await runtimeClient.createSession({
     agent: agentType,
@@ -99,7 +107,6 @@ export async function runDescribeIfEnabled(
     }
   }
 
-  // Parse agent output
   let descriptionPayload: Description;
   try {
     descriptionPayload = (await parseDescribeOutput(
@@ -114,15 +121,39 @@ export async function runDescribeIfEnabled(
     throw new Error(`Describe agent did not return valid JSON output${reason}`);
   }
 
-  // Display and optionally post description
-  const description = normalizeDescription(descriptionPayload);
+  return { description: normalizeDescription(descriptionPayload), usage: usageByAgent };
+}
+
+/**
+ * Generate and optionally post a PR/MR description
+ *
+ * @returns The generated description, or null if description generation is disabled
+ */
+export async function runDescribeIfEnabled(
+  runtimeClient: RuntimeClient,
+  config: DRSConfig,
+  platformClient: PlatformClient,
+  projectId: string,
+  pr: PullRequest,
+  files: FileWithDiff[],
+  shouldPostDescription: boolean,
+  workingDir: string,
+  debug?: boolean
+): Promise<Description | null> {
+  console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
+
+  const label = `${detectPlatform(pr)} #${pr.number}`;
+  const { description, usage } = await runDescribeAgent(
+    runtimeClient,
+    config,
+    label,
+    files,
+    workingDir,
+    debug
+  );
+
   const platform = detectPlatform(pr);
-  const usageSummary = aggregateAgentUsage([
-    {
-      ...usageByAgent,
-      success: true,
-    },
-  ]);
+  const usageSummary = aggregateAgentUsage([{ ...usage, success: true }]);
 
   if (shouldPostDescription) {
     console.log(

@@ -133,6 +133,7 @@ describe('review-local integration (simulated diffs)', () => {
       streamMessages: mocks.streamMessages,
       closeSession: mocks.closeSession,
       shutdown: mocks.shutdown,
+      getMinContextWindow: vi.fn(() => undefined),
     });
   });
 

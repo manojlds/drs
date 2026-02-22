@@ -11,7 +11,11 @@ import {
   postDescription,
 } from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
-import { prepareDiffsForAgent, formatCompressionSummary } from '../lib/context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
 import {
   aggregateAgentUsage,
@@ -53,28 +57,6 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     patch: file.patch,
   }));
 
-  const compression = prepareDiffsForAgent(filesWithDiffs, config.contextCompression);
-  const compressionSummary = formatCompressionSummary(compression);
-
-  if (compressionSummary) {
-    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
-  }
-
-  const includeProjectContext = config.describe?.includeProjectContext ?? true;
-  const projectContext = includeProjectContext ? loadGlobalContext() : null;
-  const instructions = buildDescribeInstructions(
-    label,
-    compression.files,
-    compressionSummary,
-    projectContext ?? undefined
-  );
-
-  if (options.debug) {
-    console.log(chalk.yellow('\n=== Agent Instructions ==='));
-    console.log(instructions);
-    console.log(chalk.yellow('=== End Instructions ===\n'));
-  }
-
   // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
   const runtimeConfig = getRuntimeConfig(config);
@@ -96,6 +78,34 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     config,
     debug: options.debug,
   });
+
+  const describeModelIds = [...new Set(Object.values(modelOverrides))].filter(
+    (id): id is string => !!id
+  );
+  const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+  const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+  const compression = prepareDiffsForAgent(filesWithDiffs, compressionOptions);
+  const compressionSummary = formatCompressionSummary(compression);
+
+  if (compressionSummary) {
+    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+  }
+
+  const includeProjectContext = config.describe?.includeProjectContext ?? true;
+  const projectContext = includeProjectContext ? loadGlobalContext() : null;
+  const instructions = buildDescribeInstructions(
+    label,
+    compression.files,
+    compressionSummary,
+    projectContext ?? undefined
+  );
+
+  if (options.debug) {
+    console.log(chalk.yellow('\n=== Agent Instructions ==='));
+    console.log(instructions);
+    console.log(chalk.yellow('=== End Instructions ===\n'));
+  }
 
   try {
     console.log(chalk.dim('Running PR describer agent...\n'));
