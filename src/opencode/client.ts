@@ -41,6 +41,8 @@ export interface SessionMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: Date;
+  toolName?: string;
+  toolCallId?: string;
 }
 
 export interface Session {
@@ -400,6 +402,8 @@ export class RuntimeClient {
             role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
             content: msg.parts?.map((p) => p.text ?? '').join('') ?? '',
             timestamp: new Date(),
+            toolName: msg.info?.toolName,
+            toolCallId: msg.info?.toolCallId,
           };
         }
 

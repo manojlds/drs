@@ -244,19 +244,6 @@ function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): 
   );
 }
 
-function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return '';
-  }
-
-  const lines = trimmed.split('\n');
-  const limitedLines = lines.slice(0, maxLines).join('\n');
-  const limitedChars =
-    limitedLines.length > maxChars ? `${limitedLines.slice(0, maxChars)}…` : limitedLines;
-  return limitedChars;
-}
-
 function resolveReviewMode(config: DRSConfig): ReviewMode {
   return config.review.mode ?? 'multi-agent';
 }
@@ -309,6 +296,8 @@ export async function runUnifiedReviewAgent(
       config
     );
 
+    const logger = getLogger();
+
     if (debug) {
       console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
       console.log(chalk.gray(`│ Agent: ${agentName}`));
@@ -317,6 +306,8 @@ export async function runUnifiedReviewAgent(
       console.log(reviewPrompt);
       console.log(chalk.gray('─'.repeat(60)));
       console.log(chalk.gray(`└── End message for ${agentName}\n`));
+    } else {
+      logger.agentInput(agentType, reviewPrompt);
     }
 
     const session = await opencode.createSession({
@@ -331,11 +322,9 @@ export async function runUnifiedReviewAgent(
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
 
-    const logger = getLogger();
-
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        logger.toolOutput('unknown', agentType, message.content);
+        logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
         continue;
       }
 
@@ -349,10 +338,7 @@ export async function runUnifiedReviewAgent(
           console.log(message.content);
           console.log(chalk.gray(`└── End response for ${agentName}\n`));
         } else {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[unified] ${snippet}\n`));
-          }
+          logger.agentMessage(agentType, message.content);
         }
       }
     }
@@ -436,6 +422,8 @@ export async function runReviewAgents(
         config
       );
 
+      const logger = getLogger();
+
       if (debug) {
         console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
         console.log(chalk.gray(`│ Agent: ${agentName}`));
@@ -444,6 +432,8 @@ export async function runReviewAgents(
         console.log(reviewPrompt);
         console.log(chalk.gray('─'.repeat(60)));
         console.log(chalk.gray(`└── End message for ${agentName}\n`));
+      } else {
+        logger.agentInput(agentType, reviewPrompt);
       }
 
       const session = await opencode.createSession({
@@ -458,12 +448,10 @@ export async function runReviewAgents(
       const agentIssues: ReviewIssue[] = [];
       let fullResponse = '';
 
-      const logger = getLogger();
-
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          logger.toolOutput('unknown', agentType, message.content);
+          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
           continue;
         }
 
@@ -477,10 +465,7 @@ export async function runReviewAgents(
             console.log(message.content);
             console.log(chalk.gray(`└── End response for ${agentName}\n`));
           } else {
-            const snippet = renderAgentMessage(message.content);
-            if (snippet) {
-              console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
-            }
+            logger.agentMessage(agentType, message.content);
           }
         }
       }

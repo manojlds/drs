@@ -108,8 +108,7 @@ jobs:
             --owner ${{ github.event.repository.owner.login }} \
             --repo ${{ github.event.repository.name }} \
             --pr ${{ github.event.pull_request.number }} \
-            --post-comments \
-            --debug
+            --post-comments
 
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
@@ -181,8 +180,7 @@ jobs:
             --owner ${{ github.event.repository.owner.login }} \
             --repo ${{ github.event.repository.name }} \
             --pr ${{ github.event.pull_request.number }} \
-            --post-comments \
-            --debug
+            --post-comments
 
   # Notify when external PR is waiting for approval
   notify-external:

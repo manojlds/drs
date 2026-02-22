@@ -199,6 +199,20 @@ class Logger {
     }
   }
 
+  /**
+   * Clip long multi-line content for readable logs.
+   */
+  private clipText(content: string, maxLines = 8, maxChars = 500): string {
+    const normalized = content.trim();
+    if (!normalized) {
+      return '[empty]';
+    }
+
+    const lines = normalized.split('\n');
+    const lineClipped = lines.slice(0, maxLines).join('\n');
+    return lineClipped.length > maxChars ? `${lineClipped.slice(0, maxChars)}…` : lineClipped;
+  }
+
   // Log level methods
   debug(message: string, context?: LogContext, data?: unknown): void {
     this.log('debug', message, context, data);
@@ -229,14 +243,21 @@ class Logger {
    * Log a tool output
    */
   toolOutput(toolName: string, agent: string, output: string): void {
-    this.debug(`Tool output`, { agent, tool: toolName }, output || '[no output]');
+    this.info('Tool output', { agent, tool: toolName }, this.clipText(output || '[no output]'));
+  }
+
+  /**
+   * Log initial prompt/input sent to an agent.
+   */
+  agentInput(agent: string, content: string): void {
+    this.info('Prompt sent', { agent }, this.clipText(content, 10, 700));
   }
 
   /**
    * Log agent message
    */
   agentMessage(agent: string, content: string): void {
-    this.debug(`Agent response`, { agent }, content);
+    this.info('Agent response', { agent }, this.clipText(content));
   }
 
   /**

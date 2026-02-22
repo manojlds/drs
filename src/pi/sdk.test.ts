@@ -124,6 +124,14 @@ describe('pi/sdk', () => {
 
     mocks.session.messages = [
       {
+        role: 'toolResult',
+        toolName: 'read',
+        toolCallId: 'tool-1',
+        isError: false,
+        timestamp: 1709999999000,
+        content: [{ type: 'text', text: 'src/app.ts\n1: export const ok = true;' }],
+      },
+      {
         role: 'assistant',
         timestamp: 1710000000000,
         content: [{ type: 'text', text: 'done' }],
@@ -138,6 +146,17 @@ describe('pi/sdk', () => {
       {
         info: {
           id: `${sessionId}-0`,
+          role: 'tool',
+          time: { completed: 1709999999000 },
+          error: undefined,
+          toolName: 'read',
+          toolCallId: 'tool-1',
+        },
+        parts: [{ text: 'src/app.ts\n1: export const ok = true;' }],
+      },
+      {
+        info: {
+          id: `${sessionId}-1`,
           role: 'assistant',
           time: { completed: 1710000000000 },
           error: undefined,

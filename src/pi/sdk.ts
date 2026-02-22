@@ -29,6 +29,8 @@ export interface PiSessionMessage {
     role?: string;
     time?: { completed?: number };
     error?: unknown;
+    toolName?: string;
+    toolCallId?: string;
   };
   parts?: PiSessionPart[];
 }
@@ -190,6 +192,8 @@ function toSessionMessage(
         role: 'tool',
         time: { completed: timestamp },
         error: isError ? extractText(message.content) : undefined,
+        toolName: asString(message.toolName),
+        toolCallId: asString(message.toolCallId),
       },
       parts: [{ text: extractText(message.content) }],
     };
