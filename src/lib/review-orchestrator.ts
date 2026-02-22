@@ -25,6 +25,7 @@ import {
   type FileWithDiff,
 } from './review-core.js';
 import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -58,6 +59,8 @@ export interface ReviewResult {
   changeSummary?: ChangeSummary;
   /** Number of files actually reviewed (after filtering) */
   filesReviewed: number;
+  /** Token usage and cost details for the review run */
+  usage?: ReviewUsageSummary;
 }
 
 /**
@@ -153,6 +156,7 @@ export async function executeReview(
       issues: [],
       summary: calculateSummary(0, []),
       filesReviewed: 0,
+      usage: createEmptyReviewUsageSummary(),
     };
   }
 
@@ -208,6 +212,7 @@ export async function executeReview(
       summary: result.summary,
       changeSummary: result.changeSummary,
       filesReviewed: result.filesReviewed,
+      usage: result.usage ?? createEmptyReviewUsageSummary(),
     };
   } catch (error) {
     // Handle "all agents failed" error

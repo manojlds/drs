@@ -9,6 +9,7 @@ import {
   type ReviewSummary,
 } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 describe('comment-formatter', () => {
   describe('formatIssueComment', () => {
@@ -348,6 +349,53 @@ describe('comment-formatter', () => {
 
       expect(formatted).toContain('Minor fix');
       expect(formatted).not.toContain('Affected Subsystems');
+    });
+
+    it('should include expandable usage block when usage data is provided', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 3,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const usage: ReviewUsageSummary = {
+        total: {
+          input: 1234,
+          output: 234,
+          cacheRead: 500,
+          cacheWrite: 0,
+          totalTokens: 1968,
+          cost: 0.0423,
+        },
+        agents: [
+          {
+            agentType: 'unified-reviewer',
+            model: 'opencode/glm-5-free',
+            turns: 4,
+            success: true,
+            usage: {
+              input: 1234,
+              output: 234,
+              cacheRead: 500,
+              cacheWrite: 0,
+              totalTokens: 1968,
+              cost: 0.0423,
+            },
+          },
+        ],
+      };
+
+      const formatted = formatSummaryComment(summary, [], undefined, undefined, usage);
+
+      expect(formatted).toContain('💰 Model Usage');
+      expect(formatted).toContain('<details>');
+      expect(formatted).toContain('View token and cost breakdown');
+      expect(formatted).toContain('| Agent | Model | Turns | Input | Output | Cache Read |');
+      expect(formatted).toContain('unified-reviewer');
+      expect(formatted).toContain('opencode/glm-5-free');
+      expect(formatted).toContain('$0.0423');
+      expect(formatted).toContain('</details>');
     });
   });
 

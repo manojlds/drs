@@ -182,9 +182,14 @@ describe('review-local', () => {
       jsonOutput: true,
     });
 
-    expect(formatReviewJson).toHaveBeenCalledWith(emptySummary, [], {
-      source: 'local-unstaged',
-    });
+    expect(formatReviewJson).toHaveBeenCalledWith(
+      emptySummary,
+      [],
+      {
+        source: 'local-unstaged',
+      },
+      undefined
+    );
     expect(writeReviewJson).toHaveBeenCalledWith(
       { result: 'ok' },
       '.drs/review-output.json',
@@ -200,9 +205,14 @@ describe('review-local', () => {
       jsonOutput: false,
     });
 
-    expect(formatReviewJson).toHaveBeenCalledWith(emptySummary, [], {
-      source: 'local-unstaged',
-    });
+    expect(formatReviewJson).toHaveBeenCalledWith(
+      emptySummary,
+      [],
+      {
+        source: 'local-unstaged',
+      },
+      undefined
+    );
     expect(writeReviewJson).toHaveBeenCalledWith(
       { result: 'ok' },
       '.drs/review-output.json',

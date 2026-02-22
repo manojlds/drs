@@ -36,6 +36,15 @@ export interface SessionCreateOptions {
   context?: Record<string, unknown>;
 }
 
+export interface SessionUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: number;
+}
+
 export interface SessionMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -43,6 +52,9 @@ export interface SessionMessage {
   timestamp: Date;
   toolName?: string;
   toolCallId?: string;
+  provider?: string;
+  model?: string;
+  usage?: SessionUsage;
 }
 
 export interface Session {
@@ -397,6 +409,22 @@ export class RuntimeClient {
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
           const msg = messages[i];
+          const mappedUsage = msg.info?.usage
+            ? {
+                input: msg.info.usage.input ?? 0,
+                output: msg.info.usage.output ?? 0,
+                cacheRead: msg.info.usage.cacheRead ?? 0,
+                cacheWrite: msg.info.usage.cacheWrite ?? 0,
+                totalTokens:
+                  msg.info.usage.totalTokens ??
+                  (msg.info.usage.input ?? 0) +
+                    (msg.info.usage.output ?? 0) +
+                    (msg.info.usage.cacheRead ?? 0) +
+                    (msg.info.usage.cacheWrite ?? 0),
+                cost: msg.info.usage.cost?.total ?? 0,
+              }
+            : undefined;
+
           yield {
             id: msg.info?.id ?? 'msg-' + Date.now(),
             role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
@@ -404,6 +432,9 @@ export class RuntimeClient {
             timestamp: new Date(),
             toolName: msg.info?.toolName,
             toolCallId: msg.info?.toolCallId,
+            provider: msg.info?.provider,
+            model: msg.info?.model,
+            usage: mappedUsage,
           };
         }
 

@@ -14,6 +14,7 @@ export interface ReviewIssue {
 }
 
 import type { ChangeSummary } from './change-summary.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 export interface ReviewSummary {
   filesReviewed: number;
@@ -36,6 +37,44 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
   PERFORMANCE: '⚡',
   DOCUMENTATION: '📝',
 };
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat('en-US').format(Math.round(value));
+}
+
+function formatCost(value: number): string {
+  return `$${value.toFixed(4)}`;
+}
+
+function formatReviewUsageSection(usage: ReviewUsageSummary): string {
+  const total = usage.total;
+
+  let markdown = `## 💰 Model Usage\n\n`;
+  markdown += `<details>\n<summary>View token and cost breakdown</summary>\n\n`;
+  markdown += `### Run Totals\n\n`;
+  markdown += `- **Input Tokens**: ${formatCount(total.input)}\n`;
+  markdown += `- **Output Tokens**: ${formatCount(total.output)}\n`;
+  markdown += `- **Cache Read Tokens**: ${formatCount(total.cacheRead)}\n`;
+  markdown += `- **Cache Write Tokens**: ${formatCount(total.cacheWrite)}\n`;
+  markdown += `- **Total Tokens**: ${formatCount(total.totalTokens)}\n`;
+  markdown += `- **Estimated Cost**: ${formatCost(total.cost)}\n\n`;
+
+  if (usage.agents.length > 0) {
+    markdown += `### By Agent\n\n`;
+    markdown += `| Agent | Model | Turns | Input | Output | Cache Read | Cache Write | Total Tokens | Cost | Status |\n`;
+    markdown += `| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n`;
+
+    for (const agent of usage.agents) {
+      markdown += `| ${agent.agentType} | ${agent.model ?? 'n/a'} | ${formatCount(agent.turns)} | ${formatCount(agent.usage.input)} | ${formatCount(agent.usage.output)} | ${formatCount(agent.usage.cacheRead)} | ${formatCount(agent.usage.cacheWrite)} | ${formatCount(agent.usage.totalTokens)} | ${formatCost(agent.usage.cost)} | ${agent.success === false ? 'failed' : 'ok'} |\n`;
+    }
+
+    markdown += `\n`;
+  }
+
+  markdown += `</details>\n\n`;
+
+  return markdown;
+}
 
 /**
  * Format a single review issue as a GitLab comment
@@ -77,7 +116,8 @@ export function formatSummaryComment(
   summary: ReviewSummary,
   issues: ReviewIssue[],
   commentId?: string,
-  changeSummary?: ChangeSummary
+  changeSummary?: ChangeSummary,
+  reviewUsage?: ReviewUsageSummary
 ): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
@@ -102,6 +142,10 @@ export function formatSummaryComment(
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
   comment += `- **Total Issues**: ${summary.issuesFound}\n\n`;
+
+  if (reviewUsage) {
+    comment += formatReviewUsageSection(reviewUsage);
+  }
 
   if (summary.issuesFound > 0) {
     comment += `### By Severity\n`;

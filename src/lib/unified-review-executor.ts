@@ -219,6 +219,7 @@ export async function executeUnifiedReview(
         result.summary,
         result.issues,
         result.changeSummary,
+        result.usage,
         pr.platformData,
         options.lineValidator,
         options.createInlinePosition
@@ -238,14 +239,19 @@ export async function executeUnifiedReview(
     const wantsJsonOutput = options.jsonOutput ?? options.outputPath;
 
     if (wantsJsonOutput) {
-      const jsonOutput = formatReviewJson(result.summary, result.issues, {
-        source: `${options.prNumber}`,
-        project: options.projectId,
-        branch: {
-          source: pr.sourceBranch,
-          target: pr.targetBranch,
+      const jsonOutput = formatReviewJson(
+        result.summary,
+        result.issues,
+        {
+          source: `${options.prNumber}`,
+          project: options.projectId,
+          branch: {
+            source: pr.sourceBranch,
+            target: pr.targetBranch,
+          },
         },
-      });
+        result.usage
+      );
 
       if (options.outputPath) {
         await writeReviewJson(jsonOutput, options.outputPath, options.workingDir ?? process.cwd());
