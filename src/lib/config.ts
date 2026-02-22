@@ -29,12 +29,20 @@ export interface CustomProvider {
   models: Record<string, { name: string }>;
 }
 
+export interface RuntimeConfig {
+  [key: string]: unknown;
+  serverUrl?: string;
+  provider?: Record<string, CustomProvider>;
+}
+
 export interface DRSConfig {
-  // OpenCode configuration
-  opencode: {
-    serverUrl?: string;
-    provider?: Record<string, CustomProvider>;
-  };
+  // Pi runtime configuration
+  pi: RuntimeConfig;
+
+  /**
+   * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
+   */
+  opencode?: RuntimeConfig;
 
   // GitLab configuration
   gitlab: {
@@ -96,8 +104,8 @@ export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
 export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
-  opencode: {
-    serverUrl: process.env.OPENCODE_SERVER ?? undefined,
+  pi: {
+    serverUrl: process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined,
   },
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',
@@ -170,8 +178,10 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   // Apply environment variable overrides
-  if (process.env.OPENCODE_SERVER) {
-    config.opencode.serverUrl = process.env.OPENCODE_SERVER;
+  if (process.env.PI_SERVER) {
+    config.pi.serverUrl = process.env.PI_SERVER;
+  } else if (process.env.OPENCODE_SERVER) {
+    config.pi.serverUrl = process.env.OPENCODE_SERVER;
   }
   if (process.env.GITLAB_URL) {
     config.gitlab.url = process.env.GITLAB_URL;
@@ -241,7 +251,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     );
   }
 
-  return config;
+  return normalizeRuntimeConfig(config);
 }
 
 /**
@@ -249,6 +259,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
  */
 function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
+    pi: mergeSection(base.pi, override.pi),
     opencode: mergeSection(base.opencode, override.opencode),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
@@ -256,6 +267,31 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
   };
+}
+
+function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
+  const legacyRuntime = config.opencode ?? {};
+  const piRuntime = config.pi ?? {};
+
+  const mergedProvider = {
+    ...(legacyRuntime.provider ?? {}),
+    ...(piRuntime.provider ?? {}),
+  };
+
+  const normalizedRuntime: RuntimeConfig = {
+    serverUrl: piRuntime.serverUrl ?? legacyRuntime.serverUrl,
+    provider: Object.keys(mergedProvider).length > 0 ? mergedProvider : undefined,
+  };
+
+  return {
+    ...config,
+    pi: normalizedRuntime,
+    opencode: normalizedRuntime,
+  };
+}
+
+export function getRuntimeConfig(config: DRSConfig): RuntimeConfig {
+  return normalizeRuntimeConfig(config).pi;
 }
 
 /**

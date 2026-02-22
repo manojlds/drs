@@ -1,77 +1,158 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPiInProcessServer, createPiRemoteClient } from './sdk.js';
 
-vi.mock('@opencode-ai/sdk', () => ({
-  createOpencode: vi.fn(async () => ({
-    server: {
-      url: 'http://localhost:3000',
-      close: vi.fn(),
+const mocks = vi.hoisted(() => {
+  const prompt = vi.fn(async () => undefined);
+  const dispose = vi.fn(() => undefined);
+  const session = {
+    prompt,
+    dispose,
+    messages: [] as unknown[],
+  };
+
+  return {
+    prompt,
+    dispose,
+    session,
+    createAgentSession: vi.fn(async () => ({ session })),
+    loaderInstances: [] as Array<{ options: Record<string, unknown>; reload: any }>,
+  };
+});
+
+vi.mock('@mariozechner/pi-coding-agent', () => {
+  class DefaultResourceLoader {
+    options: Record<string, unknown>;
+    reload = vi.fn(async () => undefined);
+
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
+      mocks.loaderInstances.push({ options, reload: this.reload });
+    }
+  }
+
+  class ModelRegistry {
+    registerProvider = vi.fn(() => undefined);
+    find = vi.fn(() => undefined);
+  }
+
+  return {
+    AuthStorage: {
+      create: vi.fn(() => ({})),
     },
-    client: {
-      session: {
-        create: vi.fn(),
-      },
+    DefaultResourceLoader,
+    ModelRegistry,
+    SessionManager: {
+      inMemory: vi.fn(() => ({ type: 'memory' })),
     },
-  })),
-  createOpencodeClient: vi.fn((options: { baseUrl: string }) => ({
-    session: {
-      baseUrl: options.baseUrl,
-    },
-  })),
-}));
+    createAgentSession: mocks.createAgentSession,
+    createReadTool: vi.fn(() => ({ name: 'read' })),
+    createBashTool: vi.fn(() => ({ name: 'bash' })),
+    createEditTool: vi.fn(() => ({ name: 'edit' })),
+    createWriteTool: vi.fn(() => ({ name: 'write' })),
+    createGrepTool: vi.fn(() => ({ name: 'grep' })),
+    createFindTool: vi.fn(() => ({ name: 'find' })),
+    createLsTool: vi.fn(() => ({ name: 'ls' })),
+  };
+});
 
 describe('pi/sdk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.session.messages = [];
+    mocks.loaderInstances.length = 0;
   });
 
-  it('creates in-process server through SDK adapter', async () => {
-    const { createOpencode } = await import('@opencode-ai/sdk');
-
-    const server = await createPiInProcessServer({
+  it('creates in-process runtime client', async () => {
+    const runtime = await createPiInProcessServer({
       timeout: 10000,
       config: {
         tools: {
           Read: true,
+          Bash: true,
         },
       },
     });
 
-    expect(createOpencode).toHaveBeenCalledWith({
-      timeout: 10000,
-      config: {
-        tools: {
-          Read: true,
-        },
-      },
-    });
-    expect(server.server.url).toBe('http://localhost:3000');
-    expect(server.client).toBeDefined();
+    expect(runtime.server.url).toBe('pi://in-process');
+    expect(runtime.client.session.create).toBeDefined();
+    expect(runtime.client.session.prompt).toBeDefined();
+    expect(runtime.client.session.messages).toBeDefined();
+
+    runtime.server.close();
   });
 
-  it('creates remote client through SDK adapter', async () => {
-    const { createOpencodeClient } = await import('@opencode-ai/sdk');
+  it('creates session, prompts with configured agent, and maps messages', async () => {
+    const runtime = await createPiInProcessServer({
+      timeout: 10000,
+      config: {
+        agent: {
+          'review/security': {
+            prompt: 'Security prompt',
+          },
+        },
+      },
+    });
 
+    const created = await runtime.client.session.create({
+      query: {
+        directory: '/tmp/drs',
+      },
+    });
+
+    const sessionId = created.data?.id;
+    expect(sessionId).toBeTruthy();
+
+    await runtime.client.session.prompt({
+      path: { id: sessionId ?? '' },
+      query: {
+        directory: '/tmp/drs',
+      },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review this diff' }],
+      },
+    });
+
+    expect(mocks.createAgentSession).toHaveBeenCalledTimes(1);
+    expect(mocks.loaderInstances).toHaveLength(1);
+
+    const loaderOptions = mocks.loaderInstances[0].options;
+    expect(typeof loaderOptions.systemPromptOverride).toBe('function');
+    expect((loaderOptions.systemPromptOverride as () => string)()).toBe('Security prompt');
+
+    expect(mocks.prompt).toHaveBeenCalledWith('Review this diff');
+
+    mocks.session.messages = [
+      {
+        role: 'assistant',
+        timestamp: 1710000000000,
+        content: [{ type: 'text', text: 'done' }],
+      },
+    ];
+
+    const response = await runtime.client.session.messages({
+      path: { id: sessionId ?? '' },
+    });
+
+    expect(response.data).toEqual([
+      {
+        info: {
+          id: `${sessionId}-0`,
+          role: 'assistant',
+          time: { completed: 1710000000000 },
+          error: undefined,
+        },
+        parts: [{ text: 'done' }],
+      },
+    ]);
+  });
+
+  it('creates compatibility client for legacy serverUrl path', () => {
     const client = createPiRemoteClient({
-      baseUrl: 'http://localhost:4000',
+      baseUrl: 'http://legacy-runtime.local:3000',
     });
 
-    expect(createOpencodeClient).toHaveBeenCalledWith({
-      baseUrl: 'http://localhost:4000',
-    });
-    expect(client.session).toBeDefined();
-  });
-
-  it('propagates SDK startup errors', async () => {
-    const { createOpencode } = await import('@opencode-ai/sdk');
-
-    vi.mocked(createOpencode).mockRejectedValueOnce(new Error('pi startup failed'));
-
-    await expect(
-      createPiInProcessServer({
-        timeout: 10000,
-        config: {},
-      })
-    ).rejects.toThrow('pi startup failed');
+    expect(client.session.create).toBeDefined();
+    expect(client.session.messages).toBeDefined();
   });
 });

@@ -25,8 +25,7 @@
     "dist",
     "README.md",
     "LICENSE",
-    ".pi",
-    ".opencode"
+    ".pi"
   ],
   "repository": {
     "type": "git",
@@ -40,7 +39,7 @@
     "gitlab",
     "github",
     "code-review",
-    "opencode",
+    "pi",
     "diff-review",
     "merge-request",
     "pull-request",
@@ -52,9 +51,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
     "@gitbeaker/node": "^35.8.1",
+    "@mariozechner/pi-coding-agent": "0.54.0",
     "@octokit/rest": "^21.0.0",
-    "@opencode-ai/plugin": "1.2.6",
-    "@opencode-ai/sdk": "1.2.6",
     "ajv": "^8.17.1",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",

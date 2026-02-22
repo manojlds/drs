@@ -11,6 +11,7 @@ import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
+  getRuntimeConfig,
   getUnifiedModelOverride,
   type ModelOverrides,
 } from './config.js';
@@ -39,7 +40,7 @@ export interface ReviewSource {
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print Pi runtime configuration */
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
@@ -72,14 +73,14 @@ export interface ConnectOptions {
 }
 
 /**
- * Connect to OpenCode server (or start in-process)
+ * Connect to Pi runtime (in-process by default)
  */
 export async function connectToOpenCode(
   config: DRSConfig,
   workingDir?: string,
   options?: ConnectOptions
 ): Promise<OpencodeClient> {
-  console.log(chalk.gray('Connecting to OpenCode server...\n'));
+  console.log(chalk.gray('Connecting to Pi runtime...\n'));
 
   try {
     // Get model overrides from DRS config
@@ -88,30 +89,32 @@ export async function connectToOpenCode(
       ...getUnifiedModelOverride(config),
     };
 
+    const runtimeConfig = getRuntimeConfig(config);
+
     return await createOpencodeClientInstance({
-      baseUrl: config.opencode.serverUrl ?? undefined,
+      baseUrl: runtimeConfig.serverUrl ?? undefined,
       directory: workingDir ?? process.cwd(),
       modelOverrides,
-      provider: config.opencode.provider,
+      provider: runtimeConfig.provider,
       config,
       debug: options?.debug,
     });
   } catch (error) {
-    console.error(chalk.red('✗ Failed to connect to OpenCode server'));
+    console.error(chalk.red('✗ Failed to connect to Pi runtime'));
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
     console.log(
-      chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n')
+      chalk.yellow('Please check your Pi runtime configuration and model credentials.\n')
     );
     throw error;
   }
 }
 
 /**
- * Execute a code review using OpenCode agents
+ * Execute a code review using Pi runtime agents.
  *
  * This is the core review orchestrator that handles:
  * - File filtering (ignore patterns)
- * - OpenCode connection
+ * - Pi runtime connection
  * - Agent execution and streaming
  * - Issue parsing and collection
  * - Summary calculation
@@ -146,7 +149,7 @@ export async function executeReview(
 
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
-  // Connect to OpenCode
+  // Connect to Pi runtime
   const opencode = await connectToOpenCode(config, source.workingDir, { debug: source.debug });
 
   try {
@@ -205,7 +208,7 @@ export async function executeReview(
     }
     throw error;
   } finally {
-    // Always shut down OpenCode client
+    // Always shut down Pi runtime client
     await opencode.shutdown();
   }
 }

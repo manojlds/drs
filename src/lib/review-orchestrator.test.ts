@@ -223,7 +223,7 @@ describe('review-orchestrator', () => {
 
       await expect(connectToOpenCode(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to connect to OpenCode server')
+        expect.stringContaining('Failed to connect to Pi runtime')
       );
     });
 

@@ -4,9 +4,9 @@
 # include:
 #   - remote: 'https://raw.githubusercontent.com/manojlds/drs/main/src/ci/gitlab-ci.template.yml'
 
-# Base template using official OpenCode container (includes opencode CLI pre-installed)
+# Base template for Pi-based DRS reviews
 .drs_review:
-  image: ghcr.io/anomalyco/opencode:latest
+  image: node:20-alpine
   only:
     - merge_requests
   script:
@@ -23,8 +23,10 @@
     # Set this as a CI/CD variable in GitLab: Settings → CI/CD → Variables
     ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
 
-    # OpenCode Server URL (optional - leave unset to use in-process server)
-    # OPENCODE_SERVER: "http://opencode.internal:3000"
+    # Optional Pi runtime endpoint (leave unset for in-process runtime)
+    # PI_SERVER: "http://pi-runtime.internal:3000"
+    # Legacy alias still supported:
+    # OPENCODE_SERVER: "http://pi-runtime.internal:3000"
 
     # Review agents to use (optional, defaults to all)
     # REVIEW_AGENTS: "security,quality,style,performance"

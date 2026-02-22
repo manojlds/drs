@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
+import { getDescriberModelOverride, getRuntimeConfig, type DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { createOpencodeClientInstance } from '../opencode/client.js';
@@ -66,13 +66,14 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Initialize OpenCode client with model overrides
+  // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
+  const runtimeConfig = getRuntimeConfig(config);
   const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl ?? undefined,
+    baseUrl: runtimeConfig.serverUrl ?? undefined,
     directory: process.cwd(),
     modelOverrides,
-    provider: config.opencode.provider,
+    provider: runtimeConfig.provider,
     config,
     debug: options.debug,
   });

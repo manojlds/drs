@@ -62,7 +62,7 @@ program
   )
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -128,7 +128,7 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -211,7 +211,7 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -278,7 +278,7 @@ program
   .option('--post-description', 'Post generated description to the PR (requires GITHUB_TOKEN)')
   .option('-o, --output <path>', 'Write description to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd());
@@ -307,7 +307,7 @@ program
   .option('--post-description', 'Post generated description to the MR (requires GITLAB_TOKEN)')
   .option('-o, --output <path>', 'Write description to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd());

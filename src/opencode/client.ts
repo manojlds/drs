@@ -337,11 +337,17 @@ export class OpencodeClient {
 
       this.client = this.inProcessServer.client;
       this.baseUrl = this.inProcessServer.server.url;
-      const ready = await waitForServerReady(this.baseUrl);
-      if (!ready) {
-        console.warn(
-          `⚠️  OpenCode server did not become ready at ${this.baseUrl}. Review requests may fail.`
-        );
+
+      const usesHttpEndpoint =
+        this.baseUrl.startsWith('http://') || this.baseUrl.startsWith('https://');
+
+      if (usesHttpEndpoint) {
+        const ready = await waitForServerReady(this.baseUrl);
+        if (!ready) {
+          console.warn(
+            `⚠️  Pi runtime endpoint did not become ready at ${this.baseUrl}. Review requests may fail.`
+          );
+        }
       }
     }
   }
