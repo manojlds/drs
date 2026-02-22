@@ -33,15 +33,38 @@ describe('resolveReviewPaths', () => {
 
   it('resolves default paths from project root deterministically', () => {
     const projectRoot = createTempDir('drs-path-default-');
-    const nested = join(projectRoot, 'nested', 'dir');
-    mkdirSync(nested, { recursive: true });
 
     const canonical = resolveReviewPaths(projectRoot);
     const nonCanonical = resolveReviewPaths(join(projectRoot, 'nested', '..'));
 
     expect(canonical.agentsPath).toBe(resolve(projectRoot, '.drs/agents'));
     expect(canonical.skillsPath).toBe(resolve(projectRoot, '.drs/skills'));
+    expect(canonical.skillSearchPaths).toEqual([resolve(projectRoot, '.drs/skills')]);
     expect(nonCanonical).toEqual(canonical);
+  });
+
+  it('auto-discovers both .drs/skills and .pi/skills when present', () => {
+    const projectRoot = createTempDir('drs-path-skill-discovery-');
+    mkdirSync(join(projectRoot, '.drs', 'skills'), { recursive: true });
+    mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
+
+    const result = resolveReviewPaths(projectRoot);
+
+    expect(result.skillSearchPaths).toEqual([
+      resolve(projectRoot, '.drs/skills'),
+      resolve(projectRoot, '.pi/skills'),
+    ]);
+    expect(result.skillsPath).toBe(resolve(projectRoot, '.drs/skills'));
+  });
+
+  it('uses .pi/skills when .drs/skills is missing', () => {
+    const projectRoot = createTempDir('drs-path-pi-skills-');
+    mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
+
+    const result = resolveReviewPaths(projectRoot);
+
+    expect(result.skillSearchPaths).toEqual([resolve(projectRoot, '.pi/skills')]);
+    expect(result.skillsPath).toBe(resolve(projectRoot, '.pi/skills'));
   });
 
   it('resolves repo-relative configured paths', () => {
@@ -59,6 +82,7 @@ describe('resolveReviewPaths', () => {
 
     expect(result.agentsPath).toBe(resolve(projectRoot, 'config/agents'));
     expect(result.skillsPath).toBe(resolve(projectRoot, 'config/skills'));
+    expect(result.skillSearchPaths).toEqual([resolve(projectRoot, 'config/skills')]);
   });
 
   it('resolves absolute configured paths', () => {
@@ -79,6 +103,7 @@ describe('resolveReviewPaths', () => {
 
     expect(result.agentsPath).toBe(resolve(agentsPath));
     expect(result.skillsPath).toBe(resolve(skillsPath));
+    expect(result.skillSearchPaths).toEqual([resolve(skillsPath)]);
   });
 
   it('throws actionable error when repo-relative path escapes project root', () => {

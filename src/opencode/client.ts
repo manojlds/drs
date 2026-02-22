@@ -6,6 +6,7 @@
  */
 
 import net from 'net';
+import { delimiter } from 'path';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
 import { loadReviewAgents } from './agent-loader.js';
@@ -99,6 +100,7 @@ export class OpencodeClient {
   private projectRootEnv?: string;
   private agentsRootEnv?: string;
   private skillsRootEnv?: string;
+  private skillsRootsEnv?: string;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -309,10 +311,12 @@ export class OpencodeClient {
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
       this.agentsRootEnv = process.env.DRS_AGENTS_ROOT;
       this.skillsRootEnv = process.env.DRS_SKILLS_ROOT;
+      this.skillsRootsEnv = process.env.DRS_SKILLS_ROOTS;
 
       process.env.DRS_PROJECT_ROOT = projectDir;
       process.env.DRS_AGENTS_ROOT = reviewPaths.agentsPath;
       process.env.DRS_SKILLS_ROOT = reviewPaths.skillsPath;
+      process.env.DRS_SKILLS_ROOTS = reviewPaths.skillSearchPaths.join(delimiter);
 
       const discoveryRoot = projectDir;
       if (discoveryRoot !== originalCwd) {
@@ -538,6 +542,12 @@ export class OpencodeClient {
       delete process.env.DRS_SKILLS_ROOT;
     } else {
       process.env.DRS_SKILLS_ROOT = this.skillsRootEnv;
+    }
+
+    if (this.skillsRootsEnv === undefined) {
+      delete process.env.DRS_SKILLS_ROOTS;
+    } else {
+      process.env.DRS_SKILLS_ROOTS = this.skillsRootsEnv;
     }
   }
 

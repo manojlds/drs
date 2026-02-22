@@ -21,7 +21,6 @@ export interface SkillDefinition extends SkillMetadata {
 const skillFileNames = new Set(['SKILL.md', 'skill.md']);
 
 function traverseDirectory(
-  basePath: string,
   currentPath: string,
   fileFilter: (entry: string, fullPath: string) => boolean
 ): string[] {
@@ -38,7 +37,7 @@ function traverseDirectory(
     const stat = statSync(fullPath);
 
     if (stat.isDirectory()) {
-      files.push(...traverseDirectory(basePath, fullPath, fileFilter));
+      files.push(...traverseDirectory(fullPath, fileFilter));
     } else if (stat.isFile() && fileFilter(entry, fullPath)) {
       files.push(fullPath);
     }
@@ -87,27 +86,41 @@ function buildSkillMetadata(skillsRoot: string, filePath: string): SkillMetadata
   };
 }
 
-export function loadProjectSkills(projectPath: string, config?: DRSConfig): SkillMetadata[] {
-  const { skillsPath } = resolveReviewPaths(projectPath, config);
-  const files = traverseDirectory(skillsPath, skillsPath, (entry) => skillFileNames.has(entry));
-
-  return files.map((filePath) => buildSkillMetadata(skillsPath, filePath));
-}
-
 function resolveSkillFilePath(
   projectPath: string,
   skillName: string,
   config?: DRSConfig
 ): string | null {
-  const { skillsPath } = resolveReviewPaths(projectPath, config);
-  const skillRoot = join(skillsPath, skillName);
-  for (const fileName of skillFileNames) {
-    const candidate = join(skillRoot, fileName);
-    if (existsSync(candidate)) {
-      return candidate;
+  const { skillSearchPaths } = resolveReviewPaths(projectPath, config);
+
+  for (const skillsPath of skillSearchPaths) {
+    const skillRoot = join(skillsPath, skillName);
+    for (const fileName of skillFileNames) {
+      const candidate = join(skillRoot, fileName);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
     }
   }
+
   return null;
+}
+
+export function loadProjectSkills(projectPath: string, config?: DRSConfig): SkillMetadata[] {
+  const { skillSearchPaths } = resolveReviewPaths(projectPath, config);
+  const skillsByName = new Map<string, SkillMetadata>();
+
+  for (const skillsPath of skillSearchPaths) {
+    const files = traverseDirectory(skillsPath, (entry) => skillFileNames.has(entry));
+    for (const filePath of files) {
+      const metadata = buildSkillMetadata(skillsPath, filePath);
+      if (!skillsByName.has(metadata.name)) {
+        skillsByName.set(metadata.name, metadata);
+      }
+    }
+  }
+
+  return Array.from(skillsByName.values());
 }
 
 export function loadSkillByName(

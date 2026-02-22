@@ -373,6 +373,33 @@ Notes:
 - Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
+### Pi-Native Skill Discovery
+
+DRS now auto-discovers review skills from both directories when `review.paths.skills` is not set:
+
+1. `.drs/skills` (project-level overrides)
+2. `.pi/skills` (Pi-native skills)
+
+If the same skill name exists in both locations, `.drs/skills` wins.
+
+Example layout:
+
+```text
+.drs/skills/
+  secure-fetch/SKILL.md        # Project override (preferred)
+.pi/skills/
+  secure-fetch/SKILL.md        # Pi-native fallback
+  db-indexing/SKILL.md         # Additional Pi-native skill
+```
+
+To force a single custom skills directory, set `review.paths.skills`:
+
+```yaml
+review:
+  paths:
+    skills: config/review-skills
+```
+
 ## Review Domains
 
 ### Security Analysis

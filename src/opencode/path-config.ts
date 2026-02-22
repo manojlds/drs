@@ -4,12 +4,14 @@ import type { DRSConfig } from '../lib/config.js';
 
 const DEFAULT_AGENT_PATH = '.drs/agents';
 const DEFAULT_SKILL_PATH = '.drs/skills';
+const PI_DEFAULT_SKILL_PATH = '.pi/skills';
 
 type ReviewPathType = 'agents' | 'skills';
 
 export interface ResolvedReviewPaths {
   agentsPath: string;
   skillsPath: string;
+  skillSearchPaths: string[];
 }
 
 function isOutsideProjectRoot(projectRoot: string, targetPath: string): boolean {
@@ -64,21 +66,48 @@ function resolveConfiguredPath(
   return resolvedPath;
 }
 
+function resolveDefaultSkillSearchPaths(projectRoot: string): string[] {
+  const candidates = [
+    resolve(projectRoot, DEFAULT_SKILL_PATH),
+    resolve(projectRoot, PI_DEFAULT_SKILL_PATH),
+  ];
+
+  const existing = candidates.filter((candidate) => {
+    if (!existsSync(candidate)) {
+      return false;
+    }
+
+    try {
+      return statSync(candidate).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+
+  return existing.length > 0 ? existing : [candidates[0]];
+}
+
+function resolveSkillSearchPaths(projectRoot: string, config?: DRSConfig): string[] {
+  const configuredSkillsPath = config?.review?.paths?.skills;
+  if (configuredSkillsPath === undefined || configuredSkillsPath === null) {
+    return resolveDefaultSkillSearchPaths(projectRoot);
+  }
+
+  return [resolveConfiguredPath(projectRoot, configuredSkillsPath, DEFAULT_SKILL_PATH, 'skills')];
+}
+
 export function resolveReviewPaths(projectPath: string, config?: DRSConfig): ResolvedReviewPaths {
   const projectRoot = resolve(projectPath);
+  const skillSearchPaths = resolveSkillSearchPaths(projectRoot, config);
 
   return {
     agentsPath: resolveConfiguredPath(
       projectRoot,
-      config?.review.paths?.agents,
+      config?.review?.paths?.agents,
       DEFAULT_AGENT_PATH,
       'agents'
     ),
-    skillsPath: resolveConfiguredPath(
-      projectRoot,
-      config?.review.paths?.skills,
-      DEFAULT_SKILL_PATH,
-      'skills'
-    ),
+    skillsPath: skillSearchPaths[0],
+    skillSearchPaths,
   };
 }

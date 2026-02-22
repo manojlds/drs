@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { tool } from '@opencode-ai/plugin';
 
 type SkillPayload = {
@@ -32,43 +32,83 @@ function parseSkillInstructions(content: string): string {
   return content.slice(frontmatterMatch[0].length).trim();
 }
 
-function resolveSkillsRoot(projectRoot: string): string {
-  const configuredRoot = process.env.DRS_SKILLS_ROOT?.trim();
-  if (!configuredRoot) {
-    return join(projectRoot, '.drs', 'skills');
+function normalizeSkillsRoot(projectRoot: string, configuredRoot: string): string {
+  return isAbsolute(configuredRoot) ? resolve(configuredRoot) : resolve(projectRoot, configuredRoot);
+}
+
+function resolveDefaultSkillsRoots(projectRoot: string): string[] {
+  const candidates = [join(projectRoot, '.drs', 'skills'), join(projectRoot, '.pi', 'skills')];
+
+  const existing = candidates.filter((candidate) => {
+    if (!existsSync(candidate)) {
+      return false;
+    }
+
+    try {
+      return statSync(candidate).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+
+  return existing.length > 0 ? existing : [candidates[0]];
+}
+
+function resolveSkillsRoots(projectRoot: string): string[] {
+  const configuredRoots =
+    process.env.DRS_SKILLS_ROOTS
+      ?.split(delimiter)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0) ?? [];
+
+  if (configuredRoots.length > 0) {
+    return configuredRoots.map((entry) => normalizeSkillsRoot(projectRoot, entry));
   }
 
-  return isAbsolute(configuredRoot) ? configuredRoot : resolve(projectRoot, configuredRoot);
+  const configuredRoot = process.env.DRS_SKILLS_ROOT?.trim();
+  if (configuredRoot) {
+    return [normalizeSkillsRoot(projectRoot, configuredRoot)];
+  }
+
+  return resolveDefaultSkillsRoots(projectRoot);
 }
 
 function readSkill(skillName: string): SkillPayload {
   const projectRoot = process.env.DRS_PROJECT_ROOT ?? process.cwd();
-  const skillsRoot = resolveSkillsRoot(projectRoot);
-  const skillRoot = join(skillsRoot, skillName);
-  const skillPath = resolveSkillPath(skillRoot);
-  if (!skillPath) {
-    throw new Error(`Skill "${skillName}" not found in ${skillRoot}`);
+  const skillsRoots = resolveSkillsRoots(projectRoot);
+
+  const searchedPaths: string[] = [];
+  for (const skillsRoot of skillsRoots) {
+    const skillRoot = join(skillsRoot, skillName);
+    searchedPaths.push(skillRoot);
+
+    const skillPath = resolveSkillPath(skillRoot);
+    if (!skillPath) {
+      continue;
+    }
+
+    const content = readFileSync(skillPath, 'utf-8');
+    const instructions = parseSkillInstructions(content);
+    const skillDir = dirname(skillPath);
+    console.log(`[drs_skill] Loaded skill "${skillName}" from ${skillPath}`);
+
+    return {
+      _tool: 'drs_skill',
+      skill_name: skillName,
+      instructions,
+      base_directory: skillDir,
+      has_scripts: existsSync(join(skillDir, 'scripts')),
+      has_references: existsSync(join(skillDir, 'references')),
+      has_assets: existsSync(join(skillDir, 'assets')),
+    };
   }
 
-  const content = readFileSync(skillPath, 'utf-8');
-  const instructions = parseSkillInstructions(content);
-  const skillDir = dirname(skillPath);
-  console.log(`[drs_skill] Loaded skill "${skillName}" from ${skillPath}`);
-
-  return {
-    _tool: 'drs_skill',
-    skill_name: skillName,
-    instructions,
-    base_directory: skillDir,
-    has_scripts: existsSync(join(skillDir, 'scripts')),
-    has_references: existsSync(join(skillDir, 'references')),
-    has_assets: existsSync(join(skillDir, 'assets')),
-  };
+  throw new Error(`Skill "${skillName}" not found. Searched: ${searchedPaths.join(', ')}`);
 }
 
 export default tool({
   description:
-    'Load a DRS skill on-demand from the configured skills directory (defaults to .drs/skills).',
+    'Load a DRS skill on-demand from configured skill directories (defaults to .drs/skills with .pi/skills auto-discovery).',
   args: {
     name: tool.schema.string().describe('Skill name to activate'),
   },
