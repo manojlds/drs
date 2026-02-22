@@ -186,6 +186,7 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
       reviewJson.summary,
       reviewJson.issues,
       undefined,
+      reviewJson.usage,
       pr.platformData,
       lineValidator,
       createInlinePosition
@@ -245,6 +246,7 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     reviewJson.summary,
     reviewJson.issues,
     undefined,
+    reviewJson.usage,
     pr.platformData,
     lineValidator,
     createInlinePosition

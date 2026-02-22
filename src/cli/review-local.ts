@@ -70,9 +70,14 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   const wantsJsonOutput = options.jsonOutput === true ? true : Boolean(options.outputPath);
 
   if (wantsJsonOutput) {
-    const jsonOutput = formatReviewJson(result.summary, result.issues, {
-      source: `local-${options.staged ? 'staged' : 'unstaged'}`,
-    });
+    const jsonOutput = formatReviewJson(
+      result.summary,
+      result.issues,
+      {
+        source: `local-${options.staged ? 'staged' : 'unstaged'}`,
+      },
+      result.usage
+    );
 
     if (options.outputPath) {
       await writeReviewJson(jsonOutput, options.outputPath, cwd);

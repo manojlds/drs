@@ -17,6 +17,13 @@ import type { RuntimeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
+import {
+  aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
+  type AgentUsageSummary,
+  type ReviewUsageSummary,
+} from './review-usage.js';
 
 /**
  * File with optional diff content
@@ -42,12 +49,15 @@ export interface AgentReviewResult {
   filesReviewed: number;
   /** Agent execution results */
   agentResults: AgentResult[];
+  /** Token usage and cost details for the review run */
+  usage?: ReviewUsageSummary;
 }
 
 export interface AgentResult {
   agentType: string;
   success: boolean;
   issues: ReviewIssue[];
+  usage?: AgentUsageSummary;
 }
 
 const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
@@ -270,6 +280,20 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
   return merged;
 }
 
+function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
+  const agentUsage = agentResults
+    .map((result) => {
+      const usage = result.usage ?? createAgentUsageSummary(result.agentType);
+      return {
+        ...usage,
+        success: result.success,
+      };
+    })
+    .sort((a, b) => a.agentType.localeCompare(b.agentType));
+
+  return aggregateAgentUsage(agentUsage);
+}
+
 export async function runUnifiedReviewAgent(
   opencode: RuntimeClient,
   config: DRSConfig,
@@ -285,6 +309,8 @@ export async function runUnifiedReviewAgent(
 
   console.log(chalk.bold('🎯 Selected Agents: unified-reviewer\n'));
   console.log(chalk.gray('Running unified review...\n'));
+
+  let agentUsage = createAgentUsageSummary(agentType);
 
   try {
     const reviewPrompt = buildReviewPrompt(
@@ -329,6 +355,8 @@ export async function runUnifiedReviewAgent(
       }
 
       if (message.role === 'assistant') {
+        agentUsage = applyUsageMessage(agentUsage, message);
+
         if (!message.content.trim()) {
           continue;
         }
@@ -362,20 +390,45 @@ export async function runUnifiedReviewAgent(
     }
 
     const summary = calculateSummary(filteredFiles.length, agentIssues);
+    const agentResults: AgentResult[] = [
+      {
+        agentType,
+        success: true,
+        issues: agentIssues,
+        usage: {
+          ...agentUsage,
+          success: true,
+        },
+      },
+    ];
 
     return {
       issues: agentIssues,
       summary,
       filesReviewed: filteredFiles.length,
-      agentResults: [{ agentType, success: true, issues: agentIssues }],
+      agentResults,
+      usage: summarizeRunUsage(agentResults),
     };
   } catch (error) {
     console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    const agentResults: AgentResult[] = [
+      {
+        agentType,
+        success: false,
+        issues: [],
+        usage: {
+          ...agentUsage,
+          success: false,
+        },
+      },
+    ];
+
     return {
       issues: [],
       summary: calculateSummary(filteredFiles.length, []),
       filesReviewed: filteredFiles.length,
-      agentResults: [{ agentType, success: false, issues: [] }],
+      agentResults,
+      usage: summarizeRunUsage(agentResults),
     };
   }
 }
@@ -410,6 +463,7 @@ export async function runReviewAgents(
   for (const agentType of agentNames) {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
+    let agentUsage = createAgentUsageSummary(agentType);
 
     try {
       // Build prompt with global and agent-specific context
@@ -456,6 +510,8 @@ export async function runReviewAgents(
         }
 
         if (message.role === 'assistant') {
+          agentUsage = applyUsageMessage(agentUsage, message);
+
           if (!message.content.trim()) {
             continue;
           }
@@ -478,10 +534,26 @@ export async function runReviewAgents(
         agentIssues.push(...parsedIssues);
         console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
       }
-      agentResults.push({ agentType, success: true, issues: agentIssues });
+      agentResults.push({
+        agentType,
+        success: true,
+        issues: agentIssues,
+        usage: {
+          ...agentUsage,
+          success: true,
+        },
+      });
     } catch (error) {
       console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
-      agentResults.push({ agentType, success: false, issues: [] });
+      agentResults.push({
+        agentType,
+        success: false,
+        issues: [],
+        usage: {
+          ...agentUsage,
+          success: false,
+        },
+      });
     }
   }
 
@@ -522,6 +594,7 @@ export async function runReviewAgents(
     summary,
     filesReviewed: filteredFiles.length,
     agentResults,
+    usage: summarizeRunUsage(agentResults),
   };
 }
 
@@ -607,11 +680,14 @@ export async function runReviewPipeline(
   const mergedIssues = mergeIssues(unifiedResult.issues, deepResult.issues);
   const summary = calculateSummary(filteredFiles.length, mergedIssues);
 
+  const combinedAgentResults = [...unifiedResult.agentResults, ...deepResult.agentResults];
+
   return {
     issues: mergedIssues,
     summary,
     filesReviewed: filteredFiles.length,
-    agentResults: [...unifiedResult.agentResults, ...deepResult.agentResults],
+    agentResults: combinedAgentResults,
+    usage: summarizeRunUsage(combinedAgentResults),
   };
 }
 
@@ -623,6 +699,7 @@ export function displayReviewSummary(result: {
   summary: ReturnType<typeof calculateSummary>;
   filesReviewed: number;
   changeSummary?: ChangeSummary;
+  usage?: ReviewUsageSummary;
 }): void {
   console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log(chalk.bold('📊 Review Summary'));
@@ -642,6 +719,21 @@ export function displayReviewSummary(result: {
 
   console.log(`  Files reviewed: ${chalk.cyan(result.summary.filesReviewed)}`);
   console.log(`  Issues found: ${chalk.yellow(result.summary.issuesFound)}`);
+
+  if (result.usage) {
+    console.log(
+      `  Tokens (input/output): ${chalk.cyan(`${result.usage.total.input}/${result.usage.total.output}`)}`
+    );
+    console.log(`  Total tokens: ${chalk.cyan(result.usage.total.totalTokens)}`);
+    console.log(`  Estimated cost: ${chalk.cyan(`$${result.usage.total.cost.toFixed(4)}`)}`);
+    if (result.usage.total.totalTokens > 0 && result.usage.total.cost === 0) {
+      console.log(
+        chalk.gray(
+          '  Cost is $0.0000 because model pricing is unknown or configured as free. Configure pricing.models to override.'
+        )
+      );
+    }
+  }
 
   if (result.summary.issuesFound > 0) {
     console.log(`    🔴 Critical: ${chalk.red(result.summary.bySeverity.CRITICAL)}`);

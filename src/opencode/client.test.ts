@@ -262,6 +262,64 @@ describe('OpencodeClient', () => {
       await expect(generator.next()).rejects.toThrow('OpenCode client not initialized');
     });
 
+    it('applies configured model pricing when runtime cost is missing or zero', async () => {
+      const runtimeMessages = [
+        {
+          info: {
+            id: 'msg-1',
+            role: 'assistant',
+            time: { completed: Date.now() },
+            provider: 'opencode',
+            model: 'glm-5-free',
+            usage: {
+              input: 1000,
+              output: 100,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 1100,
+            },
+          },
+          parts: [{ text: 'done' }],
+        },
+      ];
+
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          messages: vi.fn(async () => ({ data: runtimeMessages })),
+        })
+      );
+
+      const client = await createOpencodeClientInstance({
+        directory: process.cwd(),
+        config: {
+          review: {
+            agents: [],
+            default: {
+              skills: [],
+            },
+          },
+          pricing: {
+            models: {
+              'opencode/glm-5-free': {
+                input: 2,
+                output: 8,
+              },
+            },
+          },
+        } as any,
+      });
+
+      const collected = [];
+      for await (const message of client.streamMessages('session-123')) {
+        collected.push(message);
+      }
+
+      expect(collected).toHaveLength(1);
+      expect(collected[0].usage?.cost).toBeCloseTo(0.0028, 10);
+
+      await client.shutdown();
+    });
+
     it('closeSession throws if not initialized', async () => {
       const client = new OpencodeClient({});
       await expect(client.closeSession('session-123')).rejects.toThrow(

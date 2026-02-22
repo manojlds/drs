@@ -108,7 +108,14 @@ describe('description-executor', () => {
       'manojlds/drs',
       84,
       expect.objectContaining({ title: 'Pi migration' }),
-      'PR'
+      'PR',
+      expect.objectContaining({
+        total: expect.objectContaining({
+          input: expect.any(Number),
+          output: expect.any(Number),
+          totalTokens: expect.any(Number),
+        }),
+      })
     );
   });
 
@@ -129,7 +136,12 @@ describe('description-executor', () => {
 
     expect(displayDescription).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Pi migration' }),
-      'PR'
+      'PR',
+      expect.objectContaining({
+        total: expect.objectContaining({
+          totalTokens: expect.any(Number),
+        }),
+      })
     );
     expect(postDescription).not.toHaveBeenCalled();
   });

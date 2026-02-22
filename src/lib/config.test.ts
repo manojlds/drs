@@ -66,4 +66,22 @@ describe('Config', () => {
     expect(config.review.skipRepoCheck).toBeUndefined();
     expect(config.review.skipBranchCheck).toBeUndefined();
   });
+
+  it('should load pricing overrides when provided', () => {
+    const config = loadConfig(process.cwd(), {
+      pricing: {
+        models: {
+          'opencode/glm-5-free': {
+            input: 1,
+            output: 2,
+          },
+        },
+      },
+    } as any);
+
+    expect(config.pricing?.models?.['opencode/glm-5-free']).toEqual({
+      input: 1,
+      output: 2,
+    });
+  });
 });

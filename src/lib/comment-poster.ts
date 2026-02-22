@@ -17,6 +17,7 @@ import {
   type PlatformComment,
 } from './comment-manager.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 /**
  * Post review comments to a PR/MR
@@ -34,6 +35,7 @@ export async function postReviewComments(
   summary: ReturnType<typeof calculateSummary>,
   issues: ReviewIssue[],
   changeSummary: ChangeSummary | undefined,
+  reviewUsage: ReviewUsageSummary | undefined,
   platformData: unknown,
   lineValidator?: LineValidator,
   createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition
@@ -58,7 +60,13 @@ export async function postReviewComments(
 
   // Post or update summary comment
   console.log(chalk.gray('Posting review summary...\n'));
-  const summaryComment = formatSummaryComment(summary, issues, BOT_COMMENT_ID, changeSummary);
+  const summaryComment = formatSummaryComment(
+    summary,
+    issues,
+    BOT_COMMENT_ID,
+    changeSummary,
+    reviewUsage
+  );
 
   if (existingSummary) {
     await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);

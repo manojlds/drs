@@ -23,6 +23,17 @@ export interface PiSessionPart {
   text?: string;
 }
 
+interface PiUsage {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  totalTokens?: number;
+  cost?: {
+    total?: number;
+  };
+}
+
 export interface PiSessionMessage {
   info?: {
     id?: string;
@@ -31,6 +42,9 @@ export interface PiSessionMessage {
     error?: unknown;
     toolName?: string;
     toolCallId?: string;
+    provider?: string;
+    model?: string;
+    usage?: PiUsage;
   };
   parts?: PiSessionPart[];
 }
@@ -92,6 +106,52 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function normalizeUsage(value: unknown): PiUsage | undefined {
+  const usage = asRecord(value);
+
+  const input = asNumber(usage.input);
+  const output = asNumber(usage.output);
+  const cacheRead = asNumber(usage.cacheRead);
+  const cacheWrite = asNumber(usage.cacheWrite);
+  const totalTokens = asNumber(usage.totalTokens);
+
+  const rawCost = asRecord(usage.cost);
+  const totalCost = asNumber(rawCost.total);
+
+  if (
+    input === undefined &&
+    output === undefined &&
+    cacheRead === undefined &&
+    cacheWrite === undefined &&
+    totalTokens === undefined &&
+    totalCost === undefined
+  ) {
+    return undefined;
+  }
+
+  const normalized: PiUsage = {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+  };
+
+  if (totalCost !== undefined) {
+    normalized.cost = { total: totalCost };
+  }
+
+  return normalized;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -173,13 +233,30 @@ function toSessionMessage(
   }
 
   if (role === 'assistant') {
+    const info: NonNullable<PiSessionMessage['info']> = {
+      id: `${sessionId}-${index}`,
+      role: 'assistant',
+      time: { completed: timestamp },
+      error: message.errorMessage,
+    };
+
+    const provider = asString(message.provider);
+    if (provider) {
+      info.provider = provider;
+    }
+
+    const model = asString(message.model);
+    if (model) {
+      info.model = model;
+    }
+
+    const usage = normalizeUsage(message.usage);
+    if (usage) {
+      info.usage = usage;
+    }
+
     return {
-      info: {
-        id: `${sessionId}-${index}`,
-        role: 'assistant',
-        time: { completed: timestamp },
-        error: message.errorMessage,
-      },
+      info,
       parts: [{ text: extractText(message.content) }],
     };
   }
@@ -247,21 +324,26 @@ class PiSessionRuntime {
       const options = asRecord(provider.options);
       const models = asRecord(provider.models);
 
-      const modelEntries = Object.entries(models).map(([id, modelValue]) => ({
-        id,
-        name: asString(asRecord(modelValue).name) ?? id,
-        api: 'openai-completions',
-        reasoning: true,
-        input: ['text'] as Array<'text' | 'image'>,
-        cost: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-        },
-        contextWindow: 128000,
-        maxTokens: 16384,
-      }));
+      const modelEntries = Object.entries(models).map(([id, modelValue]) => {
+        const model = asRecord(modelValue);
+        const modelCost = asRecord(model.cost);
+
+        return {
+          id,
+          name: asString(model.name) ?? id,
+          api: 'openai-completions',
+          reasoning: asBoolean(model.reasoning) ?? true,
+          input: ['text'] as Array<'text' | 'image'>,
+          cost: {
+            input: asNumber(modelCost.input) ?? 0,
+            output: asNumber(modelCost.output) ?? 0,
+            cacheRead: asNumber(modelCost.cacheRead) ?? 0,
+            cacheWrite: asNumber(modelCost.cacheWrite) ?? 0,
+          },
+          contextWindow: asNumber(model.contextWindow) ?? 128000,
+          maxTokens: asNumber(model.maxTokens) ?? 16384,
+        };
+      });
 
       const providerInput: Record<string, unknown> = {
         api: 'openai-completions',

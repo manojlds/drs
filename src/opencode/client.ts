@@ -36,6 +36,15 @@ export interface SessionCreateOptions {
   context?: Record<string, unknown>;
 }
 
+export interface SessionUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: number;
+}
+
 export interface SessionMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -43,6 +52,9 @@ export interface SessionMessage {
   timestamp: Date;
   toolName?: string;
   toolCallId?: string;
+  provider?: string;
+  model?: string;
+  usage?: SessionUsage;
 }
 
 export interface Session {
@@ -105,6 +117,41 @@ export class RuntimeClient {
     this.baseUrl = config.baseUrl;
     this.directory = config.directory;
     this.config = config;
+  }
+
+  private getConfiguredModelPricing(provider?: string, model?: string) {
+    const pricing = this.config.config?.pricing?.models;
+    if (!pricing) {
+      return undefined;
+    }
+
+    const fullModelId = provider && model ? `${provider}/${model}` : undefined;
+    return (
+      (fullModelId ? pricing[fullModelId] : undefined) ??
+      (model ? pricing[model] : undefined) ??
+      undefined
+    );
+  }
+
+  private estimateConfiguredCost(
+    input: number,
+    output: number,
+    cacheRead: number,
+    cacheWrite: number,
+    provider?: string,
+    model?: string
+  ): number | undefined {
+    const pricing = this.getConfiguredModelPricing(provider, model);
+    if (!pricing) {
+      return undefined;
+    }
+
+    const inputCost = ((pricing.input ?? 0) / 1_000_000) * input;
+    const outputCost = ((pricing.output ?? 0) / 1_000_000) * output;
+    const cacheReadCost = ((pricing.cacheRead ?? 0) / 1_000_000) * cacheRead;
+    const cacheWriteCost = ((pricing.cacheWrite ?? 0) / 1_000_000) * cacheWrite;
+
+    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
   }
 
   /**
@@ -397,6 +444,42 @@ export class RuntimeClient {
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
           const msg = messages[i];
+          const provider = msg.info?.provider;
+          const model = msg.info?.model;
+
+          const mappedUsage = msg.info?.usage
+            ? (() => {
+                const input = msg.info?.usage?.input ?? 0;
+                const output = msg.info?.usage?.output ?? 0;
+                const cacheRead = msg.info?.usage?.cacheRead ?? 0;
+                const cacheWrite = msg.info?.usage?.cacheWrite ?? 0;
+                const totalTokens =
+                  msg.info?.usage?.totalTokens ?? input + output + cacheRead + cacheWrite;
+                const reportedCost = msg.info?.usage?.cost?.total;
+                const configuredCost = this.estimateConfiguredCost(
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  provider,
+                  model
+                );
+                const cost =
+                  reportedCost !== undefined && reportedCost > 0
+                    ? reportedCost
+                    : (configuredCost ?? reportedCost ?? 0);
+
+                return {
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  totalTokens,
+                  cost,
+                };
+              })()
+            : undefined;
+
           yield {
             id: msg.info?.id ?? 'msg-' + Date.now(),
             role: (msg.info?.role ?? 'assistant') as 'user' | 'assistant' | 'system' | 'tool',
@@ -404,6 +487,9 @@ export class RuntimeClient {
             timestamp: new Date(),
             toolName: msg.info?.toolName,
             toolCallId: msg.info?.toolCallId,
+            provider,
+            model,
+            usage: mappedUsage,
           };
         }
 

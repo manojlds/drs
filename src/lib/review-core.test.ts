@@ -235,6 +235,58 @@ describe('review-core', () => {
       expect(mockOpencode.closeSession).toHaveBeenCalledWith('session-1');
     });
 
+    it('captures token usage and model metadata from assistant messages', async () => {
+      mockOpencode.streamMessages = vi.fn(async function* () {
+        yield {
+          id: 'msg-usage-1',
+          role: 'assistant',
+          content: JSON.stringify({ issues: [] }),
+          provider: 'opencode',
+          model: 'glm-5-free',
+          usage: {
+            input: 1200,
+            output: 100,
+            cacheRead: 30,
+            cacheWrite: 0,
+            totalTokens: 1330,
+            cost: 0.02,
+          },
+          timestamp: new Date(),
+        };
+      }) as any;
+
+      const result = await runUnifiedReviewAgent(
+        mockOpencode,
+        mockConfig,
+        'Review these files',
+        'PR #123',
+        ['src/app.ts'],
+        {},
+        '/test/dir',
+        false
+      );
+
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          total: expect.objectContaining({
+            input: 1200,
+            output: 100,
+            cacheRead: 30,
+            cacheWrite: 0,
+            totalTokens: 1330,
+            cost: 0.02,
+          }),
+          agents: [
+            expect.objectContaining({
+              agentType: 'unified-reviewer',
+              model: 'opencode/glm-5-free',
+              turns: 1,
+            }),
+          ],
+        })
+      );
+    });
+
     it('should handle agent failure gracefully', async () => {
       mockOpencode.createSession = vi.fn(async () => {
         throw new Error('Session creation failed');

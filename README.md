@@ -339,6 +339,23 @@ Notes:
 - Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
+### Model Pricing Overrides (Cost Reporting)
+
+If your provider/model reports token usage but returns `$0.0000` cost, you can set pricing manually.
+Values are in **USD per 1M tokens**.
+
+```yaml
+pricing:
+  models:
+    opencode/glm-5-free:
+      input: 0.0
+      output: 0.0
+      cacheRead: 0.0
+      cacheWrite: 0.0
+```
+
+You can also set pricing directly under `pi.provider.<name>.models.<model>.cost` for custom providers.
+
 ### Pi-Native Skill Discovery
 
 DRS now auto-discovers review skills from both directories when `review.paths.skills` is not set:
