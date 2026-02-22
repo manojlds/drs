@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
+import { getDescriberModelOverride, getRuntimeConfig, type DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
-import { createOpencodeClientInstance } from '../opencode/client.js';
+import { createRuntimeClientInstance } from '../opencode/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
 import { loadGlobalContext } from '../lib/context-loader.js';
 import {
@@ -66,13 +66,25 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Initialize OpenCode client with model overrides
+  // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
-  const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl ?? undefined,
+  const runtimeConfig = getRuntimeConfig(config);
+  const configuredRuntimeEndpoint =
+    runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined;
+
+  if (configuredRuntimeEndpoint) {
+    console.log(
+      chalk.yellow(
+        `⚠ Ignoring configured runtime endpoint (${configuredRuntimeEndpoint}). DRS uses Pi SDK in-process only.\n`
+      )
+    );
+  }
+
+  const runtimeClient = await createRuntimeClientInstance({
     directory: process.cwd(),
     modelOverrides,
-    provider: config.opencode.provider,
+    provider: runtimeConfig.provider,
+    config,
     debug: options.debug,
   });
 
@@ -80,14 +92,14 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.dim('Running MR describer agent...\n'));
 
     // Run the describer agent
-    const session = await opencode.createSession({
+    const session = await runtimeClient.createSession({
       agent: 'describe/pr-describer',
       message: instructions,
     });
 
     // Collect all assistant messages from the session
     let fullResponse = '';
-    for await (const message of opencode.streamMessages(session.id)) {
+    for await (const message of runtimeClient.streamMessages(session.id)) {
       if (message.role === 'assistant') {
         fullResponse += message.content;
       }
@@ -113,8 +125,16 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
       throw validationError;
     }
 
-    // Display the description
-    displayDescription(normalizedDescription, 'MR');
+    // Display the description unless we're posting it to avoid noisy CI logs
+    if (options.postDescription) {
+      console.log(
+        chalk.gray(
+          'Description generated (suppressed in logs because --post-description is enabled).'
+        )
+      );
+    } else {
+      displayDescription(normalizedDescription, 'MR');
+    }
 
     // Save to JSON file if requested
     if (options.outputPath) {
@@ -145,6 +165,6 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
 
     console.log(chalk.green('\n✓ MR description generated successfully\n'));
   } finally {
-    await opencode.shutdown();
+    await runtimeClient.shutdown();
   }
 }

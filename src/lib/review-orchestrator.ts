@@ -11,10 +11,11 @@ import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
+  getRuntimeConfig,
   getUnifiedModelOverride,
   type ModelOverrides,
 } from './config.js';
-import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
+import { createRuntimeClientInstance, type RuntimeClient } from '../opencode/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
@@ -39,7 +40,7 @@ export interface ReviewSource {
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print Pi runtime configuration */
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
@@ -72,14 +73,14 @@ export interface ConnectOptions {
 }
 
 /**
- * Connect to OpenCode server (or start in-process)
+ * Connect to Pi runtime (in-process by default)
  */
-export async function connectToOpenCode(
+export async function connectToRuntime(
   config: DRSConfig,
   workingDir?: string,
   options?: ConnectOptions
-): Promise<OpencodeClient> {
-  console.log(chalk.gray('Connecting to OpenCode server...\n'));
+): Promise<RuntimeClient> {
+  console.log(chalk.gray('Connecting to Pi runtime...\n'));
 
   try {
     // Get model overrides from DRS config
@@ -88,30 +89,41 @@ export async function connectToOpenCode(
       ...getUnifiedModelOverride(config),
     };
 
-    return await createOpencodeClientInstance({
-      baseUrl: config.opencode.serverUrl ?? undefined,
+    const runtimeConfig = getRuntimeConfig(config);
+    const configuredRuntimeEndpoint =
+      runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined;
+
+    if (configuredRuntimeEndpoint) {
+      console.log(
+        chalk.yellow(
+          `⚠ Ignoring configured runtime endpoint (${configuredRuntimeEndpoint}). DRS uses Pi SDK in-process only.\n`
+        )
+      );
+    }
+
+    return await createRuntimeClientInstance({
       directory: workingDir ?? process.cwd(),
       modelOverrides,
-      provider: config.opencode.provider,
+      provider: runtimeConfig.provider,
       config,
       debug: options?.debug,
     });
   } catch (error) {
-    console.error(chalk.red('✗ Failed to connect to OpenCode server'));
+    console.error(chalk.red('✗ Failed to connect to Pi runtime'));
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
     console.log(
-      chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n')
+      chalk.yellow('Please check your Pi runtime configuration and model credentials.\n')
     );
     throw error;
   }
 }
 
 /**
- * Execute a code review using OpenCode agents
+ * Execute a code review using Pi runtime agents.
  *
  * This is the core review orchestrator that handles:
  * - File filtering (ignore patterns)
- * - OpenCode connection
+ * - Pi runtime connection
  * - Agent execution and streaming
  * - Issue parsing and collection
  * - Summary calculation
@@ -146,8 +158,8 @@ export async function executeReview(
 
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
-  // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, source.workingDir, { debug: source.debug });
+  // Connect to Pi runtime
+  const runtimeClient = await connectToRuntime(config, source.workingDir, { debug: source.debug });
 
   try {
     // Build instructions - use provided diffs if available, otherwise fall back to git command
@@ -181,7 +193,7 @@ export async function executeReview(
 
     // Run agents using shared core logic
     const result = await runReviewPipeline(
-      opencode,
+      runtimeClient,
       config,
       baseInstructions,
       source.name,
@@ -200,15 +212,20 @@ export async function executeReview(
   } catch (error) {
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      await opencode.shutdown();
+      await runtimeClient.shutdown();
       process.exit(1);
     }
     throw error;
   } finally {
-    // Always shut down OpenCode client
-    await opencode.shutdown();
+    // Always shut down Pi runtime client
+    await runtimeClient.shutdown();
   }
 }
+
+/**
+ * @deprecated Use connectToRuntime.
+ */
+export const connectToOpenCode = connectToRuntime;
 
 // Re-export display functions from core for backward compatibility
 export const displayReviewSummary = displaySummary;

@@ -19,7 +19,7 @@ import {
   type Platform,
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../opencode/client.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -38,7 +38,7 @@ export function detectPlatform(pr: PullRequest): Platform {
  * @returns The generated description, or null if description generation is disabled
  */
 export async function runDescribeIfEnabled(
-  opencode: OpencodeClient,
+  runtimeClient: RuntimeClient,
   config: DRSConfig,
   platformClient: PlatformClient,
   projectId: string,
@@ -67,13 +67,13 @@ export async function runDescribeIfEnabled(
   }
 
   // Run describe agent
-  const session = await opencode.createSession({
+  const session = await runtimeClient.createSession({
     agent: 'describe/pr-describer',
     message: instructions,
   });
 
   let fullResponse = '';
-  for await (const message of opencode.streamMessages(session.id)) {
+  for await (const message of runtimeClient.streamMessages(session.id)) {
     if (message.role === 'assistant') {
       fullResponse += message.content;
     }
@@ -97,7 +97,14 @@ export async function runDescribeIfEnabled(
   // Display and optionally post description
   const description = normalizeDescription(descriptionPayload);
   const platform = detectPlatform(pr);
-  displayDescription(description, platform);
+
+  if (shouldPostDescription) {
+    console.log(
+      chalk.gray('Description generated (suppressed in logs because posting is enabled).')
+    );
+  } else {
+    displayDescription(description, platform);
+  }
 
   if (shouldPostDescription) {
     await postDescription(platformClient, projectId, pr.number, description, platform);

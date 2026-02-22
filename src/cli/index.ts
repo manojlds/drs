@@ -14,6 +14,10 @@ import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
 import { loadConfig, type DRSConfig, type ReviewMode } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
+import { config as loadDotenv } from 'dotenv';
+
+// Load environment variables from .env in current working directory (if present)
+loadDotenv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,7 +66,7 @@ program
   )
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -128,7 +132,7 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -211,7 +215,7 @@ program
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .action(async (options) => {
     try {
@@ -278,7 +282,7 @@ program
   .option('--post-description', 'Post generated description to the PR (requires GITHUB_TOKEN)')
   .option('-o, --output <path>', 'Write description to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd());
@@ -307,7 +311,7 @@ program
   .option('--post-description', 'Post generated description to the MR (requires GITLAB_TOKEN)')
   .option('-o, --output <path>', 'Write description to JSON file')
   .option('--json', 'Output results as JSON to console')
-  .option('--debug', 'Print OpenCode configuration for debugging')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
   .action(async (options) => {
     try {
       const config = loadConfig(process.cwd());
@@ -398,7 +402,8 @@ program
   .action(async () => {
     try {
       const { listAgents } = await import('../opencode/agent-loader.js');
-      const agents = listAgents(process.cwd());
+      const config = loadConfig(process.cwd());
+      const agents = listAgents(process.cwd(), config);
 
       console.log(chalk.bold('\n📋 Available Review Agents:\n'));
 

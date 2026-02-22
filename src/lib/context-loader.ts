@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import type { DRSConfig } from './config.js';
+import { resolveReviewPaths } from '../opencode/path-config.js';
 
 export interface AgentContext {
   /**
@@ -38,9 +40,11 @@ export function loadGlobalContext(projectRoot: string = process.cwd()): string |
  */
 export function loadAgentContext(
   agentName: string,
-  projectRoot: string = process.cwd()
+  projectRoot: string = process.cwd(),
+  config?: DRSConfig
 ): AgentContext {
-  const agentDir = join(projectRoot, '.drs', 'agents', agentName);
+  const { agentsPath } = resolveReviewPaths(projectRoot, config);
+  const agentDir = join(agentsPath, agentName);
 
   // Check for full agent override
   const agentDefPath = join(agentDir, 'agent.md');
@@ -75,20 +79,16 @@ export function buildReviewPrompt(
   reviewLabel: string,
   changedFiles: string[],
   projectRoot: string = process.cwd(),
-  skillPrompt?: string | null
+  config?: DRSConfig
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
-  const agentContext = loadAgentContext(agentName, projectRoot);
+  const agentContext = loadAgentContext(agentName, projectRoot, config);
 
   let prompt = '';
 
   // If agent is fully overridden, use that instead of base prompt
   if (agentContext.source === 'override' && agentContext.agentDefinition) {
     prompt = agentContext.agentDefinition;
-
-    if (skillPrompt) {
-      prompt += `\n\n${skillPrompt}\n`;
-    }
 
     // Add task details
     prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
@@ -114,10 +114,6 @@ export function buildReviewPrompt(
   if (agentContext.agentContext) {
     prompt += `# ${agentName.charAt(0).toUpperCase() + agentName.slice(1)} Agent Context\n\n`;
     prompt += `${agentContext.agentContext}\n\n`;
-  }
-
-  if (skillPrompt) {
-    prompt += `${skillPrompt}\n\n`;
   }
 
   // 3. Base agent instructions
