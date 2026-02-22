@@ -48,7 +48,11 @@ describe('description-formatter', () => {
 
     const markdown = formatDescriptionAsMarkdown(description, 'PR', usage);
 
-    expect(markdown).toContain('### Model Usage');
+    expect(markdown).toContain('# 📋 PR Description Analysis');
+    expect(markdown).toContain('## 🧭 Change Summary');
+    expect(markdown).toContain('## 📌 Summary');
+    expect(markdown).toContain('## 📂 Changes Walkthrough');
+    expect(markdown).toContain('## 💰 Model Usage');
     expect(markdown).toContain('View token and cost breakdown');
     expect(markdown).toContain('describe/pr-describer');
     expect(markdown).toContain('opencode/glm-5-free');
