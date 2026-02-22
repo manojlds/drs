@@ -149,7 +149,7 @@ export class GitLabClient {
  * Create a GitLab client from environment variables
  */
 export function createGitLabClient(): GitLabClient {
-  const url = process.env.GITLAB_URL || 'https://gitlab.com';
+  const url = process.env.GITLAB_URL ?? 'https://gitlab.com';
   const token = process.env.GITLAB_TOKEN;
 
   if (!token) {

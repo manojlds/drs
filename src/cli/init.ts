@@ -21,7 +21,7 @@ function createPrompt(): {
       const defaultHint = defaultValue ? ` (${defaultValue})` : '';
       return new Promise((resolve) => {
         rl.question(`${question}${defaultHint}: `, (answer) => {
-          resolve(answer.trim() || defaultValue || '');
+          resolve((answer.trim() || defaultValue) ?? '');
         });
       });
     },

@@ -74,7 +74,7 @@ export function convertToCodeQualityIssue(issue: ReviewIssue): CodeQualityIssue 
     location: {
       path: issue.file,
       lines: {
-        begin: issue.line || 1,
+        begin: issue.line ?? 1,
       },
     },
   };

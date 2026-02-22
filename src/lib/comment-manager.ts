@@ -14,7 +14,8 @@ export const ERROR_COMMENT_ID = 'drs-error';
  * Create a unique fingerprint for an issue to detect duplicates
  */
 export function createIssueFingerprint(issue: ReviewIssue): string {
-  return `${issue.file}:${issue.line || 'general'}:${issue.category}:${issue.title}`;
+  const line = issue.line && issue.line > 0 ? issue.line : 'general';
+  return `${issue.file}:${line}:${issue.category}:${issue.title}`;
 }
 
 /**
@@ -71,14 +72,14 @@ export interface PlatformComment {
  * Find existing summary comment using bot marker
  */
 export function findExistingSummaryComment(comments: PlatformComment[]): PlatformComment | null {
-  return comments.find((c) => extractCommentId(c.body) === BOT_COMMENT_ID) || null;
+  return comments.find((c) => extractCommentId(c.body) === BOT_COMMENT_ID) ?? null;
 }
 
 /**
  * Find existing error comment using error marker
  */
 export function findExistingErrorComment(comments: PlatformComment[]): PlatformComment | null {
-  return comments.find((c) => extractCommentId(c.body) === ERROR_COMMENT_ID) || null;
+  return comments.find((c) => extractCommentId(c.body) === ERROR_COMMENT_ID) ?? null;
 }
 
 /**

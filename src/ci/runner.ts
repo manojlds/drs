@@ -62,7 +62,7 @@ export async function runCIReview(): Promise<void> {
   }
 
   // Load configuration
-  const projectDir = process.env.CI_PROJECT_DIR || process.cwd();
+  const projectDir = process.env.CI_PROJECT_DIR ?? process.cwd();
   const config = loadConfig(projectDir);
 
   try {
@@ -102,5 +102,5 @@ export async function runCIReview(): Promise<void> {
  * Check if running in CI environment
  */
 export function isCI(): boolean {
-  return !!(process.env.CI || process.env.GITLAB_CI || process.env.GITHUB_ACTIONS);
+  return !!(process.env.CI ?? process.env.GITLAB_CI ?? process.env.GITHUB_ACTIONS);
 }

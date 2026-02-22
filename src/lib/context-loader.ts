@@ -102,7 +102,7 @@ export function buildReviewPrompt(
   // 1. Global project context (if available)
   if (globalContext) {
     const trimmedContext = globalContext.trim();
-    const firstLine = trimmedContext.split('\n').find((line) => line.trim().length > 0) || '';
+    const firstLine = trimmedContext.split('\n').find((line) => line.trim().length > 0) ?? '';
     if (/^#\s*project context/i.test(firstLine)) {
       prompt += `${trimmedContext}\n\n`;
     } else {

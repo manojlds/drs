@@ -126,9 +126,9 @@ function resolveBaseBranch(cliBaseBranch?: string, targetBranch?: string): BaseB
 }
 
 export async function showChanges(config: DRSConfig, options: ShowChangesOptions): Promise<void> {
-  const workingDir = options.workingDir || process.cwd();
-  const isGitHub = Boolean(options.owner || options.repo || options.prNumber);
-  const isGitLab = Boolean(options.projectId || options.mrIid);
+  const workingDir = options.workingDir ?? process.cwd();
+  const isGitHub = Boolean(options.owner ?? options.repo ?? options.prNumber);
+  const isGitLab = Boolean(options.projectId ?? options.mrIid);
 
   if (isGitHub && isGitLab) {
     throw new Error(
@@ -261,7 +261,7 @@ async function writeOutput(
     console.log(chalk.green(`✓ Output written to ${outputPath}\n`));
   }
 
-  if (jsonOutput || !outputPath) {
+  if (jsonOutput ?? !outputPath) {
     console.log(output);
   }
 }

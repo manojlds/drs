@@ -190,7 +190,7 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
   }
 
   // No diff content available - fall back to git diff command
-  const fallbackCommand = diffCommand || 'git diff HEAD~1 -- <file>';
+  const fallbackCommand = diffCommand ?? 'git diff HEAD~1 -- <file>';
 
   return `Review the following changed files from ${label}:
 
@@ -264,7 +264,7 @@ function getConfiguredAgentInfo(
       const agent = allAgents.find((a) => a.name === fullName);
       return {
         name,
-        description: agent?.description || `${name} review agent`,
+        description: agent?.description ?? `${name} review agent`,
       };
     })
     .filter((a) => a !== null);
@@ -315,7 +315,7 @@ export async function runUnifiedReviewAgent(
   baseInstructions: string,
   reviewLabel: string,
   filteredFiles: string[],
-  additionalContext: Record<string, any> = {},
+  additionalContext: Record<string, unknown> = {},
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
@@ -444,7 +444,7 @@ export async function runReviewAgents(
   baseInstructions: string,
   reviewLabel: string,
   filteredFiles: string[],
-  additionalContext: Record<string, any> = {},
+  additionalContext: Record<string, unknown> = {},
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
@@ -605,7 +605,7 @@ export async function runReviewPipeline(
   baseInstructions: string,
   reviewLabel: string,
   filteredFiles: string[],
-  additionalContext: Record<string, any> = {},
+  additionalContext: Record<string, unknown> = {},
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {

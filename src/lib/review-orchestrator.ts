@@ -7,6 +7,7 @@
 
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
+import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
@@ -53,7 +54,7 @@ export interface ReviewResult {
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
   /** Diff-based change summary when available */
-  changeSummary?: import('./change-summary.js').ChangeSummary;
+  changeSummary?: ChangeSummary;
   /** Number of files actually reviewed (after filtering) */
   filesReviewed: number;
 }
@@ -88,8 +89,8 @@ export async function connectToOpenCode(
     };
 
     return await createOpencodeClientInstance({
-      baseUrl: config.opencode.serverUrl || undefined,
-      directory: workingDir || process.cwd(),
+      baseUrl: config.opencode.serverUrl ?? undefined,
+      directory: workingDir ?? process.cwd(),
       modelOverrides,
       provider: config.opencode.provider,
       config,
@@ -186,8 +187,8 @@ export async function executeReview(
       source.name,
       filteredFiles,
       source.context,
-      source.workingDir || process.cwd(),
-      source.debug || false
+      source.workingDir ?? process.cwd(),
+      source.debug ?? false
     );
 
     return {

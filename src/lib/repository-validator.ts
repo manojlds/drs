@@ -274,7 +274,7 @@ export async function enforceRepoBranchMatch(
       expectedRepo.host.toLowerCase() !== localRepo.host.toLowerCase();
     const repoMismatch = localRepoPath !== expectedRepoPath;
 
-    if (hostMismatch || repoMismatch) {
+    if (hostMismatch ?? repoMismatch) {
       throw new Error(
         `Repository mismatch for PR/MR review.\n` +
           `Local repo: ${localRepo.host ? `${localRepo.host}/` : ''}${localRepoPath}\n` +

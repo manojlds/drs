@@ -28,7 +28,7 @@ export class GitHubPlatformAdapter implements PlatformClient {
     return {
       number: pr.number,
       title: pr.title,
-      description: pr.body || undefined,
+      description: pr.body ?? undefined,
       author: pr.user?.login || 'Unknown',
       sourceBranch: pr.head.ref,
       targetBranch: pr.base.ref,
@@ -57,7 +57,7 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
     return comments.map((c) => ({
       id: c.id,
-      body: c.body || '',
+      body: c.body ?? '',
     }));
   }
 

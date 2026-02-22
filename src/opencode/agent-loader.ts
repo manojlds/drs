@@ -144,7 +144,7 @@ function discoverOverrideAgents(basePath: string, currentPath: string): AgentDef
  */
 export function getAgent(projectPath: string, agentName: string): AgentDefinition | null {
   const agents = loadReviewAgents(projectPath);
-  return agents.find((a) => a.name === agentName) || null;
+  return agents.find((a) => a.name === agentName) ?? null;
 }
 
 /**

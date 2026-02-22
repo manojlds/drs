@@ -89,7 +89,7 @@ export async function executeUnifiedReview(
 
     const pr = await platformClient.getPullRequest(projectId, prNumber);
 
-    await enforceRepoBranchMatch(options.workingDir || process.cwd(), projectId, pr, {
+    await enforceRepoBranchMatch(options.workingDir ?? process.cwd(), projectId, pr, {
       skipRepoCheck: config.review.skipRepoCheck,
       skipBranchCheck: config.review.skipBranchCheck,
     });
@@ -142,7 +142,7 @@ export async function executeUnifiedReview(
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
     // Connect to OpenCode
-    opencode = await connectToOpenCode(config, options.workingDir || process.cwd(), {
+    opencode = await connectToOpenCode(config, options.workingDir ?? process.cwd(), {
       debug: options.debug,
       modelOverrides,
     });
@@ -159,7 +159,7 @@ export async function executeUnifiedReview(
         pr,
         filesForDescribe,
         postDescriptionEnabled,
-        options.workingDir || process.cwd(),
+        options.workingDir ?? process.cwd(),
         options.debug
       );
     }
@@ -185,8 +185,8 @@ export async function executeUnifiedReview(
       reviewLabel,
       filteredFiles,
       { prNumber },
-      options.workingDir || process.cwd(),
-      options.debug || false
+      options.workingDir ?? process.cwd(),
+      options.debug ?? false
     );
 
     // Display summary
@@ -215,12 +215,12 @@ export async function executeUnifiedReview(
       await generateAndWriteCodeQualityReport(
         result.issues,
         options.codeQualityReport,
-        options.workingDir || process.cwd()
+        options.workingDir ?? process.cwd()
       );
     }
 
     // Handle JSON output
-    const wantsJsonOutput = options.jsonOutput || options.outputPath;
+    const wantsJsonOutput = options.jsonOutput ?? options.outputPath;
 
     if (wantsJsonOutput) {
       const jsonOutput = formatReviewJson(result.summary, result.issues, {
@@ -233,7 +233,7 @@ export async function executeUnifiedReview(
       });
 
       if (options.outputPath) {
-        await writeReviewJson(jsonOutput, options.outputPath, options.workingDir || process.cwd());
+        await writeReviewJson(jsonOutput, options.outputPath, options.workingDir ?? process.cwd());
         console.log(chalk.green(`\n✓ Review results written to ${options.outputPath}\n`));
       }
 

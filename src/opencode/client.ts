@@ -218,7 +218,7 @@ export class OpencodeClient {
 
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
-      const projectDir = this.directory || originalCwd;
+      const projectDir = this.directory ?? originalCwd;
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
       process.env.DRS_PROJECT_ROOT = projectDir;
       const discoveryRoot = projectDir;
@@ -400,7 +400,16 @@ export class OpencodeClient {
 
     try {
       // Send message using OpenCode SDK
-      await (this.client as any).session.sendMessage({
+      const clientWithSendMessage = this.client as ReturnType<typeof createSDKClient> & {
+        session: {
+          sendMessage: (args: {
+            path: { id: string };
+            body: { content: string };
+          }) => Promise<unknown>;
+        };
+      };
+
+      await clientWithSendMessage.session.sendMessage({
         path: { id: sessionId },
         body: { content },
       });

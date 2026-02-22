@@ -67,7 +67,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   const result = await executeReview(config, source);
 
   // Handle JSON output
-  const wantsJsonOutput = options.jsonOutput || options.outputPath;
+  const wantsJsonOutput = options.jsonOutput ?? options.outputPath;
 
   if (wantsJsonOutput) {
     const jsonOutput = formatReviewJson(result.summary, result.issues, {

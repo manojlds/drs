@@ -114,13 +114,13 @@ function resolveGitLabTarget(
  * Post comments from a saved review JSON to GitHub or GitLab.
  */
 export async function postCommentsFromJson(options: PostCommentsOptions): Promise<void> {
-  const workingDir = options.workingDir || process.cwd();
+  const workingDir = options.workingDir ?? process.cwd();
   const inputPath = resolve(workingDir, options.inputPath);
   const raw = await readFile(inputPath, 'utf-8');
   const reviewJson = parseReviewJson(raw, inputPath);
 
-  const isGitHub = Boolean(options.owner || options.repo || options.prNumber);
-  const isGitLab = Boolean(options.projectId || options.mrIid);
+  const isGitHub = Boolean(options.owner ?? options.repo ?? options.prNumber);
+  const isGitLab = Boolean(options.projectId ?? options.mrIid);
 
   if (isGitHub && isGitLab) {
     throw new Error(

@@ -216,7 +216,7 @@ function findExistingDescriptionComment(comments: Array<{ id: number | string; b
   return (
     comments.find((comment) =>
       comment.body.includes(`<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->`)
-    ) || null
+    ) ?? null
   );
 }
 

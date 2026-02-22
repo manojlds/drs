@@ -93,19 +93,19 @@ export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
   opencode: {
-    serverUrl: process.env.OPENCODE_SERVER || undefined,
+    serverUrl: process.env.OPENCODE_SERVER ?? undefined,
   },
   gitlab: {
-    url: process.env.GITLAB_URL || 'https://gitlab.com',
-    token: process.env.GITLAB_TOKEN || '',
+    url: process.env.GITLAB_URL ?? 'https://gitlab.com',
+    token: process.env.GITLAB_TOKEN ?? '',
   },
   github: {
-    token: process.env.GITHUB_TOKEN || '',
+    token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
     agents: ['security', 'quality', 'style', 'performance', 'documentation'],
     default: {
-      model: process.env.REVIEW_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-5-20250929',
+      model: process.env.REVIEW_DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4-5-20250929',
       skills: [],
     },
     ignorePatterns: [
@@ -148,7 +148,7 @@ const DEFAULT_CONFIG: DRSConfig = {
  * 5. Default values
  */
 export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>): DRSConfig {
-  const basePath = projectPath || process.cwd();
+  const basePath = projectPath ?? process.cwd();
   let config = { ...DEFAULT_CONFIG };
 
   // Try loading from .drs/drs.config.yaml
@@ -396,7 +396,7 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
     const envModel = process.env[envVarName];
 
     // Precedence: agent.model > env var > defaultModel
-    const model = agent.model || envModel || defaultModel;
+    const model = agent.model ?? envModel ?? defaultModel;
 
     if (model) {
       // Use review/<agent> format which matches how agents are invoked
