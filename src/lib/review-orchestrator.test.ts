@@ -309,7 +309,7 @@ describe('review-orchestrator', () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
 
-    it('should filter ignored files', async () => {
+    it('should filter ignored files before executing review agents', async () => {
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['src/app.ts', 'src/app.test.ts', 'src/utils.ts'],
@@ -317,12 +317,28 @@ describe('review-orchestrator', () => {
       };
 
       const result = await executeReview(mockConfig, source);
+      const { runReviewPipeline } = await import('./review-core.js');
 
-      // Should have filtered out .test.ts file
+      // Should have filtered out .test.ts file before review execution
       expect(result.filesReviewed).toBe(2);
+      expect(runReviewPipeline).toHaveBeenCalledWith(
+        expect.anything(),
+        mockConfig,
+        expect.anything(),
+        'Local diff',
+        ['src/app.ts', 'src/utils.ts'],
+        {},
+        process.cwd(),
+        false
+      );
     });
 
     it('should return empty result when all files are ignored', async () => {
+      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+      const { runReviewPipeline } = await import('./review-core.js');
+      vi.mocked(createOpencodeClientInstance).mockClear();
+      vi.mocked(runReviewPipeline).mockClear();
+
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['test1.test.ts', 'test2.test.ts'],
@@ -334,6 +350,8 @@ describe('review-orchestrator', () => {
       expect(result.issues).toEqual([]);
       expect(result.filesReviewed).toBe(0);
       expect(result.summary.issuesFound).toBe(0);
+      expect(createOpencodeClientInstance).not.toHaveBeenCalled();
+      expect(runReviewPipeline).not.toHaveBeenCalled();
     });
 
     it('should handle staged diff command', async () => {
