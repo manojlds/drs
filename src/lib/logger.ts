@@ -14,7 +14,7 @@ export type LogFormat = 'human' | 'json';
 export interface LogContext {
   /** Agent type (e.g., 'security', 'unified-reviewer') */
   agent?: string;
-  /** Tool name (e.g., 'drs_skill', 'write_json_output') */
+  /** Tool name (e.g., 'write_json_output', 'read') */
   tool?: string;
   /** Skill name if applicable */
   skill?: string;
@@ -219,14 +219,10 @@ class Logger {
   // Convenience methods for common patterns
 
   /**
-   * Log a skill tool call
+   * Log skill activation details.
    */
   skillLoaded(skillName: string, agent: string, metadata?: Record<string, unknown>): void {
-    this.info(
-      `Loaded skill: ${skillName}`,
-      { agent, tool: 'drs_skill', skill: skillName },
-      metadata
-    );
+    this.info(`Loaded skill: ${skillName}`, { agent, tool: 'skill', skill: skillName }, metadata);
   }
 
   /**

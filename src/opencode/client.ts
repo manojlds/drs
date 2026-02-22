@@ -5,7 +5,6 @@
  * while delegating SDK calls through the Pi integration adapter in src/pi/sdk.ts.
  */
 
-import { delimiter } from 'path';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
 import { loadReviewAgents } from './agent-loader.js';
@@ -99,10 +98,6 @@ export class RuntimeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
   private client?: PiClient;
   private config: RuntimeClientConfig;
-  private projectRootEnv?: string;
-  private agentsRootEnv?: string;
-  private skillsRootEnv?: string;
-  private skillsRootsEnv?: string;
 
   constructor(config: RuntimeClientConfig) {
     this.baseUrl = config.baseUrl;
@@ -134,7 +129,6 @@ export class RuntimeClient {
         Grep: true,
         Bash: true,
         write_json_output: true,
-        drs_skill: true,
         skill: false,
         Write: false,
         Edit: false,
@@ -199,6 +193,8 @@ export class RuntimeClient {
       opencodeConfig.agent = agentConfig;
     }
 
+    opencodeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
+
     if (this.config.config) {
       const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
       const defaultSkills = getDefaultSkills(this.config.config);
@@ -208,8 +204,12 @@ export class RuntimeClient {
             ...defaultSkills,
             ...(agent.skills ? agent.skills.map(String) : []),
           ]);
+          const fullAgentName = agent.name.startsWith('review/')
+            ? agent.name
+            : `review/${agent.name}`;
+
           return {
-            name: agent.name,
+            name: fullAgentName,
             skills: Array.from(combined).filter((skill) => skill.length > 0),
           };
         })
@@ -218,9 +218,13 @@ export class RuntimeClient {
       if (agentSkills.length > 0) {
         console.log('🧩 Agent skill configuration:');
         for (const agent of agentSkills) {
-          console.log(`  • review/${agent.name}: ${agent.skills.join(', ')}`);
+          console.log(`  • ${agent.name}: ${agent.skills.join(', ')}`);
         }
         console.log('');
+
+        opencodeConfig.agentSkills = Object.fromEntries(
+          agentSkills.map((agent) => [agent.name, agent.skills])
+        );
       }
     }
 
@@ -281,26 +285,13 @@ export class RuntimeClient {
       console.log('Config being passed to Pi runtime:');
       console.log(JSON.stringify(sanitizedConfig, null, 2));
 
-      if (this.config.config) {
-        const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
-        const defaultSkills = getDefaultSkills(this.config.config);
-        const agentSkills = normalizedAgents
-          .map((agent) => {
-            const combined = new Set([
-              ...defaultSkills,
-              ...(agent.skills ? agent.skills.map(String) : []),
-            ]);
-            return {
-              name: `review/${agent.name}`,
-              skills: Array.from(combined).filter((skill) => skill.length > 0),
-            };
-          })
-          .filter((agent) => agent.skills.length > 0);
+      const configuredAgentSkills = opencodeConfig.agentSkills as
+        | Record<string, string[]>
+        | undefined;
 
-        if (agentSkills.length > 0) {
-          console.log('Agent skills configuration:');
-          console.log(JSON.stringify(agentSkills, null, 2));
-        }
+      if (configuredAgentSkills && Object.keys(configuredAgentSkills).length > 0) {
+        console.log('Agent skills configuration:');
+        console.log(JSON.stringify(configuredAgentSkills, null, 2));
       }
 
       console.log('─'.repeat(50));
@@ -308,17 +299,6 @@ export class RuntimeClient {
     }
 
     // Change to project directory so the Pi runtime can resolve project-relative assets
-
-    this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
-    this.agentsRootEnv = process.env.DRS_AGENTS_ROOT;
-    this.skillsRootEnv = process.env.DRS_SKILLS_ROOT;
-    this.skillsRootsEnv = process.env.DRS_SKILLS_ROOTS;
-
-    process.env.DRS_PROJECT_ROOT = projectDir;
-    process.env.DRS_AGENTS_ROOT = reviewPaths.agentsPath;
-    process.env.DRS_SKILLS_ROOT = reviewPaths.skillsPath;
-    process.env.DRS_SKILLS_ROOTS = reviewPaths.skillSearchPaths.join(delimiter);
-
     const discoveryRoot = projectDir;
     if (discoveryRoot !== originalCwd) {
       process.chdir(discoveryRoot);
@@ -519,29 +499,6 @@ export class RuntimeClient {
       this.inProcessServer.server.close();
       // Give server time to clean up connections
       await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (this.projectRootEnv === undefined) {
-      delete process.env.DRS_PROJECT_ROOT;
-    } else {
-      process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
-    }
-
-    if (this.agentsRootEnv === undefined) {
-      delete process.env.DRS_AGENTS_ROOT;
-    } else {
-      process.env.DRS_AGENTS_ROOT = this.agentsRootEnv;
-    }
-
-    if (this.skillsRootEnv === undefined) {
-      delete process.env.DRS_SKILLS_ROOT;
-    } else {
-      process.env.DRS_SKILLS_ROOT = this.skillsRootEnv;
-    }
-
-    if (this.skillsRootsEnv === undefined) {
-      delete process.env.DRS_SKILLS_ROOTS;
-    } else {
-      process.env.DRS_SKILLS_ROOTS = this.skillsRootsEnv;
     }
   }
 

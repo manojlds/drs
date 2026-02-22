@@ -9,8 +9,6 @@ type SkillSummary = {
   description: string;
 };
 
-const TOOL_NAME = 'drs_skill';
-
 function normalizeSkillList(skills: unknown): string[] {
   if (!Array.isArray(skills)) {
     return [];
@@ -92,5 +90,5 @@ export function buildSkillPromptSection(
   }
 
   const prompt = buildSkillsPrompt(availableSkills, promptFormat);
-  return `# Skills\n\n${prompt}\n\nBefore reviewing, you MUST call the ${TOOL_NAME} tool for the most relevant skill based on the files changed and the type of work being reviewed.`;
+  return `# Skills\n\n${prompt}\n\nThese skills are loaded directly by the Pi runtime. Use the most relevant skill guidance while reviewing.`;
 }

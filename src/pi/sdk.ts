@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
-import { existsSync, readFileSync, statSync } from 'fs';
-import { delimiter, dirname, isAbsolute, join, resolve } from 'path';
+import { isAbsolute, join, resolve } from 'path';
 import { Type } from '@sinclair/typebox';
 import {
   AuthStorage,
@@ -62,6 +61,8 @@ interface PiRuntimeConfig {
   tools?: Record<string, unknown>;
   agent?: Record<string, unknown>;
   provider?: Record<string, unknown>;
+  skillSearchPaths?: string[];
+  agentSkills?: Record<string, string[]>;
 }
 
 interface SessionRecord {
@@ -71,8 +72,6 @@ interface SessionRecord {
   session?: AgentSession;
   error?: unknown;
 }
-
-const skillFileNames = ['SKILL.md', 'skill.md'] as const;
 
 type PiBuiltInTool =
   | ReturnType<typeof createReadTool>
@@ -91,6 +90,33 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+}
+
+function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
+  const normalized: Record<string, string[]> = {};
+
+  for (const [agentName, skills] of Object.entries(value)) {
+    const parsedSkills = asStringArray(skills);
+    if (parsedSkills.length > 0) {
+      normalized[agentName] = parsedSkills;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeSkillPath(cwd: string, skillPath: string): string {
+  return isAbsolute(skillPath) ? resolve(skillPath) : resolve(cwd, skillPath);
 }
 
 function extractText(content: unknown): string {
@@ -118,109 +144,6 @@ function extractText(content: unknown): string {
       return '';
     })
     .join('');
-}
-
-function parseSkillInstructions(content: string): string {
-  const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n?/);
-  if (!frontmatterMatch) {
-    return content.trim();
-  }
-  return content.slice(frontmatterMatch[0].length).trim();
-}
-
-function normalizeSkillsRoot(projectRoot: string, configuredRoot: string): string {
-  return isAbsolute(configuredRoot)
-    ? resolve(configuredRoot)
-    : resolve(projectRoot, configuredRoot);
-}
-
-function resolveDefaultSkillsRoots(projectRoot: string): string[] {
-  const candidates = [join(projectRoot, '.drs', 'skills'), join(projectRoot, '.pi', 'skills')];
-
-  const existing = candidates.filter((candidate) => {
-    if (!existsSync(candidate)) {
-      return false;
-    }
-
-    try {
-      return statSync(candidate).isDirectory();
-    } catch {
-      return false;
-    }
-  });
-
-  return existing.length > 0 ? existing : [candidates[0]];
-}
-
-function resolveSkillsRoots(projectRoot: string): string[] {
-  const configuredRoots =
-    process.env.DRS_SKILLS_ROOTS?.split(delimiter)
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0) ?? [];
-
-  if (configuredRoots.length > 0) {
-    return configuredRoots.map((entry) => normalizeSkillsRoot(projectRoot, entry));
-  }
-
-  const configuredRoot = process.env.DRS_SKILLS_ROOT?.trim();
-  if (configuredRoot) {
-    return [normalizeSkillsRoot(projectRoot, configuredRoot)];
-  }
-
-  return resolveDefaultSkillsRoots(projectRoot);
-}
-
-function resolveSkillPath(skillRoot: string): string | null {
-  for (const fileName of skillFileNames) {
-    const candidate = join(skillRoot, fileName);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function loadSkillPayload(
-  skillName: string,
-  workingDir: string
-): {
-  _tool: 'drs_skill';
-  skill_name: string;
-  instructions: string;
-  base_directory: string;
-  has_scripts: boolean;
-  has_references: boolean;
-  has_assets: boolean;
-} {
-  const projectRoot = process.env.DRS_PROJECT_ROOT ?? workingDir;
-  const skillsRoots = resolveSkillsRoots(projectRoot);
-
-  const searchedPaths: string[] = [];
-  for (const skillsRoot of skillsRoots) {
-    const skillRoot = join(skillsRoot, skillName);
-    searchedPaths.push(skillRoot);
-
-    const skillPath = resolveSkillPath(skillRoot);
-    if (!skillPath) {
-      continue;
-    }
-
-    const content = readFileSync(skillPath, 'utf-8');
-    const instructions = parseSkillInstructions(content);
-    const skillDir = dirname(skillPath);
-
-    return {
-      _tool: 'drs_skill',
-      skill_name: skillName,
-      instructions,
-      base_directory: skillDir,
-      has_scripts: existsSync(join(skillDir, 'scripts')),
-      has_references: existsSync(join(skillDir, 'references')),
-      has_assets: existsSync(join(skillDir, 'assets')),
-    };
-  }
-
-  throw new Error(`Skill "${skillName}" not found. Searched: ${searchedPaths.join(', ')}`);
 }
 
 function toSessionMessage(
@@ -288,6 +211,8 @@ class PiSessionRuntime {
       tools: asRecord(config.tools),
       agent: asRecord(config.agent),
       provider: asRecord(config.provider),
+      skillSearchPaths: asStringArray(config.skillSearchPaths),
+      agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
     };
 
     this.authStorage = AuthStorage.create();
@@ -418,6 +343,20 @@ class PiSessionRuntime {
     return tools;
   }
 
+  private resolveSkillSearchPaths(cwd: string): string[] {
+    const configuredPaths = this.runtimeConfig.skillSearchPaths ?? [];
+
+    if (configuredPaths.length === 0) {
+      return [join(cwd, '.drs', 'skills'), join(cwd, '.pi', 'skills')];
+    }
+
+    return configuredPaths.map((skillPath) => normalizeSkillPath(cwd, skillPath));
+  }
+
+  private resolveAgentSkills(agentName: string): string[] {
+    return this.runtimeConfig.agentSkills?.[agentName] ?? [];
+  }
+
   private resolveCustomTools(workingDir: string): ToolDefinition[] {
     const customTools: ToolDefinition[] = [];
 
@@ -457,43 +396,42 @@ class PiSessionRuntime {
       });
     }
 
-    if (this.isToolEnabled('drs_skill', true)) {
-      customTools.push({
-        name: 'drs_skill',
-        label: 'drs_skill',
-        description: 'Load DRS skills on demand from configured skill directories.',
-        parameters: Type.Object({
-          name: Type.String(),
-        }),
-        execute: (
-          _toolCallId,
-          params: {
-            name: string;
-          }
-        ) => {
-          const payload = loadSkillPayload(params.name, workingDir);
-
-          return Promise.resolve({
-            content: [{ type: 'text', text: JSON.stringify(payload) }],
-            details: payload,
-          });
-        },
-      });
-    }
-
     return customTools;
   }
 
   private async createAgentSession(cwd: string, agentName: string): Promise<AgentSession> {
     const settings = this.resolveAgentSettings(agentName);
+    const configuredSkillNames = new Set(this.resolveAgentSkills(agentName));
+    const skillSearchPaths = this.resolveSkillSearchPaths(cwd);
 
     const resourceLoader = new DefaultResourceLoader({
       cwd,
+      noSkills: true,
+      additionalSkillPaths: skillSearchPaths,
+      skillsOverride:
+        configuredSkillNames.size > 0
+          ? (base) => ({
+              skills: base.skills.filter((skill) => configuredSkillNames.has(skill.name)),
+              diagnostics: base.diagnostics,
+            })
+          : undefined,
       systemPromptOverride: () =>
         settings.prompt ?? `You are ${agentName}. Provide concise, actionable answers.`,
       appendSystemPromptOverride: () => [],
     });
     await resourceLoader.reload();
+
+    if (configuredSkillNames.size > 0) {
+      const loadedSkillNames = new Set(
+        resourceLoader.getSkills().skills.map((skill) => skill.name)
+      );
+      const missingSkills = Array.from(configuredSkillNames).filter(
+        (skillName) => !loadedSkillNames.has(skillName)
+      );
+      if (missingSkills.length > 0) {
+        console.warn(`⚠️  Missing skill definitions for ${agentName}: ${missingSkills.join(', ')}`);
+      }
+    }
 
     const { session } = await createAgentSession({
       cwd,

@@ -1,5 +1,3 @@
-import { existsSync, mkdirSync, rmSync } from 'fs';
-import { delimiter, join, resolve } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpencodeClient, createOpencodeClient, createOpencodeClientInstance } from './client.js';
 
@@ -144,69 +142,40 @@ describe('OpencodeClient', () => {
       await client.shutdown();
     });
 
-    it('sets and restores skill search roots for runtime tool discovery', async () => {
+    it('passes skill search paths and agent skill configuration to Pi runtime', async () => {
       const projectRoot = process.cwd();
-      const piSkillsPath = join(projectRoot, '.pi', 'skills');
-      const hadPiSkillsPath = existsSync(piSkillsPath);
 
-      if (!hadPiSkillsPath) {
-        mkdirSync(piSkillsPath, { recursive: true });
-      }
-
-      const originalSkillRoot = process.env.DRS_SKILLS_ROOT;
-      const originalSkillRoots = process.env.DRS_SKILLS_ROOTS;
-
-      process.env.DRS_SKILLS_ROOT = '/tmp/original-skill-root';
-      process.env.DRS_SKILLS_ROOTS = ['/tmp/original-a', '/tmp/original-b'].join(delimiter);
-
-      let client: OpencodeClient | undefined;
-
-      try {
-        client = await createOpencodeClientInstance({
-          directory: projectRoot,
-          config: {
-            review: {
-              agents: ['security'],
-              default: {
-                skills: [],
-              },
+      const config = {
+        review: {
+          agents: [
+            {
+              name: 'security',
+              skills: ['security-audit'],
             },
-          } as any,
-        });
+          ],
+          default: {
+            skills: ['baseline-review'],
+          },
+        },
+      } as any;
 
-        expect(process.env.DRS_SKILLS_ROOT).toBe(resolve(projectRoot, '.drs/skills'));
-        expect(process.env.DRS_SKILLS_ROOTS).toBe(
-          [resolve(projectRoot, '.drs/skills'), resolve(projectRoot, '.pi/skills')].join(delimiter)
-        );
+      const client = await createOpencodeClientInstance({
+        directory: projectRoot,
+        config,
+      });
 
-        await client.shutdown();
-        client = undefined;
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            skillSearchPaths: expect.any(Array),
+            agentSkills: {
+              'review/security': ['baseline-review', 'security-audit'],
+            },
+          }),
+        })
+      );
 
-        expect(process.env.DRS_SKILLS_ROOT).toBe('/tmp/original-skill-root');
-        expect(process.env.DRS_SKILLS_ROOTS).toBe(
-          ['/tmp/original-a', '/tmp/original-b'].join(delimiter)
-        );
-      } finally {
-        if (client) {
-          await client.shutdown();
-        }
-
-        if (originalSkillRoot === undefined) {
-          delete process.env.DRS_SKILLS_ROOT;
-        } else {
-          process.env.DRS_SKILLS_ROOT = originalSkillRoot;
-        }
-
-        if (originalSkillRoots === undefined) {
-          delete process.env.DRS_SKILLS_ROOTS;
-        } else {
-          process.env.DRS_SKILLS_ROOTS = originalSkillRoots;
-        }
-
-        if (!hadPiSkillsPath) {
-          rmSync(piSkillsPath, { recursive: true, force: true });
-        }
-      }
+      await client.shutdown();
     });
   });
 
