@@ -96,10 +96,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          OPENCODE_API_KEY: ${{ env.OPENCODE_API_KEY }}
         run: |
           echo "🚀 Starting PR review for trusted contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (trusted)"
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "❌ OPENCODE_API_KEY is not available in this step"
+            exit 1
+          fi
 
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
@@ -165,10 +168,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          OPENCODE_API_KEY: ${{ env.OPENCODE_API_KEY }}
         run: |
           echo "🚀 Starting PR review for external contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (external - approved)"
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "❌ OPENCODE_API_KEY is not available in this step"
+            exit 1
+          fi
 
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
