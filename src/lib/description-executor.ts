@@ -97,7 +97,14 @@ export async function runDescribeIfEnabled(
   // Display and optionally post description
   const description = normalizeDescription(descriptionPayload);
   const platform = detectPlatform(pr);
-  displayDescription(description, platform);
+
+  if (shouldPostDescription) {
+    console.log(
+      chalk.gray('Description generated (suppressed in logs because posting is enabled).')
+    );
+  } else {
+    displayDescription(description, platform);
+  }
 
   if (shouldPostDescription) {
     await postDescription(platformClient, projectId, pr.number, description, platform);

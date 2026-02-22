@@ -129,8 +129,16 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
       throw validationError;
     }
 
-    // Display the description
-    displayDescription(normalizedDescription, 'PR');
+    // Display the description unless we're posting it to avoid noisy CI logs
+    if (options.postDescription) {
+      console.log(
+        chalk.gray(
+          'Description generated (suppressed in logs because --post-description is enabled).'
+        )
+      );
+    } else {
+      displayDescription(normalizedDescription, 'PR');
+    }
 
     // Save to JSON file if requested
     if (options.outputPath) {
