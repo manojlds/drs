@@ -65,6 +65,8 @@ For migration-specific breaking changes and upgrade steps, see [docs/PI_MIGRATIO
 
 Required (platform/model dependent):
 
+> DRS CLI auto-loads `.env` from the current working directory.
+
 ```bash
 GITLAB_TOKEN=glpat-xxx
 GITHUB_TOKEN=ghp-xxx

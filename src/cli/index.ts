@@ -14,6 +14,10 @@ import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
 import { loadConfig, type DRSConfig, type ReviewMode } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
+import { config as loadDotenv } from 'dotenv';
+
+// Load environment variables from .env in current working directory (if present)
+loadDotenv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

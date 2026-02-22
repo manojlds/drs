@@ -53,6 +53,8 @@ cp .env.example .env
 #   - See .env.example for all supported providers
 ```
 
+DRS CLI now loads `.env` automatically from your current working directory.
+
 **Note**: DRS runs Pi in-process by default and does not require a remote runtime endpoint.
 
 ### 5. Review Local Changes
