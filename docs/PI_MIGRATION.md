@@ -8,16 +8,12 @@ This guide covers migration from legacy OpenCode-based setups to the Pi-based DR
    - DRS review execution runs through Pi SDK.
    - OpenCode runtime code paths and dependencies were removed.
 
-2. **Runtime endpoint variable is now `PI_SERVER`**
-   - `PI_SERVER` is the primary environment variable.
-   - `OPENCODE_SERVER` is accepted as a temporary legacy alias for compatibility.
+2. **DRS uses Pi in-process runtime only**
+   - Remote runtime endpoints are not supported.
+   - Legacy endpoint settings (`PI_SERVER`, `OPENCODE_SERVER`, `pi.serverUrl`) are ignored.
 
-3. **Runtime config key is now `pi`**
-   - Use:
-     ```yaml
-     pi:
-       serverUrl: http://localhost:3000
-     ```
+3. **Runtime config key is `pi`**
+   - Use `pi` for provider/runtime options that apply to in-process execution.
    - Legacy `opencode` config is normalized internally for backward compatibility, but new configs should use `pi`.
 
 4. **Built-in assets are Pi-native**
@@ -33,12 +29,12 @@ This guide covers migration from legacy OpenCode-based setups to the Pi-based DR
    npm install -g @diff-review-system/drs@latest
    ```
 
-2. **Update runtime environment**
-   - Prefer `PI_SERVER` if you run an external runtime.
-   - Keep it unset for in-process runtime.
+2. **Remove legacy runtime endpoint settings**
+   - Remove `PI_SERVER` / `OPENCODE_SERVER` from local shells and CI variables.
+   - DRS runs Pi in-process and does not use remote runtime endpoints.
 
 3. **Update configuration keys (if needed)**
-   - Move runtime config to `pi.serverUrl`.
+   - Keep runtime/provider settings under `pi`.
    - Keep review settings under `review.*`.
 
 4. **Verify model provider credentials**
@@ -62,7 +58,7 @@ The following review flows are validated through CLI-focused tests in this repos
 
 | Flow | Validation Coverage | Primary Tests |
 |---|---|---|
-| `review-local` | Local git diff flow, ignore/filter behavior, JSON output, blocking exit behavior | `src/cli/review-local.test.ts`, `src/lib/review-orchestrator.test.ts` |
+| `review-local` | Local git diff flow, ignore/filter behavior, JSON output, blocking exit behavior, simulated-diff integration path | `src/cli/review-local.test.ts`, `src/cli/review-local.integration.test.ts`, `src/lib/review-orchestrator.test.ts` |
 | `review-mr` | GitLab MR context load, diff-aware line validation, inline position mapping, platform error mapping | `src/cli/review-mr.test.ts`, `src/lib/unified-review-executor.test.ts` |
 | `review-pr` | GitHub PR context load, diff-aware line validation, inline position mapping, platform error mapping | `src/cli/review-pr.test.ts`, `src/lib/unified-review-executor.test.ts` |
 
@@ -80,7 +76,7 @@ npm run check:all
 - [ ] Provider API key exported
 - [ ] `GITLAB_TOKEN` set for MR reviews
 - [ ] `GITHUB_TOKEN` set for PR reviews
-- [ ] Optional `PI_SERVER` set only when using an external runtime
+- [ ] No legacy runtime endpoint variables (`PI_SERVER`, `OPENCODE_SERVER`) are set
 
 ## Troubleshooting
 
@@ -89,8 +85,8 @@ npm run check:all
 - Confirm environment variables are present in the executing shell/CI job.
 
 ### Runtime connectivity failures
-- If using `PI_SERVER`, verify endpoint reachability and DNS/network access.
-- Unset `PI_SERVER` to verify local in-process fallback.
+- DRS runs Pi in-process; there is no remote runtime endpoint to configure.
+- Ensure provider API keys are available and valid in the current shell/CI job.
 
 ### Missing/invalid agent or skill path
 - Verify `review.paths.agents` / `review.paths.skills` paths exist.

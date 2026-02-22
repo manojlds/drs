@@ -23,18 +23,9 @@ ai_review:
   allow_failure: true
 ```
 
-## Optional Runtime Endpoint
+## Runtime Mode
 
-By default, DRS runs Pi in-process.
-
-If you host Pi runtime externally:
-
-```yaml
-variables:
-  PI_SERVER: "http://pi-runtime.internal:3000"
-  # Legacy alias still accepted:
-  # OPENCODE_SERVER: "http://pi-runtime.internal:3000"
-```
+DRS uses Pi in-process runtime only. No external runtime endpoint variables are required.
 
 ## Optional Code Quality Report
 

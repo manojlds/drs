@@ -45,8 +45,7 @@ cp .env.example .env
 # Edit .env and set:
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
 # - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
-# - PI_SERVER: Optional Pi runtime endpoint URL
-#              (leave unset to run in-process; legacy OPENCODE_SERVER is still accepted)
+# - Pi runtime runs in-process automatically (no PI_SERVER/OPENCODE_SERVER needed)
 # - Provider API Key: Set the API key for your chosen model provider
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
@@ -54,7 +53,7 @@ cp .env.example .env
 #   - See .env.example for all supported providers
 ```
 
-**Note**: `PI_SERVER` is optional. By default, DRS runs Pi in-process.
+**Note**: DRS runs Pi in-process by default and does not require a remote runtime endpoint.
 
 ### 5. Review Local Changes
 
@@ -267,14 +266,9 @@ By default, DRS starts Pi runtime in-process:
 drs review-local
 ```
 
-### Optional Runtime Endpoint
+### Runtime Mode
 
-If you run Pi runtime externally, set:
-
-```bash
-export PI_SERVER=http://pi-runtime.internal:3000
-# Legacy alias still works: OPENCODE_SERVER
-```
+DRS uses Pi in-process runtime only.
 
 ## Architecture
 
@@ -423,8 +417,6 @@ ZHIPU_API_KEY=xxx                   # For ZhipuAI GLM models
 OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
-PI_SERVER=http://localhost:3000        # Leave unset to run Pi in-process
-# OPENCODE_SERVER is still accepted as a legacy alias
 GITLAB_URL=https://gitlab.com
 REVIEW_AGENTS=security,quality,style,performance
 ```
@@ -433,7 +425,7 @@ REVIEW_AGENTS=security,quality,style,performance
 
 1. `.drs/drs.config.yaml` - DRS-specific configuration
 2. `.gitlab-review.yml` - Alternative location
-3. Environment variables (for runtime endpoint/provider credentials)
+3. Environment variables (for provider credentials and platform tokens)
 
 ## Examples
 

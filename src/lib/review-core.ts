@@ -14,7 +14,7 @@ import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
@@ -329,7 +329,7 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
 }
 
 export async function runUnifiedReviewAgent(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -459,7 +459,7 @@ export async function runUnifiedReviewAgent(
 }
 
 export async function runReviewAgents(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -623,7 +623,7 @@ export async function runReviewAgents(
 }
 
 export async function runReviewPipeline(
-  opencode: OpencodeClient,
+  opencode: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,

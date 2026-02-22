@@ -49,6 +49,7 @@ npm run dev -- describe-mr --project org/repo --mr 123
 Primary CLI flow tests:
 
 - `src/cli/review-local.test.ts`
+- `src/cli/review-local.integration.test.ts`
 - `src/cli/review-mr.test.ts`
 - `src/cli/review-pr.test.ts`
 
@@ -72,11 +73,10 @@ ANTHROPIC_API_KEY=sk-ant-xxx
 # or OPENAI_API_KEY / ZHIPU_API_KEY etc.
 ```
 
-Optional runtime endpoint:
+Runtime mode:
 
 ```bash
-PI_SERVER=http://localhost:3000
-# Legacy alias still accepted: OPENCODE_SERVER
+# DRS runs Pi in-process only
 ```
 
 ## Configuration
@@ -91,9 +91,6 @@ DRS configuration precedence:
 Useful keys:
 
 ```yaml
-pi:
-  serverUrl: http://localhost:3000 # optional
-
 review:
   agents:
     - security

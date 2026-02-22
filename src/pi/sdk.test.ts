@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPiInProcessServer, createPiRemoteClient } from './sdk.js';
+import { createPiInProcessServer } from './sdk.js';
 
 const mocks = vi.hoisted(() => {
   const prompt = vi.fn(async () => undefined);
@@ -145,14 +145,5 @@ describe('pi/sdk', () => {
         parts: [{ text: 'done' }],
       },
     ]);
-  });
-
-  it('creates compatibility client for legacy serverUrl path', () => {
-    const client = createPiRemoteClient({
-      baseUrl: 'http://legacy-runtime.local:3000',
-    });
-
-    expect(client.session.create).toBeDefined();
-    expect(client.session.messages).toBeDefined();
   });
 });

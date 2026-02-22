@@ -24,14 +24,19 @@ vi.mock('./repository-validator.js', () => ({
   getCanonicalDiffCommand: vi.fn(() => 'git diff origin/main origin/feature -- <file>'),
 }));
 
-vi.mock('./review-orchestrator.js', () => ({
-  filterIgnoredFiles: vi.fn((files) => files),
-  connectToOpenCode: vi.fn(() => ({
+vi.mock('./review-orchestrator.js', () => {
+  const connectToRuntime = vi.fn(() => ({
     createSession: vi.fn(),
     streamMessages: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
+  }));
+
+  return {
+    filterIgnoredFiles: vi.fn((files) => files),
+    connectToRuntime,
+    connectToOpenCode: connectToRuntime,
+  };
+});
 
 vi.mock('./review-core.js', () => ({
   buildBaseInstructions: vi.fn(() => 'Review these files...'),
@@ -457,12 +462,12 @@ describe('unified-review-executor', () => {
       );
     });
 
-    it('should shutdown OpenCode on completion', async () => {
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
-      const mockOpencode = {
+    it('should shutdown runtime client on completion', async () => {
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+      const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
 
       const options: UnifiedReviewOptions = {
         platformClient: mockPlatformClient,
@@ -473,17 +478,17 @@ describe('unified-review-executor', () => {
 
       await executeUnifiedReview(mockConfig, options);
 
-      expect(mockOpencode.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode on error', async () => {
+    it('should shutdown runtime client on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
 
-      const mockOpencode = {
+      const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Test error'));
 
       const options: UnifiedReviewOptions = {
@@ -494,7 +499,7 @@ describe('unified-review-executor', () => {
       };
 
       await expect(executeUnifiedReview(mockConfig, options)).rejects.toThrow('Test error');
-      expect(mockOpencode.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
   });
 });

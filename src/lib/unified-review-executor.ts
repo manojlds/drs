@@ -18,7 +18,7 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
+import { connectToRuntime, filterIgnoredFiles } from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
 import type {
   PlatformClient,
@@ -88,8 +88,8 @@ export async function executeUnifiedReview(
 ): Promise<void> {
   const { platformClient, projectId, prNumber, postComments } = options;
 
-  // Track OpenCode instance for cleanup
-  let opencode: Awaited<ReturnType<typeof connectToOpenCode>> | null = null;
+  // Track runtime client for cleanup
+  let runtimeClient: Awaited<ReturnType<typeof connectToRuntime>> | null = null;
 
   try {
     console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
@@ -152,8 +152,8 @@ export async function executeUnifiedReview(
     const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
-    // Connect to OpenCode
-    opencode = await connectToOpenCode(config, options.workingDir ?? process.cwd(), {
+    // Connect to runtime
+    runtimeClient = await connectToRuntime(config, options.workingDir ?? process.cwd(), {
       debug: options.debug,
       modelOverrides,
     });
@@ -163,7 +163,7 @@ export async function executeUnifiedReview(
     }));
     if (describeEnabled) {
       await runDescribeIfEnabled(
-        opencode,
+        runtimeClient,
         config,
         platformClient,
         projectId,
@@ -194,7 +194,7 @@ export async function executeUnifiedReview(
     }
     // Run agents using shared core logic
     const result = await runReviewPipeline(
-      opencode,
+      runtimeClient,
       config,
       baseInstructions,
       reviewLabel,
@@ -260,7 +260,7 @@ export async function executeUnifiedReview(
     // Exit with error code if critical issues found
     if (result.summary.bySeverity.CRITICAL > 0) {
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
-      await opencode.shutdown();
+      await runtimeClient.shutdown();
       process.exit(1);
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
@@ -278,16 +278,16 @@ export async function executeUnifiedReview(
 
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      if (opencode) {
-        await opencode.shutdown();
+      if (runtimeClient) {
+        await runtimeClient.shutdown();
       }
       process.exit(1);
     }
     throw error;
   } finally {
-    // Shutdown OpenCode if it was initialized
-    if (opencode) {
-      await opencode.shutdown();
+    // Shutdown runtime client if it was initialized
+    if (runtimeClient) {
+      await runtimeClient.shutdown();
     }
   }
 }

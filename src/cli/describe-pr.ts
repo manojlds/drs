@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { getDescriberModelOverride, getRuntimeConfig, type DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
-import { createOpencodeClientInstance } from '../opencode/client.js';
+import { createRuntimeClientInstance } from '../opencode/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
 import { loadGlobalContext } from '../lib/context-loader.js';
 import {
@@ -73,8 +73,18 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
   // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
   const runtimeConfig = getRuntimeConfig(config);
-  const opencode = await createOpencodeClientInstance({
-    baseUrl: runtimeConfig.serverUrl ?? undefined,
+  const configuredRuntimeEndpoint =
+    runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined;
+
+  if (configuredRuntimeEndpoint) {
+    console.log(
+      chalk.yellow(
+        `⚠ Ignoring configured runtime endpoint (${configuredRuntimeEndpoint}). DRS uses Pi SDK in-process only.\n`
+      )
+    );
+  }
+
+  const runtimeClient = await createRuntimeClientInstance({
     directory: process.cwd(),
     modelOverrides,
     provider: runtimeConfig.provider,
@@ -86,14 +96,14 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     console.log(chalk.dim('Running PR describer agent...\n'));
 
     // Run the describer agent
-    const session = await opencode.createSession({
+    const session = await runtimeClient.createSession({
       agent: 'describe/pr-describer',
       message: instructions,
     });
 
     // Collect all assistant messages from the session
     let fullResponse = '';
-    for await (const message of opencode.streamMessages(session.id)) {
+    for await (const message of runtimeClient.streamMessages(session.id)) {
       if (message.role === 'assistant') {
         fullResponse += message.content;
       }
@@ -151,6 +161,6 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
 
     console.log(chalk.green('\n✓ PR description generated successfully\n'));
   } finally {
-    await opencode.shutdown();
+    await runtimeClient.shutdown();
   }
 }

@@ -29,16 +29,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-## Optional Runtime Endpoint
+## Runtime Mode
 
-DRS defaults to in-process Pi runtime.
-
-```yaml
-env:
-  PI_SERVER: http://pi-runtime.internal:3000
-  # Legacy alias still accepted:
-  # OPENCODE_SERVER: http://pi-runtime.internal:3000
-```
+DRS uses Pi in-process runtime only. No runtime endpoint environment variables are required.
 
 ## Recommended Security Controls
 
@@ -59,4 +52,4 @@ Set one provider API key:
 
 - **No comments posted**: ensure `pull-requests: write` permission.
 - **Model/provider errors**: check API key and model config.
-- **Runtime connectivity errors**: unset `PI_SERVER` to verify in-process fallback.
+- **Runtime connectivity errors**: DRS runs in-process, so verify provider API credentials and local execution environment.

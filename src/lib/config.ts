@@ -31,6 +31,9 @@ export interface CustomProvider {
 
 export interface RuntimeConfig {
   [key: string]: unknown;
+  /**
+   * @deprecated DRS runs Pi in-process only. Remote runtime endpoints are ignored.
+   */
   serverUrl?: string;
   provider?: Record<string, CustomProvider>;
 }
@@ -104,9 +107,7 @@ export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
 export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
-  pi: {
-    serverUrl: process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined,
-  },
+  pi: {},
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN ?? '',
@@ -178,11 +179,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   // Apply environment variable overrides
-  if (process.env.PI_SERVER) {
-    config.pi.serverUrl = process.env.PI_SERVER;
-  } else if (process.env.OPENCODE_SERVER) {
-    config.pi.serverUrl = process.env.OPENCODE_SERVER;
-  }
   if (process.env.GITLAB_URL) {
     config.gitlab.url = process.env.GITLAB_URL;
   }

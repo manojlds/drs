@@ -643,15 +643,3 @@ export function createPiInProcessServer(options: {
     },
   });
 }
-
-/**
- * Compatibility entry point for legacy serverUrl wiring.
- *
- * Pi executes in-process for DRS, so this returns an isolated in-memory runtime client.
- */
-export function createPiRemoteClient(_options: { baseUrl: string }): PiClient {
-  const runtime = new PiSessionRuntime({});
-  return {
-    session: runtime.sessionApi,
-  };
-}

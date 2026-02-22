@@ -45,11 +45,6 @@ DESCRIBE_MODEL=anthropic/claude-sonnet-4-5-20250929
 REVIEW_AGENT_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
 ```
 
-## Runtime Endpoint (Optional)
+## Runtime Mode
 
-```yaml
-pi:
-  serverUrl: http://pi-runtime.internal:3000
-```
-
-`PI_SERVER` environment variable can also be used.
+DRS uses Pi in-process runtime only. No runtime endpoint configuration is required.

@@ -23,10 +23,7 @@
     # Set this as a CI/CD variable in GitLab: Settings → CI/CD → Variables
     ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
 
-    # Optional Pi runtime endpoint (leave unset for in-process runtime)
-    # PI_SERVER: "http://pi-runtime.internal:3000"
-    # Legacy alias still supported:
-    # OPENCODE_SERVER: "http://pi-runtime.internal:3000"
+    # DRS uses in-process Pi runtime (no remote runtime endpoint needed)
 
     # Review agents to use (optional, defaults to all)
     # REVIEW_AGENTS: "security,quality,style,performance"
