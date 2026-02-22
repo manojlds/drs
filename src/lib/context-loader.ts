@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import type { DRSConfig } from './config.js';
+import { resolveReviewPaths } from '../opencode/path-config.js';
 
 export interface AgentContext {
   /**
@@ -38,9 +40,11 @@ export function loadGlobalContext(projectRoot: string = process.cwd()): string |
  */
 export function loadAgentContext(
   agentName: string,
-  projectRoot: string = process.cwd()
+  projectRoot: string = process.cwd(),
+  config?: DRSConfig
 ): AgentContext {
-  const agentDir = join(projectRoot, '.drs', 'agents', agentName);
+  const { agentsPath } = resolveReviewPaths(projectRoot, config);
+  const agentDir = join(agentsPath, agentName);
 
   // Check for full agent override
   const agentDefPath = join(agentDir, 'agent.md');
@@ -75,10 +79,11 @@ export function buildReviewPrompt(
   reviewLabel: string,
   changedFiles: string[],
   projectRoot: string = process.cwd(),
-  skillPrompt?: string | null
+  skillPrompt?: string | null,
+  config?: DRSConfig
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
-  const agentContext = loadAgentContext(agentName, projectRoot);
+  const agentContext = loadAgentContext(agentName, projectRoot, config);
 
   let prompt = '';
 

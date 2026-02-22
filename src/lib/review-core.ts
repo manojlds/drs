@@ -256,7 +256,7 @@ function getConfiguredAgentInfo(
   workingDir: string
 ): Array<{ name: string; description: string }> {
   const configuredNames = getAgentNames(config);
-  const allAgents = loadReviewAgents(workingDir);
+  const allAgents = loadReviewAgents(workingDir, config);
 
   return configuredNames
     .map((name) => {
@@ -333,7 +333,8 @@ export async function runUnifiedReviewAgent(
       reviewLabel,
       filteredFiles,
       workingDir,
-      skillPrompt
+      skillPrompt,
+      config
     );
 
     if (debug) {
@@ -476,7 +477,8 @@ export async function runReviewAgents(
         reviewLabel,
         filteredFiles,
         workingDir,
-        skillPrompt
+        skillPrompt,
+        config
       );
 
       if (debug) {

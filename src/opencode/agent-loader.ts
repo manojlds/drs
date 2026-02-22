@@ -1,7 +1,9 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
+import type { DRSConfig } from '../lib/config.js';
 import { builtInAgentPath } from './opencode-paths.js';
+import { resolveReviewPaths } from './path-config.js';
 
 export interface AgentDefinition {
   name: string;
@@ -20,13 +22,13 @@ export interface AgentDefinition {
  * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
  * 2. Built-in agents shipped with DRS (.opencode/agent)
  */
-export function loadReviewAgents(projectPath: string): AgentDefinition[] {
+export function loadReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
   const discovered = new Set<string>();
+  const { agentsPath } = resolveReviewPaths(projectPath, config);
 
-  const overridePath = join(projectPath, '.drs', 'agents');
-  const overrideAgents = discoverOverrideAgents(overridePath, overridePath);
+  const overrideAgents = discoverOverrideAgents(agentsPath, agentsPath);
   for (const agent of overrideAgents) {
     if (!discovered.has(agent.name)) {
       agents.push(agent);
@@ -142,23 +144,27 @@ function discoverOverrideAgents(basePath: string, currentPath: string): AgentDef
 /**
  * Get a specific agent by name
  */
-export function getAgent(projectPath: string, agentName: string): AgentDefinition | null {
-  const agents = loadReviewAgents(projectPath);
+export function getAgent(
+  projectPath: string,
+  agentName: string,
+  config?: DRSConfig
+): AgentDefinition | null {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.find((a) => a.name === agentName) ?? null;
 }
 
 /**
  * Get all review agents (security, quality, style, performance, documentation)
  */
-export function getReviewAgents(projectPath: string): AgentDefinition[] {
-  const agents = loadReviewAgents(projectPath);
+export function getReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.filter((a) => a.name.startsWith('review/'));
 }
 
 /**
  * List all available agents
  */
-export function listAgents(projectPath: string): string[] {
-  const agents = loadReviewAgents(projectPath);
+export function listAgents(projectPath: string, config?: DRSConfig): string[] {
+  const agents = loadReviewAgents(projectPath, config);
   return agents.map((a) => a.name);
 }

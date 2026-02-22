@@ -77,6 +77,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     directory: process.cwd(),
     modelOverrides,
     provider: config.opencode.provider,
+    config,
     debug: options.debug,
   });
 

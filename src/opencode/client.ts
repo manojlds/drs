@@ -8,6 +8,7 @@
 import net from 'net';
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { resolveReviewPaths } from './path-config.js';
 import {
   createPiInProcessServer,
   createPiRemoteClient,
@@ -95,6 +96,8 @@ export class OpencodeClient {
   private client?: PiClient;
   private config: OpencodeConfig;
   private projectRootEnv?: string;
+  private agentsRootEnv?: string;
+  private skillsRootEnv?: string;
 
   constructor(config: OpencodeConfig) {
     this.baseUrl = config.baseUrl;
@@ -263,8 +266,16 @@ export class OpencodeClient {
       // Change to project directory so OpenCode can discover agents
       const originalCwd = process.cwd();
       const projectDir = this.directory ?? originalCwd;
+      const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
+
       this.projectRootEnv = process.env.DRS_PROJECT_ROOT;
+      this.agentsRootEnv = process.env.DRS_AGENTS_ROOT;
+      this.skillsRootEnv = process.env.DRS_SKILLS_ROOT;
+
       process.env.DRS_PROJECT_ROOT = projectDir;
+      process.env.DRS_AGENTS_ROOT = reviewPaths.agentsPath;
+      process.env.DRS_SKILLS_ROOT = reviewPaths.skillsPath;
+
       const discoveryRoot = projectDir;
       if (discoveryRoot !== originalCwd) {
         process.chdir(discoveryRoot);
@@ -477,6 +488,18 @@ export class OpencodeClient {
       delete process.env.DRS_PROJECT_ROOT;
     } else {
       process.env.DRS_PROJECT_ROOT = this.projectRootEnv;
+    }
+
+    if (this.agentsRootEnv === undefined) {
+      delete process.env.DRS_AGENTS_ROOT;
+    } else {
+      process.env.DRS_AGENTS_ROOT = this.agentsRootEnv;
+    }
+
+    if (this.skillsRootEnv === undefined) {
+      delete process.env.DRS_SKILLS_ROOT;
+    } else {
+      process.env.DRS_SKILLS_ROOT = this.skillsRootEnv;
     }
   }
 

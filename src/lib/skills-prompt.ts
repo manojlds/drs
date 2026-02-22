@@ -79,7 +79,9 @@ export function buildSkillPromptSection(
 
   const promptFormat: SkillsPromptFormat =
     config.review.default?.skillsPromptFormat === 'text' ? 'text' : 'xml';
-  const projectSkills = new Map(loadProjectSkills(projectRoot).map((skill) => [skill.name, skill]));
+  const projectSkills = new Map(
+    loadProjectSkills(projectRoot, config).map((skill) => [skill.name, skill])
+  );
   const availableSkills = configuredSkills
     .map((skillName) => projectSkills.get(skillName))
     .filter((skill): skill is NonNullable<typeof skill> => Boolean(skill))

@@ -73,6 +73,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     directory: process.cwd(),
     modelOverrides,
     provider: config.opencode.provider,
+    config,
     debug: options.debug,
   });
 

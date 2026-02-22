@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import * as yaml from 'yaml';
+import type { DRSConfig } from '../lib/config.js';
+import { resolveReviewPaths } from './path-config.js';
 
 export interface SkillMetadata {
   name: string;
@@ -85,15 +87,20 @@ function buildSkillMetadata(skillsRoot: string, filePath: string): SkillMetadata
   };
 }
 
-export function loadProjectSkills(projectPath: string): SkillMetadata[] {
-  const skillsRoot = join(projectPath, '.drs', 'skills');
-  const files = traverseDirectory(skillsRoot, skillsRoot, (entry) => skillFileNames.has(entry));
+export function loadProjectSkills(projectPath: string, config?: DRSConfig): SkillMetadata[] {
+  const { skillsPath } = resolveReviewPaths(projectPath, config);
+  const files = traverseDirectory(skillsPath, skillsPath, (entry) => skillFileNames.has(entry));
 
-  return files.map((filePath) => buildSkillMetadata(skillsRoot, filePath));
+  return files.map((filePath) => buildSkillMetadata(skillsPath, filePath));
 }
 
-function resolveSkillFilePath(projectPath: string, skillName: string): string | null {
-  const skillRoot = join(projectPath, '.drs', 'skills', skillName);
+function resolveSkillFilePath(
+  projectPath: string,
+  skillName: string,
+  config?: DRSConfig
+): string | null {
+  const { skillsPath } = resolveReviewPaths(projectPath, config);
+  const skillRoot = join(skillsPath, skillName);
   for (const fileName of skillFileNames) {
     const candidate = join(skillRoot, fileName);
     if (existsSync(candidate)) {
@@ -103,8 +110,12 @@ function resolveSkillFilePath(projectPath: string, skillName: string): string | 
   return null;
 }
 
-export function loadSkillByName(projectPath: string, skillName: string): SkillDefinition | null {
-  const skillPath = resolveSkillFilePath(projectPath, skillName);
+export function loadSkillByName(
+  projectPath: string,
+  skillName: string,
+  config?: DRSConfig
+): SkillDefinition | null {
+  const skillPath = resolveSkillFilePath(projectPath, skillName, config);
   if (!skillPath) {
     return null;
   }

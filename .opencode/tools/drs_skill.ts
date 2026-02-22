@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { tool } from '@opencode-ai/plugin';
 
 type SkillPayload = {
@@ -32,9 +32,19 @@ function parseSkillInstructions(content: string): string {
   return content.slice(frontmatterMatch[0].length).trim();
 }
 
+function resolveSkillsRoot(projectRoot: string): string {
+  const configuredRoot = process.env.DRS_SKILLS_ROOT?.trim();
+  if (!configuredRoot) {
+    return join(projectRoot, '.drs', 'skills');
+  }
+
+  return isAbsolute(configuredRoot) ? configuredRoot : resolve(projectRoot, configuredRoot);
+}
+
 function readSkill(skillName: string): SkillPayload {
   const projectRoot = process.env.DRS_PROJECT_ROOT ?? process.cwd();
-  const skillRoot = join(projectRoot, '.drs', 'skills', skillName);
+  const skillsRoot = resolveSkillsRoot(projectRoot);
+  const skillRoot = join(skillsRoot, skillName);
   const skillPath = resolveSkillPath(skillRoot);
   if (!skillPath) {
     throw new Error(`Skill "${skillName}" not found in ${skillRoot}`);
@@ -57,7 +67,8 @@ function readSkill(skillName: string): SkillPayload {
 }
 
 export default tool({
-  description: 'Load a DRS skill on-demand from .drs/skills.',
+  description:
+    'Load a DRS skill on-demand from the configured skills directory (defaults to .drs/skills).',
   args: {
     name: tool.schema.string().describe('Skill name to activate'),
   },

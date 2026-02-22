@@ -398,7 +398,8 @@ program
   .action(async () => {
     try {
       const { listAgents } = await import('../opencode/agent-loader.js');
-      const agents = listAgents(process.cwd());
+      const config = loadConfig(process.cwd());
+      const agents = listAgents(process.cwd(), config);
 
       console.log(chalk.bold('\n📋 Available Review Agents:\n'));
 

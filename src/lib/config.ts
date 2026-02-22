@@ -50,6 +50,10 @@ export interface DRSConfig {
   // Review behavior
   review: {
     agents: (string | AgentConfig)[];
+    paths?: {
+      agents?: string;
+      skills?: string;
+    };
     default?: {
       model?: string;
       skills?: string[];
