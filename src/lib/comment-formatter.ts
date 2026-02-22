@@ -57,7 +57,12 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
   markdown += `- **Cache Read Tokens**: ${formatCount(total.cacheRead)}\n`;
   markdown += `- **Cache Write Tokens**: ${formatCount(total.cacheWrite)}\n`;
   markdown += `- **Total Tokens**: ${formatCount(total.totalTokens)}\n`;
-  markdown += `- **Estimated Cost**: ${formatCost(total.cost)}\n\n`;
+  markdown += `- **Estimated Cost**: ${formatCost(total.cost)}\n`;
+  if (total.totalTokens > 0 && total.cost === 0) {
+    markdown +=
+      '- _Cost is $0.0000 because model pricing is unknown or configured as free. Add `pricing.models` in `.drs/drs.config.yaml` to override._\n';
+  }
+  markdown += `\n`;
 
   if (usage.agents.length > 0) {
     markdown += `### By Agent\n\n`;

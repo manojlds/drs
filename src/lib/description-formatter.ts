@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { PlatformClient } from './platform-client.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 export interface DescriptionWalkthroughEntry {
   file: string;
@@ -17,6 +18,54 @@ export interface Description {
   walkthrough?: DescriptionWalkthroughEntry[];
   labels?: string[];
   recommendations?: string[];
+}
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat('en-US').format(Math.round(value));
+}
+
+function formatCost(value: number): string {
+  return `$${value.toFixed(4)}`;
+}
+
+function hasUsageDetails(usage?: ReviewUsageSummary): usage is ReviewUsageSummary {
+  if (!usage) {
+    return false;
+  }
+
+  return usage.agents.some((agent) => agent.turns > 0);
+}
+
+function formatUsageMarkdown(usage: ReviewUsageSummary): string {
+  const total = usage.total;
+
+  let markdown = '### Model Usage\n\n';
+  markdown += '<details>\n<summary>View token and cost breakdown</summary>\n\n';
+  markdown += `- **Input Tokens**: ${formatCount(total.input)}\n`;
+  markdown += `- **Output Tokens**: ${formatCount(total.output)}\n`;
+  markdown += `- **Cache Read Tokens**: ${formatCount(total.cacheRead)}\n`;
+  markdown += `- **Cache Write Tokens**: ${formatCount(total.cacheWrite)}\n`;
+  markdown += `- **Total Tokens**: ${formatCount(total.totalTokens)}\n`;
+  markdown += `- **Estimated Cost**: ${formatCost(total.cost)}\n`;
+  if (total.totalTokens > 0 && total.cost === 0) {
+    markdown +=
+      '- _Cost is $0.0000 because model pricing is unknown or configured as free. Add `pricing.models` in `.drs/drs.config.yaml` to override._\n';
+  }
+  markdown += '\n';
+
+  if (usage.agents.length > 0) {
+    markdown += '| Agent | Model | Turns | Input | Output | Total Tokens | Cost |\n';
+    markdown += '| --- | --- | ---: | ---: | ---: | ---: | ---: |\n';
+
+    for (const agent of usage.agents) {
+      markdown += `| ${agent.agentType} | ${agent.model ?? 'n/a'} | ${formatCount(agent.turns)} | ${formatCount(agent.usage.input)} | ${formatCount(agent.usage.output)} | ${formatCount(agent.usage.totalTokens)} | ${formatCost(agent.usage.cost)} |\n`;
+    }
+
+    markdown += '\n';
+  }
+
+  markdown += '</details>\n\n';
+  return markdown;
 }
 
 function normalizeStringArray(value: unknown, fieldName: string, required = false): string[] {
@@ -118,7 +167,11 @@ export type Platform = 'PR' | 'MR';
 /**
  * Display description to console
  */
-export function displayDescription(description: Description, platform: Platform = 'PR') {
+export function displayDescription(
+  description: Description,
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
+) {
   console.log(chalk.bold.cyan(`📝 Generated ${platform} Description\n`));
 
   // Type
@@ -154,6 +207,32 @@ export function displayDescription(description: Description, platform: Platform 
       }
       console.log();
     }
+  }
+
+  if (hasUsageDetails(usage)) {
+    console.log(chalk.bold('💰 Model Usage'));
+    console.log(chalk.white(`  Input tokens: ${formatCount(usage.total.input)}`));
+    console.log(chalk.white(`  Output tokens: ${formatCount(usage.total.output)}`));
+    console.log(chalk.white(`  Total tokens: ${formatCount(usage.total.totalTokens)}`));
+    console.log(chalk.white(`  Estimated cost: ${formatCost(usage.total.cost)}`));
+    if (usage.total.totalTokens > 0 && usage.total.cost === 0) {
+      console.log(
+        chalk.gray(
+          '  Cost is $0.0000 because model pricing is unknown or configured as free. Configure pricing.models to override.'
+        )
+      );
+    }
+
+    const primaryAgent = usage.agents[0];
+    if (primaryAgent) {
+      console.log(
+        chalk.dim(
+          `  Agent: ${primaryAgent.agentType} | Model: ${primaryAgent.model ?? 'n/a'} | Turns: ${primaryAgent.turns}`
+        )
+      );
+    }
+
+    console.log();
   }
 
   // Labels
@@ -222,7 +301,8 @@ function findExistingDescriptionComment(comments: Array<{ id: number | string; b
 
 export function formatDescriptionAsMarkdown(
   description: Description,
-  platform: Platform = 'PR'
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
 ): string {
   let markdown = `<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->\n`;
   markdown += `## AI-Generated ${platform} Description\n\n`;
@@ -254,6 +334,10 @@ export function formatDescriptionAsMarkdown(
     markdown += '</details>\n\n';
   }
 
+  if (hasUsageDetails(usage)) {
+    markdown += formatUsageMarkdown(usage);
+  }
+
   if (description.labels && description.labels.length > 0) {
     markdown += '### Suggested Labels\n\n';
     markdown += description.labels.map((l: string) => `\`${l}\``).join(', ') + '\n\n';
@@ -280,11 +364,12 @@ export async function postDescription(
   projectId: string,
   prNumber: number,
   description: Description,
-  platform: Platform = 'PR'
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
 ) {
   console.log(chalk.dim(`\nPosting description to ${platform}...`));
 
-  const markdown = formatDescriptionAsMarkdown(description, platform);
+  const markdown = formatDescriptionAsMarkdown(description, platform, usage);
   const existingComments = await platformAdapter.getComments(projectId, prNumber);
   const existingDescription = findExistingDescriptionComment(existingComments);
 

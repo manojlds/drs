@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     session,
     createAgentSession: vi.fn(async () => ({ session })),
     loaderInstances: [] as Array<{ options: Record<string, unknown>; reload: any }>,
+    modelRegistryInstances: [] as Array<{ registerProvider: any }>,
   };
 });
 
@@ -33,6 +34,10 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
   class ModelRegistry {
     registerProvider = vi.fn(() => undefined);
     find = vi.fn(() => undefined);
+
+    constructor() {
+      mocks.modelRegistryInstances.push({ registerProvider: this.registerProvider });
+    }
   }
 
   return {
@@ -60,6 +65,7 @@ describe('pi/sdk', () => {
     vi.clearAllMocks();
     mocks.session.messages = [];
     mocks.loaderInstances.length = 0;
+    mocks.modelRegistryInstances.length = 0;
   });
 
   it('creates in-process runtime client', async () => {
@@ -77,6 +83,58 @@ describe('pi/sdk', () => {
     expect(runtime.client.session.create).toBeDefined();
     expect(runtime.client.session.prompt).toBeDefined();
     expect(runtime.client.session.messages).toBeDefined();
+
+    runtime.server.close();
+  });
+
+  it('registers custom provider model cost metadata when configured', async () => {
+    const runtime = await createPiInProcessServer({
+      timeout: 10000,
+      config: {
+        provider: {
+          opencode: {
+            options: {
+              baseURL: 'https://api.example.com/v1',
+              apiKey: 'secret',
+            },
+            models: {
+              'glm-5-free': {
+                name: 'GLM 5 Free',
+                cost: {
+                  input: 1,
+                  output: 2,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+                contextWindow: 64000,
+                maxTokens: 8192,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(mocks.modelRegistryInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(registerProvider).toHaveBeenCalledWith(
+      'opencode',
+      expect.objectContaining({
+        models: [
+          expect.objectContaining({
+            id: 'glm-5-free',
+            cost: {
+              input: 1,
+              output: 2,
+              cacheRead: 0,
+              cacheWrite: 0,
+            },
+            contextWindow: 64000,
+            maxTokens: 8192,
+          }),
+        ],
+      })
+    );
 
     runtime.server.close();
   });

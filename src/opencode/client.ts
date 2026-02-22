@@ -119,6 +119,41 @@ export class RuntimeClient {
     this.config = config;
   }
 
+  private getConfiguredModelPricing(provider?: string, model?: string) {
+    const pricing = this.config.config?.pricing?.models;
+    if (!pricing) {
+      return undefined;
+    }
+
+    const fullModelId = provider && model ? `${provider}/${model}` : undefined;
+    return (
+      (fullModelId ? pricing[fullModelId] : undefined) ??
+      (model ? pricing[model] : undefined) ??
+      undefined
+    );
+  }
+
+  private estimateConfiguredCost(
+    input: number,
+    output: number,
+    cacheRead: number,
+    cacheWrite: number,
+    provider?: string,
+    model?: string
+  ): number | undefined {
+    const pricing = this.getConfiguredModelPricing(provider, model);
+    if (!pricing) {
+      return undefined;
+    }
+
+    const inputCost = ((pricing.input ?? 0) / 1_000_000) * input;
+    const outputCost = ((pricing.output ?? 0) / 1_000_000) * output;
+    const cacheReadCost = ((pricing.cacheRead ?? 0) / 1_000_000) * cacheRead;
+    const cacheWriteCost = ((pricing.cacheWrite ?? 0) / 1_000_000) * cacheWrite;
+
+    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+  }
+
   /**
    * Initialize in-process Pi runtime.
    */
@@ -409,20 +444,40 @@ export class RuntimeClient {
         // Yield any new messages
         for (let i = lastMessageCount; i < messages.length; i++) {
           const msg = messages[i];
+          const provider = msg.info?.provider;
+          const model = msg.info?.model;
+
           const mappedUsage = msg.info?.usage
-            ? {
-                input: msg.info.usage.input ?? 0,
-                output: msg.info.usage.output ?? 0,
-                cacheRead: msg.info.usage.cacheRead ?? 0,
-                cacheWrite: msg.info.usage.cacheWrite ?? 0,
-                totalTokens:
-                  msg.info.usage.totalTokens ??
-                  (msg.info.usage.input ?? 0) +
-                    (msg.info.usage.output ?? 0) +
-                    (msg.info.usage.cacheRead ?? 0) +
-                    (msg.info.usage.cacheWrite ?? 0),
-                cost: msg.info.usage.cost?.total ?? 0,
-              }
+            ? (() => {
+                const input = msg.info?.usage?.input ?? 0;
+                const output = msg.info?.usage?.output ?? 0;
+                const cacheRead = msg.info?.usage?.cacheRead ?? 0;
+                const cacheWrite = msg.info?.usage?.cacheWrite ?? 0;
+                const totalTokens =
+                  msg.info?.usage?.totalTokens ?? input + output + cacheRead + cacheWrite;
+                const reportedCost = msg.info?.usage?.cost?.total;
+                const configuredCost = this.estimateConfiguredCost(
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  provider,
+                  model
+                );
+                const cost =
+                  reportedCost !== undefined && reportedCost > 0
+                    ? reportedCost
+                    : (configuredCost ?? reportedCost ?? 0);
+
+                return {
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  totalTokens,
+                  cost,
+                };
+              })()
             : undefined;
 
           yield {
@@ -432,8 +487,8 @@ export class RuntimeClient {
             timestamp: new Date(),
             toolName: msg.info?.toolName,
             toolCallId: msg.info?.toolCallId,
-            provider: msg.info?.provider,
-            model: msg.info?.model,
+            provider,
+            model,
             usage: mappedUsage,
           };
         }

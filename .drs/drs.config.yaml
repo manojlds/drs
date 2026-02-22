@@ -15,6 +15,13 @@
 #       models:
 #         model-name:
 #           name: "Model Display Name"
+#           # Optional pricing override (USD per 1M tokens)
+#           # Useful when provider doesn't return cost or reports $0.0000
+#           cost:
+#             input: 0.27
+#             output: 1.10
+#             cacheRead: 0.00
+#             cacheWrite: 0.00
 
 review:
   # Default model and skills for all agents (required)
@@ -76,6 +83,16 @@ describe:
   model: opencode/glm-5-free
   # Include .drs/context.md content in describe agent instructions
   includeProjectContext: true
+
+# Optional per-model pricing overrides (USD per 1M tokens)
+# Applied when runtime cost is missing/zero for a model.
+# pricing:
+#   models:
+#     opencode/glm-5-free:
+#       input: 0.00
+#       output: 0.00
+#       cacheRead: 0.00
+#       cacheWrite: 0.00
 
 # Context compression (diff size management)
 contextCompression:

@@ -112,6 +112,10 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function normalizeUsage(value: unknown): PiUsage | undefined {
   const usage = asRecord(value);
 
@@ -320,21 +324,26 @@ class PiSessionRuntime {
       const options = asRecord(provider.options);
       const models = asRecord(provider.models);
 
-      const modelEntries = Object.entries(models).map(([id, modelValue]) => ({
-        id,
-        name: asString(asRecord(modelValue).name) ?? id,
-        api: 'openai-completions',
-        reasoning: true,
-        input: ['text'] as Array<'text' | 'image'>,
-        cost: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-        },
-        contextWindow: 128000,
-        maxTokens: 16384,
-      }));
+      const modelEntries = Object.entries(models).map(([id, modelValue]) => {
+        const model = asRecord(modelValue);
+        const modelCost = asRecord(model.cost);
+
+        return {
+          id,
+          name: asString(model.name) ?? id,
+          api: 'openai-completions',
+          reasoning: asBoolean(model.reasoning) ?? true,
+          input: ['text'] as Array<'text' | 'image'>,
+          cost: {
+            input: asNumber(modelCost.input) ?? 0,
+            output: asNumber(modelCost.output) ?? 0,
+            cacheRead: asNumber(modelCost.cacheRead) ?? 0,
+            cacheWrite: asNumber(modelCost.cacheWrite) ?? 0,
+          },
+          contextWindow: asNumber(model.contextWindow) ?? 128000,
+          maxTokens: asNumber(model.maxTokens) ?? 16384,
+        };
+      });
 
       const providerInput: Record<string, unknown> = {
         api: 'openai-completions',

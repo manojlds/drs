@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   addUsageSummary,
   aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
   createEmptyUsageSummary,
   formatModelIdentifier,
 } from './review-usage.js';
@@ -63,6 +65,28 @@ describe('review-usage', () => {
       cost: 0.03,
     });
     expect(result.agents).toHaveLength(2);
+  });
+
+  it('applies usage messages and tracks turns/model', () => {
+    const base = createAgentUsageSummary('describe/pr-describer');
+
+    const next = applyUsageMessage(base, {
+      provider: 'opencode',
+      model: 'glm-5-free',
+      usage: {
+        input: 50,
+        output: 10,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 60,
+        cost: 0.002,
+      },
+    });
+
+    expect(next.turns).toBe(1);
+    expect(next.model).toBe('opencode/glm-5-free');
+    expect(next.usage.totalTokens).toBe(60);
+    expect(next.usage.cost).toBe(0.002);
   });
 
   it('formats provider/model identifiers', () => {

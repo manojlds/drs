@@ -13,15 +13,14 @@ import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { RuntimeClient, SessionMessage } from '../opencode/client.js';
+import type { RuntimeClient } from '../opencode/client.js';
 import { loadReviewAgents } from '../opencode/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
 import {
-  addUsageSummary,
   aggregateAgentUsage,
-  createEmptyUsageSummary,
-  formatModelIdentifier,
+  applyUsageMessage,
+  createAgentUsageSummary,
   type AgentUsageSummary,
   type ReviewUsageSummary,
 } from './review-usage.js';
@@ -281,43 +280,10 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
   return merged;
 }
 
-function createAgentUsage(agentType: string): AgentUsageSummary {
-  return {
-    agentType,
-    turns: 0,
-    usage: createEmptyUsageSummary(),
-  };
-}
-
-function applyAssistantUsage(
-  agentUsage: AgentUsageSummary,
-  message: SessionMessage
-): AgentUsageSummary {
-  const model = agentUsage.model ?? formatModelIdentifier(message.provider, message.model);
-  const turns = agentUsage.turns + 1;
-
-  if (!message.usage) {
-    return {
-      ...agentUsage,
-      model,
-      turns,
-    };
-  }
-
-  const nextUsage = addUsageSummary(agentUsage.usage, message.usage);
-
-  return {
-    ...agentUsage,
-    model,
-    turns,
-    usage: nextUsage,
-  };
-}
-
 function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
   const agentUsage = agentResults
     .map((result) => {
-      const usage = result.usage ?? createAgentUsage(result.agentType);
+      const usage = result.usage ?? createAgentUsageSummary(result.agentType);
       return {
         ...usage,
         success: result.success,
@@ -344,7 +310,7 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.bold('🎯 Selected Agents: unified-reviewer\n'));
   console.log(chalk.gray('Running unified review...\n'));
 
-  let agentUsage = createAgentUsage(agentType);
+  let agentUsage = createAgentUsageSummary(agentType);
 
   try {
     const reviewPrompt = buildReviewPrompt(
@@ -389,7 +355,7 @@ export async function runUnifiedReviewAgent(
       }
 
       if (message.role === 'assistant') {
-        agentUsage = applyAssistantUsage(agentUsage, message);
+        agentUsage = applyUsageMessage(agentUsage, message);
 
         if (!message.content.trim()) {
           continue;
@@ -497,7 +463,7 @@ export async function runReviewAgents(
   for (const agentType of agentNames) {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
-    let agentUsage = createAgentUsage(agentType);
+    let agentUsage = createAgentUsageSummary(agentType);
 
     try {
       // Build prompt with global and agent-specific context
@@ -544,7 +510,7 @@ export async function runReviewAgents(
         }
 
         if (message.role === 'assistant') {
-          agentUsage = applyAssistantUsage(agentUsage, message);
+          agentUsage = applyUsageMessage(agentUsage, message);
 
           if (!message.content.trim()) {
             continue;
@@ -760,6 +726,13 @@ export function displayReviewSummary(result: {
     );
     console.log(`  Total tokens: ${chalk.cyan(result.usage.total.totalTokens)}`);
     console.log(`  Estimated cost: ${chalk.cyan(`$${result.usage.total.cost.toFixed(4)}`)}`);
+    if (result.usage.total.totalTokens > 0 && result.usage.total.cost === 0) {
+      console.log(
+        chalk.gray(
+          '  Cost is $0.0000 because model pricing is unknown or configured as free. Configure pricing.models to override.'
+        )
+      );
+    }
   }
 
   if (result.summary.issuesFound > 0) {

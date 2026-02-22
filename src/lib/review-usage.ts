@@ -59,6 +59,43 @@ export function addUsageSummary(base: UsageSummary, delta: Partial<UsageSummary>
   };
 }
 
+export interface UsageMessageLike {
+  provider?: string;
+  model?: string;
+  usage?: Partial<UsageSummary>;
+}
+
+export function createAgentUsageSummary(agentType: string): AgentUsageSummary {
+  return {
+    agentType,
+    turns: 0,
+    usage: createEmptyUsageSummary(),
+  };
+}
+
+export function applyUsageMessage(
+  agentUsage: AgentUsageSummary,
+  message: UsageMessageLike
+): AgentUsageSummary {
+  const model = agentUsage.model ?? formatModelIdentifier(message.provider, message.model);
+  const turns = agentUsage.turns + 1;
+
+  if (!message.usage) {
+    return {
+      ...agentUsage,
+      model,
+      turns,
+    };
+  }
+
+  return {
+    ...agentUsage,
+    model,
+    turns,
+    usage: addUsageSummary(agentUsage.usage, message.usage),
+  };
+}
+
 export function aggregateAgentUsage(agents: AgentUsageSummary[]): ReviewUsageSummary {
   const total = agents.reduce(
     (acc, agent) => addUsageSummary(acc, agent.usage),

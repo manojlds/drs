@@ -13,6 +13,11 @@ import {
 import type { FileChange } from '../lib/platform-client.js';
 import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
+import {
+  aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
+} from '../lib/review-usage.js';
 
 export interface DescribeMROptions {
   projectId: string;
@@ -92,15 +97,18 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.dim('Running MR describer agent...\n'));
 
     // Run the describer agent
+    const agentType = 'describe/pr-describer';
     const session = await runtimeClient.createSession({
-      agent: 'describe/pr-describer',
+      agent: agentType,
       message: instructions,
     });
 
     // Collect all assistant messages from the session
+    let usageByAgent = createAgentUsageSummary(agentType);
     let fullResponse = '';
     for await (const message of runtimeClient.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        usageByAgent = applyUsageMessage(usageByAgent, message);
         fullResponse += message.content;
       }
     }
@@ -125,6 +133,13 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
       throw validationError;
     }
 
+    const usageSummary = aggregateAgentUsage([
+      {
+        ...usageByAgent,
+        success: true,
+      },
+    ]);
+
     // Display the description unless we're posting it to avoid noisy CI logs
     if (options.postDescription) {
       console.log(
@@ -133,7 +148,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
         )
       );
     } else {
-      displayDescription(normalizedDescription, 'MR');
+      displayDescription(normalizedDescription, 'MR', usageSummary);
     }
 
     // Save to JSON file if requested
@@ -159,7 +174,8 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
         options.projectId,
         options.mrIid,
         normalizedDescription,
-        'MR'
+        'MR',
+        usageSummary
       );
     }
 

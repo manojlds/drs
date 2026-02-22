@@ -17,6 +17,23 @@ export interface AgentConfig {
 export type ModelOverrides = Record<string, string>;
 
 /**
+ * Token pricing in USD per 1M tokens.
+ */
+export interface ModelPricingConfig {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface CustomProviderModelConfig {
+  name: string;
+  cost?: ModelPricingConfig;
+  contextWindow?: number;
+  maxTokens?: number;
+}
+
+/**
  * Custom OpenAI-compatible provider configuration
  */
 export interface CustomProvider {
@@ -26,7 +43,7 @@ export interface CustomProvider {
     baseURL: string;
     apiKey: string;
   };
-  models: Record<string, { name: string }>;
+  models: Record<string, CustomProviderModelConfig>;
 }
 
 export interface RuntimeConfig {
@@ -100,6 +117,12 @@ export interface DRSConfig {
     softBufferTokens?: number;
     hardBufferTokens?: number;
     tokenEstimateDivisor?: number;
+  };
+
+  // Optional per-model pricing overrides in USD per 1M tokens.
+  // Used when runtime-reported cost is missing/zero for a model.
+  pricing?: {
+    models?: Record<string, ModelPricingConfig>;
   };
 }
 
@@ -262,6 +285,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     review: mergeSection(base.review, override.review),
     describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
+    pricing: mergeSection(base.pricing, override.pricing),
   };
 }
 

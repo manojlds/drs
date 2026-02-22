@@ -13,6 +13,11 @@ import {
 import type { FileChange } from '../lib/platform-client.js';
 import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
+import {
+  aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
+} from '../lib/review-usage.js';
 
 export interface DescribePROptions {
   owner: string;
@@ -96,15 +101,18 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     console.log(chalk.dim('Running PR describer agent...\n'));
 
     // Run the describer agent
+    const agentType = 'describe/pr-describer';
     const session = await runtimeClient.createSession({
-      agent: 'describe/pr-describer',
+      agent: agentType,
       message: instructions,
     });
 
     // Collect all assistant messages from the session
+    let usageByAgent = createAgentUsageSummary(agentType);
     let fullResponse = '';
     for await (const message of runtimeClient.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        usageByAgent = applyUsageMessage(usageByAgent, message);
         fullResponse += message.content;
       }
     }
@@ -129,6 +137,13 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
       throw validationError;
     }
 
+    const usageSummary = aggregateAgentUsage([
+      {
+        ...usageByAgent,
+        success: true,
+      },
+    ]);
+
     // Display the description unless we're posting it to avoid noisy CI logs
     if (options.postDescription) {
       console.log(
@@ -137,7 +152,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
         )
       );
     } else {
-      displayDescription(normalizedDescription, 'PR');
+      displayDescription(normalizedDescription, 'PR', usageSummary);
     }
 
     // Save to JSON file if requested
@@ -163,7 +178,8 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
         projectId,
         options.prNumber,
         normalizedDescription,
-        'PR'
+        'PR',
+        usageSummary
       );
     }
 

@@ -19,6 +19,7 @@ import {
   type Platform,
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
+import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
 import type { RuntimeClient } from '../opencode/client.js';
 
 /**
@@ -67,14 +68,17 @@ export async function runDescribeIfEnabled(
   }
 
   // Run describe agent
+  const agentType = 'describe/pr-describer';
   const session = await runtimeClient.createSession({
-    agent: 'describe/pr-describer',
+    agent: agentType,
     message: instructions,
   });
 
+  let usageByAgent = createAgentUsageSummary(agentType);
   let fullResponse = '';
   for await (const message of runtimeClient.streamMessages(session.id)) {
     if (message.role === 'assistant') {
+      usageByAgent = applyUsageMessage(usageByAgent, message);
       fullResponse += message.content;
     }
   }
@@ -97,17 +101,30 @@ export async function runDescribeIfEnabled(
   // Display and optionally post description
   const description = normalizeDescription(descriptionPayload);
   const platform = detectPlatform(pr);
+  const usageSummary = aggregateAgentUsage([
+    {
+      ...usageByAgent,
+      success: true,
+    },
+  ]);
 
   if (shouldPostDescription) {
     console.log(
       chalk.gray('Description generated (suppressed in logs because posting is enabled).')
     );
   } else {
-    displayDescription(description, platform);
+    displayDescription(description, platform, usageSummary);
   }
 
   if (shouldPostDescription) {
-    await postDescription(platformClient, projectId, pr.number, description, platform);
+    await postDescription(
+      platformClient,
+      projectId,
+      pr.number,
+      description,
+      platform,
+      usageSummary
+    );
   }
 
   return description;

@@ -81,6 +81,12 @@ pi:
       models:
         ${config.provider.modelId}:
           name: "${config.provider.modelDisplayName}"
+          # Optional pricing override (USD per 1M tokens)
+          # cost:
+          #   input: 0.27
+          #   output: 1.10
+          #   cacheRead: 0.00
+          #   cacheWrite: 0.00
 
 `;
   }
@@ -126,6 +132,16 @@ pi:
     - "package-lock.json"
     - "yarn.lock"
     - "pnpm-lock.yaml"
+
+# Optional per-model pricing overrides (USD per 1M tokens)
+# Applied when runtime cost is missing/zero for a model.
+# pricing:
+#   models:
+#     ${config.defaultModel}:
+#       input: 0.00
+#       output: 0.00
+#       cacheRead: 0.00
+#       cacheWrite: 0.00
 `;
 
   return yaml;
