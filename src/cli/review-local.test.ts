@@ -193,6 +193,24 @@ describe('review-local', () => {
     expect(printReviewJson).toHaveBeenCalledWith({ result: 'ok' });
   });
 
+  it('writes JSON output when only outputPath is provided', async () => {
+    await reviewLocal(baseConfig, {
+      staged: false,
+      outputPath: '.drs/review-output.json',
+      jsonOutput: false,
+    });
+
+    expect(formatReviewJson).toHaveBeenCalledWith(emptySummary, [], {
+      source: 'local-unstaged',
+    });
+    expect(writeReviewJson).toHaveBeenCalledWith(
+      { result: 'ok' },
+      '.drs/review-output.json',
+      process.cwd()
+    );
+    expect(printReviewJson).not.toHaveBeenCalled();
+  });
+
   it('surfaces runtime failures from review execution', async () => {
     executeReview.mockRejectedValueOnce(new Error('Pi runtime unavailable'));
 

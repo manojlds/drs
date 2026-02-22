@@ -2,66 +2,78 @@
  * Live E2E test for review-local.
  *
  * Run manually (never in CI):
- *   DRS_E2E_LIVE=1 OPENCODE_API_KEY=... npm test -- src/cli/review-local.live.e2e.test.ts
+ *   DRS_E2E_LIVE=1 npm test -- src/cli/review-local.live.e2e.test.ts
  *
  * Optional:
  *   DRS_E2E_MODEL=provider/model-id
  */
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { spawn } from 'child_process';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import simpleGit from 'simple-git';
-import { describe, expect, it, vi } from 'vitest';
-import type { DRSConfig } from '../lib/config.js';
-import { reviewLocal } from './review-local.js';
+import { config as loadDotenv } from 'dotenv';
+import { describe, expect, it } from 'vitest';
+
+loadDotenv();
 
 const shouldRunLiveE2E = !process.env.CI && process.env.DRS_E2E_LIVE === '1';
 const liveModel =
   process.env.DRS_E2E_MODEL ?? process.env.REVIEW_DEFAULT_MODEL ?? 'opencode/glm-5-free';
 
-function buildLiveConfig(model: string): DRSConfig {
-  return {
-    pi: {},
-    gitlab: { url: '', token: '' },
-    github: { token: '' },
-    review: {
-      agents: ['security'],
-      default: {
-        model,
-        skills: [],
-      },
-      ignorePatterns: [],
-      mode: 'multi-agent',
-      describe: {
-        enabled: false,
-        postDescription: false,
-      },
-    },
-    describe: {
-      includeProjectContext: false,
-    },
-    contextCompression: {
-      enabled: false,
-    },
-  } as DRSConfig;
+function runReviewLocalCli(
+  cwd: string,
+  outputPath: string
+): Promise<{ code: number; logs: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const repoRoot = process.cwd();
+    const tsxBin = resolve(
+      repoRoot,
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
+    );
+
+    const child = spawn(
+      tsxBin,
+      [resolve(repoRoot, 'src/cli/index.ts'), 'review-local', '--output', outputPath],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          REVIEW_DEFAULT_MODEL: liveModel,
+          OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? process.env.OPENCODE_ZEN_API_KEY ?? '',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    let logs = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      logs += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      logs += chunk.toString();
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolvePromise({ code: code ?? -1, logs });
+    });
+  });
 }
 
 const describeLive = shouldRunLiveE2E ? describe : describe.skip;
 
 describeLive('review-local live e2e (real LLM)', () => {
   it('runs full review-local pipeline against a real provider and writes JSON output', async () => {
-    const originalCwd = process.cwd();
     const tempRoot = mkdtempSync(join(tmpdir(), 'drs-live-e2e-'));
     const repoDir = join(tempRoot, 'repo');
     const outputPath = 'review-local-live-output.json';
 
-    const originalOpencodeApiKey = process.env.OPENCODE_API_KEY;
-    if (!process.env.OPENCODE_API_KEY && process.env.OPENCODE_ZEN_API_KEY) {
-      process.env.OPENCODE_API_KEY = process.env.OPENCODE_ZEN_API_KEY;
-    }
-
     const hasAnyProviderCredential = Boolean(
       process.env.OPENCODE_API_KEY ??
+      process.env.OPENCODE_ZEN_API_KEY ??
       process.env.ANTHROPIC_API_KEY ??
       process.env.OPENAI_API_KEY ??
       process.env.ZHIPU_API_KEY
@@ -69,15 +81,12 @@ describeLive('review-local live e2e (real LLM)', () => {
 
     if (!hasAnyProviderCredential) {
       throw new Error(
-        'Live E2E requires provider credentials. Set OPENCODE_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY/ZHIPU_API_KEY.'
+        'Live E2E requires provider credentials. Set OPENCODE_API_KEY/OPENCODE_ZEN_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY/ZHIPU_API_KEY.'
       );
     }
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
-
     try {
       mkdirSync(repoDir, { recursive: true });
-      process.chdir(repoDir);
 
       const git = simpleGit(repoDir);
       await git.init();
@@ -85,6 +94,28 @@ describeLive('review-local live e2e (real LLM)', () => {
       await git.addConfig('user.email', 'drs-e2e@example.com');
 
       mkdirSync(join(repoDir, 'src'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs'), { recursive: true });
+
+      writeFileSync(
+        join(repoDir, '.drs/drs.config.yaml'),
+        [
+          'review:',
+          '  default:',
+          `    model: ${liveModel}`,
+          '    skills: []',
+          '  mode: multi-agent',
+          '  agents:',
+          '    - security',
+          '  ignorePatterns: []',
+          '  describe:',
+          '    enabled: false',
+          '    postDescription: false',
+          'contextCompression:',
+          '  enabled: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
 
       writeFileSync(
         join(repoDir, 'src', 'query.ts'),
@@ -109,16 +140,18 @@ describeLive('review-local live e2e (real LLM)', () => {
         'utf-8'
       );
 
-      const config = buildLiveConfig(liveModel);
+      const result = await runReviewLocalCli(repoDir, outputPath);
 
-      await reviewLocal(config, {
-        staged: false,
-        outputPath,
-        jsonOutput: false,
-        debug: false,
-      });
+      if (!new Set([0, 1]).has(result.code)) {
+        throw new Error(`review-local exited with code ${result.code}.\nLogs:\n${result.logs}`);
+      }
 
-      const outputRaw = readFileSync(join(repoDir, outputPath), 'utf-8');
+      const outputFile = join(repoDir, outputPath);
+      if (!existsSync(outputFile)) {
+        throw new Error(`Expected output file was not created.\nLogs:\n${result.logs}`);
+      }
+
+      const outputRaw = readFileSync(outputFile, 'utf-8');
       const output = JSON.parse(outputRaw) as {
         summary: { filesReviewed: number };
         issues: unknown[];
@@ -129,15 +162,6 @@ describeLive('review-local live e2e (real LLM)', () => {
       expect(Array.isArray(output.issues)).toBe(true);
       expect(output.metadata?.source).toBe('local-unstaged');
     } finally {
-      exitSpy.mockRestore();
-
-      if (originalOpencodeApiKey === undefined) {
-        delete process.env.OPENCODE_API_KEY;
-      } else {
-        process.env.OPENCODE_API_KEY = originalOpencodeApiKey;
-      }
-
-      process.chdir(originalCwd);
       rmSync(tempRoot, { recursive: true, force: true });
     }
   }, 300000);
