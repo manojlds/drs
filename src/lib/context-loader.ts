@@ -79,7 +79,8 @@ export function buildReviewPrompt(
   reviewLabel: string,
   changedFiles: string[],
   projectRoot: string = process.cwd(),
-  config?: DRSConfig
+  config?: DRSConfig,
+  describeSummary?: string
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentName, projectRoot, config);
@@ -108,6 +109,11 @@ export function buildReviewPrompt(
     } else {
       prompt += `# Project Context\n\n${trimmedContext}\n\n`;
     }
+  }
+
+  // 1.5 Describe summary (change context from describe agent)
+  if (describeSummary) {
+    prompt += `# Change Summary\n\n${describeSummary}\n\n`;
   }
 
   // 2. Agent-specific context (if available)

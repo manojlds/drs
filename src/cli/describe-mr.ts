@@ -11,7 +11,7 @@ import {
   postDescription,
 } from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
+import { prepareDiffsForAgent, formatCompressionSummary } from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
 import {
   aggregateAgentUsage,
@@ -49,7 +49,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     patch: file.patch,
   }));
 
-  const compression = compressFilesWithDiffs(filesWithDiffs, config.contextCompression);
+  const compression = prepareDiffsForAgent(filesWithDiffs, config.contextCompression);
   const compressionSummary = formatCompressionSummary(compression);
 
   if (compressionSummary) {

@@ -35,7 +35,9 @@ import {
   getCanonicalDiffCommand,
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
+import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
 import { runDescribeIfEnabled } from './description-executor.js';
+import type { Description } from './description-formatter.js';
 import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
@@ -157,12 +159,19 @@ export async function executeUnifiedReview(
       debug: options.debug,
       modelOverrides,
     });
-    const filesForDescribe = allFiles.map((file) => ({
-      filename: file.filename,
-      patch: file.patch,
-    }));
+    const describeFileNames = allFiles
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
+    const filteredDescribeFileNames = new Set(filterIgnoredFiles(describeFileNames, config));
+    const filesForDescribe = allFiles
+      .filter((file) => filteredDescribeFileNames.has(file.filename))
+      .map((file) => ({
+        filename: file.filename,
+        patch: file.patch,
+      }));
+    let describeResult: Description | null = null;
     if (describeEnabled) {
-      await runDescribeIfEnabled(
+      describeResult = await runDescribeIfEnabled(
         runtimeClient,
         config,
         platformClient,
@@ -175,6 +184,29 @@ export async function executeUnifiedReview(
       );
     }
 
+    // Build change context from describe output for review agents
+    let describeSummary: string | undefined;
+    if (describeResult) {
+      const parts: string[] = [];
+      if (describeResult.title) {
+        parts.push(`**${describeResult.type ?? 'change'}**: ${describeResult.title}`);
+      }
+      if (describeResult.summary && describeResult.summary.length > 0) {
+        parts.push(describeResult.summary.map((s: string) => `- ${s}`).join('\n'));
+      }
+      if (describeResult.walkthrough && describeResult.walkthrough.length > 0) {
+        const majorFiles = describeResult.walkthrough
+          .filter((w: { significance?: string }) => w.significance === 'major')
+          .map((w: { file: string; title: string }) => `- **${w.file}**: ${w.title}`);
+        if (majorFiles.length > 0) {
+          parts.push('Key changes:\n' + majorFiles.join('\n'));
+        }
+      }
+      if (parts.length > 0) {
+        describeSummary = parts.join('\n\n');
+      }
+    }
+
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
@@ -184,10 +216,19 @@ export async function executeUnifiedReview(
       filename,
       patch: patchByFilename.get(filename),
     }));
+
+    const compression = prepareDiffsForAgent(filesForInstructions, config.contextCompression);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
-      filesForInstructions,
-      fallbackDiffCommand
+      compression.files,
+      fallbackDiffCommand,
+      compressionSummary
     );
     if (baseBranchResolution.resolvedBaseBranch) {
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
@@ -199,7 +240,7 @@ export async function executeUnifiedReview(
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      { prNumber },
+      { prNumber, describeSummary },
       options.workingDir ?? process.cwd(),
       options.debug ?? false
     );

@@ -10,8 +10,16 @@ vi.mock('./describe-core.js', () => ({
 }));
 
 vi.mock('./context-compression.js', () => ({
-  compressFilesWithDiffs: vi.fn((files: FileWithDiff[]) => ({ files })),
+  prepareDiffsForAgent: vi.fn((files: FileWithDiff[]) => ({ files, generated: [] })),
   formatCompressionSummary: vi.fn(() => undefined),
+}));
+
+vi.mock('./review-orchestrator.js', () => ({
+  filterIgnoredFiles: vi.fn((files: string[]) => files),
+}));
+
+vi.mock('./context-loader.js', () => ({
+  loadGlobalContext: vi.fn(() => null),
 }));
 
 vi.mock('./describe-parser.js', () => ({

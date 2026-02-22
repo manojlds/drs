@@ -24,7 +24,7 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
 } from './review-core.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
 import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
 
 /**
@@ -181,7 +181,7 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    const compression = compressFilesWithDiffs(filesForInstructions, config.contextCompression);
+    const compression = prepareDiffsForAgent(filesForInstructions, config.contextCompression);
     const compressionSummary = formatCompressionSummary(compression);
 
     if (compressionSummary) {

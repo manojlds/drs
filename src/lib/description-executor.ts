@@ -9,7 +9,9 @@ import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { FileWithDiff } from './review-core.js';
 import { buildDescribeInstructions } from './describe-core.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import { prepareDiffsForAgent, formatCompressionSummary } from './context-compression.js';
+import { filterIgnoredFiles } from './review-orchestrator.js';
+import { loadGlobalContext } from './context-loader.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
 import {
   displayDescription,
@@ -52,14 +54,28 @@ export async function runDescribeIfEnabled(
   console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
 
   const label = `${detectPlatform(pr)} #${pr.number}`;
-  const compression = compressFilesWithDiffs(files, config.contextCompression);
+  const filteredFileNames = new Set(
+    filterIgnoredFiles(
+      files.map((f) => f.filename),
+      config
+    )
+  );
+  const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
+  const compression = prepareDiffsForAgent(filteredFiles, config.contextCompression);
   const compressionSummary = formatCompressionSummary(compression);
 
   if (compressionSummary) {
     console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
   }
 
-  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
+  const includeProjectContext = config.describe?.includeProjectContext ?? true;
+  const projectContext = includeProjectContext ? loadGlobalContext(workingDir) : null;
+  const instructions = buildDescribeInstructions(
+    label,
+    compression.files,
+    compressionSummary,
+    projectContext ?? undefined
+  );
 
   if (debug) {
     console.log(chalk.yellow('\n=== Describe Agent Instructions ==='));

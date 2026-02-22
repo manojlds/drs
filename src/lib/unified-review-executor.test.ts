@@ -88,6 +88,11 @@ vi.mock('./json-output.js', () => ({
   printReviewJson: vi.fn(),
 }));
 
+vi.mock('./context-compression.js', () => ({
+  prepareDiffsForAgent: vi.fn((files: any[]) => ({ files, generated: [] })),
+  formatCompressionSummary: vi.fn(() => ''),
+}));
+
 vi.mock('fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
@@ -217,7 +222,8 @@ describe('unified-review-executor', () => {
           expect.objectContaining({ filename: 'src/test.ts', patch: '+added line' }),
           expect.objectContaining({ filename: 'src/utils.ts', patch: '+new file' }),
         ]),
-        'git diff origin/main origin/feature -- <file>'
+        'git diff origin/main origin/feature -- <file>',
+        ''
       );
     });
 
