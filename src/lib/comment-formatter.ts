@@ -14,6 +14,7 @@ export interface ReviewIssue {
 }
 
 import type { ChangeSummary } from './change-summary.js';
+import { formatCost, formatCount } from './format-utils.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 
 export interface ReviewSummary {
@@ -37,14 +38,6 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
   PERFORMANCE: '⚡',
   DOCUMENTATION: '📝',
 };
-
-function formatCount(value: number): string {
-  return new Intl.NumberFormat('en-US').format(Math.round(value));
-}
-
-function formatCost(value: number): string {
-  return `$${value.toFixed(4)}`;
-}
 
 function formatReviewUsageSection(usage: ReviewUsageSummary): string {
   const total = usage.total;

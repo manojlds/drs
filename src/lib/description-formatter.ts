@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { formatCost, formatCount } from './format-utils.js';
 import type { PlatformClient } from './platform-client.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 
@@ -18,14 +19,6 @@ export interface Description {
   walkthrough?: DescriptionWalkthroughEntry[];
   labels?: string[];
   recommendations?: string[];
-}
-
-function formatCount(value: number): string {
-  return new Intl.NumberFormat('en-US').format(Math.round(value));
-}
-
-function formatCost(value: number): string {
-  return `$${value.toFixed(4)}`;
 }
 
 function hasUsageDetails(usage?: ReviewUsageSummary): usage is ReviewUsageSummary {
