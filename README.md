@@ -1,20 +1,28 @@
-# DRS - Diff Review System
+# DRS · Diff Review System
 
-**Intelligent Code Review Platform for GitLab and GitHub**
+[![npm version](https://img.shields.io/npm/v/@diff-review-system/drs)](https://www.npmjs.com/package/@diff-review-system/drs)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Enterprise-grade automated code review for Merge Requests and Pull Requests, powered by Pi SDK and Claude.
+**AI-powered code review for GitLab MRs and GitHub PRs.**
 
-## Features
+DRS helps teams catch critical issues earlier with specialized review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
 
-- **Comprehensive Analysis**: Advanced code review using Claude's latest models
-- **Specialized Review Domains**: Security, quality, style, performance, and documentation analysis
-- **Multi-Platform Support**: Native integration with GitLab and GitHub
-- **Flexible Deployment**: CI/CD pipelines or local CLI
-- **Review Modes**: Multi-agent deep review, single-pass unified review, and hybrid escalation
-- **Unified Reviewer**: One-pass JSON output with severity-tagged findings across domains
-- **PR/MR Descriptions**: Optional auto-generated descriptions and labels for pull requests
-- **Highly Customizable**: Configure review agents with project-specific rules
-- **Deep Integration**: Full API support for both GitLab and GitHub platforms
+## Why teams like DRS
+
+- 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
+- 🧠 **Flexible review modes**: multi-agent deep review, unified one-pass review, hybrid escalation
+- 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
+- ✍️ **Description generation**: optional PR/MR summary generation and posting
+- 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
+- 🎯 **Smart context compression**: dynamic budget sizing with `contextCompression.thresholdPercent`
+
+## Quick Links
+
+- [Quick Start](#quick-start)
+- [Deployment Modes](#deployment-modes)
+- [Customization](#customization)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
 
 ## Quick Start
 
@@ -69,6 +77,17 @@ drs review-local --staged
 # Use specific agents
 drs review-local --agents security,quality
 ```
+
+### Most-Used Commands
+
+| Goal | Command |
+|---|---|
+| Review local unstaged changes | `drs review-local` |
+| Review local staged changes | `drs review-local --staged` |
+| Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
+| Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
+| Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
+| Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 
 ## Deployment Modes
 
@@ -317,6 +336,7 @@ Edit `.drs/drs.config.yaml`:
 
 ```yaml
 review:
+  mode: unified
   agents:
     - security
     - quality
@@ -327,6 +347,15 @@ review:
     enabled: true
     postDescription: false
 
+contextCompression:
+  enabled: true
+  # Dynamic budget = thresholdPercent × model context window
+  thresholdPercent: 0.15
+  # Fallback if model context window metadata is unavailable
+  maxTokens: 32000
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+
 describe:
   model: zhipuai/glm-4.7
 ```
@@ -335,6 +364,8 @@ Notes:
 - `review.describe` controls auto-description when running `review-mr` or `review-pr`.
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
+- `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
+- `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
 - `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
 - Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
@@ -355,6 +386,26 @@ pricing:
 ```
 
 You can also set pricing directly under `pi.provider.<name>.models.<model>.cost` for custom providers.
+
+### Context Compression (Large Diff Handling)
+
+DRS trims large diffs before sending them to models, so reviews stay within context limits.
+
+- `thresholdPercent` enables **dynamic budgeting** based on model context window.
+- `maxTokens` is used as fallback when context metadata is missing.
+- Generated files and deletion-only hunks can be auto-excluded from prompt context.
+
+Example:
+
+```yaml
+contextCompression:
+  enabled: true
+  thresholdPercent: 0.15 # 15% of model context window
+  maxTokens: 32000       # fallback cap
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+  tokenEstimateDivisor: 4
+```
 
 ### Pi-Native Skill Discovery
 
@@ -503,5 +554,6 @@ Contributions welcome! Please read the contributing guidelines first.
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/your-org/drs/issues)
-- Discussions: [GitHub Discussions](https://github.com/your-org/drs/discussions)
+- Issues: [GitHub Issues](https://github.com/manojlds/drs/issues)
+- Discussions: [GitHub Discussions](https://github.com/manojlds/drs/discussions)
+- Repository: [github.com/manojlds/drs](https://github.com/manojlds/drs)
