@@ -387,6 +387,37 @@ pricing:
 
 You can also set pricing directly under `pi.provider.<name>.models.<model>.cost` for custom providers.
 
+### Custom Provider Model Metadata (Context Window & Output Limits)
+
+If you define custom models under `pi.provider.<name>.models`, you can also set model metadata used by DRS:
+
+- `contextWindow`: used for dynamic compression sizing when `thresholdPercent` is enabled
+- `maxTokens`: model output limit hint
+- `cost`: token pricing override (USD per 1M tokens)
+
+```yaml
+pi:
+  provider:
+    my-provider:
+      npm: "@ai-sdk/openai-compatible"
+      name: "My Provider"
+      options:
+        baseURL: "https://api.example.com/v1"
+        apiKey: "{env:MY_PROVIDER_API_KEY}"
+      models:
+        my-model:
+          name: "My Model"
+          contextWindow: 200000
+          maxTokens: 8192
+          cost:
+            input: 0.50
+            output: 1.50
+            cacheRead: 0.00
+            cacheWrite: 0.00
+```
+
+> Note: For built-in providers/models, context window metadata comes from the runtime model registry.
+
 ### Context Compression (Large Diff Handling)
 
 DRS trims large diffs before sending them to models, so reviews stay within context limits.
