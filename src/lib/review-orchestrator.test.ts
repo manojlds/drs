@@ -510,6 +510,64 @@ describe('review-orchestrator', () => {
       );
     });
 
+    it('uses only unified model IDs for budget sizing in unified mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/small-8k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/large-200k',
+      });
+
+      const source: ReviewSource = {
+        name: 'Unified review',
+        files: ['src/app.ts'],
+        context: {},
+      };
+
+      await executeReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'unified',
+          },
+        } as DRSConfig,
+        source
+      );
+
+      expect(mockOpencodeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
+    it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/large-200k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/small-8k',
+      });
+
+      const source: ReviewSource = {
+        name: 'Multi-agent review',
+        files: ['src/app.ts'],
+        context: {},
+      };
+
+      await executeReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'multi-agent',
+          },
+        } as DRSConfig,
+        source
+      );
+
+      expect(mockOpencodeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
     it('should shutdown OpenCode client after review', async () => {
       const source: ReviewSource = {
         name: 'Test review',

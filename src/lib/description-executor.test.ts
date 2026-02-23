@@ -155,4 +155,33 @@ describe('description-executor', () => {
     );
     expect(postDescription).not.toHaveBeenCalled();
   });
+
+  it('uses only describe model IDs when sizing compression budget', async () => {
+    const configWithExplicitDescribeModel = {
+      ...config,
+      review: {
+        ...config.review,
+        default: {
+          model: 'provider/default-8k',
+        },
+      },
+      describe: {
+        model: 'provider/describe-200k',
+      },
+    } as DRSConfig;
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      configWithExplicitDescribeModel,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      false,
+      process.cwd(),
+      false
+    );
+
+    expect(runtimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/describe-200k']);
+  });
 });

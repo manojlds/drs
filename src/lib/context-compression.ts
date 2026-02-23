@@ -239,13 +239,31 @@ export function resolveCompressionBudget(
   options?: ContextCompressionOptions
 ): ContextCompressionOptions {
   if (!options) return {};
-  const threshold = options.thresholdPercent;
+
+  const resolvedOptions = normalizeOptions(options);
+  const threshold = resolvedOptions.thresholdPercent;
+
   if (threshold && threshold > 0 && contextWindow && contextWindow > 0) {
+    const computedMaxTokens = Math.max(1, Math.floor(contextWindow * threshold));
+
+    if (computedMaxTokens >= resolvedOptions.maxTokens) {
+      return {
+        ...resolvedOptions,
+        maxTokens: computedMaxTokens,
+      };
+    }
+
+    const scale = computedMaxTokens / resolvedOptions.maxTokens;
+    const scaleBuffer = (value: number): number => Math.max(0, Math.floor(value * scale));
+
     return {
-      ...options,
-      maxTokens: Math.floor(contextWindow * threshold),
+      ...resolvedOptions,
+      maxTokens: computedMaxTokens,
+      softBufferTokens: scaleBuffer(resolvedOptions.softBufferTokens),
+      hardBufferTokens: scaleBuffer(resolvedOptions.hardBufferTokens),
     };
   }
+
   return options;
 }
 

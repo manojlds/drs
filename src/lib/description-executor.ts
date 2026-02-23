@@ -27,7 +27,7 @@ import {
 import { parseDescribeOutput } from './describe-parser.js';
 import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
 import type { RuntimeClient } from '../opencode/client.js';
-import { getDescriberModelOverride, getDefaultModel } from './config.js';
+import { getDescriberModelOverride } from './config.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -64,9 +64,9 @@ export async function runDescribeAgent(
     )
   );
   const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
-  const describeModelIds = [
-    ...new Set([...Object.values(getDescriberModelOverride(config)), getDefaultModel(config)]),
-  ].filter((id): id is string => !!id);
+  const describeModelIds = [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+    (id): id is string => !!id
+  );
   const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
   const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 

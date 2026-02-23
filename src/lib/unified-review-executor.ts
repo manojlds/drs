@@ -12,7 +12,6 @@ import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import {
-  getDefaultModel,
   getDescriberModelOverride,
   getModelOverrides,
   getUnifiedModelOverride,
@@ -86,6 +85,23 @@ export interface UnifiedReviewOptions {
   debug?: boolean;
 }
 
+function getReviewBudgetModelIds(
+  mode: DRSConfig['review']['mode'],
+  agentModelOverrides: Record<string, string>,
+  unifiedModelOverrides: Record<string, string>
+): string[] {
+  const reviewMode = mode ?? 'multi-agent';
+
+  const modelIds =
+    reviewMode === 'unified'
+      ? Object.values(unifiedModelOverrides)
+      : reviewMode === 'hybrid'
+        ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
+        : Object.values(agentModelOverrides);
+
+  return [...new Set(modelIds)].filter((id): id is string => !!id);
+}
+
 /**
  * Execute a unified code review for any platform
  */
@@ -148,9 +164,11 @@ export async function executeUnifiedReview(
       return;
     }
 
+    const agentModelOverrides = getModelOverrides(config);
+    const unifiedModelOverrides = getUnifiedModelOverride(config);
     const reviewOverrides = {
-      ...getModelOverrides(config),
-      ...getUnifiedModelOverride(config),
+      ...agentModelOverrides,
+      ...unifiedModelOverrides,
     };
     const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
     const postDescriptionEnabled =
@@ -202,9 +220,11 @@ export async function executeUnifiedReview(
       patch: patchByFilename.get(filename),
     }));
 
-    const reviewModelIds = [
-      ...new Set([...Object.values(reviewOverrides), getDefaultModel(config)]),
-    ].filter((id): id is string => !!id);
+    const reviewModelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
     const contextWindow = runtimeClient.getMinContextWindow(reviewModelIds);
     const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 

@@ -118,7 +118,7 @@ describe('resolveCompressionBudget', () => {
     expect(large.maxTokens).toBe(200000);
   });
 
-  it('preserves other options when overriding maxTokens', () => {
+  it('scales buffers when computed maxTokens is smaller than configured maxTokens', () => {
     const result = resolveCompressionBudget(100000, {
       thresholdPercent: 0.1,
       maxTokens: 32000,
@@ -127,6 +127,20 @@ describe('resolveCompressionBudget', () => {
       tokenEstimateDivisor: 4,
     });
     expect(result.maxTokens).toBe(10000);
+    expect(result.softBufferTokens).toBe(468);
+    expect(result.hardBufferTokens).toBe(312);
+    expect(result.tokenEstimateDivisor).toBe(4);
+  });
+
+  it('keeps configured buffers when computed maxTokens is larger than configured maxTokens', () => {
+    const result = resolveCompressionBudget(1000000, {
+      thresholdPercent: 0.2,
+      maxTokens: 32000,
+      softBufferTokens: 1500,
+      hardBufferTokens: 1000,
+      tokenEstimateDivisor: 4,
+    });
+    expect(result.maxTokens).toBe(200000);
     expect(result.softBufferTokens).toBe(1500);
     expect(result.hardBufferTokens).toBe(1000);
     expect(result.tokenEstimateDivisor).toBe(4);
@@ -167,5 +181,23 @@ describe('prepareDiffsForAgent', () => {
     });
     expect(result.omitted.generated).toEqual(['src/gen.ts']);
     expect(result.omitted.dueToBudget.length).toBeGreaterThan(0);
+  });
+
+  it('retains small diffs when dynamic maxTokens is lower than static buffers', () => {
+    const files = [{ filename: 'src/small.ts', patch: '@@ -1,0 +1,1 @@\n+ok' }];
+
+    const options = resolveCompressionBudget(8000, {
+      enabled: true,
+      maxTokens: 32000,
+      thresholdPercent: 0.15,
+      softBufferTokens: 1500,
+      hardBufferTokens: 1000,
+      tokenEstimateDivisor: 4,
+    });
+
+    const result = prepareDiffsForAgent(files, options);
+
+    expect(result.files[0].patch).toContain('+ok');
+    expect(result.omitted.dueToBudget).toEqual([]);
   });
 });

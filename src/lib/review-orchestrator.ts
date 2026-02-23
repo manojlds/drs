@@ -11,7 +11,6 @@ import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
-  getDefaultModel,
   getDescriberModelOverride,
   getRuntimeConfig,
   getUnifiedModelOverride,
@@ -76,6 +75,23 @@ export interface ReviewResult {
  */
 export function filterIgnoredFiles(files: string[], config: DRSConfig): string[] {
   return files.filter((file) => !shouldIgnoreFile(file, config));
+}
+
+function getReviewBudgetModelIds(
+  mode: DRSConfig['review']['mode'],
+  agentModelOverrides: ModelOverrides,
+  unifiedModelOverrides: ModelOverrides
+): string[] {
+  const reviewMode = mode ?? 'multi-agent';
+
+  const modelIds =
+    reviewMode === 'unified'
+      ? Object.values(unifiedModelOverrides)
+      : reviewMode === 'hybrid'
+        ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
+        : Object.values(agentModelOverrides);
+
+  return [...new Set(modelIds)].filter((id): id is string => !!id);
 }
 
 export interface ConnectOptions {
@@ -173,9 +189,11 @@ export async function executeReview(
   // Include describer model overrides if describe is enabled
   const describeEnabled = config.review.describe?.enabled ?? false;
   const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
+  const agentModelOverrides = getModelOverrides(config);
+  const unifiedModelOverrides = getUnifiedModelOverride(config);
   const reviewOverrides = {
-    ...getModelOverrides(config),
-    ...getUnifiedModelOverride(config),
+    ...agentModelOverrides,
+    ...unifiedModelOverrides,
     ...describeOverrides,
   };
 
@@ -224,13 +242,11 @@ export async function executeReview(
       }
     }
 
-    const modelIds = [
-      ...new Set([
-        ...Object.values(getModelOverrides(config)),
-        ...Object.values(getUnifiedModelOverride(config)),
-        getDefaultModel(config),
-      ]),
-    ].filter((id): id is string => !!id);
+    const modelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
     const contextWindow = runtimeClient.getMinContextWindow(modelIds);
     const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 
