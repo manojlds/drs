@@ -9,7 +9,13 @@ import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { FileWithDiff } from './review-core.js';
 import { buildDescribeInstructions } from './describe-core.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
+import { filterIgnoredFiles } from './review-orchestrator.js';
+import { loadGlobalContext } from './context-loader.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
 import {
   displayDescription,
@@ -21,6 +27,7 @@ import {
 import { parseDescribeOutput } from './describe-parser.js';
 import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
 import type { RuntimeClient } from '../opencode/client.js';
+import { getDescriberModelOverride } from './config.js';
 
 /**
  * Detect platform type from PR/MR platform data
@@ -31,6 +38,90 @@ export function detectPlatform(pr: PullRequest): Platform {
     return 'MR';
   }
   return 'PR';
+}
+
+/**
+ * Run the describe agent and return a normalized Description.
+ * Platform-independent — handles compression, context loading, agent execution, and parsing.
+ */
+export interface DescribeAgentResult {
+  description: Description;
+  usage: ReturnType<typeof createAgentUsageSummary>;
+}
+
+export async function runDescribeAgent(
+  runtimeClient: RuntimeClient,
+  config: DRSConfig,
+  label: string,
+  files: FileWithDiff[],
+  workingDir: string,
+  debug?: boolean
+): Promise<DescribeAgentResult> {
+  const filteredFileNames = new Set(
+    filterIgnoredFiles(
+      files.map((f) => f.filename),
+      config
+    )
+  );
+  const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
+  const describeModelIds = [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+    (id): id is string => !!id
+  );
+  const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+  const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+  const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
+  const compressionSummary = formatCompressionSummary(compression);
+
+  if (compressionSummary) {
+    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+  }
+
+  const includeProjectContext = config.describe?.includeProjectContext ?? true;
+  const projectContext = includeProjectContext ? loadGlobalContext(workingDir) : null;
+  const instructions = buildDescribeInstructions(
+    label,
+    compression.files,
+    compressionSummary,
+    projectContext ?? undefined
+  );
+
+  if (debug) {
+    console.log(chalk.yellow('\n=== Describe Agent Instructions ==='));
+    console.log(instructions);
+    console.log(chalk.yellow('=== End Instructions ===\n'));
+  }
+
+  const agentType = 'describe/pr-describer';
+  const session = await runtimeClient.createSession({
+    agent: agentType,
+    message: instructions,
+  });
+
+  let usageByAgent = createAgentUsageSummary(agentType);
+  let fullResponse = '';
+  for await (const message of runtimeClient.streamMessages(session.id)) {
+    if (message.role === 'assistant') {
+      usageByAgent = applyUsageMessage(usageByAgent, message);
+      fullResponse += message.content;
+    }
+  }
+
+  let descriptionPayload: Description;
+  try {
+    descriptionPayload = (await parseDescribeOutput(
+      workingDir,
+      debug,
+      fullResponse
+    )) as Description;
+  } catch (parseError) {
+    console.error(chalk.red('Failed to parse agent output as JSON'));
+    console.log(chalk.dim('Agent output:'), fullResponse);
+    const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
+    throw new Error(`Describe agent did not return valid JSON output${reason}`);
+  }
+
+  return { description: normalizeDescription(descriptionPayload), usage: usageByAgent };
 }
 
 /**
@@ -52,61 +143,17 @@ export async function runDescribeIfEnabled(
   console.log(chalk.bold.blue('\n🔍 Generating PR/MR Description\n'));
 
   const label = `${detectPlatform(pr)} #${pr.number}`;
-  const compression = compressFilesWithDiffs(files, config.contextCompression);
-  const compressionSummary = formatCompressionSummary(compression);
+  const { description, usage } = await runDescribeAgent(
+    runtimeClient,
+    config,
+    label,
+    files,
+    workingDir,
+    debug
+  );
 
-  if (compressionSummary) {
-    console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
-  }
-
-  const instructions = buildDescribeInstructions(label, compression.files, compressionSummary);
-
-  if (debug) {
-    console.log(chalk.yellow('\n=== Describe Agent Instructions ==='));
-    console.log(instructions);
-    console.log(chalk.yellow('=== End Instructions ===\n'));
-  }
-
-  // Run describe agent
-  const agentType = 'describe/pr-describer';
-  const session = await runtimeClient.createSession({
-    agent: agentType,
-    message: instructions,
-  });
-
-  let usageByAgent = createAgentUsageSummary(agentType);
-  let fullResponse = '';
-  for await (const message of runtimeClient.streamMessages(session.id)) {
-    if (message.role === 'assistant') {
-      usageByAgent = applyUsageMessage(usageByAgent, message);
-      fullResponse += message.content;
-    }
-  }
-
-  // Parse agent output
-  let descriptionPayload: Description;
-  try {
-    descriptionPayload = (await parseDescribeOutput(
-      workingDir,
-      debug,
-      fullResponse
-    )) as Description;
-  } catch (parseError) {
-    console.error(chalk.red('Failed to parse agent output as JSON'));
-    console.log(chalk.dim('Agent output:'), fullResponse);
-    const reason = parseError instanceof Error ? `: ${parseError.message}` : '';
-    throw new Error(`Describe agent did not return valid JSON output${reason}`);
-  }
-
-  // Display and optionally post description
-  const description = normalizeDescription(descriptionPayload);
   const platform = detectPlatform(pr);
-  const usageSummary = aggregateAgentUsage([
-    {
-      ...usageByAgent,
-      success: true,
-    },
-  ]);
+  const usageSummary = aggregateAgentUsage([{ ...usage, success: true }]);
 
   if (shouldPostDescription) {
     console.log(

@@ -133,6 +133,18 @@ pi:
     - "yarn.lock"
     - "pnpm-lock.yaml"
 
+# Context compression (diff size management)
+contextCompression:
+  enabled: true
+  # Dynamic budget = thresholdPercent × model context window
+  # Example: 0.15 = 15% of context window
+  thresholdPercent: 0.15
+  # Fallback cap when context window metadata is unavailable
+  maxTokens: 32000
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+  tokenEstimateDivisor: 4
+
 # Optional per-model pricing overrides (USD per 1M tokens)
 # Applied when runtime cost is missing/zero for a model.
 # pricing:

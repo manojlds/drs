@@ -114,6 +114,7 @@ export interface DRSConfig {
   contextCompression?: {
     enabled?: boolean;
     maxTokens?: number;
+    thresholdPercent?: number;
     softBufferTokens?: number;
     hardBufferTokens?: number;
     tokenEstimateDivisor?: number;
@@ -166,6 +167,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   contextCompression: {
     enabled: true,
     maxTokens: 32000,
+    thresholdPercent: 0.15,
     softBufferTokens: 1500,
     hardBufferTokens: 1000,
     tokenEstimateDivisor: 4,

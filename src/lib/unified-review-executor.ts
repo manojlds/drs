@@ -18,7 +18,11 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToRuntime, filterIgnoredFiles } from './review-orchestrator.js';
+import {
+  connectToRuntime,
+  filterIgnoredFiles,
+  getReviewBudgetModelIds,
+} from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
 import type {
   PlatformClient,
@@ -35,7 +39,13 @@ import {
   getCanonicalDiffCommand,
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
 import { runDescribeIfEnabled } from './description-executor.js';
+import { formatDescribeSummary, type Description } from './description-formatter.js';
 import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
@@ -141,9 +151,11 @@ export async function executeUnifiedReview(
       return;
     }
 
+    const agentModelOverrides = getModelOverrides(config);
+    const unifiedModelOverrides = getUnifiedModelOverride(config);
     const reviewOverrides = {
-      ...getModelOverrides(config),
-      ...getUnifiedModelOverride(config),
+      ...agentModelOverrides,
+      ...unifiedModelOverrides,
     };
     const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
     const postDescriptionEnabled =
@@ -157,12 +169,19 @@ export async function executeUnifiedReview(
       debug: options.debug,
       modelOverrides,
     });
-    const filesForDescribe = allFiles.map((file) => ({
-      filename: file.filename,
-      patch: file.patch,
-    }));
+    const describeFileNames = allFiles
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
+    const filteredDescribeFileNames = new Set(filterIgnoredFiles(describeFileNames, config));
+    const filesForDescribe = allFiles
+      .filter((file) => filteredDescribeFileNames.has(file.filename))
+      .map((file) => ({
+        filename: file.filename,
+        patch: file.patch,
+      }));
+    let describeResult: Description | null = null;
     if (describeEnabled) {
-      await runDescribeIfEnabled(
+      describeResult = await runDescribeIfEnabled(
         runtimeClient,
         config,
         platformClient,
@@ -175,6 +194,9 @@ export async function executeUnifiedReview(
       );
     }
 
+    // Build change context from describe output for review agents
+    const describeSummary = describeResult ? formatDescribeSummary(describeResult) : undefined;
+
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
@@ -184,10 +206,27 @@ export async function executeUnifiedReview(
       filename,
       patch: patchByFilename.get(filename),
     }));
+
+    const reviewModelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
+    const contextWindow = runtimeClient.getMinContextWindow(reviewModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
-      filesForInstructions,
-      fallbackDiffCommand
+      compression.files,
+      fallbackDiffCommand,
+      compressionSummary
     );
     if (baseBranchResolution.resolvedBaseBranch) {
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
@@ -199,7 +238,7 @@ export async function executeUnifiedReview(
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      { prNumber },
+      { prNumber, describeSummary },
       options.workingDir ?? process.cwd(),
       options.debug ?? false
     );

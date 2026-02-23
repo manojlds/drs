@@ -12,6 +12,7 @@ vi.mock('./config.js', () => ({
   getModelOverrides: vi.fn(() => ({})),
   getUnifiedModelOverride: vi.fn(() => ({})),
   getDescriberModelOverride: vi.fn(() => ({})),
+  getDefaultModel: vi.fn(() => undefined),
 }));
 
 vi.mock('./repository-validator.js', () => ({
@@ -29,12 +30,24 @@ vi.mock('./review-orchestrator.js', () => {
     createSession: vi.fn(),
     streamMessages: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
+    getMinContextWindow: vi.fn(() => undefined),
   }));
 
   return {
     filterIgnoredFiles: vi.fn((files) => files),
     connectToRuntime,
     connectToOpenCode: connectToRuntime,
+    getReviewBudgetModelIds: vi.fn((mode, agentModelOverrides, unifiedModelOverrides) => {
+      const reviewMode = mode ?? 'multi-agent';
+      const modelIds =
+        reviewMode === 'unified'
+          ? Object.values(unifiedModelOverrides)
+          : reviewMode === 'hybrid'
+            ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
+            : Object.values(agentModelOverrides);
+
+      return [...new Set(modelIds)].filter((id): id is string => !!id);
+    }),
   };
 });
 
@@ -86,6 +99,12 @@ vi.mock('./json-output.js', () => ({
   formatReviewJson: vi.fn(() => ({})),
   writeReviewJson: vi.fn().mockResolvedValue(undefined),
   printReviewJson: vi.fn(),
+}));
+
+vi.mock('./context-compression.js', () => ({
+  prepareDiffsForAgent: vi.fn((files: any[]) => ({ files, generated: [] })),
+  formatCompressionSummary: vi.fn(() => ''),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
 
 vi.mock('fs/promises', () => ({
@@ -217,8 +236,85 @@ describe('unified-review-executor', () => {
           expect.objectContaining({ filename: 'src/test.ts', patch: '+added line' }),
           expect.objectContaining({ filename: 'src/utils.ts', patch: '+new file' }),
         ]),
-        'git diff origin/main origin/feature -- <file>'
+        'git diff origin/main origin/feature -- <file>',
+        ''
       );
+    });
+
+    it('uses only unified model IDs for budget sizing in unified mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/small-8k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/large-200k',
+      });
+
+      const mockRuntimeClient = {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
+      };
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'unified',
+          },
+        } as DRSConfig,
+        options
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
+    it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/large-200k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/small-8k',
+      });
+
+      const mockRuntimeClient = {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
+      };
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'multi-agent',
+          },
+        } as DRSConfig,
+        options
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
     });
 
     it('should enforce repository branch match', async () => {
@@ -466,6 +562,7 @@ describe('unified-review-executor', () => {
       const { connectToRuntime } = await import('./review-orchestrator.js');
       const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
       vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
 
@@ -487,6 +584,7 @@ describe('unified-review-executor', () => {
 
       const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
       vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Test error'));

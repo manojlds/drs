@@ -10,8 +10,17 @@ vi.mock('./describe-core.js', () => ({
 }));
 
 vi.mock('./context-compression.js', () => ({
-  compressFilesWithDiffs: vi.fn((files: FileWithDiff[]) => ({ files })),
+  prepareDiffsForAgent: vi.fn((files: FileWithDiff[]) => ({ files, generated: [] })),
   formatCompressionSummary: vi.fn(() => undefined),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
+}));
+
+vi.mock('./review-orchestrator.js', () => ({
+  filterIgnoredFiles: vi.fn((files: string[]) => files),
+}));
+
+vi.mock('./context-loader.js', () => ({
+  loadGlobalContext: vi.fn(() => null),
 }));
 
 vi.mock('./describe-parser.js', () => ({
@@ -49,6 +58,7 @@ describe('description-executor', () => {
           timestamp: new Date(),
         };
       }),
+      getMinContextWindow: vi.fn(() => undefined),
     } as unknown as RuntimeClient;
 
     platformClient = {} as unknown as PlatformClient;
@@ -144,5 +154,34 @@ describe('description-executor', () => {
       })
     );
     expect(postDescription).not.toHaveBeenCalled();
+  });
+
+  it('uses only describe model IDs when sizing compression budget', async () => {
+    const configWithExplicitDescribeModel = {
+      ...config,
+      review: {
+        ...config.review,
+        default: {
+          model: 'provider/default-8k',
+        },
+      },
+      describe: {
+        model: 'provider/describe-200k',
+      },
+    } as DRSConfig;
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      configWithExplicitDescribeModel,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      false,
+      process.cwd(),
+      false
+    );
+
+    expect(runtimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/describe-200k']);
   });
 });

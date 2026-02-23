@@ -377,3 +377,25 @@ export async function postDescription(
 
   console.log(chalk.green(`✓ Description posted to ${platform}`));
 }
+
+/**
+ * Format a Description into a concise summary string for use as review agent context.
+ */
+export function formatDescribeSummary(description: Description): string | undefined {
+  const parts: string[] = [];
+  if (description.title) {
+    parts.push(`**${description.type ?? 'change'}**: ${description.title}`);
+  }
+  if (description.summary && description.summary.length > 0) {
+    parts.push(description.summary.map((s) => `- ${s}`).join('\n'));
+  }
+  if (description.walkthrough && description.walkthrough.length > 0) {
+    const majorFiles = description.walkthrough
+      .filter((w) => w.significance === 'major')
+      .map((w) => `- **${w.file}**: ${w.title}`);
+    if (majorFiles.length > 0) {
+      parts.push('Key changes:\n' + majorFiles.join('\n'));
+    }
+  }
+  return parts.length > 0 ? parts.join('\n\n') : undefined;
+}
