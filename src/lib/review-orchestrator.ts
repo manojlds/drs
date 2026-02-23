@@ -77,7 +77,7 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
   return files.filter((file) => !shouldIgnoreFile(file, config));
 }
 
-function getReviewBudgetModelIds(
+export function getReviewBudgetModelIds(
   mode: DRSConfig['review']['mode'],
   agentModelOverrides: ModelOverrides,
   unifiedModelOverrides: ModelOverrides

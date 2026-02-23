@@ -18,7 +18,11 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToRuntime, filterIgnoredFiles } from './review-orchestrator.js';
+import {
+  connectToRuntime,
+  filterIgnoredFiles,
+  getReviewBudgetModelIds,
+} from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
 import type {
   PlatformClient,
@@ -83,23 +87,6 @@ export interface UnifiedReviewOptions {
   postDescription?: boolean;
   /** Debug mode - print OpenCode configuration */
   debug?: boolean;
-}
-
-function getReviewBudgetModelIds(
-  mode: DRSConfig['review']['mode'],
-  agentModelOverrides: Record<string, string>,
-  unifiedModelOverrides: Record<string, string>
-): string[] {
-  const reviewMode = mode ?? 'multi-agent';
-
-  const modelIds =
-    reviewMode === 'unified'
-      ? Object.values(unifiedModelOverrides)
-      : reviewMode === 'hybrid'
-        ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
-        : Object.values(agentModelOverrides);
-
-  return [...new Set(modelIds)].filter((id): id is string => !!id);
 }
 
 /**
