@@ -7,7 +7,7 @@
 
 import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
-import { getAgentNames } from './config.js';
+import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
@@ -294,6 +294,50 @@ function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
   return aggregateAgentUsage(agentUsage);
 }
 
+function getConfiguredSkillsForAgent(config: DRSConfig, agentType: string): string[] {
+  const defaultSkills = getDefaultSkills(config);
+  const normalizedAgents = normalizeAgentConfig(config.review.agents);
+  const agentConfig = normalizedAgents.find(
+    (agent) => agent.name === agentType || agent.name === `review/${agentType}`
+  );
+  const agentSkills = (agentConfig?.skills ?? []).map(String).filter((skill) => skill.length > 0);
+  return [...new Set([...defaultSkills, ...agentSkills])];
+}
+
+function extractSkillNameFromToolOutput(content: string): string | undefined {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      const candidateKeys = ['name', 'skill', 'skillName', 'id'];
+      for (const key of candidateKeys) {
+        const value = record[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+          return value.trim();
+        }
+      }
+    }
+  } catch {
+    // Fall through to regex extraction for plain text outputs.
+  }
+
+  const match = trimmed.match(/(?:^|\b)(?:skill|name)\s*[:=]\s*["']?([\w.-]+)["']?/i);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  if (/^[\w.-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return undefined;
+}
+
 export async function runUnifiedReviewAgent(
   opencode: RuntimeClient,
   config: DRSConfig,
@@ -311,6 +355,8 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.gray('Running unified review...\n'));
 
   let agentUsage = createAgentUsageSummary(agentType);
+  const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+  let sawSkillToolCall = false;
 
   const describeSummary =
     typeof additionalContext.describeSummary === 'string'
@@ -356,7 +402,17 @@ export async function runUnifiedReviewAgent(
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
+        if (message.toolName === 'skill') {
+          const skillName = extractSkillNameFromToolOutput(message.content);
+          if (skillName) {
+            logger.skillLoaded(skillName, agentType);
+            sawSkillToolCall = true;
+          } else {
+            logger.toolOutput(message.toolName, agentType, message.content);
+          }
+        } else {
+          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
+        }
         continue;
       }
 
@@ -375,6 +431,10 @@ export async function runUnifiedReviewAgent(
           logger.agentMessage(agentType, message.content);
         }
       }
+    }
+
+    if (configuredSkills.length > 0 && !sawSkillToolCall) {
+      logger.noSkillCalls(agentType);
     }
 
     await opencode.closeSession(session.id);
@@ -475,6 +535,8 @@ export async function runReviewAgents(
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
     let agentUsage = createAgentUsageSummary(agentType);
+    const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+    let sawSkillToolCall = false;
 
     try {
       // Build prompt with global and agent-specific context
@@ -517,7 +579,17 @@ export async function runReviewAgents(
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
+          if (message.toolName === 'skill') {
+            const skillName = extractSkillNameFromToolOutput(message.content);
+            if (skillName) {
+              logger.skillLoaded(skillName, agentType);
+              sawSkillToolCall = true;
+            } else {
+              logger.toolOutput(message.toolName, agentType, message.content);
+            }
+          } else {
+            logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
+          }
           continue;
         }
 
@@ -536,6 +608,10 @@ export async function runReviewAgents(
             logger.agentMessage(agentType, message.content);
           }
         }
+      }
+
+      if (configuredSkills.length > 0 && !sawSkillToolCall) {
+        logger.noSkillCalls(agentType);
       }
 
       await opencode.closeSession(session.id);

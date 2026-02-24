@@ -28,7 +28,7 @@ review:
   # For built-in providers: anthropic/claude-sonnet-4-5-20250929, openai/gpt-4o, zhipuai/glm-4.7
   # For custom providers: provider-name/model-name
   default:
-    model: opencode/glm-5-free
+    model: opencode/minimax-m2.5-free
     skills:
       - cli-testing
 
@@ -80,7 +80,7 @@ review:
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)
   # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
-  model: opencode/glm-5-free
+  model: opencode/minimax-m2.5-free
   # Include .drs/context.md content in describe agent instructions
   includeProjectContext: true
 

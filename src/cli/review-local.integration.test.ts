@@ -43,6 +43,20 @@ const simulatedDiff = [
   ' });',
 ].join('\n');
 
+const simulatedCliDiff = [
+  'diff --git a/src/cli/index.ts b/src/cli/index.ts',
+  'index 1234567..89abcde 100644',
+  '--- a/src/cli/index.ts',
+  '+++ b/src/cli/index.ts',
+  '@@ -60,6 +60,7 @@ program',
+  "   .command('review-local')",
+  "   .description('Review local changes before pushing')",
+  "+  .option('--skip-repo-check', 'Skip git repository validation for advanced usage')",
+  "   .option('--staged', 'Review staged changes only')",
+  "   .option('--output <path>', 'Write review results to JSON file')",
+  "   .option('--json', 'Output raw JSON to stdout')",
+].join('\n');
+
 const integrationConfig = {
   pi: {},
   gitlab: { url: '', token: '' },
@@ -159,6 +173,93 @@ describe('review-local integration (simulated diffs)', () => {
     expect(mocks.streamMessages).toHaveBeenCalledWith('session-1');
     expect(mocks.closeSession).toHaveBeenCalledWith('session-1');
     expect(mocks.shutdown).toHaveBeenCalledTimes(1);
+    expect(exitSpy).not.toHaveBeenCalledWith(1);
+
+    exitSpy.mockRestore();
+  });
+
+  it('logs configured skill usage when reviewing CLI flag changes', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    mocks.git.diff.mockResolvedValue(simulatedCliDiff);
+
+    const reviewPayload = {
+      timestamp: '2026-02-22T00:00:00Z',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: {
+          CRITICAL: 0,
+          HIGH: 0,
+          MEDIUM: 1,
+          LOW: 0,
+        },
+        byCategory: {
+          SECURITY: 0,
+          QUALITY: 1,
+          STYLE: 0,
+          PERFORMANCE: 0,
+          DOCUMENTATION: 0,
+        },
+      },
+      issues: [
+        {
+          category: 'QUALITY',
+          severity: 'MEDIUM',
+          title: 'Missing integration test for new review-local CLI flag',
+          file: 'src/cli/index.ts',
+          line: 63,
+          problem: 'A new CLI flag was introduced without integration-level coverage.',
+          solution:
+            'Add an integration test that verifies the new flag is parsed and propagated to command execution.',
+          references: [],
+          agent: 'quality',
+        },
+      ],
+    };
+
+    mocks.streamMessages.mockImplementation(async function* () {
+      yield {
+        id: 'tool-1',
+        role: 'tool',
+        toolName: 'skill',
+        content: JSON.stringify({ name: 'cli-testing', usage: 'applied' }),
+        timestamp: new Date('2026-02-22T00:00:00Z'),
+      };
+
+      yield {
+        id: 'assistant-2',
+        role: 'assistant',
+        content: JSON.stringify(reviewPayload),
+        timestamp: new Date('2026-02-22T00:00:01Z'),
+      };
+    });
+
+    const configWithCliSkill = {
+      ...integrationConfig,
+      review: {
+        ...integrationConfig.review,
+        agents: ['quality'],
+        default: {
+          ...integrationConfig.review.default,
+          skills: ['cli-testing'],
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await reviewLocal(configWithCliSkill, { staged: false, jsonOutput: false, debug: false });
+
+    expect(mocks.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'review/quality',
+      })
+    );
+
+    const prompt = (mocks.createSession.mock.calls[0][0] as { message: string }).message;
+    expect(prompt).toContain('src/cli/index.ts');
+    expect(prompt).toContain("+  .option('--skip-repo-check'");
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Loaded skill: cli-testing'));
     expect(exitSpy).not.toHaveBeenCalledWith(1);
 
     exitSpy.mockRestore();
