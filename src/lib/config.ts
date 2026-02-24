@@ -48,10 +48,6 @@ export interface CustomProvider {
 
 export interface RuntimeConfig {
   [key: string]: unknown;
-  /**
-   * @deprecated DRS runs Pi in-process only. Remote runtime endpoints are ignored.
-   */
-  serverUrl?: string;
   provider?: Record<string, CustomProvider>;
 }
 
@@ -295,13 +291,22 @@ function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
   const legacyRuntime = config.opencode ?? {};
   const piRuntime = config.pi ?? {};
 
+  const hasLegacyConfig =
+    Object.keys(legacyRuntime).length > 0 &&
+    Object.values(legacyRuntime).some((v) => v !== undefined);
+
+  if (hasLegacyConfig) {
+    console.warn(
+      '⚠ Config key "opencode" is deprecated and will be removed in a future release. Use "pi" instead.'
+    );
+  }
+
   const mergedProvider = {
     ...(legacyRuntime.provider ?? {}),
     ...(piRuntime.provider ?? {}),
   };
 
   const normalizedRuntime: RuntimeConfig = {
-    serverUrl: piRuntime.serverUrl ?? legacyRuntime.serverUrl,
     provider: Object.keys(mergedProvider).length > 0 ? mergedProvider : undefined,
   };
 

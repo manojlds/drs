@@ -37,6 +37,8 @@ DRS helps teams catch critical issues earlier with specialized review agents, un
 npm install -g @diff-review-system/drs
 ```
 
+This installs DRS with Pi runtime bundled — no separate runtime installation needed.
+
 ### 3. Initialize Project
 
 ```bash
@@ -528,14 +530,6 @@ REVIEW_AGENTS=security,quality,style,performance
 2. `.gitlab-review.yml` - Alternative location
 3. Environment variables (for provider credentials and platform tokens)
 
-## Examples
-
-See the `examples/` directory for:
-- GitLab CI configuration
-- Docker Compose setup
-- Custom agent definitions
-- Configuration templates
-
 ## Development
 
 For comprehensive local development and testing instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
@@ -564,20 +558,21 @@ npm run dev
 - GitHub access token (for GitHub PR reviews)
 - Git 2.30+ (for local mode)
 
+Pi runtime is included as a dependency — no separate installation or server needed.
+
 ## License
 
 Apache-2.0
 
 ## Documentation
 
-- [Pi Migration, Upgrade, and Validation Guide](docs/PI_MIGRATION.md) - Breaking changes, upgrade steps, and review-flow validation matrix
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
+- [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup
+- [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
+- [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
-- [Design Document](DESIGN.md) - Original design using Claude Agent SDK
 - [Architecture Document](ARCHITECTURE.md) - Pi runtime architecture
-- [Publishing Guide](PUBLISHING_SETUP.md) - How to publish to npm
 - [Pi Documentation](https://github.com/badlogic/pi-mono)
-- [GitLab API](https://docs.gitlab.com/ee/api/)
 
 ## Contributing
 

@@ -1,27 +1,23 @@
-# DRS Project Context (Review Focus)
+# DRS Project Context
 
 ## What DRS Is
-DRS (Diff Review System) is a Node/TypeScript CLI that runs AI code reviews for GitHub PRs and GitLab MRs using OpenCode agents.
+Node/TypeScript CLI for AI code reviews on GitHub PRs and GitLab MRs, powered by Pi SDK.
 
-## Core Flow (Review)
-- CLI commands in `src/cli/` gather diff + metadata.
-- Review orchestration lives in `src/lib/`.
-- OpenCode client/agent integration is in `src/opencode/`.
-- Platform integrations: `src/github/` and `src/gitlab/`.
+## Core Flow
+- CLI commands (`src/cli/`) gather diff + metadata.
+- Review orchestration in `src/lib/`.
+- Pi SDK adapter in `src/pi/`, runtime client in `src/runtime/`.
+- Platform integrations: `src/github/`, `src/gitlab/`.
 
-## Review Agents & Skills
-- Built-in agents live under `.opencode/agent/review/`.
-- Project overrides can live in `.drs/agents/` (agent.md per agent).
-- Project skills live in `.drs/skills/<skill-name>/SKILL.md`.
-- Default skills are configured in `.drs/drs.config.yaml` under `review.default.skills`.
+## Agents & Skills
+- Built-in agents: `.pi/agents/review/`.
+- Project overrides: `.drs/agents/<name>/agent.md`.
+- Skills: `.drs/skills/<name>/SKILL.md`.
 
-## Config & Defaults
+## Config
 - Main config: `.drs/drs.config.yaml`.
-- Default review mode: `review.mode: unified`.
-- Default model: `review.default.model`.
-- Ignore patterns: `review.ignorePatterns`.
+- Key settings: `review.mode`, `review.default.model`, `review.ignorePatterns`.
 
 ## Review Focus
 - Review only the diff and its direct impact.
 - Prioritize correctness, safety, clarity, and maintainability.
-- Avoid flagging standard CLI/TypeScript patterns as issues unless they introduce real risk.

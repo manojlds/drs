@@ -42,7 +42,6 @@ function runReviewLocalCli(
         env: {
           ...process.env,
           REVIEW_DEFAULT_MODEL: liveModel,
-          OPENCODE_API_KEY: process.env.OPENCODE_API_KEY ?? process.env.OPENCODE_ZEN_API_KEY ?? '',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
@@ -72,16 +71,15 @@ describeLive('review-local live e2e (real LLM)', () => {
     const outputPath = 'review-local-live-output.json';
 
     const hasAnyProviderCredential = Boolean(
-      process.env.OPENCODE_API_KEY ??
-      process.env.OPENCODE_ZEN_API_KEY ??
       process.env.ANTHROPIC_API_KEY ??
       process.env.OPENAI_API_KEY ??
-      process.env.ZHIPU_API_KEY
+      process.env.ZHIPU_API_KEY ??
+      process.env.OPENCODE_API_KEY
     );
 
     if (!hasAnyProviderCredential) {
       throw new Error(
-        'Live E2E requires provider credentials. Set OPENCODE_API_KEY/OPENCODE_ZEN_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY/ZHIPU_API_KEY.'
+        'Live E2E requires provider credentials. Set ANTHROPIC_API_KEY/OPENAI_API_KEY/ZHIPU_API_KEY or another supported provider key.'
       );
     }
 

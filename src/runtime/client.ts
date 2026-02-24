@@ -12,18 +12,12 @@ import { resolveReviewPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
 
 export interface RuntimeClientConfig {
-  /**
-   * @deprecated DRS runs Pi in-process only. Providing a remote endpoint is unsupported.
-   */
-  baseUrl?: string;
   directory?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print runtime config for debugging
   config?: DRSConfig;
 }
-
-const SERVER_START_TIMEOUT_MS = 10000;
 
 export interface SessionCreateOptions {
   agent: string;
@@ -102,14 +96,13 @@ function mapPiRuntimeError(operation: string, error: unknown): Error {
  * Runtime client wrapper for DRS backed by in-process Pi sessions.
  */
 export class RuntimeClient {
-  private baseUrl?: string;
+  private serverUrl?: string;
   private directory?: string;
   private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
   private client?: PiClient;
   private config: RuntimeClientConfig;
 
   constructor(config: RuntimeClientConfig) {
-    this.baseUrl = config.baseUrl;
     this.directory = config.directory;
     this.config = config;
   }
@@ -168,12 +161,6 @@ export class RuntimeClient {
    * Initialize in-process Pi runtime.
    */
   async initialize(): Promise<void> {
-    if (this.baseUrl) {
-      throw new Error(
-        `Remote Pi runtime endpoints are not supported by DRS. Remove baseUrl/PI_SERVER (received: ${this.baseUrl}).`
-      );
-    }
-
     // Start server in-process
     // Build runtime config programmatically from DRS config
     const projectDir = this.directory ?? process.cwd();
@@ -359,12 +346,11 @@ export class RuntimeClient {
     // Pi SDK reads provider-specific API keys from environment automatically
     // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
     this.inProcessServer = await createPiInProcessServer({
-      timeout: SERVER_START_TIMEOUT_MS,
       config: runtimeConfig,
     });
 
     this.client = this.inProcessServer.client;
-    this.baseUrl = this.inProcessServer.server.url;
+    this.serverUrl = this.inProcessServer.server.url;
   }
 
   /**
@@ -587,10 +573,10 @@ export class RuntimeClient {
    * Get server URL
    */
   getServerUrl(): string {
-    if (!this.baseUrl) {
+    if (!this.serverUrl) {
       throw new Error('Server not initialized');
     }
-    return this.baseUrl;
+    return this.serverUrl;
   }
 
   /**
