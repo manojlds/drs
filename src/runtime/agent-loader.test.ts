@@ -51,6 +51,70 @@ describe('agent-loader path resolution', () => {
     expect(agents.some((agent) => agent.name === 'review/quality')).toBe(true);
   });
 
+  it('custom agent override replaces built-in prompt and model', () => {
+    const projectRoot = createTempDir('drs-agent-override-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      [
+        '---',
+        'description: Project-specific security reviewer',
+        'model: openai/gpt-4o',
+        '---',
+        '',
+        'You are a security reviewer for our Rails application.',
+        'Focus on mass assignment and CSRF vulnerabilities.',
+        '',
+      ].join('\n')
+    );
+
+    const agents = loadReviewAgents(projectRoot);
+
+    const securityAgent = agents.find((a) => a.name === 'review/security');
+    expect(securityAgent).toBeDefined();
+    expect(securityAgent?.description).toBe('Project-specific security reviewer');
+    expect(securityAgent?.model).toBe('openai/gpt-4o');
+    expect(securityAgent?.prompt).toContain('Rails application');
+    expect(securityAgent?.prompt).toContain('CSRF vulnerabilities');
+    // Must NOT contain the built-in prompt
+    expect(securityAgent?.prompt).not.toContain('Security Vulnerability Assessment');
+
+    // Other built-in agents still loaded
+    const qualityAgent = agents.find((a) => a.name === 'review/quality');
+    expect(qualityAgent).toBeDefined();
+    expect(qualityAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]quality\.md$/);
+  });
+
+  it('multiple custom agents override their respective built-ins', () => {
+    const projectRoot = createTempDir('drs-agent-multi-override-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'style'), { recursive: true });
+
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      '---\ndescription: Custom security\n---\n\nCustom security prompt\n'
+    );
+    writeFileSync(
+      join(agentsDir, 'style', 'agent.md'),
+      '---\ndescription: Custom style\n---\n\nCustom style prompt\n'
+    );
+
+    const agents = loadReviewAgents(projectRoot);
+
+    const security = agents.find((a) => a.name === 'review/security');
+    const style = agents.find((a) => a.name === 'review/style');
+    const quality = agents.find((a) => a.name === 'review/quality');
+
+    expect(security?.prompt).toBe('Custom security prompt');
+    expect(style?.prompt).toBe('Custom style prompt');
+    // quality remains built-in
+    expect(quality?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]quality\.md$/);
+  });
+
   it('loads built-in Pi-native review agents and keeps all core categories', () => {
     const agents = loadReviewAgents(process.cwd());
     const reviewAgentNames = new Set(

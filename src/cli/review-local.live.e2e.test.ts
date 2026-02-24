@@ -196,6 +196,9 @@ describeLive('review-local live e2e (real LLM)', () => {
       expect(Array.isArray(output.issues)).toBe(true);
       expect(output.metadata?.source).toBe('local-unstaged');
       expect(result.logs).toContain('Loaded skill: cli-testing');
+
+      // Verify custom agent override from .drs/agents/security/agent.md was loaded
+      expect(result.logs).toContain('agent definitions for Pi runtime');
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
