@@ -1,9 +1,9 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DRSConfig } from '../lib/config.js';
-import { loadReviewAgents } from './agent-loader.js';
+import { getAgent, getReviewAgents, listAgents, loadReviewAgents } from './agent-loader.js';
 
 function createConfig(agentsPath: string): DRSConfig {
   return {
@@ -138,5 +138,145 @@ describe('agent-loader path resolution', () => {
     expect(() => loadReviewAgents(projectRoot, createConfig('missing/agents'))).toThrow(
       'review.paths.agents'
     );
+  });
+
+  it('override preserves frontmatter fields: color, tools, hidden', () => {
+    const projectRoot = createTempDir('drs-agent-frontmatter-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      [
+        '---',
+        'description: Themed agent',
+        'color: "#FF5733"',
+        'hidden: true',
+        'tools:',
+        '  Read: true',
+        '  Grep: false',
+        '---',
+        '',
+        'Custom prompt with all frontmatter fields.',
+        '',
+      ].join('\n')
+    );
+
+    const agents = loadReviewAgents(projectRoot);
+    const security = agents.find((a) => a.name === 'review/security');
+
+    expect(security?.color).toBe('#FF5733');
+    expect(security?.hidden).toBe(true);
+    expect(security?.tools).toEqual({ Read: true, Grep: false });
+    expect(security?.prompt).toBe('Custom prompt with all frontmatter fields.');
+  });
+
+  it('agent.md without frontmatter is skipped with warning', () => {
+    const projectRoot = createTempDir('drs-agent-no-frontmatter-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      'Just plain text, no frontmatter at all.\n'
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const agents = loadReviewAgents(projectRoot);
+
+    // Override skipped — built-in security still loaded
+    const security = agents.find((a) => a.name === 'review/security');
+    expect(security?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]security\.md$/);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('No frontmatter'));
+
+    warnSpy.mockRestore();
+  });
+});
+
+describe('getAgent / getReviewAgents / listAgents', () => {
+  const tempDirs: string[] = [];
+
+  function createTempDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0, tempDirs.length)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('getAgent returns a specific agent by full name', () => {
+    const agent = getAgent(process.cwd(), 'review/security');
+    expect(agent).not.toBeNull();
+    expect(agent?.name).toBe('review/security');
+    expect(agent?.prompt).toContain('Security Vulnerability Assessment');
+  });
+
+  it('getAgent returns null for non-existent agent', () => {
+    const agent = getAgent(process.cwd(), 'review/nonexistent');
+    expect(agent).toBeNull();
+  });
+
+  it('getAgent returns override when present', () => {
+    const projectRoot = createTempDir('drs-get-agent-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      '---\ndescription: Override via getAgent\n---\n\nOverride prompt\n'
+    );
+
+    const agent = getAgent(projectRoot, 'review/security');
+    expect(agent?.description).toBe('Override via getAgent');
+    expect(agent?.prompt).toBe('Override prompt');
+  });
+
+  it('getReviewAgents returns only review/ prefixed agents', () => {
+    const agents = getReviewAgents(process.cwd());
+    expect(agents.length).toBeGreaterThanOrEqual(5);
+    expect(agents.every((a) => a.name.startsWith('review/'))).toBe(true);
+  });
+
+  it('getReviewAgents includes overrides', () => {
+    const projectRoot = createTempDir('drs-get-review-agents-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'quality'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'quality', 'agent.md'),
+      '---\ndescription: Custom quality\n---\n\nCustom quality prompt\n'
+    );
+
+    const agents = getReviewAgents(projectRoot);
+    const quality = agents.find((a) => a.name === 'review/quality');
+    expect(quality?.description).toBe('Custom quality');
+  });
+
+  it('listAgents returns all agent names as strings', () => {
+    const names = listAgents(process.cwd());
+    expect(names).toContain('review/security');
+    expect(names).toContain('review/quality');
+    expect(names).toContain('review/style');
+    expect(names).toContain('review/performance');
+    expect(names).toContain('review/documentation');
+  });
+
+  it('listAgents reflects overrides without duplication', () => {
+    const projectRoot = createTempDir('drs-list-agents-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      '---\ndescription: Override\n---\n\nOverride prompt\n'
+    );
+
+    const names = listAgents(projectRoot);
+    const securityCount = names.filter((n) => n === 'review/security').length;
+    expect(securityCount).toBe(1);
   });
 });
