@@ -26,7 +26,7 @@ import {
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
 import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
-import type { RuntimeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../runtime/client.js';
 import { getDescriberModelOverride } from './config.js';
 
 /**

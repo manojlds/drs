@@ -75,21 +75,22 @@ jobs:
       - name: Build DRS
         run: npm run build
 
-      - name: Resolve OpenCode provider key
+      - name: Resolve model provider key
         env:
+          DRS_PROVIDER_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
         run: |
-          RESOLVED_KEY="${OPENCODE_API_KEY:-$OPENCODE_ZEN_API_KEY}"
+          # Prefer DRS_PROVIDER_API_KEY; fall back to legacy OPENCODE_API_KEY
+          RESOLVED_KEY="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
 
           if [ -z "$RESOLVED_KEY" ]; then
-            echo "❌ Missing OpenCode provider key. Configure OPENCODE_API_KEY (or legacy OPENCODE_ZEN_API_KEY) in repository secrets."
+            echo "❌ Missing model provider key. Configure DRS_PROVIDER_API_KEY in repository secrets."
             exit 1
           fi
 
+          # Expose under the name the custom provider config expects
           echo "OPENCODE_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
-          echo "OPENCODE_ZEN_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
-          echo "✅ OpenCode provider key resolved"
+          echo "✅ Model provider key resolved"
 
       - name: Review Pull Request (Trusted Contributor)
         env:
@@ -101,7 +102,7 @@ jobs:
           echo "🚀 Starting PR review for trusted contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (trusted)"
           if [ -z "$OPENCODE_API_KEY" ]; then
-            echo "❌ OPENCODE_API_KEY is not available in this step"
+            echo "❌ Provider API key is not available in this step"
             exit 1
           fi
 
@@ -148,21 +149,22 @@ jobs:
       - name: Build DRS
         run: npm run build
 
-      - name: Resolve OpenCode provider key
+      - name: Resolve model provider key
         env:
+          DRS_PROVIDER_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
         run: |
-          RESOLVED_KEY="${OPENCODE_API_KEY:-$OPENCODE_ZEN_API_KEY}"
+          # Prefer DRS_PROVIDER_API_KEY; fall back to legacy OPENCODE_API_KEY
+          RESOLVED_KEY="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
 
           if [ -z "$RESOLVED_KEY" ]; then
-            echo "❌ Missing OpenCode provider key. Configure OPENCODE_API_KEY (or legacy OPENCODE_ZEN_API_KEY) in repository secrets."
+            echo "❌ Missing model provider key. Configure DRS_PROVIDER_API_KEY in repository secrets."
             exit 1
           fi
 
+          # Expose under the name the custom provider config expects
           echo "OPENCODE_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
-          echo "OPENCODE_ZEN_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
-          echo "✅ OpenCode provider key resolved"
+          echo "✅ Model provider key resolved"
 
       - name: Review Pull Request (External Contributor)
         env:
@@ -174,7 +176,7 @@ jobs:
           echo "🚀 Starting PR review for external contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (external - approved)"
           if [ -z "$OPENCODE_API_KEY" ]; then
-            echo "❌ OPENCODE_API_KEY is not available in this step"
+            echo "❌ Provider API key is not available in this step"
             exit 1
           fi
 

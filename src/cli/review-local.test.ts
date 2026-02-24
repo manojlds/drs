@@ -58,7 +58,7 @@ vi.mock('../lib/comment-formatter.js', () => ({
 }));
 
 const baseConfig = {
-  opencode: {},
+  pi: {},
   gitlab: { url: '', token: '' },
   github: { token: '' },
   review: {

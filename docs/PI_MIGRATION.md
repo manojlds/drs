@@ -10,7 +10,7 @@ This guide covers migration from legacy OpenCode-based setups to the Pi-based DR
 
 2. **DRS uses Pi in-process runtime only**
    - Remote runtime endpoints are not supported.
-   - Legacy endpoint settings (`PI_SERVER`, `OPENCODE_SERVER`, `pi.serverUrl`) are ignored.
+   - Legacy endpoint settings (`PI_SERVER`, `pi.serverUrl`) are ignored.
 
 3. **Runtime config key is `pi`**
    - Use `pi` for provider/runtime options that apply to in-process execution.
@@ -30,7 +30,7 @@ This guide covers migration from legacy OpenCode-based setups to the Pi-based DR
    ```
 
 2. **Remove legacy runtime endpoint settings**
-   - Remove `PI_SERVER` / `OPENCODE_SERVER` from local shells and CI variables.
+   - Remove `PI_SERVER` from local shells and CI variables.
    - DRS runs Pi in-process and does not use remote runtime endpoints.
 
 3. **Update configuration keys (if needed)**
@@ -76,7 +76,7 @@ npm run check:all
 - [ ] Provider API key exported
 - [ ] `GITLAB_TOKEN` set for MR reviews
 - [ ] `GITHUB_TOKEN` set for PR reviews
-- [ ] No legacy runtime endpoint variables (`PI_SERVER`, `OPENCODE_SERVER`) are set
+- [ ] No legacy runtime endpoint variables (`PI_SERVER`) are set
 
 ## Troubleshooting
 

@@ -58,7 +58,7 @@ export interface PiSessionApi {
   }): Promise<unknown>;
   messages(input: { path: { id: string } }): Promise<{ data?: PiSessionMessage[] }>;
   delete(input: { path: { id: string } }): Promise<unknown>;
-  sendMessage?(input: { path: { id: string }; body: { content: string } }): Promise<unknown>;
+  sendMessage(input: { path: { id: string }; body: { content: string } }): Promise<unknown>;
 }
 
 export interface PiClient {

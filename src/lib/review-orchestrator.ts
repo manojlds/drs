@@ -16,7 +16,7 @@ import {
   getUnifiedModelOverride,
   type ModelOverrides,
 } from './config.js';
-import { createRuntimeClientInstance, type RuntimeClient } from '../opencode/client.js';
+import { createRuntimeClientInstance, type RuntimeClient } from '../runtime/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
@@ -117,8 +117,7 @@ export async function connectToRuntime(
     };
 
     const runtimeConfig = getRuntimeConfig(config);
-    const configuredRuntimeEndpoint =
-      runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined;
+    const configuredRuntimeEndpoint = runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? undefined;
 
     if (configuredRuntimeEndpoint) {
       console.log(

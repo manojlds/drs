@@ -53,7 +53,7 @@ cp .env.example .env
 # Edit .env and set:
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
 # - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
-# - Pi runtime runs in-process automatically (no PI_SERVER/OPENCODE_SERVER needed)
+# - Pi runtime runs in-process automatically (no remote server needed)
 # - Provider API Key: Set the API key for your chosen model provider
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)

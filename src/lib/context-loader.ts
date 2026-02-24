@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { DRSConfig } from './config.js';
-import { resolveReviewPaths } from '../opencode/path-config.js';
+import { resolveReviewPaths } from '../runtime/path-config.js';
 
 export interface AgentContext {
   /**

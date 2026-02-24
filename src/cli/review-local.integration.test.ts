@@ -18,7 +18,7 @@ vi.mock('simple-git', () => ({
   default: vi.fn(() => mocks.git),
 }));
 
-vi.mock('../opencode/client.js', () => ({
+vi.mock('../runtime/client.js', () => ({
   createRuntimeClientInstance: mocks.createRuntimeClientInstance,
 }));
 

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
 import type { DRSConfig } from '../lib/config.js';
-import { getBuiltInAgentPaths } from './opencode-paths.js';
+import { getBuiltInAgentPaths } from './built-in-paths.js';
 import { resolveReviewPaths } from './path-config.js';
 
 export interface AgentDefinition {

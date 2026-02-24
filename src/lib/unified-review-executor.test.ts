@@ -152,7 +152,7 @@ describe('unified-review-executor', () => {
       contextCompression: {
         maxTokens: 10000,
       },
-      opencode: {},
+      pi: {},
       gitlab: {
         url: 'https://gitlab.com',
         token: 'mock-token',

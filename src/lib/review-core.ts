@@ -13,8 +13,8 @@ import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { RuntimeClient } from '../opencode/client.js';
-import { loadReviewAgents } from '../opencode/agent-loader.js';
+import type { RuntimeClient } from '../runtime/client.js';
+import { loadReviewAgents } from '../runtime/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
 import {
@@ -357,7 +357,7 @@ function extractSkillNameFromToolOutput(content: string): string | undefined {
 }
 
 export async function runUnifiedReviewAgent(
-  opencode: RuntimeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -406,7 +406,7 @@ export async function runUnifiedReviewAgent(
       logger.agentInput(agentType, reviewPrompt);
     }
 
-    const session = await opencode.createSession({
+    const session = await runtime.createSession({
       agent: agentName,
       message: reviewPrompt,
       context: {
@@ -418,7 +418,7 @@ export async function runUnifiedReviewAgent(
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
 
-    for await (const message of opencode.streamMessages(session.id)) {
+    for await (const message of runtime.streamMessages(session.id)) {
       if (message.role === 'tool') {
         // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
         const skillFromLegacy =
@@ -458,7 +458,7 @@ export async function runUnifiedReviewAgent(
       logger.noSkillCalls(agentType);
     }
 
-    await opencode.closeSession(session.id);
+    await runtime.closeSession(session.id);
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -521,7 +521,7 @@ export async function runUnifiedReviewAgent(
 }
 
 export async function runReviewAgents(
-  opencode: RuntimeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -585,7 +585,7 @@ export async function runReviewAgents(
         logger.agentInput(agentType, reviewPrompt);
       }
 
-      const session = await opencode.createSession({
+      const session = await runtime.createSession({
         agent: agentName,
         message: reviewPrompt,
         context: {
@@ -598,7 +598,7 @@ export async function runReviewAgents(
       let fullResponse = '';
 
       // Collect results from this agent
-      for await (const message of opencode.streamMessages(session.id)) {
+      for await (const message of runtime.streamMessages(session.id)) {
         if (message.role === 'tool') {
           // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
           const skillFromLegacy =
@@ -641,7 +641,7 @@ export async function runReviewAgents(
         logger.noSkillCalls(agentType);
       }
 
-      await opencode.closeSession(session.id);
+      await runtime.closeSession(session.id);
 
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
@@ -714,7 +714,7 @@ export async function runReviewAgents(
 }
 
 export async function runReviewPipeline(
-  opencode: RuntimeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -727,7 +727,7 @@ export async function runReviewPipeline(
 
   if (mode === 'unified') {
     return runUnifiedReviewAgent(
-      opencode,
+      runtime,
       config,
       baseInstructions,
       reviewLabel,
@@ -740,7 +740,7 @@ export async function runReviewPipeline(
 
   if (mode === 'multi-agent') {
     return runReviewAgents(
-      opencode,
+      runtime,
       config,
       baseInstructions,
       reviewLabel,
@@ -752,7 +752,7 @@ export async function runReviewPipeline(
   }
 
   const unifiedResult = await runUnifiedReviewAgent(
-    opencode,
+    runtime,
     config,
     baseInstructions,
     reviewLabel,
@@ -782,7 +782,7 @@ export async function runReviewPipeline(
   }
 
   const deepResult = await runReviewAgents(
-    opencode,
+    runtime,
     config,
     baseInstructions,
     reviewLabel,
