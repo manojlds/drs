@@ -170,7 +170,7 @@ export class RuntimeClient {
   async initialize(): Promise<void> {
     if (this.baseUrl) {
       throw new Error(
-        `Remote Pi runtime endpoints are not supported by DRS. Remove baseUrl/PI_SERVER/opencode.serverUrl (received: ${this.baseUrl}).`
+        `Remote Pi runtime endpoints are not supported by DRS. Remove baseUrl/PI_SERVER (received: ${this.baseUrl}).`
       );
     }
 
@@ -416,7 +416,11 @@ export class RuntimeClient {
   }
 
   /**
-   * Stream messages from a session (polls until agent completes)
+   * Stream messages from a session.
+   *
+   * With the in-process Pi runtime, prompt() is synchronous so all messages
+   * are available immediately and the loop completes on the first iteration.
+   * The polling structure is retained for future remote-runtime compatibility.
    */
   async *streamMessages(sessionId: string): AsyncGenerator<SessionMessage> {
     if (!this.client) {
@@ -541,18 +545,7 @@ export class RuntimeClient {
     }
 
     try {
-      const sessionWithSendMessage = this.client.session as PiClient['session'] & {
-        sendMessage?: (args: {
-          path: { id: string };
-          body: { content: string };
-        }) => Promise<unknown>;
-      };
-
-      if (!sessionWithSendMessage.sendMessage) {
-        throw new Error('Pi runtime does not support follow-up messages for active sessions');
-      }
-
-      await sessionWithSendMessage.sendMessage({
+      await this.client.session.sendMessage({
         path: { id: sessionId },
         body: { content },
       });

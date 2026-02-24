@@ -308,7 +308,7 @@ function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
   return {
     ...config,
     pi: normalizedRuntime,
-    opencode: normalizedRuntime,
+    opencode: undefined,
   };
 }
 

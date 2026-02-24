@@ -34,7 +34,7 @@ vi.mock('./config.js', async () => {
 // Store mock client instance for verification
 let mockRuntimeClient: any;
 
-vi.mock('../opencode/client.js', () => {
+vi.mock('../runtime/client.js', () => {
   const createRuntimeClientInstance = vi.fn(async () => {
     mockRuntimeClient = {
       createSession: vi.fn(async () => ({ id: 'session-1' })),
@@ -70,7 +70,7 @@ vi.mock('../opencode/client.js', () => {
 
 vi.mock('./review-core.js', () => ({
   buildBaseInstructions: vi.fn((label: string) => `Instructions for ${label}`),
-  runReviewPipeline: vi.fn(async (_opencode, _config, _instructions, _label, files) => ({
+  runReviewPipeline: vi.fn(async (_runtime, _config, _instructions, _label, files) => ({
     issues: [
       {
         category: 'QUALITY',
@@ -158,7 +158,7 @@ describe('review-orchestrator', () => {
 
     it('should return all files when no ignore patterns', () => {
       const config = {
-        opencode: {},
+        pi: {},
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: {
@@ -233,7 +233,7 @@ describe('review-orchestrator', () => {
     });
 
     it('should handle connection failure', async () => {
-      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
       vi.mocked(createRuntimeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
 
       const config: DRSConfig = {
@@ -248,7 +248,7 @@ describe('review-orchestrator', () => {
     });
 
     it('should pass model overrides to runtime client', async () => {
-      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
       const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
 
       vi.mocked(getModelOverrides).mockReturnValue({
@@ -278,7 +278,7 @@ describe('review-orchestrator', () => {
     });
 
     it('should use process.cwd() when no working directory provided', async () => {
-      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
 
       const config: DRSConfig = {
         pi: {},
@@ -301,7 +301,7 @@ describe('review-orchestrator', () => {
 
     beforeEach(() => {
       mockConfig = {
-        opencode: {},
+        pi: {},
         review: {
           agents: ['security', 'quality'],
           ignorePatterns: ['*.test.ts'],
@@ -353,7 +353,7 @@ describe('review-orchestrator', () => {
     });
 
     it('should return empty result when all files are ignored', async () => {
-      const { createRuntimeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
       const { runReviewPipeline } = await import('./review-core.js');
       vi.mocked(createRuntimeClientInstance).mockClear();
       vi.mocked(runReviewPipeline).mockClear();

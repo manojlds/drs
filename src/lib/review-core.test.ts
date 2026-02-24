@@ -10,7 +10,7 @@ import {
   type AgentReviewResult,
 } from './review-core.js';
 import type { DRSConfig } from './config.js';
-import type { RuntimeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../runtime/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', () => ({
@@ -75,7 +75,7 @@ vi.mock('./comment-formatter.js', () => ({
   })),
 }));
 
-vi.mock('../opencode/agent-loader.js', () => ({
+vi.mock('../runtime/agent-loader.js', () => ({
   loadReviewAgents: vi.fn(() => [
     { name: 'review/security', description: 'Security review' },
     { name: 'review/quality', description: 'Code quality review' },

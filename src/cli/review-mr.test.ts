@@ -22,7 +22,7 @@ vi.mock('../lib/unified-review-executor.js', () => ({
 }));
 
 const baseConfig = {
-  opencode: {},
+  pi: {},
   gitlab: { url: 'https://gitlab.com', token: 'token' },
   github: { token: 'token' },
   review: {

@@ -4,7 +4,7 @@
 
 # Optional: Custom OpenAI-compatible provider
 # Uncomment and configure if you need a custom AI provider
-# opencode:
+# pi:
 #   provider:
 #     custom-provider:
 #       npm: "@ai-sdk/openai-compatible"

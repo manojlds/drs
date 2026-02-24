@@ -6,7 +6,7 @@
  * 2. Environment variable REVIEW_AGENT_<NAME>_MODEL
  * 3. defaultModel in DRS config
  * 4. Environment variable REVIEW_DEFAULT_MODEL
- * 5. (Falls through to opencode.jsonc, not tested here)
+ * 5. (Falls through to runtime defaults, not tested here)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -50,7 +50,6 @@ describe('Model Override Precedence', () => {
 
     return {
       pi: {},
-      opencode: {},
       gitlab: { url: '', token: '' },
       github: { token: '' },
       review: {

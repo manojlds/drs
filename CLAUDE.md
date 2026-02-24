@@ -23,11 +23,11 @@ This single command runs: format → lint:fix → build → test → format:chec
 
 ## Project Overview
 
-**DRS (Diff Review System)** is an AI-powered code review bot for GitLab MRs and GitHub PRs, built on OpenCode SDK and powered by Claude AI.
+**DRS (Diff Review System)** is an AI-powered code review bot for GitLab MRs and GitHub PRs, built on Pi SDK and powered by Claude AI.
 
 **Key Technologies:**
 - Node.js 20+ (TypeScript)
-- OpenCode SDK (@opencode-ai/sdk)
+- Pi SDK (@mariozechner/pi-coding-agent)
 - Claude AI (via Anthropic API)
 - GitLab: @gitbeaker/node
 - GitHub: @octokit/rest
@@ -39,7 +39,7 @@ This single command runs: format → lint:fix → build → test → format:chec
 
 ```
 drs/
-├── .opencode/agent/review/      # Review agent definitions
+├── .pi/agents/review/              # Review agent definitions
 │   ├── security.md              # Security vulnerabilities
 │   ├── quality.md               # Code quality
 │   ├── style.md                 # Style & conventions
@@ -50,7 +50,8 @@ drs/
 │   ├── cli/                     # CLI commands (review-local, review-mr, review-pr)
 │   ├── gitlab/                  # GitLab API integration
 │   ├── github/                  # GitHub API integration
-│   ├── opencode/                # OpenCode SDK wrapper
+│   ├── runtime/                 # Runtime client, agent/skill loaders, path config
+│   ├── pi/                      # Pi SDK in-process adapter
 │   └── lib/                     # Shared utilities (config, review logic)
 │
 └── tests/                       # Test files (*.test.ts)
@@ -91,8 +92,7 @@ npm run dev -- review-pr --owner user --repo name --pr 456  # Test GitHub PR
 **Config files** (in precedence order):
 1. `.drs/drs.config.yaml` - DRS config
 2. `.gitlab-review.yml` - Alternative location
-3. `.opencode/opencode.jsonc` - OpenCode config
-4. Environment variables
+3. Environment variables
 
 **Key options:**
 - `review.agents` - Which agents to run (security, quality, style, etc.)
@@ -115,8 +115,6 @@ OPENAI_API_KEY=sk-xxx          # For OpenAI models
 
 ### Optional
 ```bash
-OPENCODE_SERVER=http://localhost:3000  # Remote server (empty = in-process)
-GITLAB_URL=https://gitlab.com          # Custom GitLab instance
 REVIEW_AGENTS=security,quality         # Override agents
 ```
 
@@ -158,7 +156,7 @@ const config = {
 ## Common Tasks
 
 ### Adding a Review Agent
-1. Create `.opencode/agent/review/newagent.md`
+1. Create `.pi/agents/review/newagent.md` (or `.drs/agents/newagent/agent.md` for project overrides)
 2. Add YAML frontmatter (description, model)
 3. Write agent instructions
 4. Update config to include new agent

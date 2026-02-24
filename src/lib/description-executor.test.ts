@@ -3,7 +3,7 @@ import { runDescribeIfEnabled } from './description-executor.js';
 import type { DRSConfig } from './config.js';
 import type { PlatformClient, PullRequest } from './platform-client.js';
 import type { FileWithDiff } from './review-core.js';
-import type { RuntimeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../runtime/client.js';
 
 vi.mock('./describe-core.js', () => ({
   buildDescribeInstructions: vi.fn(() => 'describe instructions'),

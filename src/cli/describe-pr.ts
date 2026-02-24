@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { getDescriberModelOverride, getRuntimeConfig, type DRSConfig } from '../lib/config.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
-import { createRuntimeClientInstance } from '../opencode/client.js';
+import { createRuntimeClientInstance } from '../runtime/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
 import { loadGlobalContext } from '../lib/context-loader.js';
 import {
@@ -60,8 +60,7 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
   // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
   const runtimeConfig = getRuntimeConfig(config);
-  const configuredRuntimeEndpoint =
-    runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? process.env.OPENCODE_SERVER ?? undefined;
+  const configuredRuntimeEndpoint = runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? undefined;
 
   if (configuredRuntimeEndpoint) {
     console.log(

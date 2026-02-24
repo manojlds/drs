@@ -401,7 +401,7 @@ program
   .description('List available review agents')
   .action(async () => {
     try {
-      const { listAgents } = await import('../opencode/agent-loader.js');
+      const { listAgents } = await import('../runtime/agent-loader.js');
       const config = loadConfig(process.cwd());
       const agents = listAgents(process.cwd(), config);
 
