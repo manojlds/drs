@@ -117,6 +117,21 @@ function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
+function asBooleanRecord(value: unknown): Record<string, boolean> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const result: Record<string, boolean> = {};
+  let hasEntries = false;
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof val === 'boolean') {
+      result[key] = val;
+      hasEntries = true;
+    }
+  }
+  return hasEntries ? result : undefined;
+}
+
 function normalizeUsage(value: unknown): PiUsage | undefined {
   const usage = asRecord(value);
 
@@ -369,11 +384,16 @@ class PiSessionRuntime {
     }
   }
 
-  private resolveAgentSettings(agentName: string): { prompt?: string; model?: string } {
+  private resolveAgentSettings(agentName: string): {
+    prompt?: string;
+    model?: string;
+    tools?: Record<string, boolean>;
+  } {
     const agentConfig = asRecord(this.runtimeConfig.agent?.[agentName]);
     return {
       prompt: asString(agentConfig.prompt),
       model: asString(agentConfig.model),
+      tools: asBooleanRecord(agentConfig.tools),
     };
   }
 
@@ -404,30 +424,38 @@ class PiSessionRuntime {
     return model?.contextWindow;
   }
 
-  private isToolEnabled(toolName: string, defaultValue: boolean): boolean {
+  private isToolEnabled(
+    toolName: string,
+    defaultValue: boolean,
+    agentTools?: Record<string, boolean>
+  ): boolean {
+    // Per-agent tools take precedence over global config
+    if (agentTools && toolName in agentTools) {
+      return agentTools[toolName];
+    }
     const value = this.runtimeConfig.tools?.[toolName];
     return typeof value === 'boolean' ? value : defaultValue;
   }
 
-  private resolveTools(cwd: string): PiBuiltInTool[] {
+  private resolveTools(cwd: string, agentTools?: Record<string, boolean>): PiBuiltInTool[] {
     const tools: PiBuiltInTool[] = [];
 
-    if (this.isToolEnabled('Read', true)) {
+    if (this.isToolEnabled('Read', true, agentTools)) {
       tools.push(createReadTool(cwd));
     }
-    if (this.isToolEnabled('Bash', true)) {
+    if (this.isToolEnabled('Bash', true, agentTools)) {
       tools.push(createBashTool(cwd));
     }
-    if (this.isToolEnabled('Edit', false)) {
+    if (this.isToolEnabled('Edit', false, agentTools)) {
       tools.push(createEditTool(cwd));
     }
-    if (this.isToolEnabled('Write', false)) {
+    if (this.isToolEnabled('Write', false, agentTools)) {
       tools.push(createWriteTool(cwd));
     }
-    if (this.isToolEnabled('Grep', true)) {
+    if (this.isToolEnabled('Grep', true, agentTools)) {
       tools.push(createGrepTool(cwd));
     }
-    if (this.isToolEnabled('Glob', true)) {
+    if (this.isToolEnabled('Glob', true, agentTools)) {
       tools.push(createFindTool(cwd));
       tools.push(createLsTool(cwd));
     }
@@ -536,7 +564,7 @@ class PiSessionRuntime {
       model: this.resolveModel(settings.model),
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
-      tools: this.resolveTools(cwd),
+      tools: this.resolveTools(cwd, settings.tools),
       customTools: this.resolveCustomTools(cwd),
     });
 

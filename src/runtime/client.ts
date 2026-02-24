@@ -7,6 +7,7 @@
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { getLogger } from '../lib/logger.js';
 import { loadReviewAgents } from './agent-loader.js';
 import { resolveReviewPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
@@ -163,6 +164,7 @@ export class RuntimeClient {
   async initialize(): Promise<void> {
     // Start server in-process
     // Build runtime config programmatically from DRS config
+    const log = getLogger();
     const projectDir = this.directory ?? process.cwd();
     const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
 
@@ -198,7 +200,7 @@ export class RuntimeClient {
       }
 
       if (runtimeAgents.length > 0) {
-        console.log(`🧠 Loaded ${runtimeAgents.length} agent definitions for Pi runtime.`);
+        log.info(`Loaded ${runtimeAgents.length} agent definitions for Pi runtime`);
       }
     }
 
@@ -206,7 +208,7 @@ export class RuntimeClient {
     // This shows full system prompts, tools, and provider calls from Pi runtime.
     if (this.config.debug) {
       runtimeConfig.logLevel = 'DEBUG';
-      console.log('🔍 Pi runtime debug logging enabled');
+      log.debug('Pi runtime debug logging enabled');
     }
 
     // Add custom provider if configured in DRS config
@@ -214,12 +216,12 @@ export class RuntimeClient {
       // Deep clone and resolve environment variable references
       runtimeConfig.provider = this.resolveEnvReferences(this.config.provider);
       const providerNames = Object.keys(this.config.provider);
-      console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
+      log.info(`Custom provider configured: ${providerNames.join(', ')}`);
     }
 
     // Apply model overrides from DRS config
     if (this.config.modelOverrides && Object.keys(this.config.modelOverrides).length > 0) {
-      console.log('📋 Agent model configuration:');
+      log.info('Agent model configuration:');
 
       // Merge model overrides into agent configuration
       for (const [agentName, model] of Object.entries(this.config.modelOverrides)) {
@@ -228,10 +230,8 @@ export class RuntimeClient {
           ...entry,
           model,
         };
-        console.log(`  • ${agentName}: ${model}`);
+        log.info(`  ${agentName}: ${model}`);
       }
-
-      console.log('');
     }
 
     if (Object.keys(agentConfig).length > 0) {
@@ -261,11 +261,10 @@ export class RuntimeClient {
         .filter((agent) => agent.skills.length > 0);
 
       if (agentSkills.length > 0) {
-        console.log('🧩 Agent skill configuration:');
+        log.info('Agent skill configuration:');
         for (const agent of agentSkills) {
-          console.log(`  • ${agent.name}: ${agent.skills.join(', ')}`);
+          log.info(`  ${agent.name}: ${agent.skills.join(', ')}`);
         }
-        console.log('');
 
         runtimeConfig.agentSkills = Object.fromEntries(
           agentSkills.map((agent) => [agent.name, agent.skills])
@@ -275,12 +274,11 @@ export class RuntimeClient {
 
     // Debug: print final runtime config
     if (this.config.debug) {
-      console.log('🔧 DEBUG: Final Pi runtime configuration (after env resolution):');
-      console.log('─'.repeat(50));
+      log.debug('Final Pi runtime configuration (after env resolution):');
 
       // Show environment variable status for custom providers
       if (this.config.provider) {
-        console.log('\n📍 Environment variable status:');
+        log.debug('Environment variable status:');
         for (const [providerName, provider] of Object.entries(this.config.provider)) {
           const apiKeyConfig = provider.options?.apiKey;
           if (apiKeyConfig && typeof apiKeyConfig === 'string') {
@@ -289,16 +287,15 @@ export class RuntimeClient {
               const envVarName = envMatch[1];
               const envValue = process.env[envVarName];
               if (envValue) {
-                console.log(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
+                log.debug(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
               } else {
-                console.log(`  ✗ ${envVarName}: NOT SET`);
+                log.debug(`  ✗ ${envVarName}: NOT SET`);
               }
             } else {
-              console.log(`  • ${providerName}: API key is hardcoded (not env var)`);
+              log.debug(`  ${providerName}: API key is hardcoded (not env var)`);
             }
           }
         }
-        console.log('');
       }
 
       // Sanitize config to hide API keys
@@ -327,20 +324,15 @@ export class RuntimeClient {
         }
       }
 
-      console.log('Config being passed to Pi runtime:');
-      console.log(JSON.stringify(sanitizedConfig, null, 2));
+      log.debug('Config being passed to Pi runtime:', undefined, sanitizedConfig);
 
       const configuredAgentSkills = runtimeConfig.agentSkills as
         | Record<string, string[]>
         | undefined;
 
       if (configuredAgentSkills && Object.keys(configuredAgentSkills).length > 0) {
-        console.log('Agent skills configuration:');
-        console.log(JSON.stringify(configuredAgentSkills, null, 2));
+        log.debug('Agent skills configuration:', undefined, configuredAgentSkills);
       }
-
-      console.log('─'.repeat(50));
-      console.log('');
     }
 
     // Pi SDK reads provider-specific API keys from environment automatically
@@ -590,7 +582,7 @@ export class RuntimeClient {
         const envVarName = envMatch[1];
         const envValue = process.env[envVarName];
         if (!envValue) {
-          console.warn(`⚠️  Environment variable ${envVarName} is not set`);
+          getLogger().warn(`Environment variable ${envVarName} is not set`);
           return '' as T;
         }
         return envValue as T;

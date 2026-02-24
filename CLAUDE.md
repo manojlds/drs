@@ -27,7 +27,7 @@ This single command runs: format → lint:fix → build → test → format:chec
 
 **Key Technologies:**
 - Node.js 20+ (TypeScript)
-- Pi SDK (@mariozechner/pi-coding-agent)
+- Pi SDK (@mariozechner/pi-coding-agent) — bundled, runs in-process
 - Claude AI (via Anthropic API)
 - GitLab: @gitbeaker/node
 - GitHub: @octokit/rest
@@ -39,22 +39,32 @@ This single command runs: format → lint:fix → build → test → format:chec
 
 ```
 drs/
-├── .pi/agents/review/              # Review agent definitions
+├── .pi/agents/review/           # Built-in review agent definitions
 │   ├── security.md              # Security vulnerabilities
 │   ├── quality.md               # Code quality
 │   ├── style.md                 # Style & conventions
 │   ├── performance.md           # Performance issues
-│   └── documentation.md         # Doc accuracy
+│   ├── documentation.md         # Doc accuracy
+│   └── unified-reviewer.md     # Unified review agent
+│
+├── .drs/                        # Project-level customization
+│   ├── drs.config.yaml          # Main configuration
+│   ├── context.md               # Global project context (injected into all agents)
+│   ├── agents/                  # Custom/override agents
+│   │   ├── <name>/agent.md      #   Full agent override
+│   │   └── <name>/context.md    #   Additive context for built-in agent
+│   └── skills/                  # Custom skills
+│       └── <name>/SKILL.md      #   Skill definition
 │
 ├── src/
 │   ├── cli/                     # CLI commands (review-local, review-mr, review-pr)
 │   ├── gitlab/                  # GitLab API integration
 │   ├── github/                  # GitHub API integration
-│   ├── runtime/                 # Runtime client, agent/skill loaders, path config
-│   ├── pi/                      # Pi SDK in-process adapter
-│   └── lib/                     # Shared utilities (config, review logic)
+│   ├── runtime/                 # Runtime client, agent loader, path config
+│   ├── pi/                      # Pi SDK in-process adapter (sdk.ts)
+│   └── lib/                     # Shared utilities (config, review logic, logging)
 │
-└── tests/                       # Test files (*.test.ts)
+└── docs/                        # User-facing documentation
 ```
 
 ---
@@ -96,7 +106,10 @@ npm run dev -- review-pr --owner user --repo name --pr 456  # Test GitHub PR
 
 **Key options:**
 - `review.agents` - Which agents to run (security, quality, style, etc.)
+- `review.default.model` - Default model for all agents
+- `review.default.skills` - Default skills loaded for all agents
 - `review.ignorePatterns` - Files/patterns to exclude from review
+- `review.mode` - Review mode (`multi-agent`, `unified`, `hybrid`)
 
 ---
 
@@ -117,6 +130,18 @@ OPENAI_API_KEY=sk-xxx          # For OpenAI models
 ```bash
 REVIEW_AGENTS=security,quality         # Override agents
 ```
+
+---
+
+## Custom Agents & Skills
+
+See [docs/CUSTOM_AGENTS.md](docs/CUSTOM_AGENTS.md) for full documentation on:
+- Overriding built-in agents with `.drs/agents/<name>/agent.md`
+- Adding context to built-in agents with `.drs/agents/<name>/context.md`
+- Creating brand new custom agents
+- Configuring per-agent skills and tools
+- Global project context via `.drs/context.md`
+- Custom skill definitions in `.drs/skills/`
 
 ---
 
@@ -156,10 +181,11 @@ const config = {
 ## Common Tasks
 
 ### Adding a Review Agent
-1. Create `.pi/agents/review/newagent.md` (or `.drs/agents/newagent/agent.md` for project overrides)
-2. Add YAML frontmatter (description, model)
+1. Create `.pi/agents/review/newagent.md` (built-in) or `.drs/agents/newagent/agent.md` (project override/custom)
+2. Add YAML frontmatter (description, model, tools)
 3. Write agent instructions
-4. Update config to include new agent
+4. Add agent name to `review.agents` in config
+5. **Run `npm run check:all`**
 
 ### Adding a CLI Command
 1. Create file in `src/cli/`
@@ -177,6 +203,27 @@ const config = {
 npm run lint:fix     # Auto-fix what's possible
 npm run lint         # Check remaining issues
 ```
+
+---
+
+## Architecture Notes
+
+### Agent Loading Pipeline
+1. Built-in agents loaded from `.pi/agents/review/`
+2. Custom agents loaded from `.drs/agents/` (auto-prefixed with `review/`)
+3. Overrides replace built-in prompts; context.md is additive
+4. Per-agent tools from frontmatter override global tool config
+5. Per-agent skills merged with `review.default.skills`
+
+### Process Exit Pattern
+- Library code uses `exitProcess()` from `src/lib/exit.ts` (testable)
+- CLI entry point (`src/cli/index.ts`) uses `process.exit()` directly
+- Tests use `installTestExitHandler()` to capture exit codes
+
+### Logging
+- `src/lib/logger.ts` provides structured logging (human + JSON formats)
+- CI/runtime code (`runner.ts`, `client.ts`) uses `getLogger()`
+- CLI display code uses `console` + `chalk` (user-facing terminal output)
 
 ---
 
@@ -212,7 +259,11 @@ npm run lint         # Check remaining issues
 - **README.md** - User guide and quick start
 - **ARCHITECTURE.md** - Technical architecture details
 - **DEVELOPMENT.md** - Local testing guide
-- **CLAUDE.md** - This file (AI assistant reference)
+- **docs/CUSTOM_AGENTS.md** - Custom agents, skills, and context guide
+- **docs/GITLAB_CI_INTEGRATION.md** - GitLab CI setup
+- **docs/GITHUB_ACTIONS_INTEGRATION.md** - GitHub Actions setup
+- **docs/MODEL_OVERRIDES.md** - Per-agent model configuration
+- **AGENTS.md** - This file (AI assistant reference)
 
 ---
 
@@ -225,5 +276,5 @@ npm run lint         # Check remaining issues
 
 ---
 
-**Last Updated**: 2026-01-17
+**Last Updated**: 2026-02-24
 **Repository**: https://github.com/manojlds/drs

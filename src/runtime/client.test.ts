@@ -120,6 +120,7 @@ describe('RuntimeClient', () => {
               'review/security': expect.objectContaining({
                 prompt: 'Security prompt',
                 model: 'anthropic/claude-security',
+                tools: { Read: true },
               }),
               'review/quality': expect.objectContaining({
                 prompt: 'Quality prompt',
@@ -161,6 +162,52 @@ describe('RuntimeClient', () => {
             agentSkills: {
               'review/security': ['baseline-review', 'security-audit'],
             },
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
+    it('passes per-agent tool overrides to Pi runtime config', async () => {
+      mocks.loadReviewAgents.mockReturnValue([
+        {
+          name: 'review/security',
+          path: '/tmp/security.md',
+          description: 'Security agent',
+          prompt: 'Security prompt',
+          tools: { Read: true, Bash: false, Edit: true },
+        },
+        {
+          name: 'review/quality',
+          path: '/tmp/quality.md',
+          description: 'Quality agent',
+          prompt: 'Quality prompt',
+          // No tools override — uses global defaults
+        },
+      ] as any);
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config: {
+          review: {
+            agents: ['security', 'quality'],
+            default: { skills: [] },
+          },
+        } as any,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agent: expect.objectContaining({
+              'review/security': expect.objectContaining({
+                tools: { Read: true, Bash: false, Edit: true },
+              }),
+              'review/quality': expect.not.objectContaining({
+                tools: expect.anything(),
+              }),
+            }),
           }),
         })
       );
@@ -374,7 +421,7 @@ describe('RuntimeClient', () => {
     });
 
     it('warns when referenced environment variables are missing', async () => {
-      const warnSpy = vi.spyOn(console, 'warn');
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const originalEnv = process.env.NONEXISTENT_VAR;
       delete process.env.NONEXISTENT_VAR;
 
@@ -394,10 +441,13 @@ describe('RuntimeClient', () => {
           } as any,
         });
 
-        expect(warnSpy).toHaveBeenCalledWith('⚠️  Environment variable NONEXISTENT_VAR is not set');
+        // Logger outputs warning via console.log (human format)
+        const allOutput = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(allOutput).toContain('NONEXISTENT_VAR is not set');
 
         await client.shutdown();
       } finally {
+        logSpy.mockRestore();
         if (originalEnv !== undefined) {
           process.env.NONEXISTENT_VAR = originalEnv;
         }
