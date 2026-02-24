@@ -304,6 +304,24 @@ function getConfiguredSkillsForAgent(config: DRSConfig, agentType: string): stri
   return [...new Set([...defaultSkills, ...agentSkills])];
 }
 
+/**
+ * Detect skill loading from Pi's native flow.
+ *
+ * Pi agents load skills by reading SKILL.md files via the `read` tool.
+ * This matches tool output that contains a SKILL.md path and returns
+ * the skill name (parent directory name of SKILL.md).
+ */
+function extractSkillNameFromReadToolOutput(
+  toolName: string | undefined,
+  content: string
+): string | undefined {
+  if (toolName !== 'read') return undefined;
+  // Match a path ending in /skills/<name>/SKILL.md (case-insensitive)
+  const match = content.match(/(?:^|\n)\s*---\s*\n[\s\S]*?name:\s*([\w.-]+)[\s\S]*?---/i);
+  if (match?.[1]) return match[1];
+  return undefined;
+}
+
 function extractSkillNameFromToolOutput(content: string): string | undefined {
   const trimmed = content.trim();
   if (!trimmed) {
@@ -402,14 +420,17 @@ export async function runUnifiedReviewAgent(
 
     for await (const message of opencode.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        if (message.toolName === 'skill') {
-          const skillName = extractSkillNameFromToolOutput(message.content);
-          if (skillName) {
-            logger.skillLoaded(skillName, agentType);
-            sawSkillToolCall = true;
-          } else {
-            logger.toolOutput(message.toolName, agentType, message.content);
-          }
+        // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
+        const skillFromLegacy =
+          message.toolName === 'skill'
+            ? extractSkillNameFromToolOutput(message.content)
+            : undefined;
+        const skillFromRead = extractSkillNameFromReadToolOutput(message.toolName, message.content);
+        const skillName = skillFromLegacy ?? skillFromRead;
+
+        if (skillName) {
+          logger.skillLoaded(skillName, agentType);
+          sawSkillToolCall = true;
         } else {
           logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
         }
@@ -579,14 +600,20 @@ export async function runReviewAgents(
       // Collect results from this agent
       for await (const message of opencode.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          if (message.toolName === 'skill') {
-            const skillName = extractSkillNameFromToolOutput(message.content);
-            if (skillName) {
-              logger.skillLoaded(skillName, agentType);
-              sawSkillToolCall = true;
-            } else {
-              logger.toolOutput(message.toolName, agentType, message.content);
-            }
+          // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
+          const skillFromLegacy =
+            message.toolName === 'skill'
+              ? extractSkillNameFromToolOutput(message.content)
+              : undefined;
+          const skillFromRead = extractSkillNameFromReadToolOutput(
+            message.toolName,
+            message.content
+          );
+          const skillName = skillFromLegacy ?? skillFromRead;
+
+          if (skillName) {
+            logger.skillLoaded(skillName, agentType);
+            sawSkillToolCall = true;
           } else {
             logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
           }

@@ -19,7 +19,7 @@ loadDotenv();
 
 const shouldRunLiveE2E = !process.env.CI && process.env.DRS_E2E_LIVE === '1';
 const liveModel =
-  process.env.DRS_E2E_MODEL ?? process.env.REVIEW_DEFAULT_MODEL ?? 'opencode/glm-5-free';
+  process.env.DRS_E2E_MODEL ?? process.env.REVIEW_DEFAULT_MODEL ?? 'opencode/minimax-m2.5-free';
 
 function runReviewLocalCli(
   cwd: string,
