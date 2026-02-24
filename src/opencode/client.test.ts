@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OpencodeClient, createOpencodeClient, createOpencodeClientInstance } from './client.js';
+import { RuntimeClient, createRuntimeClient, createRuntimeClientInstance } from './client.js';
 
 function createRuntime(
   sessionOverrides: Partial<{
@@ -39,7 +39,7 @@ vi.mock('./agent-loader.js', () => ({
   loadReviewAgents: mocks.loadReviewAgents,
 }));
 
-describe('OpencodeClient', () => {
+describe('RuntimeClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -51,15 +51,15 @@ describe('OpencodeClient', () => {
 
   describe('constructor', () => {
     it('creates an instance with minimal config', () => {
-      const client = new OpencodeClient({
+      const client = new RuntimeClient({
         directory: '/test/dir',
       });
 
-      expect(client).toBeInstanceOf(OpencodeClient);
+      expect(client).toBeInstanceOf(RuntimeClient);
     });
 
     it('supports optional model overrides and provider config', () => {
-      const client = new OpencodeClient({
+      const client = new RuntimeClient({
         modelOverrides: {
           'review/security': 'anthropic/claude-opus-4-5-20251101',
         },
@@ -76,13 +76,13 @@ describe('OpencodeClient', () => {
         } as any,
       });
 
-      expect(client).toBeInstanceOf(OpencodeClient);
+      expect(client).toBeInstanceOf(RuntimeClient);
     });
   });
 
   describe('initialize', () => {
     it('fails fast when remote endpoint is configured', async () => {
-      const client = new OpencodeClient({
+      const client = new RuntimeClient({
         baseUrl: 'http://localhost:3000',
       });
 
@@ -108,7 +108,7 @@ describe('OpencodeClient', () => {
         },
       ] as any);
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
         config: {
           review: {
@@ -159,7 +159,7 @@ describe('OpencodeClient', () => {
         },
       } as any;
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: projectRoot,
         config,
       });
@@ -181,14 +181,14 @@ describe('OpencodeClient', () => {
 
   describe('createSession', () => {
     it('throws error if not initialized', async () => {
-      const client = new OpencodeClient({});
+      const client = new RuntimeClient({});
 
       await expect(
         client.createSession({
           agent: 'review/security',
           message: 'Review this code',
         })
-      ).rejects.toThrow('OpenCode client not initialized');
+      ).rejects.toThrow('Runtime client not initialized');
     });
 
     it('maps authentication errors to actionable messages', async () => {
@@ -200,7 +200,7 @@ describe('OpencodeClient', () => {
         })
       );
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
       });
 
@@ -221,7 +221,7 @@ describe('OpencodeClient', () => {
         })
       );
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
       });
 
@@ -242,7 +242,7 @@ describe('OpencodeClient', () => {
         })
       );
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
       });
 
@@ -257,9 +257,9 @@ describe('OpencodeClient', () => {
 
   describe('lifecycle and helper methods', () => {
     it('streamMessages throws if not initialized', async () => {
-      const client = new OpencodeClient({});
+      const client = new RuntimeClient({});
       const generator = client.streamMessages('session-123');
-      await expect(generator.next()).rejects.toThrow('OpenCode client not initialized');
+      await expect(generator.next()).rejects.toThrow('Runtime client not initialized');
     });
 
     it('applies configured model pricing when runtime cost is missing or zero', async () => {
@@ -289,7 +289,7 @@ describe('OpencodeClient', () => {
         })
       );
 
-      const client = await createOpencodeClientInstance({
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
         config: {
           review: {
@@ -321,19 +321,19 @@ describe('OpencodeClient', () => {
     });
 
     it('closeSession throws if not initialized', async () => {
-      const client = new OpencodeClient({});
+      const client = new RuntimeClient({});
       await expect(client.closeSession('session-123')).rejects.toThrow(
-        'OpenCode client not initialized'
+        'Runtime client not initialized'
       );
     });
 
     it('getServerUrl throws when server is not initialized', () => {
-      const client = new OpencodeClient({});
+      const client = new RuntimeClient({});
       expect(() => client.getServerUrl()).toThrow('Server not initialized');
     });
 
     it('shutdown does not throw when no runtime is active', async () => {
-      const client = new OpencodeClient({});
+      const client = new RuntimeClient({});
       await expect(client.shutdown()).resolves.toBeUndefined();
     });
   });
@@ -344,7 +344,7 @@ describe('OpencodeClient', () => {
       process.env.TEST_API_KEY = 'test-key-123';
 
       try {
-        const client = await createOpencodeClientInstance({
+        const client = await createRuntimeClientInstance({
           directory: process.cwd(),
           provider: {
             'test-provider': {
@@ -389,7 +389,7 @@ describe('OpencodeClient', () => {
       delete process.env.NONEXISTENT_VAR;
 
       try {
-        const client = await createOpencodeClientInstance({
+        const client = await createRuntimeClientInstance({
           directory: process.cwd(),
           provider: {
             'test-provider': {
@@ -416,20 +416,20 @@ describe('OpencodeClient', () => {
   });
 
   describe('factory functions', () => {
-    it('createOpencodeClient returns an uninitialized client instance', () => {
-      const client = createOpencodeClient({
+    it('createRuntimeClient returns an uninitialized client instance', () => {
+      const client = createRuntimeClient({
         directory: process.cwd(),
       });
 
-      expect(client).toBeInstanceOf(OpencodeClient);
+      expect(client).toBeInstanceOf(RuntimeClient);
     });
 
-    it('createOpencodeClientInstance initializes in-process runtime', async () => {
-      const client = await createOpencodeClientInstance({
+    it('createRuntimeClientInstance initializes in-process runtime', async () => {
+      const client = await createRuntimeClientInstance({
         directory: process.cwd(),
       });
 
-      expect(client).toBeInstanceOf(OpencodeClient);
+      expect(client).toBeInstanceOf(RuntimeClient);
       expect(mocks.createPiInProcessServer).toHaveBeenCalled();
 
       await client.shutdown();

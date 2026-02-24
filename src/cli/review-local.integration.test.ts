@@ -20,7 +20,6 @@ vi.mock('simple-git', () => ({
 
 vi.mock('../opencode/client.js', () => ({
   createRuntimeClientInstance: mocks.createRuntimeClientInstance,
-  createOpencodeClientInstance: mocks.createRuntimeClientInstance,
 }));
 
 const simulatedDiff = [

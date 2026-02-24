@@ -296,11 +296,6 @@ export async function executeReview(
   }
 }
 
-/**
- * @deprecated Use connectToRuntime.
- */
-export const connectToOpenCode = connectToRuntime;
-
 // Re-export display functions from core for backward compatibility
 export const displayReviewSummary = displaySummary;
 export const hasBlockingIssues = checkBlockingIssues;

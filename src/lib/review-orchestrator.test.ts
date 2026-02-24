@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   filterIgnoredFiles,
-  connectToOpenCode,
+  connectToRuntime,
   executeReview,
   type ReviewSource,
 } from './review-orchestrator.js';
@@ -32,11 +32,11 @@ vi.mock('./config.js', async () => {
 });
 
 // Store mock client instance for verification
-let mockOpencodeClient: any;
+let mockRuntimeClient: any;
 
 vi.mock('../opencode/client.js', () => {
   const createRuntimeClientInstance = vi.fn(async () => {
-    mockOpencodeClient = {
+    mockRuntimeClient = {
       createSession: vi.fn(async () => ({ id: 'session-1' })),
       streamMessages: vi.fn(async function* () {
         yield {
@@ -60,12 +60,11 @@ vi.mock('../opencode/client.js', () => {
       shutdown: vi.fn(async () => {}),
       getMinContextWindow: vi.fn(() => undefined),
     };
-    return mockOpencodeClient;
+    return mockRuntimeClient;
   });
 
   return {
     createRuntimeClientInstance,
-    createOpencodeClientInstance: createRuntimeClientInstance,
   };
 });
 
@@ -202,14 +201,14 @@ describe('review-orchestrator', () => {
     });
   });
 
-  describe('connectToOpenCode', () => {
+  describe('connectToRuntime', () => {
     it('should connect to in-process Pi runtime successfully', async () => {
       const config: DRSConfig = {
         pi: {},
         review: {},
       } as DRSConfig;
 
-      const client = await connectToOpenCode(config, '/test/dir');
+      const client = await connectToRuntime(config, '/test/dir');
 
       expect(client).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -226,7 +225,7 @@ describe('review-orchestrator', () => {
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config, '/test/dir');
+      await connectToRuntime(config, '/test/dir');
 
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('Ignoring configured runtime endpoint')
@@ -242,7 +241,7 @@ describe('review-orchestrator', () => {
         review: {},
       } as DRSConfig;
 
-      await expect(connectToOpenCode(config)).rejects.toThrow('Connection failed');
+      await expect(connectToRuntime(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to connect to Pi runtime')
       );
@@ -264,7 +263,7 @@ describe('review-orchestrator', () => {
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config, '/test/dir', { debug: true });
+      await connectToRuntime(config, '/test/dir', { debug: true });
 
       expect(createRuntimeClientInstance).toHaveBeenCalledWith({
         config,
@@ -286,7 +285,7 @@ describe('review-orchestrator', () => {
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config);
+      await connectToRuntime(config);
 
       expect(createRuntimeClientInstance).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -536,7 +535,7 @@ describe('review-orchestrator', () => {
         source
       );
 
-      expect(mockOpencodeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
     });
 
     it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
@@ -565,10 +564,10 @@ describe('review-orchestrator', () => {
         source
       );
 
-      expect(mockOpencodeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
     });
 
-    it('should shutdown OpenCode client after review', async () => {
+    it('should shutdown runtime client after review', async () => {
       const source: ReviewSource = {
         name: 'Test review',
         files: ['src/app.ts'],
@@ -578,10 +577,10 @@ describe('review-orchestrator', () => {
       await executeReview(mockConfig, source);
 
       // Verify shutdown was called on the mock client
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode client even on error', async () => {
+    it('should shutdown runtime client even on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Review failed'));
 
@@ -594,7 +593,7 @@ describe('review-orchestrator', () => {
       await expect(executeReview(mockConfig, source)).rejects.toThrow('Review failed');
 
       // Verify shutdown was called even on error
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
     it('should handle "All review agents failed" error specially', async () => {

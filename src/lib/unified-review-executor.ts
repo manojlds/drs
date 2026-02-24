@@ -85,7 +85,7 @@ export interface UnifiedReviewOptions {
   describe?: boolean;
   /** Post generated description during review */
   postDescription?: boolean;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print runtime configuration */
   debug?: boolean;
 }
 

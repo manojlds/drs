@@ -23,11 +23,6 @@ export interface RuntimeClientConfig {
   config?: DRSConfig;
 }
 
-/**
- * @deprecated Use RuntimeClientConfig.
- */
-export type OpencodeConfig = RuntimeClientConfig;
-
 const SERVER_START_TIMEOUT_MS = 10000;
 
 export interface SessionCreateOptions {
@@ -181,11 +176,10 @@ export class RuntimeClient {
 
     // Start server in-process
     // Build runtime config programmatically from DRS config
-    const originalCwd = process.cwd();
-    const projectDir = this.directory ?? originalCwd;
+    const projectDir = this.directory ?? process.cwd();
     const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
 
-    const opencodeConfig: Record<string, unknown> = {
+    const runtimeConfig: Record<string, unknown> = {
       // Tools available to DRS review agents
       tools: {
         Read: true,
@@ -224,14 +218,14 @@ export class RuntimeClient {
     // Set log level to DEBUG when --debug flag is used
     // This shows full system prompts, tools, and provider calls from Pi runtime.
     if (this.config.debug) {
-      opencodeConfig.logLevel = 'DEBUG';
+      runtimeConfig.logLevel = 'DEBUG';
       console.log('🔍 Pi runtime debug logging enabled');
     }
 
     // Add custom provider if configured in DRS config
     if (this.config.provider && Object.keys(this.config.provider).length > 0) {
       // Deep clone and resolve environment variable references
-      opencodeConfig.provider = this.resolveEnvReferences(this.config.provider);
+      runtimeConfig.provider = this.resolveEnvReferences(this.config.provider);
       const providerNames = Object.keys(this.config.provider);
       console.log(`📦 Custom provider configured: ${providerNames.join(', ')}`);
     }
@@ -254,10 +248,10 @@ export class RuntimeClient {
     }
 
     if (Object.keys(agentConfig).length > 0) {
-      opencodeConfig.agent = agentConfig;
+      runtimeConfig.agent = agentConfig;
     }
 
-    opencodeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
+    runtimeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
 
     if (this.config.config) {
       const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
@@ -286,13 +280,13 @@ export class RuntimeClient {
         }
         console.log('');
 
-        opencodeConfig.agentSkills = Object.fromEntries(
+        runtimeConfig.agentSkills = Object.fromEntries(
           agentSkills.map((agent) => [agent.name, agent.skills])
         );
       }
     }
 
-    // Debug: Print final runtime config
+    // Debug: print final runtime config
     if (this.config.debug) {
       console.log('🔧 DEBUG: Final Pi runtime configuration (after env resolution):');
       console.log('─'.repeat(50));
@@ -321,7 +315,7 @@ export class RuntimeClient {
       }
 
       // Sanitize config to hide API keys
-      const sanitizedConfig = JSON.parse(JSON.stringify(opencodeConfig));
+      const sanitizedConfig = JSON.parse(JSON.stringify(runtimeConfig));
       if (sanitizedConfig.provider) {
         for (const providerName of Object.keys(sanitizedConfig.provider)) {
           if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
@@ -349,7 +343,7 @@ export class RuntimeClient {
       console.log('Config being passed to Pi runtime:');
       console.log(JSON.stringify(sanitizedConfig, null, 2));
 
-      const configuredAgentSkills = opencodeConfig.agentSkills as
+      const configuredAgentSkills = runtimeConfig.agentSkills as
         | Record<string, string[]>
         | undefined;
 
@@ -362,23 +356,12 @@ export class RuntimeClient {
       console.log('');
     }
 
-    // Change to project directory so the Pi runtime can resolve project-relative assets
-    const discoveryRoot = projectDir;
-    if (discoveryRoot !== originalCwd) {
-      process.chdir(discoveryRoot);
-    }
-
     // Pi SDK reads provider-specific API keys from environment automatically
     // (ANTHROPIC_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, etc.)
     this.inProcessServer = await createPiInProcessServer({
       timeout: SERVER_START_TIMEOUT_MS,
-      config: opencodeConfig,
+      config: runtimeConfig,
     });
-
-    // Restore original working directory
-    if (discoveryRoot !== originalCwd) {
-      process.chdir(originalCwd);
-    }
 
     this.client = this.inProcessServer.client;
     this.baseUrl = this.inProcessServer.server.url;
@@ -389,7 +372,7 @@ export class RuntimeClient {
    */
   async createSession(options: SessionCreateOptions): Promise<Session> {
     if (!this.client) {
-      throw new Error('OpenCode client not initialized. Call initialize() first.');
+      throw new Error('Runtime client not initialized. Call initialize() first.');
     }
 
     try {
@@ -437,7 +420,7 @@ export class RuntimeClient {
    */
   async *streamMessages(sessionId: string): AsyncGenerator<SessionMessage> {
     if (!this.client) {
-      throw new Error('OpenCode client not initialized. Call initialize() first.');
+      throw new Error('Runtime client not initialized. Call initialize() first.');
     }
 
     try {
@@ -554,7 +537,7 @@ export class RuntimeClient {
    */
   async sendMessage(sessionId: string, content: string): Promise<void> {
     if (!this.client) {
-      throw new Error('OpenCode client not initialized. Call initialize() first.');
+      throw new Error('Runtime client not initialized. Call initialize() first.');
     }
 
     try {
@@ -583,7 +566,7 @@ export class RuntimeClient {
    */
   async closeSession(sessionId: string): Promise<void> {
     if (!this.client) {
-      throw new Error('OpenCode client not initialized. Call initialize() first.');
+      throw new Error('Runtime client not initialized. Call initialize() first.');
     }
 
     try {
@@ -668,25 +651,4 @@ export async function createRuntimeClientInstance(
   const client = new RuntimeClient(config);
   await client.initialize();
   return client;
-}
-
-/**
- * @deprecated Use RuntimeClient.
- */
-export { RuntimeClient as OpencodeClient };
-
-/**
- * @deprecated Use createRuntimeClient instead.
- */
-export function createOpencodeClient(config: RuntimeClientConfig): RuntimeClient {
-  return createRuntimeClient(config);
-}
-
-/**
- * @deprecated Use createRuntimeClientInstance instead.
- */
-export async function createOpencodeClientInstance(
-  config: RuntimeClientConfig
-): Promise<RuntimeClient> {
-  return createRuntimeClientInstance(config);
 }
