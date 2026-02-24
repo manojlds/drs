@@ -328,4 +328,82 @@ describe('review-local integration (simulated diffs)', () => {
     buildPromptSpy.mockRestore();
     exitSpy.mockRestore();
   });
+
+  it('new custom agent runs when configured in review.agents', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    // Mock agent-loader to include a brand new custom agent
+    const agentLoader = await import('../runtime/agent-loader.js');
+    const loadAgentsSpy = vi.spyOn(agentLoader, 'loadReviewAgents').mockReturnValue([
+      {
+        name: 'review/api-reviewer',
+        path: '/project/.drs/agents/api-reviewer/agent.md',
+        description: 'API contract reviewer',
+        prompt: 'Review REST API contracts and OpenAPI compliance.',
+        model: 'anthropic/claude-sonnet-4-5-20250929',
+      },
+    ]);
+
+    const reviewPayload = {
+      timestamp: '2026-02-22T00:00:00Z',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 0 },
+        byCategory: {
+          SECURITY: 0,
+          QUALITY: 0,
+          STYLE: 0,
+          PERFORMANCE: 0,
+          DOCUMENTATION: 1,
+        },
+      },
+      issues: [
+        {
+          category: 'DOCUMENTATION',
+          severity: 'MEDIUM',
+          title: 'Missing API endpoint docs',
+          file: 'src/app.ts',
+          line: 2,
+          problem: 'New endpoint lacks OpenAPI annotations.',
+          solution: 'Add @swagger JSDoc annotations.',
+          references: [],
+          agent: 'api-reviewer',
+        },
+      ],
+    };
+
+    mocks.streamMessages.mockImplementation(async function* () {
+      yield {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: JSON.stringify(reviewPayload),
+        timestamp: new Date('2026-02-22T00:00:01Z'),
+      };
+    });
+
+    const configWithNewAgent = {
+      ...integrationConfig,
+      review: {
+        ...integrationConfig.review,
+        agents: ['api-reviewer'],
+      },
+    } as unknown as DRSConfig;
+
+    await reviewLocal(configWithNewAgent, { staged: false, jsonOutput: false, debug: false });
+
+    expect(mocks.createSession).toHaveBeenCalledTimes(1);
+    expect(mocks.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'review/api-reviewer',
+      })
+    );
+
+    const prompt = (mocks.createSession.mock.calls[0][0] as { message: string }).message;
+    expect(prompt).toContain('src/app.ts');
+
+    expect(exitSpy).not.toHaveBeenCalledWith(1);
+    loadAgentsSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
 });

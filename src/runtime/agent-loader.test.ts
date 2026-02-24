@@ -280,3 +280,119 @@ describe('getAgent / getReviewAgents / listAgents', () => {
     expect(securityCount).toBe(1);
   });
 });
+
+describe('new custom agent (not overriding built-in)', () => {
+  const tempDirs: string[] = [];
+
+  function createTempDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0, tempDirs.length)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('discovers a brand new agent alongside built-ins', () => {
+    const projectRoot = createTempDir('drs-new-agent-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'rails-reviewer'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'rails-reviewer', 'agent.md'),
+      [
+        '---',
+        'description: Rails-specific code reviewer',
+        'model: anthropic/claude-sonnet-4-5-20250929',
+        'color: "#CC0000"',
+        '---',
+        '',
+        'You are a Rails security and conventions reviewer.',
+        'Focus on mass assignment, strong params, and N+1 queries.',
+        '',
+      ].join('\n')
+    );
+
+    const agents = loadReviewAgents(projectRoot);
+
+    // New agent discovered
+    const rails = agents.find((a) => a.name === 'review/rails-reviewer');
+    expect(rails).toBeDefined();
+    expect(rails?.description).toBe('Rails-specific code reviewer');
+    expect(rails?.model).toBe('anthropic/claude-sonnet-4-5-20250929');
+    expect(rails?.color).toBe('#CC0000');
+    expect(rails?.prompt).toContain('mass assignment');
+    expect(rails?.prompt).toContain('N+1 queries');
+
+    // Built-ins still present
+    expect(agents.some((a) => a.name === 'review/security')).toBe(true);
+    expect(agents.some((a) => a.name === 'review/quality')).toBe(true);
+  });
+
+  it('new agent is accessible via getAgent', () => {
+    const projectRoot = createTempDir('drs-new-get-agent-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'api-reviewer'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'api-reviewer', 'agent.md'),
+      '---\ndescription: API contract reviewer\n---\n\nReview REST API contracts.\n'
+    );
+
+    const agent = getAgent(projectRoot, 'review/api-reviewer');
+    expect(agent).not.toBeNull();
+    expect(agent?.description).toBe('API contract reviewer');
+    expect(agent?.prompt).toBe('Review REST API contracts.');
+  });
+
+  it('new agent appears in getReviewAgents and listAgents', () => {
+    const projectRoot = createTempDir('drs-new-list-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'accessibility'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'accessibility', 'agent.md'),
+      '---\ndescription: Accessibility reviewer\n---\n\nCheck WCAG compliance.\n'
+    );
+
+    const reviewAgents = getReviewAgents(projectRoot);
+    expect(reviewAgents.some((a) => a.name === 'review/accessibility')).toBe(true);
+
+    const names = listAgents(projectRoot);
+    expect(names).toContain('review/accessibility');
+  });
+
+  it('new agent coexists with overrides of built-ins', () => {
+    const projectRoot = createTempDir('drs-new-plus-override-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'rails-reviewer'), { recursive: true });
+
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      '---\ndescription: Custom security\n---\n\nCustom security prompt\n'
+    );
+    writeFileSync(
+      join(agentsDir, 'rails-reviewer', 'agent.md'),
+      '---\ndescription: Rails reviewer\n---\n\nRails review prompt\n'
+    );
+
+    const agents = loadReviewAgents(projectRoot);
+
+    // Override replaces built-in
+    const security = agents.find((a) => a.name === 'review/security');
+    expect(security?.prompt).toBe('Custom security prompt');
+
+    // New agent added
+    const rails = agents.find((a) => a.name === 'review/rails-reviewer');
+    expect(rails?.prompt).toBe('Rails review prompt');
+
+    // Other built-ins still present
+    expect(agents.some((a) => a.name === 'review/quality')).toBe(true);
+    expect(agents.some((a) => a.name === 'review/style')).toBe(true);
+  });
+});
