@@ -4,6 +4,8 @@ Use DRS to review pull requests in GitHub Actions.
 
 ## Example Workflow
 
+Pi runtime is bundled with DRS — `npm install -g @diff-review-system/drs` is all you need.
+
 ```yaml
 name: PR Review
 

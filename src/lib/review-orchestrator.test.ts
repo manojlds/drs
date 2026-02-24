@@ -217,21 +217,6 @@ describe('review-orchestrator', () => {
       expect(client.shutdown).toBeDefined();
     });
 
-    it('should ignore configured runtime endpoints and keep in-process execution', async () => {
-      const config: DRSConfig = {
-        pi: {
-          serverUrl: 'http://localhost:3000',
-        },
-        review: {},
-      } as DRSConfig;
-
-      await connectToRuntime(config, '/test/dir');
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('Ignoring configured runtime endpoint')
-      );
-    });
-
     it('should handle connection failure', async () => {
       const { createRuntimeClientInstance } = await import('../runtime/client.js');
       vi.mocked(createRuntimeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));

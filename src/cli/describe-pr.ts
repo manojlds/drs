@@ -60,15 +60,6 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
   // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
   const runtimeConfig = getRuntimeConfig(config);
-  const configuredRuntimeEndpoint = runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? undefined;
-
-  if (configuredRuntimeEndpoint) {
-    console.log(
-      chalk.yellow(
-        `⚠ Ignoring configured runtime endpoint (${configuredRuntimeEndpoint}). DRS uses Pi SDK in-process only.\n`
-      )
-    );
-  }
 
   const runtimeClient = await createRuntimeClientInstance({
     directory: process.cwd(),

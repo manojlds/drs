@@ -70,7 +70,6 @@ describe('pi/sdk', () => {
 
   it('creates in-process runtime client', async () => {
     const runtime = await createPiInProcessServer({
-      timeout: 10000,
       config: {
         tools: {
           Read: true,
@@ -89,7 +88,6 @@ describe('pi/sdk', () => {
 
   it('registers custom provider model cost metadata when configured', async () => {
     const runtime = await createPiInProcessServer({
-      timeout: 10000,
       config: {
         provider: {
           opencode: {
@@ -141,7 +139,6 @@ describe('pi/sdk', () => {
 
   it('creates session, prompts with configured agent, and maps messages', async () => {
     const runtime = await createPiInProcessServer({
-      timeout: 10000,
       config: {
         agent: {
           'review/security': {

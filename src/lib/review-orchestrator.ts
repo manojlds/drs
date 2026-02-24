@@ -117,15 +117,6 @@ export async function connectToRuntime(
     };
 
     const runtimeConfig = getRuntimeConfig(config);
-    const configuredRuntimeEndpoint = runtimeConfig.serverUrl ?? process.env.PI_SERVER ?? undefined;
-
-    if (configuredRuntimeEndpoint) {
-      console.log(
-        chalk.yellow(
-          `⚠ Ignoring configured runtime endpoint (${configuredRuntimeEndpoint}). DRS uses Pi SDK in-process only.\n`
-        )
-      );
-    }
 
     return await createRuntimeClientInstance({
       directory: workingDir ?? process.cwd(),

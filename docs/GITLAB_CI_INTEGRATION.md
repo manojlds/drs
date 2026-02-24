@@ -4,6 +4,8 @@ This guide shows how to run DRS in GitLab CI using the Pi runtime.
 
 ## Minimal Pipeline
 
+Pi runtime is bundled with DRS — `npm install -g @diff-review-system/drs` is all you need.
+
 ```yaml
 stages:
   - review

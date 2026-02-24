@@ -81,16 +81,6 @@ describe('RuntimeClient', () => {
   });
 
   describe('initialize', () => {
-    it('fails fast when remote endpoint is configured', async () => {
-      const client = new RuntimeClient({
-        baseUrl: 'http://localhost:3000',
-      });
-
-      await expect(client.initialize()).rejects.toThrow(
-        'Remote Pi runtime endpoints are not supported by DRS'
-      );
-    });
-
     it('wires Pi runtime agent prompts and model overrides', async () => {
       mocks.loadReviewAgents.mockReturnValue([
         {

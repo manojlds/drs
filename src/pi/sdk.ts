@@ -662,7 +662,6 @@ class PiSessionRuntime {
  * Pi SDK adapter used by DRS runtime orchestration.
  */
 export function createPiInProcessServer(options: {
-  timeout: number;
   config: Record<string, unknown>;
 }): Promise<PiInProcessServer> {
   const runtime = new PiSessionRuntime(options.config);
