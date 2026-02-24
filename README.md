@@ -312,6 +312,8 @@ Built-in agent definitions live under `.pi/agents`.
 
 ## Customization
 
+> **Full guide**: See [docs/CUSTOM_AGENTS.md](docs/CUSTOM_AGENTS.md) for complete documentation on custom agents, skills, context, per-agent tools, and configuration examples.
+
 ### Override Default Agents
 
 Create custom agents in your project:
@@ -331,6 +333,48 @@ You are a security expert for this specific application.
 [Add your custom rules here]
 EOF
 ```
+
+### Add Context Without Overriding
+
+Add project-specific guidance to a built-in agent without replacing its prompt:
+
+```bash
+mkdir -p .drs/agents/quality
+cat > .drs/agents/quality/context.md << 'EOF'
+# Quality Context
+- Flag functions over 200 lines as HIGH
+- We use TypeORM — flag raw SQL queries
+EOF
+```
+
+### Global Project Context
+
+`.drs/context.md` is injected into **every** agent's prompt:
+
+```markdown
+# Project Context
+Node.js microservice using Express + TypeORM.
+Prioritize correctness, safety, and clarity.
+```
+
+### Create New Custom Agents
+
+Add agents that don't exist in the built-in set:
+
+```bash
+mkdir -p .drs/agents/api-reviewer
+cat > .drs/agents/api-reviewer/agent.md << 'EOF'
+---
+description: REST API contract reviewer
+tools:
+  Read: true
+  Grep: true
+---
+Review REST API changes for backward compatibility.
+EOF
+```
+
+Then add to config: `agents: [security, quality, api-reviewer]`
 
 ### Configure Review Behavior
 
@@ -569,6 +613,7 @@ Apache-2.0
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup
 - [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
+- [Custom Agents & Skills Guide](docs/CUSTOM_AGENTS.md) - Custom agents, context, skills, and per-agent tools
 - [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
 - [Architecture Document](ARCHITECTURE.md) - Pi runtime architecture
