@@ -1,5 +1,6 @@
-import chalk from 'chalk';
 import { loadConfig, validateConfig } from '../lib/config.js';
+import { exitProcess } from '../lib/exit.js';
+import { getLogger } from '../lib/logger.js';
 import { reviewMR } from '../cli/review-mr.js';
 
 export interface CIEnvironment {
@@ -36,29 +37,28 @@ export function detectCIEnvironment(): CIEnvironment {
  * Run review in CI/CD environment
  */
 export async function runCIReview(): Promise<void> {
-  console.log(chalk.bold.cyan('\n📋 DRS | CI/CD Analysis Runner\n'));
+  const log = getLogger();
+  log.info('DRS CI/CD Analysis Runner starting');
 
   // Detect environment
   const env = detectCIEnvironment();
 
   if (env.platform === 'unknown') {
-    console.error(chalk.red('Error: Unknown CI environment'));
-    console.error(chalk.gray('Currently supported: GitLab CI'));
-    process.exit(1);
+    log.error('Unknown CI environment. Currently supported: GitLab CI');
+    exitProcess(1);
   }
 
-  console.log(chalk.gray(`Detected CI platform: ${env.platform}\n`));
+  log.info(`Detected CI platform: ${env.platform}`);
 
   // Validate required environment variables
   if (!env.projectId) {
-    console.error(chalk.red('Error: CI_PROJECT_ID not found'));
-    process.exit(1);
+    log.error('CI_PROJECT_ID not found');
+    exitProcess(1);
   }
 
   if (!env.mrIid) {
-    console.error(chalk.red('Error: CI_MERGE_REQUEST_IID not found'));
-    console.error(chalk.gray('This job should only run on merge requests'));
-    process.exit(1);
+    log.error('CI_MERGE_REQUEST_IID not found. This job should only run on merge requests');
+    exitProcess(1);
   }
 
   // Load configuration
@@ -68,16 +68,13 @@ export async function runCIReview(): Promise<void> {
   try {
     validateConfig(config);
   } catch (error) {
-    console.error(
-      chalk.red('Configuration error:'),
-      error instanceof Error ? error.message : String(error)
-    );
-    process.exit(1);
+    log.error(`Configuration error: ${error instanceof Error ? error.message : String(error)}`);
+    exitProcess(1);
   }
 
-  console.log(chalk.gray(`Project: ${env.projectId}`));
-  console.log(chalk.gray(`MR: !${env.mrIid}`));
-  console.log(chalk.gray(`Branch: ${env.sourceBranch} → ${env.targetBranch}\n`));
+  log.info(
+    `Project: ${env.projectId} | MR: !${env.mrIid} | Branch: ${env.sourceBranch} → ${env.targetBranch}`
+  );
 
   // Run review
   try {
@@ -90,11 +87,10 @@ export async function runCIReview(): Promise<void> {
       postDescription: config.review.describe?.postDescription ?? false,
     });
 
-    console.log(chalk.green.bold('\n✓ Review complete\n'));
+    log.info('Review complete');
   } catch (error) {
-    console.error(chalk.red('\n✗ Review failed\n'));
-    console.error(error);
-    process.exit(1);
+    log.error('Review failed', undefined, error);
+    exitProcess(1);
   }
 }
 

@@ -11,6 +11,7 @@
 import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import { exitProcess } from './exit.js';
 import {
   getDescriberModelOverride,
   getModelOverrides,
@@ -306,7 +307,7 @@ export async function executeUnifiedReview(
     if (result.summary.bySeverity.CRITICAL > 0) {
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
       await runtimeClient.shutdown();
-      process.exit(1);
+      exitProcess(1);
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
@@ -326,7 +327,7 @@ export async function executeUnifiedReview(
       if (runtimeClient) {
         await runtimeClient.shutdown();
       }
-      process.exit(1);
+      exitProcess(1);
     }
     throw error;
   } finally {

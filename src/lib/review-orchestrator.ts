@@ -8,6 +8,7 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
+import { exitProcess } from './exit.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
@@ -277,7 +278,7 @@ export async function executeReview(
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
       await runtimeClient.shutdown();
-      process.exit(1);
+      exitProcess(1);
     }
     throw error;
   } finally {

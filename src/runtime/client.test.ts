@@ -421,7 +421,7 @@ describe('RuntimeClient', () => {
     });
 
     it('warns when referenced environment variables are missing', async () => {
-      const warnSpy = vi.spyOn(console, 'warn');
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const originalEnv = process.env.NONEXISTENT_VAR;
       delete process.env.NONEXISTENT_VAR;
 
@@ -441,10 +441,13 @@ describe('RuntimeClient', () => {
           } as any,
         });
 
-        expect(warnSpy).toHaveBeenCalledWith('⚠️  Environment variable NONEXISTENT_VAR is not set');
+        // Logger outputs warning via console.log (human format)
+        const allOutput = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(allOutput).toContain('NONEXISTENT_VAR is not set');
 
         await client.shutdown();
       } finally {
+        logSpy.mockRestore();
         if (originalEnv !== undefined) {
           process.env.NONEXISTENT_VAR = originalEnv;
         }
