@@ -30,6 +30,14 @@ import type { RuntimeClient } from '../runtime/client.js';
 import { getDescriberModelOverride } from './config.js';
 
 /**
+ * Pre-compressed diff data that can be passed to skip redundant compression.
+ */
+export interface PreCompressedDiffs {
+  files: FileWithDiff[];
+  compressionSummary: string;
+}
+
+/**
  * Detect platform type from PR/MR platform data
  */
 export function detectPlatform(pr: PullRequest): Platform {
@@ -55,23 +63,35 @@ export async function runDescribeAgent(
   label: string,
   files: FileWithDiff[],
   workingDir: string,
-  debug?: boolean
+  debug?: boolean,
+  preCompressed?: PreCompressedDiffs
 ): Promise<DescribeAgentResult> {
-  const filteredFileNames = new Set(
-    filterIgnoredFiles(
-      files.map((f) => f.filename),
-      config
-    )
-  );
-  const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
-  const describeModelIds = [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
-    (id): id is string => !!id
-  );
-  const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
-  const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+  let compressedFiles: FileWithDiff[];
+  let compressionSummary: string;
 
-  const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
-  const compressionSummary = formatCompressionSummary(compression);
+  if (preCompressed) {
+    // Use pre-compressed data from orchestrator (avoids duplicate compression)
+    compressedFiles = preCompressed.files;
+    compressionSummary = preCompressed.compressionSummary;
+  } else {
+    // Standalone describe — compress here
+    const filteredFileNames = new Set(
+      filterIgnoredFiles(
+        files.map((f) => f.filename),
+        config
+      )
+    );
+    const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
+    const describeModelIds = [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+      (id): id is string => !!id
+    );
+    const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
+    compressedFiles = compression.files;
+    compressionSummary = formatCompressionSummary(compression);
+  }
 
   if (compressionSummary) {
     console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
@@ -81,7 +101,7 @@ export async function runDescribeAgent(
   const projectContext = includeProjectContext ? loadGlobalContext(workingDir) : null;
   const instructions = buildDescribeInstructions(
     label,
-    compression.files,
+    compressedFiles,
     compressionSummary,
     projectContext ?? undefined
   );

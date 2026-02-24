@@ -129,6 +129,25 @@ vi.mock('./context-compression.js', () => ({
   resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
 
+vi.mock('./description-executor.js', () => ({
+  runDescribeAgent: vi.fn(async () => ({
+    description: { type: 'feat', title: 'Mocked', summary: ['summary'] },
+    usage: {
+      agentName: 'describe/pr-describer',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cost: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  })),
+}));
+
+vi.mock('./description-formatter.js', () => ({
+  formatDescribeSummary: vi.fn(() => 'Mocked describe summary'),
+}));
+
 describe('review-orchestrator', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -630,6 +649,60 @@ describe('review-orchestrator', () => {
 
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('Diff content trimmed to fit token budget')
+      );
+    });
+
+    it('should compress diffs only once when describe pass is enabled', async () => {
+      const { prepareDiffsForAgent } = await import('./context-compression.js');
+      const { runDescribeAgent } = await import('./description-executor.js');
+
+      vi.mocked(prepareDiffsForAgent).mockClear();
+      vi.mocked(runDescribeAgent).mockResolvedValueOnce({
+        description: { type: 'feat', title: 'Test', summary: ['summary'] },
+        usage: {
+          agentName: 'describe/pr-describer',
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          cost: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      } as any);
+
+      const configWithDescribe = {
+        ...mockConfig,
+        review: {
+          ...mockConfig.review,
+          describe: { enabled: true, postDescription: false },
+        },
+      } as DRSConfig;
+
+      const source: ReviewSource = {
+        name: 'PR #99',
+        files: ['src/app.ts'],
+        filesWithDiffs: [{ filename: 'src/app.ts', patch: '+added' }],
+        context: {},
+      };
+
+      await executeReview(configWithDescribe, source);
+
+      // Compression should happen exactly once in the orchestrator —
+      // the describe agent receives pre-compressed data
+      expect(prepareDiffsForAgent).toHaveBeenCalledTimes(1);
+
+      // runDescribeAgent should receive the preCompressed parameter
+      expect(runDescribeAgent).toHaveBeenCalledWith(
+        expect.anything(), // runtimeClient
+        expect.anything(), // config
+        'PR #99', // label
+        expect.any(Array), // files
+        expect.any(String), // workingDir
+        undefined, // debug
+        {
+          files: expect.any(Array),
+          compressionSummary: null, // formatCompressionSummary mock returns null
+        } // preCompressed
       );
     });
   });
