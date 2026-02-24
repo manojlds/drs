@@ -66,7 +66,7 @@ function runReviewLocalCli(
 const describeLive = shouldRunLiveE2E ? describe : describe.skip;
 
 describeLive('review-local live e2e (real LLM)', () => {
-  it('runs full review-local pipeline against a real provider and writes JSON output', async () => {
+  it('runs full review-local pipeline with skill usage and writes JSON output', async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'drs-live-e2e-'));
     const repoDir = join(tempRoot, 'repo');
     const outputPath = 'review-local-live-output.json';
@@ -95,6 +95,41 @@ describeLive('review-local live e2e (real LLM)', () => {
 
       mkdirSync(join(repoDir, 'src'), { recursive: true });
       mkdirSync(join(repoDir, '.drs'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'skills', 'cli-testing'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'agents', 'security'), { recursive: true });
+
+      writeFileSync(
+        join(repoDir, '.drs', 'skills', 'cli-testing', 'SKILL.md'),
+        [
+          '---',
+          'name: cli-testing',
+          'description: Validate CLI flag behavior and coverage',
+          '---',
+          '',
+          '# CLI Testing Skill',
+          '',
+          '- Check new or changed CLI flags for behavior and test coverage.',
+          '- Flag missing integration tests for CLI option changes.',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      writeFileSync(
+        join(repoDir, '.drs', 'agents', 'security', 'agent.md'),
+        [
+          '---',
+          'description: Security agent override for live E2E skill assertion',
+          '---',
+          '',
+          'You are a security review agent.',
+          '',
+          'Before your analysis, call the skill tool to load `cli-testing` exactly once.',
+          'Then continue your security review and follow all output instructions from the user prompt.',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
 
       writeFileSync(
         join(repoDir, '.drs/drs.config.yaml'),
@@ -102,7 +137,8 @@ describeLive('review-local live e2e (real LLM)', () => {
           'review:',
           '  default:',
           `    model: ${liveModel}`,
-          '    skills: []',
+          '    skills:',
+          '      - cli-testing',
           '  mode: multi-agent',
           '  agents:',
           '    - security',
@@ -161,6 +197,7 @@ describeLive('review-local live e2e (real LLM)', () => {
       expect(output.summary.filesReviewed).toBeGreaterThanOrEqual(1);
       expect(Array.isArray(output.issues)).toBe(true);
       expect(output.metadata?.source).toBe('local-unstaged');
+      expect(result.logs).toContain('Loaded skill: cli-testing');
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

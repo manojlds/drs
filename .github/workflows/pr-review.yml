@@ -94,7 +94,6 @@ jobs:
       - name: Review Pull Request (Trusted Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_DEFAULT_MODEL: opencode/minimax-m2.5-free
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
           ZHIPU_API_KEY: ""
@@ -168,7 +167,6 @@ jobs:
       - name: Review Pull Request (External Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_DEFAULT_MODEL: opencode/minimax-m2.5-free
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
           ZHIPU_API_KEY: ""
