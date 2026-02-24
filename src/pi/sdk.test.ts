@@ -14,8 +14,12 @@ const mocks = vi.hoisted(() => {
     prompt,
     dispose,
     session,
-    createAgentSession: vi.fn(async () => ({ session })),
-    loaderInstances: [] as Array<{ options: Record<string, unknown>; reload: any }>,
+    createAgentSession: vi.fn(async (_opts?: Record<string, unknown>) => ({ session })),
+    loaderInstances: [] as Array<{
+      options: Record<string, unknown>;
+      reload: any;
+      getSkills: any;
+    }>,
     modelRegistryInstances: [] as Array<{ registerProvider: any }>,
   };
 });
@@ -24,10 +28,11 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
   class DefaultResourceLoader {
     options: Record<string, unknown>;
     reload = vi.fn(async () => undefined);
+    getSkills = vi.fn(() => ({ skills: [], diagnostics: [] }));
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
-      mocks.loaderInstances.push({ options, reload: this.reload });
+      mocks.loaderInstances.push({ options, reload: this.reload, getSkills: this.getSkills });
     }
   }
 
@@ -239,5 +244,147 @@ describe('pi/sdk', () => {
         parts: [{ text: 'done' }],
       },
     ]);
+  });
+
+  it('per-agent tool overrides are applied to session creation', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        tools: {
+          Read: true,
+          Bash: true,
+          Edit: false,
+          Write: false,
+          Grep: true,
+          Glob: true,
+        },
+        agent: {
+          'review/security': {
+            prompt: 'Security prompt',
+            tools: { Edit: true, Bash: false },
+          },
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    expect(mocks.createAgentSession).toHaveBeenCalledTimes(1);
+
+    const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+      tools: Array<{ name: string }>;
+    };
+    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+
+    // Per-agent override: Edit=true (overrides global false), Bash=false (overrides global true)
+    expect(toolNames).toContain('read'); // global: true, no override
+    expect(toolNames).toContain('edit'); // global: false, agent override: true
+    expect(toolNames).not.toContain('bash'); // global: true, agent override: false
+    expect(toolNames).toContain('grep'); // global: true, no override
+
+    runtime.server.close();
+  });
+
+  it('agents without tool overrides use global tool config', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        tools: {
+          Read: true,
+          Bash: true,
+          Edit: false,
+          Write: false,
+          Grep: false,
+          Glob: false,
+        },
+        agent: {
+          'review/quality': {
+            prompt: 'Quality prompt',
+            // No tools override
+          },
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/quality',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+      tools: Array<{ name: string }>;
+    };
+    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+
+    // Only globally enabled tools
+    expect(toolNames).toContain('read');
+    expect(toolNames).toContain('bash');
+    expect(toolNames).not.toContain('edit');
+    expect(toolNames).not.toContain('write');
+    expect(toolNames).not.toContain('grep');
+
+    runtime.server.close();
+  });
+
+  it('per-agent skills are filtered via skillsOverride', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        agentSkills: {
+          'review/security': ['sql-injection', 'auth-bypass'],
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    // The agent session creates its own DefaultResourceLoader
+    const agentLoader = mocks.loaderInstances[mocks.loaderInstances.length - 1];
+    expect(agentLoader.options.noSkills).toBe(true);
+
+    // skillsOverride should be a function that filters to configured skills
+    const skillsOverride = agentLoader.options.skillsOverride as (base: {
+      skills: Array<{ name: string }>;
+      diagnostics: unknown[];
+    }) => { skills: Array<{ name: string }>; diagnostics: unknown[] };
+
+    expect(typeof skillsOverride).toBe('function');
+
+    const filtered = skillsOverride({
+      skills: [{ name: 'sql-injection' }, { name: 'auth-bypass' }, { name: 'performance-hints' }],
+      diagnostics: [],
+    });
+
+    expect(filtered.skills.map((s) => s.name)).toEqual(['sql-injection', 'auth-bypass']);
+    // performance-hints filtered out — not in agent config
+
+    runtime.server.close();
   });
 });
