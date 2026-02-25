@@ -39,6 +39,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Determine npm tag
+        id: npm-tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if echo "$VERSION" | grep -qE '(alpha|beta|rc|pre)'; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
         # Uses OIDC trusted publishing - no NODE_AUTH_TOKEN needed
