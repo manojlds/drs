@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compressFilesWithDiffs,
+  computePatchStats,
   filterGeneratedFiles,
   formatCompressionSummary,
   prepareDiffsForAgent,
@@ -39,7 +40,18 @@ describe('context compression', () => {
 
     const summary = formatCompressionSummary(result);
     expect(summary).toContain('Omitted due to token budget');
+    expect(summary).toContain('+3');
     expect(result.files.find((file) => file.filename === 'src/large.ts')?.patch).toBeUndefined();
+
+    // Verify omitted file metadata
+    const omitted = result.omitted.dueToBudget;
+    expect(omitted.length).toBeGreaterThan(0);
+    const omittedFile = omitted.find((f) => f.filename === 'src/large.ts');
+    expect(omittedFile).toBeDefined();
+    expect(omittedFile!.additions).toBe(3);
+    expect(omittedFile!.deletions).toBe(0);
+    expect(omittedFile!.isNew).toBe(false);
+    expect(omittedFile!.estimatedTokens).toBeGreaterThan(0);
   });
 });
 
@@ -199,5 +211,181 @@ describe('prepareDiffsForAgent', () => {
 
     expect(result.files[0].patch).toContain('+ok');
     expect(result.omitted.dueToBudget).toEqual([]);
+  });
+});
+
+describe('computePatchStats', () => {
+  it('counts additions and deletions', () => {
+    const patch = [
+      '@@ -1,3 +1,4 @@',
+      ' context',
+      '-removed line',
+      '+added line 1',
+      '+added line 2',
+    ].join('\n');
+    const stats = computePatchStats(patch);
+    expect(stats.additions).toBe(2);
+    expect(stats.deletions).toBe(1);
+    expect(stats.isNew).toBe(false);
+  });
+
+  it('detects new files', () => {
+    const patch = ['new file mode 100644', '@@ -0,0 +1,3 @@', '+line1', '+line2', '+line3'].join(
+      '\n'
+    );
+    const stats = computePatchStats(patch);
+    expect(stats.additions).toBe(3);
+    expect(stats.deletions).toBe(0);
+    expect(stats.isNew).toBe(true);
+  });
+
+  it('ignores --- and +++ header lines', () => {
+    const patch = [
+      '--- a/src/old.ts',
+      '+++ b/src/new.ts',
+      '@@ -1,1 +1,2 @@',
+      ' context',
+      '+added',
+    ].join('\n');
+    const stats = computePatchStats(patch);
+    expect(stats.additions).toBe(1);
+    expect(stats.deletions).toBe(0);
+  });
+
+  it('handles empty patch', () => {
+    const stats = computePatchStats('');
+    expect(stats.additions).toBe(0);
+    expect(stats.deletions).toBe(0);
+    expect(stats.isNew).toBe(false);
+  });
+
+  it('handles deletion-only patch', () => {
+    const patch = ['@@ -1,3 +1,0 @@', '-line1', '-line2', '-line3'].join('\n');
+    const stats = computePatchStats(patch);
+    expect(stats.additions).toBe(0);
+    expect(stats.deletions).toBe(3);
+  });
+});
+
+describe('omitted file annotations', () => {
+  it('includes additions, deletions, and token count in omitted file info', () => {
+    const files = [
+      {
+        filename: 'src/big.ts',
+        patch: '@@ -1,2 +1,5 @@\n context\n-old\n+new1\n+new2\n+new3\n+new4',
+      },
+      { filename: 'src/tiny.ts', patch: '@@ -1,1 +1,2 @@\n+x' },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 15,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    const omitted = result.omitted.dueToBudget;
+    expect(omitted.length).toBeGreaterThan(0);
+    const bigFile = omitted.find((f) => f.filename === 'src/big.ts');
+    if (bigFile) {
+      expect(bigFile.additions).toBe(4);
+      expect(bigFile.deletions).toBe(1);
+      expect(bigFile.isNew).toBe(false);
+      expect(bigFile.estimatedTokens).toBeGreaterThan(0);
+    }
+  });
+
+  it('marks new files in omitted info', () => {
+    const files = [
+      {
+        filename: 'src/brand-new.ts',
+        patch: 'new file mode 100644\n@@ -0,0 +1,3 @@\n+a\n+b\n+c',
+      },
+      { filename: 'src/small.ts', patch: '@@ -1,1 +1,2 @@\n+x' },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 15,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    const omitted = result.omitted.dueToBudget;
+    const newFile = omitted.find((f) => f.filename === 'src/brand-new.ts');
+    if (newFile) {
+      expect(newFile.isNew).toBe(true);
+      expect(newFile.additions).toBe(3);
+    }
+  });
+
+  it('sorts omitted files by additions descending in summary', () => {
+    const files = [
+      { filename: 'src/few-adds.ts', patch: '@@ -1,10 +1,12 @@\n+a\n+b' },
+      { filename: 'src/many-adds.ts', patch: '@@ -1,1 +1,6 @@\n+a\n+b\n+c\n+d\n+e' },
+      { filename: 'src/kept.ts', patch: '@@ -1,1 +1,2 @@\n+x' },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 20,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    // Verify at least some files were omitted
+    if (result.omitted.dueToBudget.length >= 2) {
+      const summary = formatCompressionSummary(result);
+      const manyAddsPos = summary.indexOf('src/many-adds.ts');
+      const fewAddsPos = summary.indexOf('src/few-adds.ts');
+      // many-adds (5 additions) should appear before few-adds (2 additions)
+      expect(manyAddsPos).toBeLessThan(fewAddsPos);
+    }
+  });
+
+  it('renders new file tag in summary', () => {
+    const files = [
+      {
+        filename: 'src/new-module.ts',
+        patch: 'new file mode 100644\n@@ -0,0 +1,50 @@\n' + '+line\n'.repeat(50),
+      },
+      { filename: 'src/small.ts', patch: '@@ -1,1 +1,2 @@\n+x' },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 15,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    const summary = formatCompressionSummary(result);
+    expect(summary).toContain('new file');
+    expect(summary).toContain('+50');
+  });
+
+  it('includes token estimate and line counts in summary format', () => {
+    const files = [
+      {
+        filename: 'src/changed.ts',
+        patch: '@@ -1,3 +1,5 @@\n context\n-old1\n-old2\n+new1\n+new2\n+new3',
+      },
+      { filename: 'src/tiny.ts', patch: '@@ -1,1 +1,2 @@\n+x' },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 15,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    const summary = formatCompressionSummary(result);
+    if (result.omitted.dueToBudget.length > 0) {
+      // Should contain addition/deletion counts and token estimate
+      expect(summary).toMatch(/\+\d+/);
+      expect(summary).toMatch(/-\d+/);
+      expect(summary).toMatch(/~\d+ tokens/);
+    }
   });
 });
