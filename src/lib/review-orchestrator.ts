@@ -32,7 +32,7 @@ import {
   resolveCompressionBudget,
 } from './context-compression.js';
 import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
-import { runDescribeAgent } from './description-executor.js';
+import { runDescribeAgent, type PreCompressedDiffs } from './description-executor.js';
 import { formatDescribeSummary } from './description-formatter.js';
 
 /**
@@ -210,18 +210,48 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    // Run describe pass if enabled — gives review agents change context
+    // ── Compress diffs once ──────────────────────────────────────────────
+    // Both the describe and review passes consume the same diff content.
+    // We compress once using the tightest budget across all models involved
+    // (describe + review) so neither pass exceeds any model's context window.
+    const reviewModelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
+    const describeModelIds = describeEnabled
+      ? [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+          (id): id is string => !!id
+        )
+      : [];
+    const allModelIds = [...reviewModelIds, ...describeModelIds];
+    const contextWindow = runtimeClient.getMinContextWindow(allModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
+    // ── Describe pass (optional) ─────────────────────────────────────────
     let describeSummary: string | undefined;
     if (describeEnabled && filesForInstructions.some((f) => f.patch)) {
       try {
         console.log(chalk.bold.blue('🔍 Running describe pass for change context\n'));
+        const preCompressed: PreCompressedDiffs = {
+          files: compression.files,
+          compressionSummary: compressionSummary,
+        };
         const { description } = await runDescribeAgent(
           runtimeClient,
           config,
           source.name,
           filesForInstructions,
           source.workingDir ?? process.cwd(),
-          source.debug
+          source.debug,
+          preCompressed
         );
         describeSummary = formatDescribeSummary(description);
       } catch (describeError) {
@@ -233,21 +263,7 @@ export async function executeReview(
       }
     }
 
-    const modelIds = getReviewBudgetModelIds(
-      config.review.mode,
-      agentModelOverrides,
-      unifiedModelOverrides
-    );
-    const contextWindow = runtimeClient.getMinContextWindow(modelIds);
-    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
-
-    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
-    const compressionSummary = formatCompressionSummary(compression);
-
-    if (compressionSummary) {
-      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
-    }
-
+    // ── Review pass ──────────────────────────────────────────────────────
     const baseInstructions = buildBaseInstructions(
       source.name,
       compression.files,
