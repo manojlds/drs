@@ -69,47 +69,48 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install OpenCode CLI
-        run: npm install -g opencode-ai
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build DRS
         run: npm run build
 
-      - name: Setup OpenCode Zen Authentication
-        if: env.OPENCODE_ZEN_API_KEY != ''
+      - name: Resolve model provider key
         env:
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          DRS_PROVIDER_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
-          echo "🔑 Setting up OpenCode Zen authentication..."
-          mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json <<EOF
-          {
-            "opencode": {
-              "type": "api",
-              "key": "${OPENCODE_ZEN_API_KEY}"
-            }
-          }
-          EOF
-          echo "✅ OpenCode Zen auth.json created"
+          # Prefer DRS_PROVIDER_API_KEY; fall back to legacy OPENCODE_API_KEY
+          RESOLVED_KEY="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
+
+          if [ -z "$RESOLVED_KEY" ]; then
+            echo "❌ Missing model provider key. Configure DRS_PROVIDER_API_KEY in repository secrets."
+            exit 1
+          fi
+
+          # Expose under the name the custom provider config expects
+          echo "OPENCODE_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
+          echo "✅ Model provider key resolved"
 
       - name: Review Pull Request (Trusted Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          ZHIPU_API_KEY: ""
         run: |
           echo "🚀 Starting PR review for trusted contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (trusted)"
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "❌ Provider API key is not available in this step"
+            exit 1
+          fi
 
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
             --repo ${{ github.event.repository.name }} \
             --pr ${{ github.event.pull_request.number }} \
-            --post-comments \
-            --debug
+            --post-comments
 
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
@@ -142,47 +143,48 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install OpenCode CLI
-        run: npm install -g opencode-ai
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build DRS
         run: npm run build
 
-      - name: Setup OpenCode Zen Authentication
-        if: env.OPENCODE_ZEN_API_KEY != ''
+      - name: Resolve model provider key
         env:
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          DRS_PROVIDER_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
-          echo "🔑 Setting up OpenCode Zen authentication..."
-          mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json <<EOF
-          {
-            "opencode": {
-              "type": "api",
-              "key": "${OPENCODE_ZEN_API_KEY}"
-            }
-          }
-          EOF
-          echo "✅ OpenCode Zen auth.json created"
+          # Prefer DRS_PROVIDER_API_KEY; fall back to legacy OPENCODE_API_KEY
+          RESOLVED_KEY="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
+
+          if [ -z "$RESOLVED_KEY" ]; then
+            echo "❌ Missing model provider key. Configure DRS_PROVIDER_API_KEY in repository secrets."
+            exit 1
+          fi
+
+          # Expose under the name the custom provider config expects
+          echo "OPENCODE_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
+          echo "✅ Model provider key resolved"
 
       - name: Review Pull Request (External Contributor)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          ZHIPU_API_KEY: ""
         run: |
           echo "🚀 Starting PR review for external contributor..."
           echo "👤 Author: ${{ github.event.pull_request.user.login }} (external - approved)"
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "❌ Provider API key is not available in this step"
+            exit 1
+          fi
 
           node dist/cli/index.js review-pr \
             --owner ${{ github.event.repository.owner.login }} \
             --repo ${{ github.event.repository.name }} \
             --pr ${{ github.event.pull_request.number }} \
-            --post-comments \
-            --debug
+            --post-comments
 
   # Notify when external PR is waiting for approval
   notify-external:

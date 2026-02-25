@@ -1,0 +1,187 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { runDescribeIfEnabled } from './description-executor.js';
+import type { DRSConfig } from './config.js';
+import type { PlatformClient, PullRequest } from './platform-client.js';
+import type { FileWithDiff } from './review-core.js';
+import type { RuntimeClient } from '../runtime/client.js';
+
+vi.mock('./describe-core.js', () => ({
+  buildDescribeInstructions: vi.fn(() => 'describe instructions'),
+}));
+
+vi.mock('./context-compression.js', () => ({
+  prepareDiffsForAgent: vi.fn((files: FileWithDiff[]) => ({ files, generated: [] })),
+  formatCompressionSummary: vi.fn(() => undefined),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
+}));
+
+vi.mock('./review-orchestrator.js', () => ({
+  filterIgnoredFiles: vi.fn((files: string[]) => files),
+}));
+
+vi.mock('./context-loader.js', () => ({
+  loadGlobalContext: vi.fn(() => null),
+}));
+
+vi.mock('./describe-parser.js', () => ({
+  parseDescribeOutput: vi.fn().mockResolvedValue({
+    type: 'refactor',
+    title: 'Pi migration',
+    summary: ['Switches runtime to Pi in-process mode'],
+  }),
+}));
+
+vi.mock('./description-formatter.js', () => ({
+  displayDescription: vi.fn(),
+  normalizeDescription: vi.fn((description: unknown) => description),
+  postDescription: vi.fn().mockResolvedValue(undefined),
+}));
+
+describe('description-executor', () => {
+  let runtimeClient: RuntimeClient;
+  let platformClient: PlatformClient;
+  let config: DRSConfig;
+  let pr: PullRequest;
+  let files: FileWithDiff[];
+  let consoleLogSpy: any;
+
+  beforeEach(() => {
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    runtimeClient = {
+      createSession: vi.fn().mockResolvedValue({ id: 'session-1' }),
+      streamMessages: vi.fn(async function* () {
+        yield {
+          id: 'message-1',
+          role: 'assistant',
+          content: '{"outputType":"describe_output","outputPath":".drs/describe-output.json"}',
+          timestamp: new Date(),
+        };
+      }),
+      getMinContextWindow: vi.fn(() => undefined),
+    } as unknown as RuntimeClient;
+
+    platformClient = {} as unknown as PlatformClient;
+
+    config = {
+      review: {
+        agents: ['security'],
+        ignorePatterns: [],
+        mode: 'multi-agent',
+      },
+      contextCompression: {
+        enabled: true,
+      },
+    } as unknown as DRSConfig;
+
+    pr = {
+      number: 84,
+      title: 'Pi migration',
+      author: 'manojlds',
+      sourceBranch: 'ralph/pi-migration',
+      targetBranch: 'pi-migration-base',
+      headSha: 'abc123',
+      platformData: {},
+    };
+
+    files = [
+      {
+        filename: 'src/lib/review-core.ts',
+        patch: '+ new line',
+      },
+    ];
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it('suppresses terminal description output when posting is enabled', async () => {
+    const { displayDescription, postDescription } = await import('./description-formatter.js');
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      config,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      true,
+      process.cwd(),
+      false
+    );
+
+    expect(displayDescription).not.toHaveBeenCalled();
+    expect(postDescription).toHaveBeenCalledWith(
+      platformClient,
+      'manojlds/drs',
+      84,
+      expect.objectContaining({ title: 'Pi migration' }),
+      'PR',
+      expect.objectContaining({
+        total: expect.objectContaining({
+          input: expect.any(Number),
+          output: expect.any(Number),
+          totalTokens: expect.any(Number),
+        }),
+      })
+    );
+  });
+
+  it('prints description to terminal when posting is disabled', async () => {
+    const { displayDescription, postDescription } = await import('./description-formatter.js');
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      config,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      false,
+      process.cwd(),
+      false
+    );
+
+    expect(displayDescription).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Pi migration' }),
+      'PR',
+      expect.objectContaining({
+        total: expect.objectContaining({
+          totalTokens: expect.any(Number),
+        }),
+      })
+    );
+    expect(postDescription).not.toHaveBeenCalled();
+  });
+
+  it('uses only describe model IDs when sizing compression budget', async () => {
+    const configWithExplicitDescribeModel = {
+      ...config,
+      review: {
+        ...config.review,
+        default: {
+          model: 'provider/default-8k',
+        },
+      },
+      describe: {
+        model: 'provider/describe-200k',
+      },
+    } as DRSConfig;
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      configWithExplicitDescribeModel,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      false,
+      process.cwd(),
+      false
+    );
+
+    expect(runtimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/describe-200k']);
+  });
+});

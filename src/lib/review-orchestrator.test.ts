@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   filterIgnoredFiles,
-  connectToOpenCode,
+  connectToRuntime,
   executeReview,
   type ReviewSource,
 } from './review-orchestrator.js';
@@ -32,11 +32,11 @@ vi.mock('./config.js', async () => {
 });
 
 // Store mock client instance for verification
-let mockOpencodeClient: any;
+let mockRuntimeClient: any;
 
-vi.mock('../opencode/client.js', () => ({
-  createOpencodeClientInstance: vi.fn(async () => {
-    mockOpencodeClient = {
+vi.mock('../runtime/client.js', () => {
+  const createRuntimeClientInstance = vi.fn(async () => {
+    mockRuntimeClient = {
       createSession: vi.fn(async () => ({ id: 'session-1' })),
       streamMessages: vi.fn(async function* () {
         yield {
@@ -58,14 +58,19 @@ vi.mock('../opencode/client.js', () => ({
       }),
       closeSession: vi.fn(async () => {}),
       shutdown: vi.fn(async () => {}),
+      getMinContextWindow: vi.fn(() => undefined),
     };
-    return mockOpencodeClient;
-  }),
-}));
+    return mockRuntimeClient;
+  });
+
+  return {
+    createRuntimeClientInstance,
+  };
+});
 
 vi.mock('./review-core.js', () => ({
   buildBaseInstructions: vi.fn((label: string) => `Instructions for ${label}`),
-  runReviewPipeline: vi.fn(async (_opencode, _config, _instructions, _label, files) => ({
+  runReviewPipeline: vi.fn(async (_runtime, _config, _instructions, _label, files) => ({
     issues: [
       {
         category: 'QUALITY',
@@ -114,12 +119,33 @@ vi.mock('./comment-formatter.js', () => ({
 vi.mock('./context-compression.js', () => ({
   compressFilesWithDiffs: vi.fn((files) => ({
     files,
-    removedFiles: [],
-    removedHunks: 0,
-    originalTokens: 1000,
-    compressedTokens: 1000,
+    omitted: { deletionsOnly: [], dueToBudget: [], generated: [] },
+  })),
+  prepareDiffsForAgent: vi.fn((files) => ({
+    files,
+    omitted: { deletionsOnly: [], dueToBudget: [], generated: [] },
   })),
   formatCompressionSummary: vi.fn(() => null),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
+}));
+
+vi.mock('./description-executor.js', () => ({
+  runDescribeAgent: vi.fn(async () => ({
+    description: { type: 'feat', title: 'Mocked', summary: ['summary'] },
+    usage: {
+      agentName: 'describe/pr-describer',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cost: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  })),
+}));
+
+vi.mock('./description-formatter.js', () => ({
+  formatDescribeSummary: vi.fn(() => 'Mocked describe summary'),
 }));
 
 describe('review-orchestrator', () => {
@@ -151,7 +177,7 @@ describe('review-orchestrator', () => {
 
     it('should return all files when no ignore patterns', () => {
       const config = {
-        opencode: {},
+        pi: {},
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: {
@@ -194,16 +220,14 @@ describe('review-orchestrator', () => {
     });
   });
 
-  describe('connectToOpenCode', () => {
-    it('should connect to OpenCode server successfully', async () => {
+  describe('connectToRuntime', () => {
+    it('should connect to in-process Pi runtime successfully', async () => {
       const config: DRSConfig = {
-        opencode: {
-          serverUrl: 'http://localhost:3000',
-        },
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      const client = await connectToOpenCode(config, '/test/dir');
+      const client = await connectToRuntime(config, '/test/dir');
 
       expect(client).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -213,22 +237,22 @@ describe('review-orchestrator', () => {
     });
 
     it('should handle connection failure', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
-      vi.mocked(createOpencodeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
+      vi.mocked(createRuntimeClientInstance).mockRejectedValueOnce(new Error('Connection failed'));
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await expect(connectToOpenCode(config)).rejects.toThrow('Connection failed');
+      await expect(connectToRuntime(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to connect to OpenCode server')
+        expect.stringContaining('Failed to connect to Pi runtime')
       );
     });
 
-    it('should pass model overrides to OpenCode client', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+    it('should pass model overrides to runtime client', async () => {
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
       const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
 
       vi.mocked(getModelOverrides).mockReturnValue({
@@ -239,14 +263,13 @@ describe('review-orchestrator', () => {
       });
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config, '/test/dir', { debug: true });
+      await connectToRuntime(config, '/test/dir', { debug: true });
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith({
-        baseUrl: undefined,
+      expect(createRuntimeClientInstance).toHaveBeenCalledWith({
         config,
         directory: '/test/dir',
         modelOverrides: {
@@ -259,16 +282,16 @@ describe('review-orchestrator', () => {
     });
 
     it('should use process.cwd() when no working directory provided', async () => {
-      const { createOpencodeClientInstance } = await import('../opencode/client.js');
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
 
       const config: DRSConfig = {
-        opencode: {},
+        pi: {},
         review: {},
       } as DRSConfig;
 
-      await connectToOpenCode(config);
+      await connectToRuntime(config);
 
-      expect(createOpencodeClientInstance).toHaveBeenCalledWith(
+      expect(createRuntimeClientInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           config,
           directory: process.cwd(),
@@ -282,7 +305,7 @@ describe('review-orchestrator', () => {
 
     beforeEach(() => {
       mockConfig = {
-        opencode: {},
+        pi: {},
         review: {
           agents: ['security', 'quality'],
           ignorePatterns: ['*.test.ts'],
@@ -309,7 +332,7 @@ describe('review-orchestrator', () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
 
-    it('should filter ignored files', async () => {
+    it('should filter ignored files before executing review agents', async () => {
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['src/app.ts', 'src/app.test.ts', 'src/utils.ts'],
@@ -317,12 +340,28 @@ describe('review-orchestrator', () => {
       };
 
       const result = await executeReview(mockConfig, source);
+      const { runReviewPipeline } = await import('./review-core.js');
 
-      // Should have filtered out .test.ts file
+      // Should have filtered out .test.ts file before review execution
       expect(result.filesReviewed).toBe(2);
+      expect(runReviewPipeline).toHaveBeenCalledWith(
+        expect.anything(),
+        mockConfig,
+        expect.anything(),
+        'Local diff',
+        ['src/app.ts', 'src/utils.ts'],
+        {},
+        process.cwd(),
+        false
+      );
     });
 
     it('should return empty result when all files are ignored', async () => {
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
+      const { runReviewPipeline } = await import('./review-core.js');
+      vi.mocked(createRuntimeClientInstance).mockClear();
+      vi.mocked(runReviewPipeline).mockClear();
+
       const source: ReviewSource = {
         name: 'Local diff',
         files: ['test1.test.ts', 'test2.test.ts'],
@@ -334,6 +373,8 @@ describe('review-orchestrator', () => {
       expect(result.issues).toEqual([]);
       expect(result.filesReviewed).toBe(0);
       expect(result.summary.issuesFound).toBe(0);
+      expect(createRuntimeClientInstance).not.toHaveBeenCalled();
+      expect(runReviewPipeline).not.toHaveBeenCalled();
     });
 
     it('should handle staged diff command', async () => {
@@ -472,7 +513,65 @@ describe('review-orchestrator', () => {
       );
     });
 
-    it('should shutdown OpenCode client after review', async () => {
+    it('uses only unified model IDs for budget sizing in unified mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/small-8k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/large-200k',
+      });
+
+      const source: ReviewSource = {
+        name: 'Unified review',
+        files: ['src/app.ts'],
+        context: {},
+      };
+
+      await executeReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'unified',
+          },
+        } as DRSConfig,
+        source
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
+    it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/large-200k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/small-8k',
+      });
+
+      const source: ReviewSource = {
+        name: 'Multi-agent review',
+        files: ['src/app.ts'],
+        context: {},
+      };
+
+      await executeReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'multi-agent',
+          },
+        } as DRSConfig,
+        source
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
+    it('should shutdown runtime client after review', async () => {
       const source: ReviewSource = {
         name: 'Test review',
         files: ['src/app.ts'],
@@ -482,10 +581,10 @@ describe('review-orchestrator', () => {
       await executeReview(mockConfig, source);
 
       // Verify shutdown was called on the mock client
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode client even on error', async () => {
+    it('should shutdown runtime client even on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Review failed'));
 
@@ -498,7 +597,7 @@ describe('review-orchestrator', () => {
       await expect(executeReview(mockConfig, source)).rejects.toThrow('Review failed');
 
       // Verify shutdown was called even on error
-      expect(mockOpencodeClient.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
     it('should handle "All review agents failed" error specially', async () => {
@@ -535,6 +634,60 @@ describe('review-orchestrator', () => {
 
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('Diff content trimmed to fit token budget')
+      );
+    });
+
+    it('should compress diffs only once when describe pass is enabled', async () => {
+      const { prepareDiffsForAgent } = await import('./context-compression.js');
+      const { runDescribeAgent } = await import('./description-executor.js');
+
+      vi.mocked(prepareDiffsForAgent).mockClear();
+      vi.mocked(runDescribeAgent).mockResolvedValueOnce({
+        description: { type: 'feat', title: 'Test', summary: ['summary'] },
+        usage: {
+          agentName: 'describe/pr-describer',
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          cost: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      } as any);
+
+      const configWithDescribe = {
+        ...mockConfig,
+        review: {
+          ...mockConfig.review,
+          describe: { enabled: true, postDescription: false },
+        },
+      } as DRSConfig;
+
+      const source: ReviewSource = {
+        name: 'PR #99',
+        files: ['src/app.ts'],
+        filesWithDiffs: [{ filename: 'src/app.ts', patch: '+added' }],
+        context: {},
+      };
+
+      await executeReview(configWithDescribe, source);
+
+      // Compression should happen exactly once in the orchestrator —
+      // the describe agent receives pre-compressed data
+      expect(prepareDiffsForAgent).toHaveBeenCalledTimes(1);
+
+      // runDescribeAgent should receive the preCompressed parameter
+      expect(runDescribeAgent).toHaveBeenCalledWith(
+        expect.anything(), // runtimeClient
+        expect.anything(), // config
+        'PR #99', // label
+        expect.any(Array), // files
+        expect.any(String), // workingDir
+        undefined, // debug
+        {
+          files: expect.any(Array),
+          compressionSummary: null, // formatCompressionSummary mock returns null
+        } // preCompressed
       );
     });
   });

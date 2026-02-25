@@ -1,6 +1,7 @@
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
+import { exitProcess } from '../lib/exit.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
 import { formatTerminalIssue } from '../lib/comment-formatter.js';
 import {
@@ -67,12 +68,17 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   const result = await executeReview(config, source);
 
   // Handle JSON output
-  const wantsJsonOutput = options.jsonOutput ?? options.outputPath;
+  const wantsJsonOutput = options.jsonOutput === true ? true : Boolean(options.outputPath);
 
   if (wantsJsonOutput) {
-    const jsonOutput = formatReviewJson(result.summary, result.issues, {
-      source: `local-${options.staged ? 'staged' : 'unstaged'}`,
-    });
+    const jsonOutput = formatReviewJson(
+      result.summary,
+      result.issues,
+      {
+        source: `local-${options.staged ? 'staged' : 'unstaged'}`,
+      },
+      result.usage
+    );
 
     if (options.outputPath) {
       await writeReviewJson(jsonOutput, options.outputPath, cwd);
@@ -100,7 +106,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
         console.log(
           chalk.red.bold('\n⚠️  Recommendation: Fix critical/high issues before pushing\n')
         );
-        process.exit(1);
+        exitProcess(1);
       } else {
         console.log(chalk.green('\n✓ No critical issues found. Safe to push.\n'));
       }
@@ -110,7 +116,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
   } else {
     // Still exit with error code for blocking issues even in JSON mode
     if (hasBlockingIssues(result)) {
-      process.exit(1);
+      exitProcess(1);
     }
   }
 }

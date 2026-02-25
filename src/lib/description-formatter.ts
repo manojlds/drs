@@ -1,5 +1,7 @@
 import chalk from 'chalk';
+import { formatCost, formatCount } from './format-utils.js';
 import type { PlatformClient } from './platform-client.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 export interface DescriptionWalkthroughEntry {
   file: string;
@@ -17,6 +19,46 @@ export interface Description {
   walkthrough?: DescriptionWalkthroughEntry[];
   labels?: string[];
   recommendations?: string[];
+}
+
+function hasUsageDetails(usage?: ReviewUsageSummary): usage is ReviewUsageSummary {
+  if (!usage) {
+    return false;
+  }
+
+  return usage.agents.some((agent) => agent.turns > 0);
+}
+
+function formatUsageMarkdown(usage: ReviewUsageSummary): string {
+  const total = usage.total;
+
+  let markdown = '## 💰 Model Usage\n\n';
+  markdown += '<details>\n<summary>View token and cost breakdown</summary>\n\n';
+  markdown += `- **Input Tokens**: ${formatCount(total.input)}\n`;
+  markdown += `- **Output Tokens**: ${formatCount(total.output)}\n`;
+  markdown += `- **Cache Read Tokens**: ${formatCount(total.cacheRead)}\n`;
+  markdown += `- **Cache Write Tokens**: ${formatCount(total.cacheWrite)}\n`;
+  markdown += `- **Total Tokens**: ${formatCount(total.totalTokens)}\n`;
+  markdown += `- **Estimated Cost**: ${formatCost(total.cost)}\n`;
+  if (total.totalTokens > 0 && total.cost === 0) {
+    markdown +=
+      '- _Cost is $0.0000 because model pricing is unknown or configured as free. Add `pricing.models` in `.drs/drs.config.yaml` to override._\n';
+  }
+  markdown += '\n';
+
+  if (usage.agents.length > 0) {
+    markdown += '| Agent | Model | Turns | Input | Output | Total Tokens | Cost |\n';
+    markdown += '| --- | --- | ---: | ---: | ---: | ---: | ---: |\n';
+
+    for (const agent of usage.agents) {
+      markdown += `| ${agent.agentType} | ${agent.model ?? 'n/a'} | ${formatCount(agent.turns)} | ${formatCount(agent.usage.input)} | ${formatCount(agent.usage.output)} | ${formatCount(agent.usage.totalTokens)} | ${formatCost(agent.usage.cost)} |\n`;
+    }
+
+    markdown += '\n';
+  }
+
+  markdown += '</details>\n\n';
+  return markdown;
 }
 
 function normalizeStringArray(value: unknown, fieldName: string, required = false): string[] {
@@ -118,7 +160,11 @@ export type Platform = 'PR' | 'MR';
 /**
  * Display description to console
  */
-export function displayDescription(description: Description, platform: Platform = 'PR') {
+export function displayDescription(
+  description: Description,
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
+) {
   console.log(chalk.bold.cyan(`📝 Generated ${platform} Description\n`));
 
   // Type
@@ -154,6 +200,32 @@ export function displayDescription(description: Description, platform: Platform 
       }
       console.log();
     }
+  }
+
+  if (hasUsageDetails(usage)) {
+    console.log(chalk.bold('💰 Model Usage'));
+    console.log(chalk.white(`  Input tokens: ${formatCount(usage.total.input)}`));
+    console.log(chalk.white(`  Output tokens: ${formatCount(usage.total.output)}`));
+    console.log(chalk.white(`  Total tokens: ${formatCount(usage.total.totalTokens)}`));
+    console.log(chalk.white(`  Estimated cost: ${formatCost(usage.total.cost)}`));
+    if (usage.total.totalTokens > 0 && usage.total.cost === 0) {
+      console.log(
+        chalk.gray(
+          '  Cost is $0.0000 because model pricing is unknown or configured as free. Configure pricing.models to override.'
+        )
+      );
+    }
+
+    const primaryAgent = usage.agents[0];
+    if (primaryAgent) {
+      console.log(
+        chalk.dim(
+          `  Agent: ${primaryAgent.agentType} | Model: ${primaryAgent.model ?? 'n/a'} | Turns: ${primaryAgent.turns}`
+        )
+      );
+    }
+
+    console.log();
   }
 
   // Labels
@@ -222,25 +294,29 @@ function findExistingDescriptionComment(comments: Array<{ id: number | string; b
 
 export function formatDescriptionAsMarkdown(
   description: Description,
-  platform: Platform = 'PR'
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
 ): string {
   let markdown = `<!-- drs-description-id: ${DESCRIPTION_COMMENT_ID} -->\n`;
-  markdown += `## AI-Generated ${platform} Description\n\n`;
+  markdown += `# 📋 ${platform} Description Analysis\n\n`;
 
-  markdown += `**Type:** ${description.type}\n\n`;
+  markdown += `## 🧭 Change Summary\n\n`;
+  markdown += `- **Type**: ${description.type}\n`;
+  markdown += `- **Title**: ${description.title}\n\n`;
 
-  markdown += '### Summary\n\n';
+  markdown += `## 📌 Summary\n\n`;
   for (const bullet of description.summary) {
     markdown += `- ${bullet}\n`;
   }
+  markdown += '\n';
 
   if (description.walkthrough && description.walkthrough.length > 0) {
-    markdown += '\n### Changes Walkthrough\n\n';
+    markdown += '## 📂 Changes Walkthrough\n\n';
     markdown += '<details>\n<summary>View file-by-file changes</summary>\n\n';
 
     for (const fileChange of description.walkthrough) {
       const icon = getMarkdownChangeIcon(fileChange.changeType);
-      markdown += `#### ${icon} \`${fileChange.file}\` (${fileChange.semanticLabel})\n\n`;
+      markdown += `### ${icon} \`${fileChange.file}\` (${fileChange.semanticLabel})\n\n`;
       markdown += `**${fileChange.title}**\n\n`;
 
       if (fileChange.changes && fileChange.changes.length > 0) {
@@ -254,20 +330,24 @@ export function formatDescriptionAsMarkdown(
     markdown += '</details>\n\n';
   }
 
+  if (hasUsageDetails(usage)) {
+    markdown += formatUsageMarkdown(usage);
+  }
+
   if (description.labels && description.labels.length > 0) {
-    markdown += '### Suggested Labels\n\n';
+    markdown += '## 🏷️ Suggested Labels\n\n';
     markdown += description.labels.map((l: string) => `\`${l}\``).join(', ') + '\n\n';
   }
 
   if (description.recommendations && description.recommendations.length > 0) {
-    markdown += '### Recommendations\n\n';
+    markdown += '## 💡 Recommendations\n\n';
     for (const rec of description.recommendations) {
       markdown += `- ${rec}\n`;
     }
     markdown += '\n';
   }
 
-  markdown += '\n---\n*Generated by DRS - Diff Review System*\n';
+  markdown += '\n---\n\n*Analyzed by **DRS** | Diff Review System*\n';
 
   return markdown;
 }
@@ -280,11 +360,12 @@ export async function postDescription(
   projectId: string,
   prNumber: number,
   description: Description,
-  platform: Platform = 'PR'
+  platform: Platform = 'PR',
+  usage?: ReviewUsageSummary
 ) {
   console.log(chalk.dim(`\nPosting description to ${platform}...`));
 
-  const markdown = formatDescriptionAsMarkdown(description, platform);
+  const markdown = formatDescriptionAsMarkdown(description, platform, usage);
   const existingComments = await platformAdapter.getComments(projectId, prNumber);
   const existingDescription = findExistingDescriptionComment(existingComments);
 
@@ -295,4 +376,26 @@ export async function postDescription(
   }
 
   console.log(chalk.green(`✓ Description posted to ${platform}`));
+}
+
+/**
+ * Format a Description into a concise summary string for use as review agent context.
+ */
+export function formatDescribeSummary(description: Description): string | undefined {
+  const parts: string[] = [];
+  if (description.title) {
+    parts.push(`**${description.type ?? 'change'}**: ${description.title}`);
+  }
+  if (description.summary && description.summary.length > 0) {
+    parts.push(description.summary.map((s) => `- ${s}`).join('\n'));
+  }
+  if (description.walkthrough && description.walkthrough.length > 0) {
+    const majorFiles = description.walkthrough
+      .filter((w) => w.significance === 'major')
+      .map((w) => `- **${w.file}**: ${w.title}`);
+    if (majorFiles.length > 0) {
+      parts.push('Key changes:\n' + majorFiles.join('\n'));
+    }
+  }
+  return parts.length > 0 ? parts.join('\n\n') : undefined;
 }

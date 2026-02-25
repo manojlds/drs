@@ -7,17 +7,23 @@
 
 import chalk from 'chalk';
 import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
-import { getAgentNames } from './config.js';
+import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
-import { buildSkillPromptSection } from './skills-prompt.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
-import type { OpencodeClient } from '../opencode/client.js';
-import { loadReviewAgents } from '../opencode/agent-loader.js';
+import type { RuntimeClient } from '../runtime/client.js';
+import { loadReviewAgents } from '../runtime/agent-loader.js';
 import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
+import {
+  aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
+  type AgentUsageSummary,
+  type ReviewUsageSummary,
+} from './review-usage.js';
 
 /**
  * File with optional diff content
@@ -43,12 +49,15 @@ export interface AgentReviewResult {
   filesReviewed: number;
   /** Agent execution results */
   agentResults: AgentResult[];
+  /** Token usage and cost details for the review run */
+  usage?: ReviewUsageSummary;
 }
 
 export interface AgentResult {
   agentType: string;
   success: boolean;
   issues: ReviewIssue[];
+  usage?: AgentUsageSummary;
 }
 
 const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
@@ -57,50 +66,6 @@ const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
   HIGH: 3,
   CRITICAL: 4,
 };
-
-/**
- * Parsed skill tool call result
- */
-interface SkillToolCall {
-  skillName: string;
-  hasInstructions: boolean;
-  hasScripts: boolean;
-  hasReferences: boolean;
-  hasAssets: boolean;
-}
-
-/**
- * Try to parse a tool message as a drs_skill tool result
- * Returns the skill info if it's a skill tool call, null otherwise
- */
-function parseSkillToolResult(content: string): SkillToolCall | null {
-  try {
-    const parsed = JSON.parse(content);
-    // Check for the _tool identifier we added
-    if (parsed._tool === 'drs_skill' && parsed.skill_name) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-    // Fallback: check for skill_name field even without _tool marker
-    if (parsed.skill_name && parsed.instructions !== undefined) {
-      return {
-        skillName: parsed.skill_name,
-        hasInstructions: Boolean(parsed.instructions),
-        hasScripts: Boolean(parsed.has_scripts),
-        hasReferences: Boolean(parsed.has_references),
-        hasAssets: Boolean(parsed.has_assets),
-      };
-    }
-  } catch {
-    // Not JSON or not a skill tool result
-  }
-  return null;
-}
 
 /**
  * Build base review instructions for agents
@@ -180,18 +145,18 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
   ]
 }
 
-**Instructions:**
-1. Analyze the diff content above to understand what lines were changed
-2. Use the Read tool to examine the full file for additional context if needed
+**Analysis approach:**
+1. First, use Grep or Read to quickly understand the project's existing patterns relevant to the changed files (e.g., existing validation, error handling, auth patterns, naming conventions).
+2. Then analyze the diff content above against those established patterns.
+
+**Review rules:**
 3. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
-4. Analyze the changed code for issues in your specialty area
+4. Only flag deviations or new risks introduced by the changes.
 5. Populate summary counts based on the issues you report (use 0 when none).
 6. Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
   }
 
-  // No diff content available - fall back to git diff command
-  const fallbackCommand = diffCommand ?? 'git diff HEAD~1 -- <file>';
-
+  // No diff content available - instruct agent to read files directly
   return `Review the following changed files from ${label}:
 
 ${fileList}
@@ -240,8 +205,8 @@ Output requirements:
 }
 
 **Instructions:**
-1. First, use the Bash tool to run \`${fallbackCommand}\` to see what lines were actually changed
-2. Use the Read tool to examine the full file for context
+1. The diffs for these files were omitted due to size constraints. Use the Read tool to examine the changed files listed above.
+2. Focus your review on newly added or modified code patterns.
 3. **IMPORTANT: Only report issues on lines that were actually changed or added.** Do not report issues on existing code that was not modified.
 4. Analyze the changed code for issues in your specialty area
 5. Populate summary counts based on the issues you report (use 0 when none).
@@ -256,7 +221,7 @@ function getConfiguredAgentInfo(
   workingDir: string
 ): Array<{ name: string; description: string }> {
   const configuredNames = getAgentNames(config);
-  const allAgents = loadReviewAgents(workingDir);
+  const allAgents = loadReviewAgents(workingDir, config);
 
   return configuredNames
     .map((name) => {
@@ -270,17 +235,23 @@ function getConfiguredAgentInfo(
     .filter((a) => a !== null);
 }
 
-function renderAgentMessage(content: string, maxLines = 6, maxChars = 320): string {
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return '';
+function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): void {
+  const configuredNames = getAgentNames(config);
+  const availableAgents = new Set(
+    loadReviewAgents(workingDir, config)
+      .filter((agent) => agent.name.startsWith('review/'))
+      .map((agent) => agent.name.replace(/^review\//, ''))
+  );
+
+  const missingAgents = configuredNames.filter((name) => !availableAgents.has(name));
+  if (missingAgents.length === 0) {
+    return;
   }
 
-  const lines = trimmed.split('\n');
-  const limitedLines = lines.slice(0, maxLines).join('\n');
-  const limitedChars =
-    limitedLines.length > maxChars ? `${limitedLines.slice(0, maxChars)}…` : limitedLines;
-  return limitedChars;
+  const availableList = Array.from(availableAgents).sort();
+  throw new Error(
+    `Unknown review agent(s) configured: ${missingAgents.join(', ')}. Available agents: ${availableList.join(', ')}`
+  );
 }
 
 function resolveReviewMode(config: DRSConfig): ReviewMode {
@@ -309,8 +280,84 @@ function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIs
   return merged;
 }
 
+function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
+  const agentUsage = agentResults
+    .map((result) => {
+      const usage = result.usage ?? createAgentUsageSummary(result.agentType);
+      return {
+        ...usage,
+        success: result.success,
+      };
+    })
+    .sort((a, b) => a.agentType.localeCompare(b.agentType));
+
+  return aggregateAgentUsage(agentUsage);
+}
+
+function getConfiguredSkillsForAgent(config: DRSConfig, agentType: string): string[] {
+  const defaultSkills = getDefaultSkills(config);
+  const normalizedAgents = normalizeAgentConfig(config.review.agents);
+  const agentConfig = normalizedAgents.find(
+    (agent) => agent.name === agentType || agent.name === `review/${agentType}`
+  );
+  const agentSkills = (agentConfig?.skills ?? []).map(String).filter((skill) => skill.length > 0);
+  return [...new Set([...defaultSkills, ...agentSkills])];
+}
+
+/**
+ * Detect skill loading from Pi's native flow.
+ *
+ * Pi agents load skills by reading SKILL.md files via the `read` tool.
+ * This matches tool output that contains a SKILL.md path and returns
+ * the skill name (parent directory name of SKILL.md).
+ */
+function extractSkillNameFromReadToolOutput(
+  toolName: string | undefined,
+  content: string
+): string | undefined {
+  if (toolName !== 'read') return undefined;
+  // Match a path ending in /skills/<name>/SKILL.md (case-insensitive)
+  const match = content.match(/(?:^|\n)\s*---\s*\n[\s\S]*?name:\s*([\w.-]+)[\s\S]*?---/i);
+  if (match?.[1]) return match[1];
+  return undefined;
+}
+
+function extractSkillNameFromToolOutput(content: string): string | undefined {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      const candidateKeys = ['name', 'skill', 'skillName', 'id'];
+      for (const key of candidateKeys) {
+        const value = record[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+          return value.trim();
+        }
+      }
+    }
+  } catch {
+    // Fall through to regex extraction for plain text outputs.
+  }
+
+  const match = trimmed.match(/(?:^|\b)(?:skill|name)\s*[:=]\s*["']?([\w.-]+)["']?/i);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  if (/^[\w.-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return undefined;
+}
+
 export async function runUnifiedReviewAgent(
-  opencode: OpencodeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -325,16 +372,27 @@ export async function runUnifiedReviewAgent(
   console.log(chalk.bold('🎯 Selected Agents: unified-reviewer\n'));
   console.log(chalk.gray('Running unified review...\n'));
 
+  let agentUsage = createAgentUsageSummary(agentType);
+  const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+  let sawSkillToolCall = false;
+
+  const describeSummary =
+    typeof additionalContext.describeSummary === 'string'
+      ? additionalContext.describeSummary
+      : undefined;
+
   try {
-    const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
     const reviewPrompt = buildReviewPrompt(
       agentType,
       baseInstructions,
       reviewLabel,
       filteredFiles,
       workingDir,
-      skillPrompt
+      config,
+      describeSummary
     );
+
+    const logger = getLogger();
 
     if (debug) {
       console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
@@ -344,9 +402,11 @@ export async function runUnifiedReviewAgent(
       console.log(reviewPrompt);
       console.log(chalk.gray('─'.repeat(60)));
       console.log(chalk.gray(`└── End message for ${agentName}\n`));
+    } else {
+      logger.agentInput(agentType, reviewPrompt);
     }
 
-    const session = await opencode.createSession({
+    const session = await runtime.createSession({
       agent: agentName,
       message: reviewPrompt,
       context: {
@@ -357,28 +417,29 @@ export async function runUnifiedReviewAgent(
 
     const agentIssues: ReviewIssue[] = [];
     let fullResponse = '';
-    const skillCalls: SkillToolCall[] = [];
 
-    const logger = getLogger();
-
-    for await (const message of opencode.streamMessages(session.id)) {
+    for await (const message of runtime.streamMessages(session.id)) {
       if (message.role === 'tool') {
-        // Check if this is a skill tool call
-        const skillResult = parseSkillToolResult(message.content);
-        if (skillResult) {
-          skillCalls.push(skillResult);
-          logger.skillLoaded(skillResult.skillName, agentType, {
-            hasScripts: skillResult.hasScripts,
-            hasReferences: skillResult.hasReferences,
-            hasAssets: skillResult.hasAssets,
-          });
+        // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
+        const skillFromLegacy =
+          message.toolName === 'skill'
+            ? extractSkillNameFromToolOutput(message.content)
+            : undefined;
+        const skillFromRead = extractSkillNameFromReadToolOutput(message.toolName, message.content);
+        const skillName = skillFromLegacy ?? skillFromRead;
+
+        if (skillName) {
+          logger.skillLoaded(skillName, agentType);
+          sawSkillToolCall = true;
         } else {
-          logger.toolOutput('unknown', agentType, message.content);
+          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
         }
         continue;
       }
 
       if (message.role === 'assistant') {
+        agentUsage = applyUsageMessage(agentUsage, message);
+
         if (!message.content.trim()) {
           continue;
         }
@@ -388,20 +449,16 @@ export async function runUnifiedReviewAgent(
           console.log(message.content);
           console.log(chalk.gray(`└── End response for ${agentName}\n`));
         } else {
-          const snippet = renderAgentMessage(message.content);
-          if (snippet) {
-            console.log(chalk.gray(`[unified] ${snippet}\n`));
-          }
+          logger.agentMessage(agentType, message.content);
         }
       }
     }
 
-    await opencode.closeSession(session.id);
-
-    // Log skill usage summary if no skills were used (warning)
-    if (skillCalls.length === 0) {
+    if (configuredSkills.length > 0 && !sawSkillToolCall) {
       logger.noSkillCalls(agentType);
     }
+
+    await runtime.closeSession(session.id);
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
@@ -420,26 +477,51 @@ export async function runUnifiedReviewAgent(
     }
 
     const summary = calculateSummary(filteredFiles.length, agentIssues);
+    const agentResults: AgentResult[] = [
+      {
+        agentType,
+        success: true,
+        issues: agentIssues,
+        usage: {
+          ...agentUsage,
+          success: true,
+        },
+      },
+    ];
 
     return {
       issues: agentIssues,
       summary,
       filesReviewed: filteredFiles.length,
-      agentResults: [{ agentType, success: true, issues: agentIssues }],
+      agentResults,
+      usage: summarizeRunUsage(agentResults),
     };
   } catch (error) {
     console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    const agentResults: AgentResult[] = [
+      {
+        agentType,
+        success: false,
+        issues: [],
+        usage: {
+          ...agentUsage,
+          success: false,
+        },
+      },
+    ];
+
     return {
       issues: [],
       summary: calculateSummary(filteredFiles.length, []),
       filesReviewed: filteredFiles.length,
-      agentResults: [{ agentType, success: false, issues: [] }],
+      agentResults,
+      usage: summarizeRunUsage(agentResults),
     };
   }
 }
 
 export async function runReviewAgents(
-  opencode: OpencodeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -449,6 +531,8 @@ export async function runReviewAgents(
   debug = false
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
+
+  validateConfiguredReviewAgents(config, workingDir);
 
   const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
   if (configuredAgentInfo.length > 0) {
@@ -463,21 +547,31 @@ export async function runReviewAgents(
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const agentResults: AgentResult[] = [];
 
+  const describeSummary =
+    typeof additionalContext.describeSummary === 'string'
+      ? additionalContext.describeSummary
+      : undefined;
+
   for (const agentType of agentNames) {
     const agentName = `review/${agentType}`;
     console.log(chalk.gray(`Running ${agentType} review...\n`));
+    let agentUsage = createAgentUsageSummary(agentType);
+    const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+    let sawSkillToolCall = false;
 
     try {
       // Build prompt with global and agent-specific context
-      const skillPrompt = buildSkillPromptSection(config, agentType, workingDir);
       const reviewPrompt = buildReviewPrompt(
         agentType,
         baseInstructions,
         reviewLabel,
         filteredFiles,
         workingDir,
-        skillPrompt
+        config,
+        describeSummary
       );
+
+      const logger = getLogger();
 
       if (debug) {
         console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
@@ -487,9 +581,11 @@ export async function runReviewAgents(
         console.log(reviewPrompt);
         console.log(chalk.gray('─'.repeat(60)));
         console.log(chalk.gray(`└── End message for ${agentName}\n`));
+      } else {
+        logger.agentInput(agentType, reviewPrompt);
       }
 
-      const session = await opencode.createSession({
+      const session = await runtime.createSession({
         agent: agentName,
         message: reviewPrompt,
         context: {
@@ -500,29 +596,33 @@ export async function runReviewAgents(
 
       const agentIssues: ReviewIssue[] = [];
       let fullResponse = '';
-      const skillCalls: SkillToolCall[] = [];
-
-      const logger = getLogger();
 
       // Collect results from this agent
-      for await (const message of opencode.streamMessages(session.id)) {
+      for await (const message of runtime.streamMessages(session.id)) {
         if (message.role === 'tool') {
-          // Check if this is a skill tool call
-          const skillResult = parseSkillToolResult(message.content);
-          if (skillResult) {
-            skillCalls.push(skillResult);
-            logger.skillLoaded(skillResult.skillName, agentType, {
-              hasScripts: skillResult.hasScripts,
-              hasReferences: skillResult.hasReferences,
-              hasAssets: skillResult.hasAssets,
-            });
+          // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
+          const skillFromLegacy =
+            message.toolName === 'skill'
+              ? extractSkillNameFromToolOutput(message.content)
+              : undefined;
+          const skillFromRead = extractSkillNameFromReadToolOutput(
+            message.toolName,
+            message.content
+          );
+          const skillName = skillFromLegacy ?? skillFromRead;
+
+          if (skillName) {
+            logger.skillLoaded(skillName, agentType);
+            sawSkillToolCall = true;
           } else {
-            logger.toolOutput('unknown', agentType, message.content);
+            logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
           }
           continue;
         }
 
         if (message.role === 'assistant') {
+          agentUsage = applyUsageMessage(agentUsage, message);
+
           if (!message.content.trim()) {
             continue;
           }
@@ -532,30 +632,43 @@ export async function runReviewAgents(
             console.log(message.content);
             console.log(chalk.gray(`└── End response for ${agentName}\n`));
           } else {
-            const snippet = renderAgentMessage(message.content);
-            if (snippet) {
-              console.log(chalk.gray(`[${agentType}] ${snippet}\n`));
-            }
+            logger.agentMessage(agentType, message.content);
           }
         }
       }
 
-      await opencode.closeSession(session.id);
-
-      // Log skill usage summary if no skills were used (warning)
-      if (skillCalls.length === 0) {
+      if (configuredSkills.length > 0 && !sawSkillToolCall) {
         logger.noSkillCalls(agentType);
       }
+
+      await runtime.closeSession(session.id);
+
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
       const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {
         agentIssues.push(...parsedIssues);
         console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
       }
-      agentResults.push({ agentType, success: true, issues: agentIssues });
+      agentResults.push({
+        agentType,
+        success: true,
+        issues: agentIssues,
+        usage: {
+          ...agentUsage,
+          success: true,
+        },
+      });
     } catch (error) {
       console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
-      agentResults.push({ agentType, success: false, issues: [] });
+      agentResults.push({
+        agentType,
+        success: false,
+        issues: [],
+        usage: {
+          ...agentUsage,
+          success: false,
+        },
+      });
     }
   }
 
@@ -596,11 +709,12 @@ export async function runReviewAgents(
     summary,
     filesReviewed: filteredFiles.length,
     agentResults,
+    usage: summarizeRunUsage(agentResults),
   };
 }
 
 export async function runReviewPipeline(
-  opencode: OpencodeClient,
+  runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
   reviewLabel: string,
@@ -613,7 +727,7 @@ export async function runReviewPipeline(
 
   if (mode === 'unified') {
     return runUnifiedReviewAgent(
-      opencode,
+      runtime,
       config,
       baseInstructions,
       reviewLabel,
@@ -626,7 +740,7 @@ export async function runReviewPipeline(
 
   if (mode === 'multi-agent') {
     return runReviewAgents(
-      opencode,
+      runtime,
       config,
       baseInstructions,
       reviewLabel,
@@ -638,7 +752,7 @@ export async function runReviewPipeline(
   }
 
   const unifiedResult = await runUnifiedReviewAgent(
-    opencode,
+    runtime,
     config,
     baseInstructions,
     reviewLabel,
@@ -668,7 +782,7 @@ export async function runReviewPipeline(
   }
 
   const deepResult = await runReviewAgents(
-    opencode,
+    runtime,
     config,
     baseInstructions,
     reviewLabel,
@@ -681,11 +795,14 @@ export async function runReviewPipeline(
   const mergedIssues = mergeIssues(unifiedResult.issues, deepResult.issues);
   const summary = calculateSummary(filteredFiles.length, mergedIssues);
 
+  const combinedAgentResults = [...unifiedResult.agentResults, ...deepResult.agentResults];
+
   return {
     issues: mergedIssues,
     summary,
     filesReviewed: filteredFiles.length,
-    agentResults: [...unifiedResult.agentResults, ...deepResult.agentResults],
+    agentResults: combinedAgentResults,
+    usage: summarizeRunUsage(combinedAgentResults),
   };
 }
 
@@ -697,6 +814,7 @@ export function displayReviewSummary(result: {
   summary: ReturnType<typeof calculateSummary>;
   filesReviewed: number;
   changeSummary?: ChangeSummary;
+  usage?: ReviewUsageSummary;
 }): void {
   console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log(chalk.bold('📊 Review Summary'));
@@ -716,6 +834,21 @@ export function displayReviewSummary(result: {
 
   console.log(`  Files reviewed: ${chalk.cyan(result.summary.filesReviewed)}`);
   console.log(`  Issues found: ${chalk.yellow(result.summary.issuesFound)}`);
+
+  if (result.usage) {
+    console.log(
+      `  Tokens (input/output): ${chalk.cyan(`${result.usage.total.input}/${result.usage.total.output}`)}`
+    );
+    console.log(`  Total tokens: ${chalk.cyan(result.usage.total.totalTokens)}`);
+    console.log(`  Estimated cost: ${chalk.cyan(`$${result.usage.total.cost.toFixed(4)}`)}`);
+    if (result.usage.total.totalTokens > 0 && result.usage.total.cost === 0) {
+      console.log(
+        chalk.gray(
+          '  Cost is $0.0000 because model pricing is unknown or configured as free. Configure pricing.models to override.'
+        )
+      );
+    }
+  }
 
   if (result.summary.issuesFound > 0) {
     console.log(`    🔴 Critical: ${chalk.red(result.summary.bySeverity.CRITICAL)}`);

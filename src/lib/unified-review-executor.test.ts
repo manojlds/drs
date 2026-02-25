@@ -12,6 +12,7 @@ vi.mock('./config.js', () => ({
   getModelOverrides: vi.fn(() => ({})),
   getUnifiedModelOverride: vi.fn(() => ({})),
   getDescriberModelOverride: vi.fn(() => ({})),
+  getDefaultModel: vi.fn(() => undefined),
 }));
 
 vi.mock('./repository-validator.js', () => ({
@@ -24,14 +25,30 @@ vi.mock('./repository-validator.js', () => ({
   getCanonicalDiffCommand: vi.fn(() => 'git diff origin/main origin/feature -- <file>'),
 }));
 
-vi.mock('./review-orchestrator.js', () => ({
-  filterIgnoredFiles: vi.fn((files) => files),
-  connectToOpenCode: vi.fn(() => ({
+vi.mock('./review-orchestrator.js', () => {
+  const connectToRuntime = vi.fn(() => ({
     createSession: vi.fn(),
     streamMessages: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
+    getMinContextWindow: vi.fn(() => undefined),
+  }));
+
+  return {
+    filterIgnoredFiles: vi.fn((files) => files),
+    connectToRuntime,
+    getReviewBudgetModelIds: vi.fn((mode, agentModelOverrides, unifiedModelOverrides) => {
+      const reviewMode = mode ?? 'multi-agent';
+      const modelIds =
+        reviewMode === 'unified'
+          ? Object.values(unifiedModelOverrides)
+          : reviewMode === 'hybrid'
+            ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
+            : Object.values(agentModelOverrides);
+
+      return [...new Set(modelIds)].filter((id): id is string => !!id);
+    }),
+  };
+});
 
 vi.mock('./review-core.js', () => ({
   buildBaseInstructions: vi.fn(() => 'Review these files...'),
@@ -83,6 +100,12 @@ vi.mock('./json-output.js', () => ({
   printReviewJson: vi.fn(),
 }));
 
+vi.mock('./context-compression.js', () => ({
+  prepareDiffsForAgent: vi.fn((files: any[]) => ({ files, generated: [] })),
+  formatCompressionSummary: vi.fn(() => ''),
+  resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
+}));
+
 vi.mock('fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
@@ -129,7 +152,7 @@ describe('unified-review-executor', () => {
       contextCompression: {
         maxTokens: 10000,
       },
-      opencode: {},
+      pi: {},
       gitlab: {
         url: 'https://gitlab.com',
         token: 'mock-token',
@@ -160,6 +183,137 @@ describe('unified-review-executor', () => {
 
       expect(mockPlatformClient.getPullRequest).toHaveBeenCalledWith('owner/repo', 123);
       expect(mockPlatformClient.getChangedFiles).toHaveBeenCalledWith('owner/repo', 123);
+    });
+
+    it('should use pre-fetched PR and file data when provided', async () => {
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+        pullRequest: {
+          number: 123,
+          title: 'Preloaded PR',
+          author: 'test-user',
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+          headSha: 'head-sha',
+          platformData: {},
+        },
+        changedFiles: [
+          {
+            filename: 'src/preloaded.ts',
+            status: 'modified',
+            additions: 1,
+            deletions: 0,
+            patch: '+preloaded change',
+          },
+        ],
+      };
+
+      await executeUnifiedReview(mockConfig, options);
+
+      expect(mockPlatformClient.getPullRequest).not.toHaveBeenCalled();
+      expect(mockPlatformClient.getChangedFiles).not.toHaveBeenCalled();
+    });
+
+    it('should include platform patches in review instructions when available', async () => {
+      const { buildBaseInstructions } = await import('./review-core.js');
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(mockConfig, options);
+
+      expect(buildBaseInstructions).toHaveBeenCalledWith(
+        'PR/MR #123',
+        expect.arrayContaining([
+          expect.objectContaining({ filename: 'src/test.ts', patch: '+added line' }),
+          expect.objectContaining({ filename: 'src/utils.ts', patch: '+new file' }),
+        ]),
+        'git diff origin/main origin/feature -- <file>',
+        ''
+      );
+    });
+
+    it('uses only unified model IDs for budget sizing in unified mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/small-8k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/large-200k',
+      });
+
+      const mockRuntimeClient = {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
+      };
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'unified',
+          },
+        } as DRSConfig,
+        options
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
+    });
+
+    it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
+      const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+
+      vi.mocked(getModelOverrides).mockReturnValueOnce({
+        'review/security': 'provider/large-200k',
+      });
+      vi.mocked(getUnifiedModelOverride).mockReturnValueOnce({
+        'review/unified-reviewer': 'provider/small-8k',
+      });
+
+      const mockRuntimeClient = {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
+      };
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: false,
+      };
+
+      await executeUnifiedReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'multi-agent',
+          },
+        } as DRSConfig,
+        options
+      );
+
+      expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
     });
 
     it('should enforce repository branch match', async () => {
@@ -403,12 +557,13 @@ describe('unified-review-executor', () => {
       );
     });
 
-    it('should shutdown OpenCode on completion', async () => {
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
-      const mockOpencode = {
+    it('should shutdown runtime client on completion', async () => {
+      const { connectToRuntime } = await import('./review-orchestrator.js');
+      const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
 
       const options: UnifiedReviewOptions = {
         platformClient: mockPlatformClient,
@@ -419,17 +574,18 @@ describe('unified-review-executor', () => {
 
       await executeUnifiedReview(mockConfig, options);
 
-      expect(mockOpencode.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should shutdown OpenCode on error', async () => {
+    it('should shutdown runtime client on error', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
-      const { connectToOpenCode } = await import('./review-orchestrator.js');
+      const { connectToRuntime } = await import('./review-orchestrator.js');
 
-      const mockOpencode = {
+      const mockRuntimeClient = {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        getMinContextWindow: vi.fn(() => undefined),
       };
-      vi.mocked(connectToOpenCode).mockResolvedValueOnce(mockOpencode as any);
+      vi.mocked(connectToRuntime).mockResolvedValueOnce(mockRuntimeClient as any);
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Test error'));
 
       const options: UnifiedReviewOptions = {
@@ -440,7 +596,7 @@ describe('unified-review-executor', () => {
       };
 
       await expect(executeUnifiedReview(mockConfig, options)).rejects.toThrow('Test error');
-      expect(mockOpencode.shutdown).toHaveBeenCalled();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
   });
 });

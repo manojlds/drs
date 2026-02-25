@@ -1,6 +1,6 @@
 {
   "name": "@diff-review-system/drs",
-  "version": "2.2.1",
+  "version": "3.0.0-alpha.0",
   "description": "Intelligent code review platform for GitLab and GitHub - Enterprise-grade automated analysis",
   "type": "module",
   "main": "dist/index.js",
@@ -13,6 +13,7 @@
     "dev": "tsx watch src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run",
+    "test:e2e": "DRS_E2E_LIVE=1 vitest run src/cli/review-local.live.e2e.test.ts",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "format": "prettier --write 'src/**/*.{ts,json}'",
@@ -25,7 +26,7 @@
     "dist",
     "README.md",
     "LICENSE",
-    ".opencode"
+    ".pi"
   ],
   "repository": {
     "type": "git",
@@ -39,7 +40,7 @@
     "gitlab",
     "github",
     "code-review",
-    "opencode",
+    "pi",
     "diff-review",
     "merge-request",
     "pull-request",
@@ -51,9 +52,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
     "@gitbeaker/node": "^35.8.1",
+    "@mariozechner/pi-coding-agent": "0.54.0",
     "@octokit/rest": "^21.0.0",
-    "@opencode-ai/plugin": "1.2.6",
-    "@opencode-ai/sdk": "1.2.6",
     "ajv": "^8.17.1",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",

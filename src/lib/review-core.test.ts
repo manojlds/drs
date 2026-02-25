@@ -10,7 +10,7 @@ import {
   type AgentReviewResult,
 } from './review-core.js';
 import type { DRSConfig } from './config.js';
-import type { OpencodeClient } from '../opencode/client.js';
+import type { RuntimeClient } from '../runtime/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', () => ({
@@ -75,7 +75,7 @@ vi.mock('./comment-formatter.js', () => ({
   })),
 }));
 
-vi.mock('../opencode/agent-loader.js', () => ({
+vi.mock('../runtime/agent-loader.js', () => ({
   loadReviewAgents: vi.fn(() => [
     { name: 'review/security', description: 'Security review' },
     { name: 'review/quality', description: 'Code quality review' },
@@ -122,7 +122,10 @@ describe('review-core', () => {
       expect(instructions).toContain('MR !456');
       expect(instructions).toContain('src/app.ts');
       expect(instructions).toContain('src/utils.ts');
-      expect(instructions).toContain('git diff HEAD~1');
+      expect(instructions).toContain('omitted due to size constraints');
+      expect(instructions).toContain('Use the Read tool');
+      expect(instructions).not.toContain('Bash tool');
+      expect(instructions).not.toContain('git diff');
       expect(instructions).not.toContain('Diff Content');
     });
 
@@ -159,12 +162,13 @@ describe('review-core', () => {
 
       const instructions = buildBaseInstructions('PR #123', files);
 
-      expect(instructions).toContain('git diff HEAD~1 -- <file>');
+      expect(instructions).toContain('omitted due to size constraints');
+      expect(instructions).toContain('Use the Read tool');
     });
   });
 
   describe('runUnifiedReviewAgent', () => {
-    let mockOpencode: OpencodeClient;
+    let mockRuntime: RuntimeClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
@@ -172,7 +176,7 @@ describe('review-core', () => {
       vi.spyOn(console, 'log').mockImplementation(() => {});
       vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      mockOpencode = {
+      mockRuntime = {
         createSession: vi.fn(async () => ({ id: 'session-1' })),
         streamMessages: vi.fn(async function* () {
           yield {
@@ -207,7 +211,7 @@ describe('review-core', () => {
 
     it('should run unified review agent successfully', async () => {
       const result = await runUnifiedReviewAgent(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -224,7 +228,7 @@ describe('review-core', () => {
       expect(result.agentResults).toHaveLength(1);
       expect(result.agentResults[0].success).toBe(true);
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mockOpencode.createSession).toHaveBeenCalledWith({
+      expect(mockRuntime.createSession).toHaveBeenCalledWith({
         agent: 'review/unified-reviewer',
         message: expect.stringContaining('Review these files'),
         context: {
@@ -232,16 +236,68 @@ describe('review-core', () => {
         },
       });
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mockOpencode.closeSession).toHaveBeenCalledWith('session-1');
+      expect(mockRuntime.closeSession).toHaveBeenCalledWith('session-1');
+    });
+
+    it('captures token usage and model metadata from assistant messages', async () => {
+      mockRuntime.streamMessages = vi.fn(async function* () {
+        yield {
+          id: 'msg-usage-1',
+          role: 'assistant',
+          content: JSON.stringify({ issues: [] }),
+          provider: 'opencode',
+          model: 'glm-5-free',
+          usage: {
+            input: 1200,
+            output: 100,
+            cacheRead: 30,
+            cacheWrite: 0,
+            totalTokens: 1330,
+            cost: 0.02,
+          },
+          timestamp: new Date(),
+        };
+      }) as any;
+
+      const result = await runUnifiedReviewAgent(
+        mockRuntime,
+        mockConfig,
+        'Review these files',
+        'PR #123',
+        ['src/app.ts'],
+        {},
+        '/test/dir',
+        false
+      );
+
+      expect(result.usage).toEqual(
+        expect.objectContaining({
+          total: expect.objectContaining({
+            input: 1200,
+            output: 100,
+            cacheRead: 30,
+            cacheWrite: 0,
+            totalTokens: 1330,
+            cost: 0.02,
+          }),
+          agents: [
+            expect.objectContaining({
+              agentType: 'unified-reviewer',
+              model: 'opencode/glm-5-free',
+              turns: 1,
+            }),
+          ],
+        })
+      );
     });
 
     it('should handle agent failure gracefully', async () => {
-      mockOpencode.createSession = vi.fn(async () => {
+      mockRuntime.createSession = vi.fn(async () => {
         throw new Error('Session creation failed');
       });
 
       const result = await runUnifiedReviewAgent(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -257,7 +313,7 @@ describe('review-core', () => {
     });
 
     it('should handle invalid JSON output gracefully', async () => {
-      mockOpencode.streamMessages = vi.fn(async function* () {
+      mockRuntime.streamMessages = vi.fn(async function* () {
         yield {
           id: 'msg-1',
           role: 'assistant',
@@ -269,7 +325,7 @@ describe('review-core', () => {
       // parseReviewOutput mock returns { issues: [] } for invalid JSON
       // so this should succeed with no issues
       const result = await runUnifiedReviewAgent(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -287,7 +343,7 @@ describe('review-core', () => {
       const logSpy = vi.spyOn(console, 'log');
 
       await runUnifiedReviewAgent(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -302,14 +358,14 @@ describe('review-core', () => {
   });
 
   describe('runReviewAgents', () => {
-    let mockOpencode: OpencodeClient;
+    let mockRuntime: RuntimeClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
       vi.spyOn(console, 'log').mockImplementation(() => {});
       vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      mockOpencode = {
+      mockRuntime = {
         createSession: vi.fn(async ({ agent }) => ({ id: `session-${agent}` })),
         streamMessages: vi.fn(async function* ({ agent }: any) {
           const agentType = agent?.split('/')[1] || 'test';
@@ -345,7 +401,7 @@ describe('review-core', () => {
 
     it('should run multiple agents successfully', async () => {
       const result = await runReviewAgents(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -362,7 +418,7 @@ describe('review-core', () => {
 
     it('should continue if one agent fails', async () => {
       let callCount = 0;
-      mockOpencode.createSession = vi.fn(async ({ agent }) => {
+      mockRuntime.createSession = vi.fn(async ({ agent }) => {
         callCount++;
         if (callCount === 1) {
           throw new Error('First agent failed');
@@ -371,7 +427,7 @@ describe('review-core', () => {
       }) as any;
 
       const result = await runReviewAgents(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Review these files',
         'PR #123',
@@ -387,13 +443,13 @@ describe('review-core', () => {
     });
 
     it('should throw error if all agents fail', async () => {
-      mockOpencode.createSession = vi.fn(async () => {
+      mockRuntime.createSession = vi.fn(async () => {
         throw new Error('All agents failed');
       });
 
       await expect(
         runReviewAgents(
-          mockOpencode,
+          mockRuntime,
           mockConfig,
           'Review these files',
           'PR #123',
@@ -410,7 +466,7 @@ describe('review-core', () => {
 
       await expect(
         runReviewAgents(
-          mockOpencode,
+          mockRuntime,
           mockConfig,
           'Review these files',
           'PR #123',
@@ -421,17 +477,34 @@ describe('review-core', () => {
         )
       ).rejects.toThrow('All review agents failed');
     });
+
+    it('should fail fast when config includes unknown agents', async () => {
+      mockConfig.review.agents = ['security', 'unknown-agent'];
+
+      await expect(
+        runReviewAgents(
+          mockRuntime,
+          mockConfig,
+          'Review these files',
+          'PR #123',
+          ['src/app.ts'],
+          {},
+          '/test/dir',
+          false
+        )
+      ).rejects.toThrow('Unknown review agent(s) configured: unknown-agent');
+    });
   });
 
   describe('runReviewPipeline', () => {
-    let mockOpencode: OpencodeClient;
+    let mockRuntime: RuntimeClient;
     let mockConfig: DRSConfig;
 
     beforeEach(() => {
       vi.spyOn(console, 'log').mockImplementation(() => {});
       vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      mockOpencode = {
+      mockRuntime = {
         createSession: vi.fn(async () => ({ id: 'session-1' })),
         streamMessages: vi.fn(async function* () {
           yield {
@@ -466,7 +539,7 @@ describe('review-core', () => {
       } as DRSConfig;
 
       const result = await runReviewPipeline(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Base instructions',
         'PR #123',
@@ -489,7 +562,7 @@ describe('review-core', () => {
       } as DRSConfig;
 
       const result = await runReviewPipeline(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Base instructions',
         'PR #123',
@@ -515,7 +588,7 @@ describe('review-core', () => {
       } as DRSConfig;
 
       // Mock unified review returning only LOW severity
-      mockOpencode.streamMessages = vi.fn(async function* () {
+      mockRuntime.streamMessages = vi.fn(async function* () {
         yield {
           id: 'msg-1',
           role: 'assistant',
@@ -537,7 +610,7 @@ describe('review-core', () => {
       }) as any;
 
       const result = await runReviewPipeline(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Base instructions',
         'PR #123',
@@ -565,7 +638,7 @@ describe('review-core', () => {
       } as DRSConfig;
 
       let callCount = 0;
-      mockOpencode.streamMessages = vi.fn(async function* () {
+      mockRuntime.streamMessages = vi.fn(async function* () {
         callCount++;
         yield {
           id: 'msg-1',
@@ -588,7 +661,7 @@ describe('review-core', () => {
       }) as any;
 
       const result = await runReviewPipeline(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Base instructions',
         'PR #123',
@@ -610,7 +683,7 @@ describe('review-core', () => {
       } as DRSConfig;
 
       const result = await runReviewPipeline(
-        mockOpencode,
+        mockRuntime,
         mockConfig,
         'Base instructions',
         'PR #123',

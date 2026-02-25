@@ -8,13 +8,16 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
+import { exitProcess } from './exit.js';
 import {
   shouldIgnoreFile,
   getModelOverrides,
+  getDescriberModelOverride,
+  getRuntimeConfig,
   getUnifiedModelOverride,
   type ModelOverrides,
 } from './config.js';
-import { createOpencodeClientInstance, type OpencodeClient } from '../opencode/client.js';
+import { createRuntimeClientInstance, type RuntimeClient } from '../runtime/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import {
   buildBaseInstructions,
@@ -23,7 +26,14 @@ import {
   hasBlockingIssues as checkBlockingIssues,
   type FileWithDiff,
 } from './review-core.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from './context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
+import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
+import { runDescribeAgent, type PreCompressedDiffs } from './description-executor.js';
+import { formatDescribeSummary } from './description-formatter.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -39,7 +49,7 @@ export interface ReviewSource {
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print Pi runtime configuration */
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
@@ -57,6 +67,8 @@ export interface ReviewResult {
   changeSummary?: ChangeSummary;
   /** Number of files actually reviewed (after filtering) */
   filesReviewed: number;
+  /** Token usage and cost details for the review run */
+  usage?: ReviewUsageSummary;
 }
 
 /**
@@ -66,20 +78,37 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
   return files.filter((file) => !shouldIgnoreFile(file, config));
 }
 
+export function getReviewBudgetModelIds(
+  mode: DRSConfig['review']['mode'],
+  agentModelOverrides: ModelOverrides,
+  unifiedModelOverrides: ModelOverrides
+): string[] {
+  const reviewMode = mode ?? 'multi-agent';
+
+  const modelIds =
+    reviewMode === 'unified'
+      ? Object.values(unifiedModelOverrides)
+      : reviewMode === 'hybrid'
+        ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
+        : Object.values(agentModelOverrides);
+
+  return [...new Set(modelIds)].filter((id): id is string => !!id);
+}
+
 export interface ConnectOptions {
   debug?: boolean;
   modelOverrides?: ModelOverrides;
 }
 
 /**
- * Connect to OpenCode server (or start in-process)
+ * Connect to Pi runtime (in-process by default)
  */
-export async function connectToOpenCode(
+export async function connectToRuntime(
   config: DRSConfig,
   workingDir?: string,
   options?: ConnectOptions
-): Promise<OpencodeClient> {
-  console.log(chalk.gray('Connecting to OpenCode server...\n'));
+): Promise<RuntimeClient> {
+  console.log(chalk.gray('Connecting to Pi runtime...\n'));
 
   try {
     // Get model overrides from DRS config
@@ -88,30 +117,31 @@ export async function connectToOpenCode(
       ...getUnifiedModelOverride(config),
     };
 
-    return await createOpencodeClientInstance({
-      baseUrl: config.opencode.serverUrl ?? undefined,
+    const runtimeConfig = getRuntimeConfig(config);
+
+    return await createRuntimeClientInstance({
       directory: workingDir ?? process.cwd(),
       modelOverrides,
-      provider: config.opencode.provider,
+      provider: runtimeConfig.provider,
       config,
       debug: options?.debug,
     });
   } catch (error) {
-    console.error(chalk.red('✗ Failed to connect to OpenCode server'));
+    console.error(chalk.red('✗ Failed to connect to Pi runtime'));
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}\n`));
     console.log(
-      chalk.yellow('Please ensure OpenCode server is running or check your configuration.\n')
+      chalk.yellow('Please check your Pi runtime configuration and model credentials.\n')
     );
     throw error;
   }
 }
 
 /**
- * Execute a code review using OpenCode agents
+ * Execute a code review using Pi runtime agents.
  *
  * This is the core review orchestrator that handles:
  * - File filtering (ignore patterns)
- * - OpenCode connection
+ * - Pi runtime connection
  * - Agent execution and streaming
  * - Issue parsing and collection
  * - Summary calculation
@@ -141,13 +171,28 @@ export async function executeReview(
       issues: [],
       summary: calculateSummary(0, []),
       filesReviewed: 0,
+      usage: createEmptyReviewUsageSummary(),
     };
   }
 
   console.log(chalk.gray(`Reviewing ${filteredFiles.length} file(s)\n`));
 
-  // Connect to OpenCode
-  const opencode = await connectToOpenCode(config, source.workingDir, { debug: source.debug });
+  // Include describer model overrides if describe is enabled
+  const describeEnabled = config.review.describe?.enabled ?? false;
+  const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
+  const agentModelOverrides = getModelOverrides(config);
+  const unifiedModelOverrides = getUnifiedModelOverride(config);
+  const reviewOverrides = {
+    ...agentModelOverrides,
+    ...unifiedModelOverrides,
+    ...describeOverrides,
+  };
+
+  // Connect to Pi runtime
+  const runtimeClient = await connectToRuntime(config, source.workingDir, {
+    debug: source.debug,
+    modelOverrides: reviewOverrides,
+  });
 
   try {
     // Build instructions - use provided diffs if available, otherwise fall back to git command
@@ -165,13 +210,60 @@ export async function executeReview(
       filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
     }
 
-    const compression = compressFilesWithDiffs(filesForInstructions, config.contextCompression);
+    // ── Compress diffs once ──────────────────────────────────────────────
+    // Both the describe and review passes consume the same diff content.
+    // We compress once using the tightest budget across all models involved
+    // (describe + review) so neither pass exceeds any model's context window.
+    const reviewModelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
+    const describeModelIds = describeEnabled
+      ? [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+          (id): id is string => !!id
+        )
+      : [];
+    const allModelIds = [...reviewModelIds, ...describeModelIds];
+    const contextWindow = runtimeClient.getMinContextWindow(allModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
     const compressionSummary = formatCompressionSummary(compression);
 
     if (compressionSummary) {
       console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
     }
 
+    // ── Describe pass (optional) ─────────────────────────────────────────
+    let describeSummary: string | undefined;
+    if (describeEnabled && filesForInstructions.some((f) => f.patch)) {
+      try {
+        console.log(chalk.bold.blue('🔍 Running describe pass for change context\n'));
+        const preCompressed: PreCompressedDiffs = {
+          files: compression.files,
+          compressionSummary: compressionSummary,
+        };
+        const { description } = await runDescribeAgent(
+          runtimeClient,
+          config,
+          source.name,
+          filesForInstructions,
+          source.workingDir ?? process.cwd(),
+          source.debug,
+          preCompressed
+        );
+        describeSummary = formatDescribeSummary(description);
+      } catch (describeError) {
+        console.warn(
+          chalk.yellow(
+            `⚠ Describe pass failed, continuing review without change context: ${describeError instanceof Error ? describeError.message : String(describeError)}\n`
+          )
+        );
+      }
+    }
+
+    // ── Review pass ──────────────────────────────────────────────────────
     const baseInstructions = buildBaseInstructions(
       source.name,
       compression.files,
@@ -181,12 +273,12 @@ export async function executeReview(
 
     // Run agents using shared core logic
     const result = await runReviewPipeline(
-      opencode,
+      runtimeClient,
       config,
       baseInstructions,
       source.name,
       filteredFiles,
-      source.context,
+      { ...source.context, describeSummary },
       source.workingDir ?? process.cwd(),
       source.debug ?? false
     );
@@ -196,17 +288,18 @@ export async function executeReview(
       summary: result.summary,
       changeSummary: result.changeSummary,
       filesReviewed: result.filesReviewed,
+      usage: result.usage ?? createEmptyReviewUsageSummary(),
     };
   } catch (error) {
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      await opencode.shutdown();
-      process.exit(1);
+      await runtimeClient.shutdown();
+      exitProcess(1);
     }
     throw error;
   } finally {
-    // Always shut down OpenCode client
-    await opencode.shutdown();
+    // Always shut down Pi runtime client
+    await runtimeClient.shutdown();
   }
 }
 

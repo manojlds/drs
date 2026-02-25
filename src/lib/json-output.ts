@@ -8,6 +8,7 @@
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { ReviewIssue, ReviewSummary } from './comment-formatter.js';
+import type { ReviewUsageSummary } from './review-usage.js';
 
 /**
  * JSON output structure for review results
@@ -19,6 +20,8 @@ export interface ReviewJsonOutput {
   summary: ReviewSummary;
   /** All issues found */
   issues: ReviewIssue[];
+  /** Token usage and cost breakdown */
+  usage?: ReviewUsageSummary;
   /** Metadata about the review */
   metadata?: {
     /** Source of the review (PR number, MR iid, or local) */
@@ -39,12 +42,14 @@ export interface ReviewJsonOutput {
 export function formatReviewJson(
   summary: ReviewSummary,
   issues: ReviewIssue[],
-  metadata?: ReviewJsonOutput['metadata']
+  metadata?: ReviewJsonOutput['metadata'],
+  usage?: ReviewUsageSummary
 ): ReviewJsonOutput {
   return {
     timestamp: new Date().toISOString(),
     summary,
     issues,
+    usage,
     metadata,
   };
 }

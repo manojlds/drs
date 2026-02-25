@@ -1,8 +1,8 @@
 import chalk from 'chalk';
-import { getDescriberModelOverride, type DRSConfig } from '../lib/config.js';
+import { getDescriberModelOverride, getRuntimeConfig, type DRSConfig } from '../lib/config.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
-import { createOpencodeClientInstance } from '../opencode/client.js';
+import { createRuntimeClientInstance } from '../runtime/client.js';
 import { buildDescribeInstructions } from '../lib/describe-core.js';
 import { loadGlobalContext } from '../lib/context-loader.js';
 import {
@@ -11,8 +11,17 @@ import {
   postDescription,
 } from '../lib/description-formatter.js';
 import type { FileChange } from '../lib/platform-client.js';
-import { compressFilesWithDiffs, formatCompressionSummary } from '../lib/context-compression.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from '../lib/context-compression.js';
 import { parseDescribeOutput } from '../lib/describe-parser.js';
+import {
+  aggregateAgentUsage,
+  applyUsageMessage,
+  createAgentUsageSummary,
+} from '../lib/review-usage.js';
 
 export interface DescribeMROptions {
   projectId: string;
@@ -44,7 +53,25 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     patch: file.patch,
   }));
 
-  const compression = compressFilesWithDiffs(filesWithDiffs, config.contextCompression);
+  // Initialize Pi runtime client with model overrides
+  const modelOverrides = getDescriberModelOverride(config);
+  const runtimeConfig = getRuntimeConfig(config);
+
+  const runtimeClient = await createRuntimeClientInstance({
+    directory: process.cwd(),
+    modelOverrides,
+    provider: runtimeConfig.provider,
+    config,
+    debug: options.debug,
+  });
+
+  const describeModelIds = [...new Set(Object.values(modelOverrides))].filter(
+    (id): id is string => !!id
+  );
+  const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+  const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+  const compression = prepareDiffsForAgent(filesWithDiffs, compressionOptions);
   const compressionSummary = formatCompressionSummary(compression);
 
   if (compressionSummary) {
@@ -66,29 +93,22 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     console.log(chalk.yellow('=== End Instructions ===\n'));
   }
 
-  // Initialize OpenCode client with model overrides
-  const modelOverrides = getDescriberModelOverride(config);
-  const opencode = await createOpencodeClientInstance({
-    baseUrl: config.opencode.serverUrl ?? undefined,
-    directory: process.cwd(),
-    modelOverrides,
-    provider: config.opencode.provider,
-    debug: options.debug,
-  });
-
   try {
     console.log(chalk.dim('Running MR describer agent...\n'));
 
     // Run the describer agent
-    const session = await opencode.createSession({
-      agent: 'describe/pr-describer',
+    const agentType = 'describe/pr-describer';
+    const session = await runtimeClient.createSession({
+      agent: agentType,
       message: instructions,
     });
 
     // Collect all assistant messages from the session
+    let usageByAgent = createAgentUsageSummary(agentType);
     let fullResponse = '';
-    for await (const message of opencode.streamMessages(session.id)) {
+    for await (const message of runtimeClient.streamMessages(session.id)) {
       if (message.role === 'assistant') {
+        usageByAgent = applyUsageMessage(usageByAgent, message);
         fullResponse += message.content;
       }
     }
@@ -113,8 +133,23 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
       throw validationError;
     }
 
-    // Display the description
-    displayDescription(normalizedDescription, 'MR');
+    const usageSummary = aggregateAgentUsage([
+      {
+        ...usageByAgent,
+        success: true,
+      },
+    ]);
+
+    // Display the description unless we're posting it to avoid noisy CI logs
+    if (options.postDescription) {
+      console.log(
+        chalk.gray(
+          'Description generated (suppressed in logs because --post-description is enabled).'
+        )
+      );
+    } else {
+      displayDescription(normalizedDescription, 'MR', usageSummary);
+    }
 
     // Save to JSON file if requested
     if (options.outputPath) {
@@ -139,12 +174,13 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
         options.projectId,
         options.mrIid,
         normalizedDescription,
-        'MR'
+        'MR',
+        usageSummary
       );
     }
 
     console.log(chalk.green('\n✓ MR description generated successfully\n'));
   } finally {
-    await opencode.shutdown();
+    await runtimeClient.shutdown();
   }
 }

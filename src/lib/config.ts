@@ -17,6 +17,23 @@ export interface AgentConfig {
 export type ModelOverrides = Record<string, string>;
 
 /**
+ * Token pricing in USD per 1M tokens.
+ */
+export interface ModelPricingConfig {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface CustomProviderModelConfig {
+  name: string;
+  cost?: ModelPricingConfig;
+  contextWindow?: number;
+  maxTokens?: number;
+}
+
+/**
  * Custom OpenAI-compatible provider configuration
  */
 export interface CustomProvider {
@@ -26,15 +43,22 @@ export interface CustomProvider {
     baseURL: string;
     apiKey: string;
   };
-  models: Record<string, { name: string }>;
+  models: Record<string, CustomProviderModelConfig>;
+}
+
+export interface RuntimeConfig {
+  [key: string]: unknown;
+  provider?: Record<string, CustomProvider>;
 }
 
 export interface DRSConfig {
-  // OpenCode configuration
-  opencode: {
-    serverUrl?: string;
-    provider?: Record<string, CustomProvider>;
-  };
+  // Pi runtime configuration
+  pi: RuntimeConfig;
+
+  /**
+   * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
+   */
+  opencode?: RuntimeConfig;
 
   // GitLab configuration
   gitlab: {
@@ -50,6 +74,10 @@ export interface DRSConfig {
   // Review behavior
   review: {
     agents: (string | AgentConfig)[];
+    paths?: {
+      agents?: string;
+      skills?: string;
+    };
     default?: {
       model?: string;
       skills?: string[];
@@ -82,9 +110,16 @@ export interface DRSConfig {
   contextCompression?: {
     enabled?: boolean;
     maxTokens?: number;
+    thresholdPercent?: number;
     softBufferTokens?: number;
     hardBufferTokens?: number;
     tokenEstimateDivisor?: number;
+  };
+
+  // Optional per-model pricing overrides in USD per 1M tokens.
+  // Used when runtime-reported cost is missing/zero for a model.
+  pricing?: {
+    models?: Record<string, ModelPricingConfig>;
   };
 }
 
@@ -92,9 +127,7 @@ export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
 export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
-  opencode: {
-    serverUrl: process.env.OPENCODE_SERVER ?? undefined,
-  },
+  pi: {},
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN ?? '',
@@ -130,6 +163,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   contextCompression: {
     enabled: true,
     maxTokens: 32000,
+    thresholdPercent: 0.15,
     softBufferTokens: 1500,
     hardBufferTokens: 1000,
     tokenEstimateDivisor: 4,
@@ -166,9 +200,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   // Apply environment variable overrides
-  if (process.env.OPENCODE_SERVER) {
-    config.opencode.serverUrl = process.env.OPENCODE_SERVER;
-  }
   if (process.env.GITLAB_URL) {
     config.gitlab.url = process.env.GITLAB_URL;
   }
@@ -237,7 +268,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     );
   }
 
-  return config;
+  return normalizeRuntimeConfig(config);
 }
 
 /**
@@ -245,13 +276,49 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
  */
 function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
+    pi: mergeSection(base.pi, override.pi),
     opencode: mergeSection(base.opencode, override.opencode),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
     describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
+    pricing: mergeSection(base.pricing, override.pricing),
   };
+}
+
+function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
+  const legacyRuntime = config.opencode ?? {};
+  const piRuntime = config.pi ?? {};
+
+  const hasLegacyConfig =
+    Object.keys(legacyRuntime).length > 0 &&
+    Object.values(legacyRuntime).some((v) => v !== undefined);
+
+  if (hasLegacyConfig) {
+    console.warn(
+      '⚠ Config key "opencode" is deprecated and will be removed in a future release. Use "pi" instead.'
+    );
+  }
+
+  const mergedProvider = {
+    ...(legacyRuntime.provider ?? {}),
+    ...(piRuntime.provider ?? {}),
+  };
+
+  const normalizedRuntime: RuntimeConfig = {
+    provider: Object.keys(mergedProvider).length > 0 ? mergedProvider : undefined,
+  };
+
+  return {
+    ...config,
+    pi: normalizedRuntime,
+    opencode: undefined,
+  };
+}
+
+export function getRuntimeConfig(config: DRSConfig): RuntimeConfig {
+  return normalizeRuntimeConfig(config).pi;
 }
 
 /**

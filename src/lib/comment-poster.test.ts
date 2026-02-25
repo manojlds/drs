@@ -9,7 +9,9 @@ import type { PlatformClient } from './platform-client.js';
 
 // Mock dependencies
 vi.mock('./comment-formatter.js', () => ({
-  formatSummaryComment: vi.fn((_summary, _issues, _botId, _changeSummary) => 'formatted summary'),
+  formatSummaryComment: vi.fn(
+    (_summary, _issues, _botId, _changeSummary, _reviewUsage) => 'formatted summary'
+  ),
   formatIssueComment: vi.fn((issue, _fingerprint) => `formatted issue: ${issue.title}`),
 }));
 
@@ -109,6 +111,7 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         undefined,
+        undefined,
         {},
         undefined,
         undefined
@@ -136,6 +139,7 @@ describe('comment-poster', () => {
         123,
         mockSummary,
         mockIssues,
+        undefined,
         undefined,
         {},
         undefined,
@@ -168,6 +172,7 @@ describe('comment-poster', () => {
         123,
         mockSummary,
         mockIssues,
+        undefined,
         undefined,
         {},
         mockLineValidator,
@@ -236,6 +241,7 @@ describe('comment-poster', () => {
         },
         lowSeverityIssues,
         undefined,
+        undefined,
         {},
         mockLineValidator,
         mockCreateInlinePosition
@@ -259,6 +265,7 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         undefined,
+        undefined,
         {},
         undefined, // No line validator
         mockCreateInlinePosition
@@ -280,6 +287,7 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         undefined,
+        undefined,
         {},
         mockLineValidator,
         undefined // No position builder
@@ -297,6 +305,7 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         undefined,
+        undefined,
         {},
         undefined,
         undefined
@@ -312,6 +321,7 @@ describe('comment-poster', () => {
         123,
         mockSummary,
         mockIssues,
+        undefined,
         undefined,
         {},
         undefined,
@@ -341,6 +351,7 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         mockChangeSummary,
+        undefined,
         {},
         undefined,
         undefined
@@ -352,7 +363,44 @@ describe('comment-poster', () => {
         mockSummary,
         mockIssues,
         expect.any(String),
-        mockChangeSummary
+        mockChangeSummary,
+        undefined
+      );
+    });
+
+    it('should pass usage summary into formatted comment', async () => {
+      const usage = {
+        total: {
+          input: 100,
+          output: 20,
+          cacheRead: 5,
+          cacheWrite: 0,
+          totalTokens: 125,
+          cost: 0.01,
+        },
+        agents: [],
+      };
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        mockIssues,
+        undefined,
+        usage,
+        {},
+        undefined,
+        undefined
+      );
+
+      const { formatSummaryComment } = await import('./comment-formatter.js');
+      expect(formatSummaryComment).toHaveBeenCalledWith(
+        mockSummary,
+        mockIssues,
+        expect.any(String),
+        undefined,
+        usage
       );
     });
   });

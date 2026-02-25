@@ -70,7 +70,7 @@ function generateConfigYaml(config: InitConfig): string {
   // Add custom provider if configured
   if (config.useCustomProvider && config.provider) {
     yaml += `# Custom AI Provider
-opencode:
+pi:
   provider:
     ${config.provider.name}:
       npm: "${config.provider.npm}"
@@ -81,6 +81,12 @@ opencode:
       models:
         ${config.provider.modelId}:
           name: "${config.provider.modelDisplayName}"
+          # Optional pricing override (USD per 1M tokens)
+          # cost:
+          #   input: 0.27
+          #   output: 1.10
+          #   cacheRead: 0.00
+          #   cacheWrite: 0.00
 
 `;
   }
@@ -126,6 +132,28 @@ opencode:
     - "package-lock.json"
     - "yarn.lock"
     - "pnpm-lock.yaml"
+
+# Context compression (diff size management)
+contextCompression:
+  enabled: true
+  # Dynamic budget = thresholdPercent × model context window
+  # Example: 0.15 = 15% of context window
+  thresholdPercent: 0.15
+  # Fallback cap when context window metadata is unavailable
+  maxTokens: 32000
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+  tokenEstimateDivisor: 4
+
+# Optional per-model pricing overrides (USD per 1M tokens)
+# Applied when runtime cost is missing/zero for a model.
+# pricing:
+#   models:
+#     ${config.defaultModel}:
+#       input: 0.00
+#       output: 0.00
+#       cacheRead: 0.00
+#       cacheWrite: 0.00
 `;
 
   return yaml;

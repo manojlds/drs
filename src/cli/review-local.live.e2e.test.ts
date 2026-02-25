@@ -1,0 +1,226 @@
+/**
+ * Live E2E test for review-local.
+ *
+ * Run manually (never in CI):
+ *   DRS_E2E_LIVE=1 npm test -- src/cli/review-local.live.e2e.test.ts
+ *
+ * Optional:
+ *   DRS_E2E_MODEL=provider/model-id
+ */
+import { spawn } from 'child_process';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
+import simpleGit from 'simple-git';
+import { config as loadDotenv } from 'dotenv';
+import { describe, expect, it } from 'vitest';
+
+loadDotenv();
+
+const shouldRunLiveE2E = !process.env.CI && process.env.DRS_E2E_LIVE === '1';
+const liveModel =
+  process.env.DRS_E2E_MODEL ?? process.env.REVIEW_DEFAULT_MODEL ?? 'opencode/minimax-m2.5-free';
+
+function runReviewLocalCli(
+  cwd: string,
+  outputPath: string
+): Promise<{ code: number; logs: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const repoRoot = process.cwd();
+    const tsxBin = resolve(
+      repoRoot,
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
+    );
+
+    const child = spawn(
+      tsxBin,
+      [resolve(repoRoot, 'src/cli/index.ts'), 'review-local', '--output', outputPath],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          REVIEW_DEFAULT_MODEL: liveModel,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+
+    let logs = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      logs += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      logs += chunk.toString();
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolvePromise({ code: code ?? -1, logs });
+    });
+  });
+}
+
+const describeLive = shouldRunLiveE2E ? describe : describe.skip;
+
+describeLive('review-local live e2e (real LLM)', () => {
+  it('runs full review-local pipeline with skill usage and writes JSON output', async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'drs-live-e2e-'));
+    const repoDir = join(tempRoot, 'repo');
+    const outputPath = 'review-local-live-output.json';
+
+    const hasAnyProviderCredential = Boolean(
+      process.env.ANTHROPIC_API_KEY ??
+      process.env.OPENAI_API_KEY ??
+      process.env.ZHIPU_API_KEY ??
+      process.env.OPENCODE_API_KEY
+    );
+
+    if (!hasAnyProviderCredential) {
+      throw new Error(
+        'Live E2E requires provider credentials. Set ANTHROPIC_API_KEY/OPENAI_API_KEY/ZHIPU_API_KEY or another supported provider key.'
+      );
+    }
+
+    try {
+      mkdirSync(repoDir, { recursive: true });
+
+      const git = simpleGit(repoDir);
+      await git.init();
+      await git.addConfig('user.name', 'DRS E2E');
+      await git.addConfig('user.email', 'drs-e2e@example.com');
+
+      mkdirSync(join(repoDir, 'src'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'skills', 'cli-testing'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'agents', 'security'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'agents', 'sql-reviewer'), { recursive: true });
+
+      writeFileSync(
+        join(repoDir, '.drs', 'skills', 'cli-testing', 'SKILL.md'),
+        [
+          '---',
+          'name: cli-testing',
+          'description: Validate CLI flag behavior and coverage',
+          '---',
+          '',
+          '# CLI Testing Skill',
+          '',
+          '- Check new or changed CLI flags for behavior and test coverage.',
+          '- Flag missing integration tests for CLI option changes.',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      writeFileSync(
+        join(repoDir, '.drs', 'agents', 'security', 'agent.md'),
+        [
+          '---',
+          'description: Security agent override for live E2E skill assertion',
+          '---',
+          '',
+          'You are a security review agent.',
+          '',
+          'Before your analysis, call the skill tool to load `cli-testing` exactly once.',
+          'Then continue your security review and follow all output instructions from the user prompt.',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      writeFileSync(
+        join(repoDir, '.drs', 'agents', 'sql-reviewer', 'agent.md'),
+        [
+          '---',
+          'description: SQL injection and database query reviewer',
+          '---',
+          '',
+          'You are a database query reviewer specializing in SQL injection detection.',
+          'Review code changes for unsafe SQL patterns and follow all output instructions from the user prompt.',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      writeFileSync(
+        join(repoDir, '.drs/drs.config.yaml'),
+        [
+          'review:',
+          '  default:',
+          `    model: ${liveModel}`,
+          '    skills:',
+          '      - cli-testing',
+          '  mode: multi-agent',
+          '  agents:',
+          '    - security',
+          '    - sql-reviewer',
+          '  ignorePatterns: []',
+          '  describe:',
+          '    enabled: false',
+          '    postDescription: false',
+          'contextCompression:',
+          '  enabled: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      writeFileSync(
+        join(repoDir, 'src', 'query.ts'),
+        ['export function findUser(userId: string) {', '  return userId.trim();', '}', ''].join(
+          '\n'
+        ),
+        'utf-8'
+      );
+
+      await git.add('.');
+      await git.commit('baseline for live e2e');
+
+      writeFileSync(
+        join(repoDir, 'src', 'query.ts'),
+        [
+          'export function findUser(userId: string) {',
+          '  const sql = "SELECT * FROM users WHERE id = " + userId;',
+          '  return sql;',
+          '}',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+
+      const result = await runReviewLocalCli(repoDir, outputPath);
+
+      if (!new Set([0, 1]).has(result.code)) {
+        throw new Error(`review-local exited with code ${result.code}.\nLogs:\n${result.logs}`);
+      }
+
+      const outputFile = join(repoDir, outputPath);
+      if (!existsSync(outputFile)) {
+        throw new Error(`Expected output file was not created.\nLogs:\n${result.logs}`);
+      }
+
+      const outputRaw = readFileSync(outputFile, 'utf-8');
+      const output = JSON.parse(outputRaw) as {
+        summary: { filesReviewed: number };
+        issues: unknown[];
+        metadata?: { source?: string };
+      };
+
+      expect(output.summary.filesReviewed).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(output.issues)).toBe(true);
+      expect(output.metadata?.source).toBe('local-unstaged');
+      expect(result.logs).toContain('Loaded skill: cli-testing');
+
+      // Verify custom agent override from .drs/agents/security/agent.md was loaded
+      expect(result.logs).toContain('agent definitions for Pi runtime');
+
+      // Verify both agents ran: built-in override + brand new custom agent
+      expect(result.logs).toContain('Selected Agents: security, sql-reviewer');
+      expect(result.logs).toContain('Running sql-reviewer review');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }, 300000);
+});

@@ -1,36 +1,43 @@
-# DRS - Diff Review System
+# DRS · Diff Review System
 
-**Intelligent Code Review Platform for GitLab and GitHub**
+[![npm version](https://img.shields.io/npm/v/@diff-review-system/drs)](https://www.npmjs.com/package/@diff-review-system/drs)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Enterprise-grade automated code review for Merge Requests and Pull Requests, powered by OpenCode SDK and Claude.
+**AI-powered code review for GitLab MRs and GitHub PRs.**
 
-## Features
+DRS helps teams catch critical issues earlier with specialized review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
 
-- **Comprehensive Analysis**: Advanced code review using Claude's latest models
-- **Specialized Review Domains**: Security, quality, style, performance, and documentation analysis
-- **Multi-Platform Support**: Native integration with GitLab and GitHub
-- **Flexible Deployment**: CI/CD pipelines or local CLI
-- **Review Modes**: Multi-agent deep review, single-pass unified review, and hybrid escalation
-- **Unified Reviewer**: One-pass JSON output with severity-tagged findings across domains
-- **PR/MR Descriptions**: Optional auto-generated descriptions and labels for pull requests
-- **Highly Customizable**: Configure review agents with project-specific rules
-- **Deep Integration**: Full API support for both GitLab and GitHub platforms
+## Why teams like DRS
+
+- 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
+- 🧠 **Flexible review modes**: multi-agent deep review, unified one-pass review, hybrid escalation
+- 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
+- ✍️ **Description generation**: optional PR/MR summary generation and posting
+- 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
+- 🎯 **Smart context compression**: dynamic budget sizing with `contextCompression.thresholdPercent`
+
+## Quick Links
+
+- [Quick Start](#quick-start)
+- [Deployment Modes](#deployment-modes)
+- [Customization](#customization)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
 
 ## Quick Start
 
 ### 1. Prerequisites
 
-Install OpenCode CLI (required for in-process server mode):
-
-```bash
-npm install -g opencode-ai
-```
+- Node.js 20+
+- API key for your chosen model provider (Anthropic/OpenAI/ZhipuAI/etc.)
 
 ### 2. Install DRS
 
 ```bash
 npm install -g @diff-review-system/drs
 ```
+
+This installs DRS with Pi runtime bundled — no separate runtime installation needed.
 
 ### 3. Initialize Project
 
@@ -48,7 +55,7 @@ cp .env.example .env
 # Edit .env and set:
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
 # - GITHUB_TOKEN: Your GitHub access token (for GitHub PRs)
-# - OPENCODE_SERVER: URL of your OpenCode instance (optional - will start in-process if not set)
+# - Pi runtime runs in-process automatically (no remote server needed)
 # - Provider API Key: Set the API key for your chosen model provider
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
@@ -56,7 +63,9 @@ cp .env.example .env
 #   - See .env.example for all supported providers
 ```
 
-**Note**: `OPENCODE_SERVER` is optional. If not provided, DRS will automatically start an OpenCode server in-process. For production deployments or when sharing across multiple tools, you can run a dedicated OpenCode server and set the URL.
+DRS CLI now loads `.env` automatically from your current working directory.
+
+**Note**: DRS runs Pi in-process by default and does not require a remote runtime endpoint.
 
 ### 5. Review Local Changes
 
@@ -70,6 +79,17 @@ drs review-local --staged
 # Use specific agents
 drs review-local --agents security,quality
 ```
+
+### Most-Used Commands
+
+| Goal | Command |
+|---|---|
+| Review local unstaged changes | `drs review-local` |
+| Review local staged changes | `drs review-local --staged` |
+| Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
+| Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
+| Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
+| Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 
 ## Deployment Modes
 
@@ -135,7 +155,7 @@ ai_review:
 ```
 
 **See [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md)** for:
-- Using the official OpenCode container (`ghcr.io/anomalyco/opencode`)
+- Pi-based CI setup examples
 - Parallel pipeline strategies (child pipelines, DAG with needs)
 - Complete examples that don't block your main pipeline
 
@@ -153,7 +173,6 @@ DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-revi
 
 1. **Configure API Keys** in repository Settings → Secrets:
    - `ANTHROPIC_API_KEY` (for Claude models), or
-   - `OPENCODE_ZEN_API_KEY` (for OpenCode Zen), or
    - `ZHIPU_API_KEY` (for ZhipuAI GLM models), or
    - `OPENAI_API_KEY` (for OpenAI models)
 
@@ -214,7 +233,7 @@ code_review:
   stage: review
   image: node:20-alpine
   before_script:
-    - npm install -g @diff-review-system/drs opencode-ai
+    - npm install -g @diff-review-system/drs
   script:
     - drs review-mr --project $CI_PROJECT_PATH --mr $CI_MERGE_REQUEST_IID
         --code-quality-report gl-code-quality-report.json
@@ -258,70 +277,42 @@ DRS generates reports in GitLab's CodeClimate-compatible format:
 
 For more details, see [GitLab Code Quality Documentation](https://docs.gitlab.com/ci/testing/code_quality/).
 
-## OpenCode Server Configuration
+## Pi Runtime Configuration
 
-DRS supports two modes of OpenCode server operation:
+DRS runs on Pi SDK as the sole review runtime.
 
-### In-Process Server (Default)
+### In-Process Runtime (Default)
 
-If `OPENCODE_SERVER` is not set, DRS will automatically start an OpenCode server within the same process. **Note**: This still requires the OpenCode CLI to be installed globally.
+By default, DRS starts Pi runtime in-process:
 
 ```bash
-# Install OpenCode CLI first (required)
-npm install -g opencode-ai
-
-# Then run DRS (server starts automatically)
 drs review-local
 ```
 
-**Pros:**
-- Minimal configuration required (just install CLI)
-- Automatic startup/shutdown
-- Simpler deployment
-- Lower latency
+### Runtime Mode
 
-**Cons:**
-- Requires OpenCode CLI installation
-- Server lifetime tied to CLI process
-- Cannot share across multiple tools
-- Uses process resources
-
-### Remote Server (Optional)
-
-For production deployments or when sharing across multiple tools, run a dedicated OpenCode server:
-
-```bash
-# Set the server URL
-export OPENCODE_SERVER=http://opencode.internal:3000
-drs review-local
-```
-
-**Pros:**
-- Persistent server
-- Shared across multiple tools
-- Better for CI/CD pipelines
-- Can be scaled separately
-
-**Cons:**
-- Requires separate service setup
-- Additional infrastructure
+DRS uses Pi in-process runtime only.
 
 ## Architecture
 
-DRS uses OpenCode SDK with markdown-based agent definitions:
+DRS uses Pi runtime wiring with markdown-based agent definitions:
 
 ```
-.opencode/
-├── agent/
-│   └── review/
-│       ├── security.md          # Security specialist
-│       ├── quality.md           # Code quality expert
-│       ├── style.md             # Style checker
-│       └── performance.md       # Performance analyzer
-└── opencode.jsonc               # Configuration
+.pi/
+└── agents/
+    └── review/
+        ├── security.md          # Security specialist
+        ├── quality.md           # Code quality expert
+        ├── style.md             # Style checker
+        ├── performance.md       # Performance analyzer
+        └── documentation.md     # Documentation reviewer
 ```
+
+Built-in agent definitions live under `.pi/agents`.
 
 ## Customization
+
+> **Full guide**: See [docs/CUSTOM_AGENTS.md](docs/CUSTOM_AGENTS.md) for complete documentation on custom agents, skills, context, per-agent tools, and configuration examples.
 
 ### Override Default Agents
 
@@ -333,7 +324,7 @@ mkdir -p .drs/agents/security
 cat > .drs/agents/security/agent.md << 'EOF'
 ---
 description: Custom security reviewer
-model: opencode/claude-sonnet-4-5
+model: anthropic/claude-sonnet-4-5-20250929
 ---
 
 You are a security expert for this specific application.
@@ -343,12 +334,55 @@ You are a security expert for this specific application.
 EOF
 ```
 
+### Add Context Without Overriding
+
+Add project-specific guidance to a built-in agent without replacing its prompt:
+
+```bash
+mkdir -p .drs/agents/quality
+cat > .drs/agents/quality/context.md << 'EOF'
+# Quality Context
+- Flag functions over 200 lines as HIGH
+- We use TypeORM — flag raw SQL queries
+EOF
+```
+
+### Global Project Context
+
+`.drs/context.md` is injected into **every** agent's prompt:
+
+```markdown
+# Project Context
+Node.js microservice using Express + TypeORM.
+Prioritize correctness, safety, and clarity.
+```
+
+### Create New Custom Agents
+
+Add agents that don't exist in the built-in set:
+
+```bash
+mkdir -p .drs/agents/api-reviewer
+cat > .drs/agents/api-reviewer/agent.md << 'EOF'
+---
+description: REST API contract reviewer
+tools:
+  Read: true
+  Grep: true
+---
+Review REST API changes for backward compatibility.
+EOF
+```
+
+Then add to config: `agents: [security, quality, api-reviewer]`
+
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
 
 ```yaml
 review:
+  mode: unified
   agents:
     - security
     - quality
@@ -359,14 +393,123 @@ review:
     enabled: true
     postDescription: false
 
+contextCompression:
+  enabled: true
+  # Dynamic budget = thresholdPercent × model context window
+  thresholdPercent: 0.15
+  # Fallback if model context window metadata is unavailable
+  maxTokens: 32000
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+
 describe:
-  model: opencode/glm-4.7-free
+  model: zhipuai/glm-4.7
 ```
 
 Notes:
 - `review.describe` controls auto-description when running `review-mr` or `review-pr`.
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
+- `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
+- `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
+- `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
+- Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
+- Unknown agent names fail fast with a validation error before review execution starts.
+
+### Model Pricing Overrides (Cost Reporting)
+
+If your provider/model reports token usage but returns `$0.0000` cost, you can set pricing manually.
+Values are in **USD per 1M tokens**.
+
+```yaml
+pricing:
+  models:
+    opencode/glm-5-free:
+      input: 0.0
+      output: 0.0
+      cacheRead: 0.0
+      cacheWrite: 0.0
+```
+
+You can also set pricing directly under `pi.provider.<name>.models.<model>.cost` for custom providers.
+
+### Custom Provider Model Metadata (Context Window & Output Limits)
+
+If you define custom models under `pi.provider.<name>.models`, you can also set model metadata used by DRS:
+
+- `contextWindow`: used for dynamic compression sizing when `thresholdPercent` is enabled
+- `maxTokens`: model output limit hint
+- `cost`: token pricing override (USD per 1M tokens)
+
+```yaml
+pi:
+  provider:
+    my-provider:
+      npm: "@ai-sdk/openai-compatible"
+      name: "My Provider"
+      options:
+        baseURL: "https://api.example.com/v1"
+        apiKey: "{env:MY_PROVIDER_API_KEY}"
+      models:
+        my-model:
+          name: "My Model"
+          contextWindow: 200000
+          maxTokens: 8192
+          cost:
+            input: 0.50
+            output: 1.50
+            cacheRead: 0.00
+            cacheWrite: 0.00
+```
+
+> Note: For built-in providers/models, context window metadata comes from the runtime model registry.
+
+### Context Compression (Large Diff Handling)
+
+DRS trims large diffs before sending them to models, so reviews stay within context limits.
+
+- `thresholdPercent` enables **dynamic budgeting** based on model context window.
+- `maxTokens` is used as fallback when context metadata is missing.
+- Generated files and deletion-only hunks can be auto-excluded from prompt context.
+
+Example:
+
+```yaml
+contextCompression:
+  enabled: true
+  thresholdPercent: 0.15 # 15% of model context window
+  maxTokens: 32000       # fallback cap
+  softBufferTokens: 1500
+  hardBufferTokens: 1000
+  tokenEstimateDivisor: 4
+```
+
+### Pi-Native Skill Discovery
+
+DRS now auto-discovers review skills from both directories when `review.paths.skills` is not set:
+
+1. `.drs/skills` (project-level overrides)
+2. `.pi/skills` (Pi-native skills)
+
+If the same skill name exists in both locations, `.drs/skills` wins.
+
+Example layout:
+
+```text
+.drs/skills/
+  secure-fetch/SKILL.md        # Project override (preferred)
+.pi/skills/
+  secure-fetch/SKILL.md        # Pi-native fallback
+  db-indexing/SKILL.md         # Additional Pi-native skill
+```
+
+To force a single custom skills directory, set `review.paths.skills`:
+
+```yaml
+review:
+  paths:
+    skills: config/review-skills
+```
 
 ## Review Domains
 
@@ -421,7 +564,6 @@ ZHIPU_API_KEY=xxx                   # For ZhipuAI GLM models
 OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
-OPENCODE_SERVER=http://localhost:3000  # Leave empty to start in-process server
 GITLAB_URL=https://gitlab.com
 REVIEW_AGENTS=security,quality,style,performance
 ```
@@ -430,15 +572,7 @@ REVIEW_AGENTS=security,quality,style,performance
 
 1. `.drs/drs.config.yaml` - DRS-specific configuration
 2. `.gitlab-review.yml` - Alternative location
-3. `.opencode/opencode.jsonc` - OpenCode configuration
-
-## Examples
-
-See the `examples/` directory for:
-- GitLab CI configuration
-- Docker Compose setup
-- Custom agent definitions
-- Configuration templates
+3. Environment variables (for provider credentials and platform tokens)
 
 ## Development
 
@@ -463,12 +597,12 @@ npm run dev
 ## Requirements
 
 - Node.js 20+
-- OpenCode CLI (`npm install -g opencode-ai`) - Required even for in-process mode
-- Anthropic API key (for Claude AI)
+- API key for your selected provider (Anthropic/OpenAI/ZhipuAI/etc.)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)
 - Git 2.30+ (for local mode)
-- OpenCode server instance (optional - will start in-process if not provided)
+
+Pi runtime is included as a dependency — no separate installation or server needed.
 
 ## License
 
@@ -477,12 +611,13 @@ Apache-2.0
 ## Documentation
 
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
+- [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup
+- [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
+- [Custom Agents & Skills Guide](docs/CUSTOM_AGENTS.md) - Custom agents, context, skills, and per-agent tools
+- [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
 - [Development Guide](DEVELOPMENT.md) - Local development and testing guide
-- [Design Document](DESIGN.md) - Original design using Claude Agent SDK
-- [Architecture Document](ARCHITECTURE.md) - OpenCode SDK architecture
-- [Publishing Guide](PUBLISHING_SETUP.md) - How to publish to npm
-- [OpenCode Documentation](https://opencode.ai/docs)
-- [GitLab API](https://docs.gitlab.com/ee/api/)
+- [Architecture Document](ARCHITECTURE.md) - Pi runtime architecture
+- [Pi Documentation](https://github.com/badlogic/pi-mono)
 
 ## Contributing
 
@@ -490,5 +625,6 @@ Contributions welcome! Please read the contributing guidelines first.
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/your-org/drs/issues)
-- Discussions: [GitHub Discussions](https://github.com/your-org/drs/discussions)
+- Issues: [GitHub Issues](https://github.com/manojlds/drs/issues)
+- Discussions: [GitHub Discussions](https://github.com/manojlds/drs/discussions)
+- Repository: [github.com/manojlds/drs](https://github.com/manojlds/drs)

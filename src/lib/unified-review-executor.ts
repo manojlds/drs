@@ -11,6 +11,7 @@
 import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import { exitProcess } from './exit.js';
 import {
   getDescriberModelOverride,
   getModelOverrides,
@@ -18,9 +19,19 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
-import { connectToOpenCode, filterIgnoredFiles } from './review-orchestrator.js';
+import {
+  connectToRuntime,
+  filterIgnoredFiles,
+  getReviewBudgetModelIds,
+} from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
-import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
+import type {
+  PlatformClient,
+  PullRequest,
+  FileChange,
+  LineValidator,
+  InlineCommentPosition,
+} from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import {
@@ -29,7 +40,13 @@ import {
   getCanonicalDiffCommand,
 } from './repository-validator.js';
 import { postReviewComments } from './comment-poster.js';
+import {
+  prepareDiffsForAgent,
+  formatCompressionSummary,
+  resolveCompressionBudget,
+} from './context-compression.js';
 import { runDescribeIfEnabled } from './description-executor.js';
+import { formatDescribeSummary, type Description } from './description-formatter.js';
 import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
@@ -43,6 +60,10 @@ export interface UnifiedReviewOptions {
   projectId: string;
   /** PR/MR number */
   prNumber: number;
+  /** Optional pre-fetched PR/MR details (used to avoid duplicate platform calls) */
+  pullRequest?: PullRequest;
+  /** Optional pre-fetched changed files (used to avoid duplicate platform calls) */
+  changedFiles?: FileChange[];
   /** Whether to post comments to the platform */
   postComments: boolean;
   /** Whether to post an error comment if the review fails */
@@ -65,7 +86,7 @@ export interface UnifiedReviewOptions {
   describe?: boolean;
   /** Post generated description during review */
   postDescription?: boolean;
-  /** Debug mode - print OpenCode configuration */
+  /** Debug mode - print runtime configuration */
   debug?: boolean;
 }
 
@@ -78,8 +99,8 @@ export async function executeUnifiedReview(
 ): Promise<void> {
   const { platformClient, projectId, prNumber, postComments } = options;
 
-  // Track OpenCode instance for cleanup
-  let opencode: Awaited<ReturnType<typeof connectToOpenCode>> | null = null;
+  // Track runtime client for cleanup
+  let runtimeClient: Awaited<ReturnType<typeof connectToRuntime>> | null = null;
 
   try {
     console.log(chalk.bold.cyan('\n📋 DRS | Code Review Analysis\n'));
@@ -87,14 +108,15 @@ export async function executeUnifiedReview(
     // Fetch PR/MR details
     console.log(chalk.gray(`Fetching PR/MR #${prNumber}...\n`));
 
-    const pr = await platformClient.getPullRequest(projectId, prNumber);
+    const pr = options.pullRequest ?? (await platformClient.getPullRequest(projectId, prNumber));
 
     await enforceRepoBranchMatch(options.workingDir ?? process.cwd(), projectId, pr, {
       skipRepoCheck: config.review.skipRepoCheck,
       skipBranchCheck: config.review.skipBranchCheck,
     });
 
-    const allFiles = await platformClient.getChangedFiles(projectId, prNumber);
+    const allFiles =
+      options.changedFiles ?? (await platformClient.getChangedFiles(projectId, prNumber));
 
     console.log(chalk.bold(`PR/MR: ${pr.title}`));
     console.log(chalk.gray(`Author: ${pr.author}`));
@@ -130,9 +152,11 @@ export async function executeUnifiedReview(
       return;
     }
 
+    const agentModelOverrides = getModelOverrides(config);
+    const unifiedModelOverrides = getUnifiedModelOverride(config);
     const reviewOverrides = {
-      ...getModelOverrides(config),
-      ...getUnifiedModelOverride(config),
+      ...agentModelOverrides,
+      ...unifiedModelOverrides,
     };
     const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
     const postDescriptionEnabled =
@@ -141,18 +165,25 @@ export async function executeUnifiedReview(
     const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };
 
-    // Connect to OpenCode
-    opencode = await connectToOpenCode(config, options.workingDir ?? process.cwd(), {
+    // Connect to runtime
+    runtimeClient = await connectToRuntime(config, options.workingDir ?? process.cwd(), {
       debug: options.debug,
       modelOverrides,
     });
-    const filesForDescribe = allFiles.map((file) => ({
-      filename: file.filename,
-      patch: file.patch,
-    }));
+    const describeFileNames = allFiles
+      .filter((file) => file.status !== 'removed')
+      .map((file) => file.filename);
+    const filteredDescribeFileNames = new Set(filterIgnoredFiles(describeFileNames, config));
+    const filesForDescribe = allFiles
+      .filter((file) => filteredDescribeFileNames.has(file.filename))
+      .map((file) => ({
+        filename: file.filename,
+        patch: file.patch,
+      }));
+    let describeResult: Description | null = null;
     if (describeEnabled) {
-      await runDescribeIfEnabled(
-        opencode,
+      describeResult = await runDescribeIfEnabled(
+        runtimeClient,
         config,
         platformClient,
         projectId,
@@ -164,27 +195,51 @@ export async function executeUnifiedReview(
       );
     }
 
+    // Build change context from describe output for review agents
+    const describeSummary = describeResult ? formatDescribeSummary(describeResult) : undefined;
+
     // Build instructions for platform review - pass actual diff content from platform
     const reviewLabel = `PR/MR #${prNumber}`;
     const baseBranchResolution = resolveBaseBranch(options.baseBranch, pr.targetBranch);
     const fallbackDiffCommand = getCanonicalDiffCommand(pr, baseBranchResolution);
-    const filesForInstructions = filteredFiles.map((filename) => ({ filename }));
+    const patchByFilename = new Map(allFiles.map((file) => [file.filename, file.patch]));
+    const filesForInstructions = filteredFiles.map((filename) => ({
+      filename,
+      patch: patchByFilename.get(filename),
+    }));
+
+    const reviewModelIds = getReviewBudgetModelIds(
+      config.review.mode,
+      agentModelOverrides,
+      unifiedModelOverrides
+    );
+    const contextWindow = runtimeClient.getMinContextWindow(reviewModelIds);
+    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+
+    const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
+    const compressionSummary = formatCompressionSummary(compression);
+
+    if (compressionSummary) {
+      console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
+    }
+
     let baseInstructions = buildBaseInstructions(
       reviewLabel,
-      filesForInstructions,
-      fallbackDiffCommand
+      compression.files,
+      fallbackDiffCommand,
+      compressionSummary
     );
     if (baseBranchResolution.resolvedBaseBranch) {
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
     }
     // Run agents using shared core logic
     const result = await runReviewPipeline(
-      opencode,
+      runtimeClient,
       config,
       baseInstructions,
       reviewLabel,
       filteredFiles,
-      { prNumber },
+      { prNumber, describeSummary },
       options.workingDir ?? process.cwd(),
       options.debug ?? false
     );
@@ -204,6 +259,7 @@ export async function executeUnifiedReview(
         result.summary,
         result.issues,
         result.changeSummary,
+        result.usage,
         pr.platformData,
         options.lineValidator,
         options.createInlinePosition
@@ -223,14 +279,19 @@ export async function executeUnifiedReview(
     const wantsJsonOutput = options.jsonOutput ?? options.outputPath;
 
     if (wantsJsonOutput) {
-      const jsonOutput = formatReviewJson(result.summary, result.issues, {
-        source: `${options.prNumber}`,
-        project: options.projectId,
-        branch: {
-          source: pr.sourceBranch,
-          target: pr.targetBranch,
+      const jsonOutput = formatReviewJson(
+        result.summary,
+        result.issues,
+        {
+          source: `${options.prNumber}`,
+          project: options.projectId,
+          branch: {
+            source: pr.sourceBranch,
+            target: pr.targetBranch,
+          },
         },
-      });
+        result.usage
+      );
 
       if (options.outputPath) {
         await writeReviewJson(jsonOutput, options.outputPath, options.workingDir ?? process.cwd());
@@ -245,8 +306,8 @@ export async function executeUnifiedReview(
     // Exit with error code if critical issues found
     if (result.summary.bySeverity.CRITICAL > 0) {
       console.log(chalk.red.bold('⚠️  Critical issues found!\n'));
-      await opencode.shutdown();
-      process.exit(1);
+      await runtimeClient.shutdown();
+      exitProcess(1);
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
@@ -263,16 +324,16 @@ export async function executeUnifiedReview(
 
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
-      if (opencode) {
-        await opencode.shutdown();
+      if (runtimeClient) {
+        await runtimeClient.shutdown();
       }
-      process.exit(1);
+      exitProcess(1);
     }
     throw error;
   } finally {
-    // Shutdown OpenCode if it was initialized
-    if (opencode) {
-      await opencode.shutdown();
+    // Shutdown runtime client if it was initialized
+    if (runtimeClient) {
+      await runtimeClient.shutdown();
     }
   }
 }
