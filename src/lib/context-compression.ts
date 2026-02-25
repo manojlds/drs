@@ -9,11 +9,24 @@ export interface ContextCompressionOptions {
   tokenEstimateDivisor?: number;
 }
 
+/** Metadata about a file omitted due to token budget */
+export interface OmittedFileInfo {
+  filename: string;
+  /** Number of added lines in the diff */
+  additions: number;
+  /** Number of deleted lines in the diff */
+  deletions: number;
+  /** Whether this is a newly created file */
+  isNew: boolean;
+  /** Estimated token count of the diff entry */
+  estimatedTokens: number;
+}
+
 export interface ContextCompressionResult {
   files: FileWithDiff[];
   omitted: {
     deletionsOnly: string[];
-    dueToBudget: string[];
+    dueToBudget: OmittedFileInfo[];
     generated: string[];
   };
 }
@@ -44,6 +57,27 @@ function estimateTokens(text: string, divisor: number): number {
 
 function buildDiffEntry(file: FileWithDiff): string {
   return `### ${file.filename}\n\n\`\`\`diff\n${file.patch}\n\`\`\``;
+}
+
+/** Count additions, deletions, and detect new-file status from a unified diff patch */
+export function computePatchStats(patch: string): {
+  additions: number;
+  deletions: number;
+  isNew: boolean;
+} {
+  let additions = 0;
+  let deletions = 0;
+  let isNew = false;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      additions++;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      deletions++;
+    } else if (line.startsWith('new file mode')) {
+      isNew = true;
+    }
+  }
+  return { additions, deletions, isNew };
 }
 
 export function stripDeletionOnlyHunks(patch: string): string {
@@ -140,7 +174,7 @@ export function compressFilesWithDiffs(
   }
 
   const deletionsOnly: string[] = [];
-  const budgetOmitted: string[] = [];
+  const budgetOmitted: OmittedFileInfo[] = [];
 
   const filesWithDiffs: FileWithDiff[] = [];
   for (const file of files) {
@@ -204,12 +238,22 @@ export function compressFilesWithDiffs(
 
   for (const entry of sorted) {
     if (currentTokens > hardLimit) {
-      budgetOmitted.push(entry.file.filename);
+      const stats = computePatchStats(entry.file.patch ?? '');
+      budgetOmitted.push({
+        filename: entry.file.filename,
+        ...stats,
+        estimatedTokens: entry.tokens,
+      });
       continue;
     }
 
     if (currentTokens + entry.tokens > softLimit) {
-      budgetOmitted.push(entry.file.filename);
+      const stats = computePatchStats(entry.file.patch ?? '');
+      budgetOmitted.push({
+        filename: entry.file.filename,
+        ...stats,
+        estimatedTokens: entry.tokens,
+      });
       continue;
     }
 
@@ -302,9 +346,16 @@ export function formatCompressionSummary(result: ContextCompressionResult): stri
   }
 
   if (result.omitted.dueToBudget.length > 0) {
+    // Sort by additions descending so agents see highest-value files first
+    const sorted = [...result.omitted.dueToBudget].sort((a, b) => b.additions - a.additions);
     sections.push(
-      `- Omitted due to token budget (use the Read tool to inspect if relevant to your review):\n${result.omitted.dueToBudget
-        .map((name) => `  - ${name}`)
+      `- Omitted due to token budget (use Read/Grep tools to inspect, listed by review priority):\n${sorted
+        .map((info) => {
+          const parts = [`+${info.additions}`, `-${info.deletions}`];
+          if (info.isNew) parts.push('new file');
+          parts.push(`~${info.estimatedTokens} tokens`);
+          return `  - ${info.filename} (${parts.join(', ')})`;
+        })
         .join('\n')}`
     );
   }
