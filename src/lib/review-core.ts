@@ -6,7 +6,7 @@
  */
 
 import chalk from 'chalk';
-import type { DRSConfig, ReviewMode, ReviewSeverity } from './config.js';
+import type { DRSConfig } from './config.js';
 import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
@@ -15,7 +15,6 @@ import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { RuntimeClient } from '../runtime/client.js';
 import { loadReviewAgents } from '../runtime/agent-loader.js';
-import { createIssueFingerprint } from './comment-manager.js';
 import { getLogger } from './logger.js';
 import {
   aggregateAgentUsage,
@@ -59,13 +58,6 @@ export interface AgentResult {
   issues: ReviewIssue[];
   usage?: AgentUsageSummary;
 }
-
-const REVIEW_SEVERITY_ORDER: Record<ReviewSeverity, number> = {
-  LOW: 1,
-  MEDIUM: 2,
-  HIGH: 3,
-  CRITICAL: 4,
-};
 
 /**
  * Build base review instructions for agents
@@ -252,32 +244,6 @@ function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): 
   throw new Error(
     `Unknown review agent(s) configured: ${missingAgents.join(', ')}. Available agents: ${availableList.join(', ')}`
   );
-}
-
-function resolveReviewMode(config: DRSConfig): ReviewMode {
-  return config.review.mode ?? 'multi-agent';
-}
-
-function shouldEscalateHybrid(issues: ReviewIssue[], threshold: ReviewSeverity): boolean {
-  return issues.some(
-    (issue) => REVIEW_SEVERITY_ORDER[issue.severity] >= REVIEW_SEVERITY_ORDER[threshold]
-  );
-}
-
-function mergeIssues(primary: ReviewIssue[], secondary: ReviewIssue[]): ReviewIssue[] {
-  const seen = new Set<string>();
-  const merged: ReviewIssue[] = [];
-
-  for (const issue of [...primary, ...secondary]) {
-    const fingerprint = createIssueFingerprint(issue);
-    if (seen.has(fingerprint)) {
-      continue;
-    }
-    seen.add(fingerprint);
-    merged.push(issue);
-  }
-
-  return merged;
 }
 
 function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
@@ -723,35 +689,7 @@ export async function runReviewPipeline(
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
-  const mode = resolveReviewMode(config);
-
-  if (mode === 'unified') {
-    return runUnifiedReviewAgent(
-      runtime,
-      config,
-      baseInstructions,
-      reviewLabel,
-      filteredFiles,
-      additionalContext,
-      workingDir,
-      debug
-    );
-  }
-
-  if (mode === 'multi-agent') {
-    return runReviewAgents(
-      runtime,
-      config,
-      baseInstructions,
-      reviewLabel,
-      filteredFiles,
-      additionalContext,
-      workingDir,
-      debug
-    );
-  }
-
-  const unifiedResult = await runUnifiedReviewAgent(
+  return runReviewAgents(
     runtime,
     config,
     baseInstructions,
@@ -761,49 +699,6 @@ export async function runReviewPipeline(
     workingDir,
     debug
   );
-
-  const unifiedSuccess = unifiedResult.agentResults.every((result) => result.success);
-  const threshold = config.review.unified?.severityThreshold ?? 'HIGH';
-  const shouldEscalate = unifiedSuccess
-    ? shouldEscalateHybrid(unifiedResult.issues, threshold)
-    : true;
-
-  if (!shouldEscalate) {
-    console.log(
-      chalk.gray(`Hybrid mode: no issues at or above ${threshold}, skipping deep review.\n`)
-    );
-    return unifiedResult;
-  }
-
-  if (!unifiedSuccess) {
-    console.log(chalk.yellow('Hybrid mode: unified review failed, falling back to deep review.\n'));
-  } else {
-    console.log(chalk.yellow('Hybrid mode: escalating to deep review agents.\n'));
-  }
-
-  const deepResult = await runReviewAgents(
-    runtime,
-    config,
-    baseInstructions,
-    reviewLabel,
-    filteredFiles,
-    additionalContext,
-    workingDir,
-    debug
-  );
-
-  const mergedIssues = mergeIssues(unifiedResult.issues, deepResult.issues);
-  const summary = calculateSummary(filteredFiles.length, mergedIssues);
-
-  const combinedAgentResults = [...unifiedResult.agentResults, ...deepResult.agentResults];
-
-  return {
-    issues: mergedIssues,
-    summary,
-    filesReviewed: filteredFiles.length,
-    agentResults: combinedAgentResults,
-    usage: summarizeRunUsage(combinedAgentResults),
-  };
 }
 
 /**

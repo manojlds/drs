@@ -169,6 +169,35 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
+    it('includes unified reviewer in skill configuration when unified mode is enabled', async () => {
+      const config = {
+        review: {
+          mode: 'unified',
+          agents: ['security'],
+          default: {
+            skills: ['cli-testing'],
+          },
+        },
+      } as any;
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agentSkills: expect.objectContaining({
+              'review/unified-reviewer': ['cli-testing'],
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
     it('passes per-agent tool overrides to Pi runtime config', async () => {
       mocks.loadReviewAgents.mockReturnValue([
         {

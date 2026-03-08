@@ -11,6 +11,7 @@ import type { ChangeSummary } from './change-summary.js';
 import { exitProcess } from './exit.js';
 import {
   shouldIgnoreFile,
+  getAgentNames,
   getModelOverrides,
   getDescriberModelOverride,
   getRuntimeConfig,
@@ -79,20 +80,25 @@ export function filterIgnoredFiles(files: string[], config: DRSConfig): string[]
 }
 
 export function getReviewBudgetModelIds(
-  mode: DRSConfig['review']['mode'],
+  config: DRSConfig,
   agentModelOverrides: ModelOverrides,
   unifiedModelOverrides: ModelOverrides
 ): string[] {
-  const reviewMode = mode ?? 'multi-agent';
+  const selectedAgents = getAgentNames(config);
+  const modelIds = selectedAgents
+    .map((agentName) => {
+      const overrideKey = `review/${agentName}`;
+      if (agentModelOverrides[overrideKey]) {
+        return agentModelOverrides[overrideKey];
+      }
+      if (agentName === 'unified-reviewer') {
+        return unifiedModelOverrides['review/unified-reviewer'];
+      }
+      return undefined;
+    })
+    .filter((id): id is string => !!id);
 
-  const modelIds =
-    reviewMode === 'unified'
-      ? Object.values(unifiedModelOverrides)
-      : reviewMode === 'hybrid'
-        ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
-        : Object.values(agentModelOverrides);
-
-  return [...new Set(modelIds)].filter((id): id is string => !!id);
+  return [...new Set(modelIds)];
 }
 
 export interface ConnectOptions {
@@ -215,7 +221,7 @@ export async function executeReview(
     // We compress once using the tightest budget across all models involved
     // (describe + review) so neither pass exceeds any model's context window.
     const reviewModelIds = getReviewBudgetModelIds(
-      config.review.mode,
+      config,
       agentModelOverrides,
       unifiedModelOverrides
     );

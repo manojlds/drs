@@ -576,7 +576,7 @@ describe('review-core', () => {
       expect(result.agentResults.length).toBeGreaterThan(0);
     });
 
-    it('should run hybrid mode and skip escalation for low severity', async () => {
+    it('should run all configured agents in order even when mode is hybrid', async () => {
       mockConfig = {
         review: {
           agents: ['unified-reviewer', 'security', 'quality'],
@@ -587,7 +587,6 @@ describe('review-core', () => {
         },
       } as DRSConfig;
 
-      // Mock unified review returning only LOW severity
       mockRuntime.streamMessages = vi.fn(async function* () {
         yield {
           id: 'msg-1',
@@ -620,13 +619,16 @@ describe('review-core', () => {
         false
       );
 
-      // Should only have unified result, no escalation
-      expect(result.issues).toHaveLength(1);
-      expect(result.issues[0].severity).toBe('LOW');
-      expect(result.agentResults).toHaveLength(1);
+      expect(result.agentResults).toHaveLength(3);
+      expect(result.agentResults.map((entry) => entry.agentType)).toEqual([
+        'unified-reviewer',
+        'security',
+        'quality',
+      ]);
+      expect(result.issues.every((issue) => issue.severity === 'LOW')).toBe(true);
     });
 
-    it('should run hybrid mode and escalate for high severity', async () => {
+    it('should run multiple configured agents when mode is hybrid', async () => {
       mockConfig = {
         review: {
           agents: ['unified-reviewer', 'security'],
@@ -671,7 +673,6 @@ describe('review-core', () => {
         false
       );
 
-      // Should have both unified and escalated results
       expect(result.agentResults.length).toBeGreaterThan(1);
     });
 

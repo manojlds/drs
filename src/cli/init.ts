@@ -96,15 +96,8 @@ pi:
   default:
     model: ${config.defaultModel}
 
-  # Review mode: multi-agent | unified | hybrid
-  # mode: multi-agent
-
-  # Unified review settings (used for unified/hybrid modes)
-  # unified:
-  #   model: ${config.defaultModel}
-  #   severityThreshold: HIGH
-
-  # Review agents
+  # Review agents (execution order)
+  # Include unified-reviewer here when you want a one-pass broad review.
   agents:
 `;
 

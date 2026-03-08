@@ -152,7 +152,6 @@ describeLive('review-local live e2e (real LLM)', () => {
           `    model: ${liveModel}`,
           '    skills:',
           '      - cli-testing',
-          '  mode: multi-agent',
           '  agents:',
           '    - security',
           '    - sql-reviewer',

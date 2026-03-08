@@ -6,7 +6,7 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { loadReviewAgents } from './agent-loader.js';
 import { resolveReviewPaths } from './path-config.js';
@@ -91,6 +91,42 @@ function mapPiRuntimeError(operation: string, error: unknown): Error {
   }
 
   return new Error(`Failed to ${operation}: ${message}`);
+}
+
+function buildAgentSkillConfiguration(
+  config: DRSConfig
+): Array<{ name: string; skills: string[] }> {
+  const normalizedAgents = normalizeAgentConfig(config.review.agents);
+  const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
+  const defaultSkills = getDefaultSkills(config);
+  const skillMap = new Map<string, Set<string>>();
+
+  const addSkills = (agentName: string, skills: string[]): void => {
+    const filtered = skills.filter((skill) => skill.length > 0);
+    if (filtered.length === 0) {
+      return;
+    }
+
+    const existing = skillMap.get(agentName) ?? new Set<string>();
+    for (const skill of filtered) {
+      existing.add(skill);
+    }
+    skillMap.set(agentName, existing);
+  };
+
+  for (const agentName of getAgentNames(config)) {
+    const agentConfig = agentConfigByName.get(agentName);
+    const fullAgentName = agentName.startsWith('review/') ? agentName : `review/${agentName}`;
+    addSkills(fullAgentName, [
+      ...defaultSkills,
+      ...(agentConfig?.skills ? agentConfig.skills.map(String) : []),
+    ]);
+  }
+
+  return Array.from(skillMap.entries()).map(([name, skills]) => ({
+    name,
+    skills: Array.from(skills),
+  }));
 }
 
 /**
@@ -241,24 +277,9 @@ export class RuntimeClient {
     runtimeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
 
     if (this.config.config) {
-      const normalizedAgents = normalizeAgentConfig(this.config.config.review.agents);
-      const defaultSkills = getDefaultSkills(this.config.config);
-      const agentSkills = normalizedAgents
-        .map((agent) => {
-          const combined = new Set([
-            ...defaultSkills,
-            ...(agent.skills ? agent.skills.map(String) : []),
-          ]);
-          const fullAgentName = agent.name.startsWith('review/')
-            ? agent.name
-            : `review/${agent.name}`;
-
-          return {
-            name: fullAgentName,
-            skills: Array.from(combined).filter((skill) => skill.length > 0),
-          };
-        })
-        .filter((agent) => agent.skills.length > 0);
+      const agentSkills = buildAgentSkillConfiguration(this.config.config).filter(
+        (agent) => agent.skills.length > 0
+      );
 
       if (agentSkills.length > 0) {
         log.info('Agent skill configuration:');
