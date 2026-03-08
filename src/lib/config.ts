@@ -86,9 +86,15 @@ export interface DRSConfig {
     defaultModel?: string;
     ignorePatterns: string[];
     includePatterns?: string[];
+    /**
+     * @deprecated Legacy compatibility only. Prefer explicit review.agents ordering.
+     */
     mode?: ReviewMode;
     unified?: {
       model?: string;
+      /**
+       * @deprecated Legacy hybrid escalation threshold. No-op in agents-first pipeline.
+       */
       severityThreshold?: ReviewSeverity;
     };
     describe?: {
@@ -150,10 +156,6 @@ const DEFAULT_CONFIG: DRSConfig = {
       'yarn.lock',
       'pnpm-lock.yaml',
     ],
-    mode: 'multi-agent',
-    unified: {
-      severityThreshold: 'HIGH',
-    },
     describe: {
       enabled: false,
       postDescription: false,
@@ -220,6 +222,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     });
   }
   if (process.env.REVIEW_MODE) {
+    console.warn(
+      '⚠ REVIEW_MODE is deprecated. Configure review.agents explicitly (include unified-reviewer when needed).'
+    );
     config.review.mode = process.env.REVIEW_MODE as ReviewMode;
   }
   if (process.env.REVIEW_UNIFIED_MODEL) {
@@ -229,6 +234,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     };
   }
   if (process.env.REVIEW_UNIFIED_THRESHOLD) {
+    console.warn(
+      '⚠ REVIEW_UNIFIED_THRESHOLD is deprecated and ignored by the agents-first pipeline.'
+    );
     config.review.unified = {
       ...config.review.unified,
       severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
@@ -257,14 +265,22 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     config = mergeConfig(config, overrides);
   }
 
-  if (!config.review.mode) {
-    config.review.mode = 'multi-agent';
+  if (config.review.mode) {
+    console.warn(
+      '⚠ review.mode is deprecated. Configure review.agents explicitly (include unified-reviewer when needed).'
+    );
+
+    const validModes: ReviewMode[] = ['multi-agent', 'unified', 'hybrid'];
+    if (!validModes.includes(config.review.mode)) {
+      throw new Error(
+        `Invalid review mode "${config.review.mode}". Valid options: ${validModes.join(', ')}`
+      );
+    }
   }
 
-  const validModes: ReviewMode[] = ['multi-agent', 'unified', 'hybrid'];
-  if (!validModes.includes(config.review.mode)) {
-    throw new Error(
-      `Invalid review mode "${config.review.mode}". Valid options: ${validModes.join(', ')}`
+  if (config.review.unified?.severityThreshold) {
+    console.warn(
+      '⚠ review.unified.severityThreshold is deprecated and ignored by the agents-first pipeline.'
     );
   }
 
@@ -359,10 +375,8 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
     );
   }
 
-  if (config.review.agents.length === 0) {
-    if (config.review.mode !== 'unified') {
-      throw new Error('At least one review agent must be configured');
-    }
+  if (getAgentNames(config).length === 0) {
+    throw new Error('At least one review agent must be configured');
   }
 
   if (!getDefaultModel(config)) {
@@ -434,11 +448,34 @@ export function getDefaultSkills(config: DRSConfig): string[] {
   return config.review.default.skills.map(String).filter((skill) => skill.length > 0);
 }
 
+function applyLegacyModeAgentFallback(config: DRSConfig, agentNames: string[]): string[] {
+  const deduped = Array.from(new Set(agentNames));
+  const mode = config.review.mode;
+
+  if (mode === 'unified' && !deduped.includes('unified-reviewer')) {
+    return ['unified-reviewer'];
+  }
+
+  if (mode === 'hybrid' && !deduped.includes('unified-reviewer')) {
+    return ['unified-reviewer', ...deduped];
+  }
+
+  return deduped;
+}
+
 /**
- * Extract agent names from configuration
+ * Extract effective agent names from configuration.
+ *
+ * Primary model: review.agents controls execution order and composition.
+ * Legacy compatibility:
+ * - mode=unified forces unified-reviewer when not explicitly configured.
+ * - mode=hybrid prepends unified-reviewer when not explicitly configured.
  */
 export function getAgentNames(config: DRSConfig): string[] {
-  return normalizeAgentConfig(config.review.agents).map((agent) => agent.name);
+  const configuredAgentNames = normalizeAgentConfig(config.review.agents).map(
+    (agent) => agent.name
+  );
+  return applyLegacyModeAgentFallback(config, configuredAgentNames);
 }
 
 /**
@@ -453,21 +490,24 @@ export function getAgentNames(config: DRSConfig): string[] {
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
   const normalizedAgents = normalizeAgentConfig(config.review.agents);
+  const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
 
   // Get default model from config or environment
   const defaultModel = getDefaultModel(config);
 
-  for (const agent of normalizedAgents) {
+  for (const agentName of getAgentNames(config)) {
+    const configuredAgent = agentConfigByName.get(agentName);
+
     // Check per-agent environment variable (e.g., REVIEW_AGENT_SECURITY_MODEL)
-    const envVarName = `REVIEW_AGENT_${agent.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
+    const envVarName = `REVIEW_AGENT_${agentName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
     const envModel = process.env[envVarName];
 
     // Precedence: agent.model > env var > defaultModel
-    const model = agent.model ?? envModel ?? defaultModel;
+    const model = configuredAgent?.model ?? envModel ?? defaultModel;
 
     if (model) {
       // Use review/<agent> format which matches how agents are invoked
-      overrides[`review/${agent.name}`] = model;
+      overrides[`review/${agentName}`] = model;
     }
   }
 

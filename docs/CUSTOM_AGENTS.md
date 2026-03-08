@@ -248,10 +248,7 @@ review:
     skills:
       - cli-testing
 
-  # Review mode: multi-agent | unified | hybrid
-  mode: multi-agent
-
-  # Agents to run
+  # Agents to run (execution order)
   agents:
     # Simple format (uses default model, no per-agent skills)
     - security

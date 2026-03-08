@@ -32,22 +32,16 @@ review:
     skills:
       - cli-testing
 
-  # Review mode
-  # Options: multi-agent | unified | hybrid
-  mode: unified
-
-  # Review agents (used in multi-agent or hybrid modes)
-  # Simple format (uses defaultModel):
+  # Review agents (execution order)
+  # Include unified-reviewer when you want a broad one-pass reviewer.
+  # Simple format (uses default model):
   agents:
+    - unified-reviewer
     - security
     - quality
     - style
     - performance
     - documentation
-
-  # Unified review settings
-  unified:
-    severityThreshold: HIGH
 
   # OR detailed format with per-agent model overrides:
   # agents:

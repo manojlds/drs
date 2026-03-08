@@ -36,12 +36,12 @@ vi.mock('./review-orchestrator.js', () => {
   return {
     filterIgnoredFiles: vi.fn((files) => files),
     connectToRuntime,
-    getReviewBudgetModelIds: vi.fn((mode, agentModelOverrides, unifiedModelOverrides) => {
-      const reviewMode = mode ?? 'multi-agent';
+    getReviewBudgetModelIds: vi.fn((config, agentModelOverrides, unifiedModelOverrides) => {
+      const mode = config.review.mode ?? 'multi-agent';
       const modelIds =
-        reviewMode === 'unified'
+        mode === 'unified'
           ? Object.values(unifiedModelOverrides)
-          : reviewMode === 'hybrid'
+          : mode === 'hybrid'
             ? [...Object.values(agentModelOverrides), ...Object.values(unifiedModelOverrides)]
             : Object.values(agentModelOverrides);
 

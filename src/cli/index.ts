@@ -12,7 +12,7 @@ import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
-import { loadConfig, type DRSConfig, type ReviewMode } from '../lib/config.js';
+import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
 
@@ -58,12 +58,7 @@ program
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
   .option('--agents <agents>', 'Comma-separated list of review agents')
-  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
-  .option('--unified-model <model>', 'Model override for unified review agent')
-  .option(
-    '--unified-threshold <severity>',
-    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
-  )
+  .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print Pi runtime configuration for debugging')
@@ -77,20 +72,12 @@ program
         timestamps: options.logFormat === 'json',
       });
 
-      const unifiedOverride =
-        options.unifiedModel || options.unifiedThreshold
-          ? {
-              model: options.unifiedModel,
-              severityThreshold: options.unifiedThreshold,
-            }
-          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode as ReviewMode | undefined,
-          unified: unifiedOverride,
+          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
 
@@ -113,12 +100,7 @@ program
   .requiredOption('--mr <iid>', 'Merge request IID (number)')
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
-  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
-  .option('--unified-model <model>', 'Model override for unified review agent')
-  .option(
-    '--unified-threshold <severity>',
-    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
-  )
+  .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
   .option('--post-error-comment', 'Post a comment if the review fails (requires GITLAB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
@@ -143,20 +125,12 @@ program
         timestamps: options.logFormat === 'json',
       });
 
-      const unifiedOverride =
-        options.unifiedModel || options.unifiedThreshold
-          ? {
-              model: options.unifiedModel,
-              severityThreshold: options.unifiedThreshold,
-            }
-          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode as ReviewMode | undefined,
-          unified: unifiedOverride,
+          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
 
@@ -200,12 +174,7 @@ program
   .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
   .option('--agents <agents>', 'Comma-separated list of review agents')
-  .option('--review-mode <mode>', 'Review mode (multi-agent, unified, hybrid)')
-  .option('--unified-model <model>', 'Model override for unified review agent')
-  .option(
-    '--unified-threshold <severity>',
-    'Severity threshold for hybrid escalation (LOW, MEDIUM, HIGH, CRITICAL)'
-  )
+  .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('--post-error-comment', 'Post a comment if the review fails (requires GITHUB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
@@ -226,20 +195,12 @@ program
         timestamps: options.logFormat === 'json',
       });
 
-      const unifiedOverride =
-        options.unifiedModel || options.unifiedThreshold
-          ? {
-              model: options.unifiedModel,
-              severityThreshold: options.unifiedThreshold,
-            }
-          : undefined;
       const config = loadConfig(process.cwd(), {
         review: {
           agents: options.agents
             ? options.agents.split(',').map((a: string) => a.trim())
             : undefined,
-          mode: options.reviewMode as ReviewMode | undefined,
-          unified: unifiedOverride,
+          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
 

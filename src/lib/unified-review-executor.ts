@@ -209,7 +209,7 @@ export async function executeUnifiedReview(
     }));
 
     const reviewModelIds = getReviewBudgetModelIds(
-      config.review.mode,
+      config,
       agentModelOverrides,
       unifiedModelOverrides
     );

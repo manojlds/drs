@@ -10,7 +10,7 @@ DRS helps teams catch critical issues earlier with specialized review agents, un
 ## Why teams like DRS
 
 - 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
-- 🧠 **Flexible review modes**: multi-agent deep review, unified one-pass review, hybrid escalation
+- 🧠 **Flexible agent pipelines**: compose any review agents (including `unified-reviewer`) in execution order
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Description generation**: optional PR/MR summary generation and posting
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
@@ -382,8 +382,8 @@ Edit `.drs/drs.config.yaml`:
 
 ```yaml
 review:
-  mode: unified
   agents:
+    - unified-reviewer
     - security
     - quality
   ignorePatterns:
@@ -413,7 +413,7 @@ Notes:
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
 - `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
-- Built-in review agent names are: `security`, `quality`, `style`, `performance`, `documentation`.
+- Built-in review agent names are: `unified-reviewer`, `security`, `quality`, `style`, `performance`, `documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
