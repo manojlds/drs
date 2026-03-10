@@ -54,6 +54,20 @@ describe('parseReviewUrl', () => {
       'Unsupported review URL'
     );
   });
+
+  it('redacts URL credentials in error messages', () => {
+    let message = '';
+
+    try {
+      parseReviewUrl('https://alice:super-secret-token@example.com/not-a-pr');
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('Unsupported review URL: https://example.com/not-a-pr');
+    expect(message).not.toContain('alice');
+    expect(message).not.toContain('super-secret-token');
+  });
 });
 
 describe('reviewByUrl', () => {

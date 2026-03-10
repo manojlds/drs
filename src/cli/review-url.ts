@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { reviewMR } from './review-mr.js';
 import { reviewPR } from './review-pr.js';
@@ -28,12 +29,28 @@ export type ParsedReviewUrl =
       mrIid: number;
     };
 
+function sanitizeUrlForError(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.replace(/:\/\/[^@/\s]+@/g, '://').replace(/[?#].*$/, '');
+  }
+}
+
+/**
+ * Parse a GitHub or GitLab PR/MR URL into platform-specific identifiers.
+ */
 export function parseReviewUrl(url: string): ParsedReviewUrl {
+  const safeUrl = sanitizeUrlForError(url);
+
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
   } catch {
-    throw new Error(`Invalid URL: ${url}`);
+    throw new Error(`Invalid URL: ${safeUrl}`);
   }
 
   const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
@@ -46,7 +63,7 @@ export function parseReviewUrl(url: string): ParsedReviewUrl {
 
     if (!owner || !repo || !Number.isSafeInteger(prNumber) || prNumber <= 0) {
       throw new Error(
-        `Invalid GitHub PR URL format: ${url}. Expected https://<host>/<owner>/<repo>/pull/<number>.`
+        `Invalid GitHub PR URL format: ${safeUrl}. Expected https://<host>/<owner>/<repo>/pull/<number>.`
       );
     }
 
@@ -63,14 +80,14 @@ export function parseReviewUrl(url: string): ParsedReviewUrl {
   if (mergeRequestIndex >= 0) {
     if (mergeRequestIndex < 2 || pathParts[mergeRequestIndex - 1] !== '-') {
       throw new Error(
-        `Invalid GitLab MR URL format: ${url}. Expected .../<group>/<repo>/-/merge_requests/<number>.`
+        `Invalid GitLab MR URL format: ${safeUrl}. Expected .../<group>/<repo>/-/merge_requests/<number>.`
       );
     }
 
     const mrIid = parseInt(pathParts[mergeRequestIndex + 1] ?? '', 10);
     if (!Number.isSafeInteger(mrIid) || mrIid <= 0) {
       throw new Error(
-        `Invalid GitLab MR URL format: ${url}. Merge request IID must be a positive integer.`
+        `Invalid GitLab MR URL format: ${safeUrl}. Merge request IID must be a positive integer.`
       );
     }
 
@@ -78,7 +95,7 @@ export function parseReviewUrl(url: string): ParsedReviewUrl {
     const ownerParts = pathParts.slice(0, mergeRequestIndex - 2);
     if (!repo || ownerParts.length === 0) {
       throw new Error(
-        `Invalid GitLab MR URL format: ${url}. Expected .../<group>/<repo>/-/merge_requests/<number>.`
+        `Invalid GitLab MR URL format: ${safeUrl}. Expected .../<group>/<repo>/-/merge_requests/<number>.`
       );
     }
 
@@ -90,7 +107,7 @@ export function parseReviewUrl(url: string): ParsedReviewUrl {
   }
 
   throw new Error(
-    `Unsupported review URL: ${url}. Expected a GitHub pull request URL (.../pull/<number>) or GitLab merge request URL (.../-/merge_requests/<number>).`
+    `Unsupported review URL: ${safeUrl}. Expected a GitHub pull request URL (.../pull/<number>) or GitLab merge request URL (.../-/merge_requests/<number>).`
   );
 }
 
@@ -103,7 +120,9 @@ export async function reviewByUrl(config: DRSConfig, options: ReviewUrlOptions):
   if (parsed.platform === 'github') {
     if (options.codeQualityReport) {
       console.warn(
-        '⚠ --code-quality-report is only supported for GitLab MRs. Ignoring this option for GitHub PR reviews.'
+        chalk.yellow(
+          '⚠ --code-quality-report is only supported for GitLab MRs. Ignoring this option for GitHub PR reviews.'
+        )
       );
     }
 

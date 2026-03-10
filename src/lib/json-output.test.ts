@@ -141,6 +141,20 @@ describe('writeReviewJson', () => {
     expect(parsed.old).toBeUndefined();
     expect(parsed.issues).toHaveLength(2);
   });
+
+  it('refuses to write outside the working directory', async () => {
+    testDir = join(
+      tmpdir(),
+      `drs-json-output-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    await mkdir(testDir, { recursive: true });
+
+    const output = formatReviewJson(SUMMARY, ISSUES);
+
+    await expect(writeReviewJson(output, '../outside.json', testDir)).rejects.toThrow(
+      'Refusing to write outside working directory'
+    );
+  });
 });
 
 // ── printReviewJson ──────────────────────────────────────────────

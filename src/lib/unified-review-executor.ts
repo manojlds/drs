@@ -10,7 +10,6 @@
 
 import chalk from 'chalk';
 import { writeFile } from 'fs/promises';
-import { resolve } from 'path';
 import { exitProcess } from './exit.js';
 import {
   getDescriberModelOverride,
@@ -34,6 +33,7 @@ import type {
 } from './platform-client.js';
 import { generateCodeQualityReport, formatCodeQualityReport } from './code-quality-report.js';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
+import { resolveWithinWorkingDir } from './path-utils.js';
 import {
   enforceRepoBranchMatch,
   resolveBaseBranch,
@@ -351,7 +351,7 @@ async function generateAndWriteCodeQualityReport(
   const report = generateCodeQualityReport(issues);
   const jsonContent = formatCodeQualityReport(report);
 
-  const fullPath = resolve(workingDir, reportPath);
+  const fullPath = resolveWithinWorkingDir(workingDir, reportPath, 'write');
   await writeFile(fullPath, jsonContent, 'utf-8');
 
   console.log(chalk.green(`✓ Code quality report written to ${reportPath}`));

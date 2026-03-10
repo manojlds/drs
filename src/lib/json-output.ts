@@ -6,8 +6,8 @@
  */
 
 import { writeFile } from 'fs/promises';
-import { resolve } from 'path';
 import type { ReviewIssue, ReviewSummary } from './comment-formatter.js';
+import { resolveWithinWorkingDir } from './path-utils.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 
 /**
@@ -62,7 +62,7 @@ export async function writeReviewJson(
   outputPath: string,
   workingDir: string = process.cwd()
 ): Promise<void> {
-  const fullPath = resolve(workingDir, outputPath);
+  const fullPath = resolveWithinWorkingDir(workingDir, outputPath, 'write');
   const jsonContent = JSON.stringify(output, null, 2);
   await writeFile(fullPath, jsonContent, 'utf-8');
 }
