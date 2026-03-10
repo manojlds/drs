@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { estimatePromptBudget, formatPromptBudgetEstimate } from './prompt-budget.js';
+import {
+  estimatePromptBudget,
+  formatPromptBudgetEstimate,
+  PROMPT_BUDGET_LOG_PREFIX,
+} from './prompt-budget.js';
 
 describe('estimatePromptBudget', () => {
   it('uses the default divisor when none is provided', () => {
@@ -47,6 +51,7 @@ describe('formatPromptBudgetEstimate', () => {
       estimatePromptBudget('a'.repeat(400))
     );
 
+    expect(formatted).toContain(PROMPT_BUDGET_LOG_PREFIX);
     expect(formatted).toContain('Prompt input (review/security):');
     expect(formatted).toContain('400 chars');
     expect(formatted).toContain('100 tokens');
@@ -62,6 +67,7 @@ describe('formatPromptBudgetEstimate', () => {
       })
     );
 
+    expect(formatted).toContain(PROMPT_BUDGET_LOG_PREFIX);
     expect(formatted).toContain('Prompt input (describe/pr-describer):');
     expect(formatted).toContain('800 chars');
     expect(formatted).toContain('200 tokens');
