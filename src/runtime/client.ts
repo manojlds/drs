@@ -301,20 +301,37 @@ export class RuntimeClient {
       if (this.config.provider) {
         log.debug('Environment variable status:');
         for (const [providerName, provider] of Object.entries(this.config.provider)) {
-          const apiKeyConfig = provider.options?.apiKey;
+          const apiKeyConfig = provider.apiKey ?? provider.options?.apiKey;
           if (apiKeyConfig && typeof apiKeyConfig === 'string') {
-            const envMatch = apiKeyConfig.match(/^\{env:([^}]+)\}$/);
-            if (envMatch) {
-              const envVarName = envMatch[1];
+            const envReferenceMatch = apiKeyConfig.match(/^\{env:([^}]+)\}$/);
+            if (envReferenceMatch) {
+              const envVarName = envReferenceMatch[1];
               const envValue = process.env[envVarName];
               if (envValue) {
                 log.debug(`  ✓ ${envVarName}: SET (${envValue.substring(0, 8)}...)`);
               } else {
                 log.debug(`  ✗ ${envVarName}: NOT SET`);
               }
-            } else {
-              log.debug(`  ${providerName}: API key is hardcoded (not env var)`);
+              continue;
             }
+
+            if (apiKeyConfig.startsWith('!')) {
+              log.debug(`  ${providerName}: API key resolved via shell command`);
+              continue;
+            }
+
+            const looksLikeEnvVarName = /^[A-Z_][A-Z0-9_]*$/.test(apiKeyConfig);
+            if (looksLikeEnvVarName) {
+              const envValue = process.env[apiKeyConfig];
+              if (envValue) {
+                log.debug(`  ✓ ${apiKeyConfig}: SET (${envValue.substring(0, 8)}...)`);
+              } else {
+                log.debug(`  ✗ ${apiKeyConfig}: NOT SET (or using literal value)`);
+              }
+              continue;
+            }
+
+            log.debug(`  ${providerName}: API key is hardcoded (literal)`);
           }
         }
       }
@@ -323,15 +340,16 @@ export class RuntimeClient {
       const sanitizedConfig = JSON.parse(JSON.stringify(runtimeConfig));
       if (sanitizedConfig.provider) {
         for (const providerName of Object.keys(sanitizedConfig.provider)) {
-          if (sanitizedConfig.provider[providerName]?.options?.apiKey) {
+          if (typeof sanitizedConfig.provider[providerName]?.apiKey === 'string') {
+            const apiKey = sanitizedConfig.provider[providerName].apiKey;
+            sanitizedConfig.provider[providerName].apiKey =
+              apiKey.length > 0 ? `***REDACTED (${apiKey.length} chars)***` : '***EMPTY***';
+          }
+
+          if (typeof sanitizedConfig.provider[providerName]?.options?.apiKey === 'string') {
             const apiKey = sanitizedConfig.provider[providerName].options.apiKey;
-            // Always redact since we've resolved env vars
-            if (apiKey && apiKey.length > 0) {
-              sanitizedConfig.provider[providerName].options.apiKey =
-                `***REDACTED (${apiKey.length} chars)***`;
-            } else {
-              sanitizedConfig.provider[providerName].options.apiKey = '***EMPTY***';
-            }
+            sanitizedConfig.provider[providerName].options.apiKey =
+              apiKey.length > 0 ? `***REDACTED (${apiKey.length} chars)***` : '***EMPTY***';
           }
         }
       }

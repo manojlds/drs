@@ -436,27 +436,32 @@ pricing:
       cacheWrite: 0.0
 ```
 
-You can also set pricing directly under `pi.provider.<name>.models.<model>.cost` for custom providers.
+You can also set pricing directly under `pi.provider.<name>.models[].cost` for custom providers.
 
-### Custom Provider Model Metadata (Context Window & Output Limits)
+### Custom Provider Model Metadata (Context Window, Limits, Compat)
 
-If you define custom models under `pi.provider.<name>.models`, you can also set model metadata used by DRS:
+If you define custom providers/models under `pi.provider.<name>`, you can set metadata used by DRS:
 
 - `contextWindow`: used for dynamic compression sizing when `thresholdPercent` is enabled
 - `maxTokens`: model output limit hint
 - `cost`: token pricing override (USD per 1M tokens)
+- `compat`: OpenAI compatibility overrides passed through to Pi runtime (for proxy quirks)
+  - set at provider level (`pi.provider.<name>.compat`) to apply defaults to all models
+  - set at model level (`pi.provider.<name>.models[].compat`) for per-model overrides
 
 ```yaml
 pi:
   provider:
     my-provider:
-      npm: "@ai-sdk/openai-compatible"
-      name: "My Provider"
-      options:
-        baseURL: "https://api.example.com/v1"
-        apiKey: "{env:MY_PROVIDER_API_KEY}"
+      baseUrl: "https://api.example.com/v1"
+      api: "openai-completions"
+      # apiKey accepts env var name, literal key, or !command
+      apiKey: "MY_PROVIDER_API_KEY"
+      # Optional provider-wide defaults for all models
+      compat:
+        supportsStore: false
       models:
-        my-model:
+        - id: "my-model"
           name: "My Model"
           contextWindow: 200000
           maxTokens: 8192
@@ -465,6 +470,10 @@ pi:
             output: 1.50
             cacheRead: 0.00
             cacheWrite: 0.00
+          # Optional per-model override
+          compat:
+            supportsUsageInStreaming: false
+            maxTokensField: "max_tokens"
 ```
 
 > Note: For built-in providers/models, context window metadata comes from the runtime model registry.

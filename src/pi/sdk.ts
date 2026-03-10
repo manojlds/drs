@@ -132,6 +132,102 @@ function asBooleanRecord(value: unknown): Record<string, boolean> | undefined {
   return hasEntries ? result : undefined;
 }
 
+function asStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const result: Record<string, string> = {};
+
+  for (const [key, val] of Object.entries(record)) {
+    if (typeof val === 'string') {
+      result[key] = val;
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function normalizeInputTypes(value: unknown): Array<'text' | 'image'> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const parsed = value
+    .map((entry) => (entry === 'text' || entry === 'image' ? entry : undefined))
+    .filter((entry): entry is 'text' | 'image' => entry !== undefined);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function normalizeProviderModels(
+  value: unknown
+): Array<{ id: string; model: Record<string, unknown> }> {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        const model = asRecord(entry);
+        const id = asString(model.id);
+        if (!id) {
+          return undefined;
+        }
+        return { id, model };
+      })
+      .filter(
+        (entry): entry is { id: string; model: Record<string, unknown> } => entry !== undefined
+      );
+  }
+
+  const modelMap = asRecord(value);
+  return Object.entries(modelMap).map(([id, modelValue]) => ({
+    id,
+    model: asRecord(modelValue),
+  }));
+}
+
+function mergeCompatSettings(
+  providerCompat: Record<string, unknown>,
+  modelCompat: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...providerCompat,
+    ...modelCompat,
+  };
+
+  const providerOpenRouter = asRecord(providerCompat.openRouterRouting);
+  const modelOpenRouter = asRecord(modelCompat.openRouterRouting);
+  if (Object.keys(providerOpenRouter).length > 0 || Object.keys(modelOpenRouter).length > 0) {
+    merged.openRouterRouting = {
+      ...providerOpenRouter,
+      ...modelOpenRouter,
+    };
+  }
+
+  const providerVercelGateway = asRecord(providerCompat.vercelGatewayRouting);
+  const modelVercelGateway = asRecord(modelCompat.vercelGatewayRouting);
+  if (Object.keys(providerVercelGateway).length > 0 || Object.keys(modelVercelGateway).length > 0) {
+    merged.vercelGatewayRouting = {
+      ...providerVercelGateway,
+      ...modelVercelGateway,
+    };
+  }
+
+  const providerReasoningEffortMap = asRecord(providerCompat.reasoningEffortMap);
+  const modelReasoningEffortMap = asRecord(modelCompat.reasoningEffortMap);
+  if (
+    Object.keys(providerReasoningEffortMap).length > 0 ||
+    Object.keys(modelReasoningEffortMap).length > 0
+  ) {
+    merged.reasoningEffortMap = {
+      ...providerReasoningEffortMap,
+      ...modelReasoningEffortMap,
+    };
+  }
+
+  return merged;
+}
+
 function normalizeUsage(value: unknown): PiUsage | undefined {
   const usage = asRecord(value);
 
@@ -337,19 +433,25 @@ class PiSessionRuntime {
       this.runtimeConfig.provider ?? {}
     )) {
       const provider = asRecord(providerConfig);
-      const options = asRecord(provider.options);
-      const models = asRecord(provider.models);
+      const legacyOptions = asRecord(provider.options);
+      const providerCompat = asRecord(provider.compat);
 
-      const modelEntries = Object.entries(models).map(([id, modelValue]) => {
-        const model = asRecord(modelValue);
+      const baseUrl = asString(provider.baseUrl) ?? asString(legacyOptions.baseURL);
+      const apiKey = asString(provider.apiKey) ?? asString(legacyOptions.apiKey);
+      const api = asString(provider.api) ?? 'openai-completions';
+      const headers = asStringRecord(provider.headers);
+      const authHeader = asBoolean(provider.authHeader);
+
+      const modelEntries = normalizeProviderModels(provider.models).map(({ id, model }) => {
         const modelCost = asRecord(model.cost);
+        const modelCompat = asRecord(model.compat);
+        const mergedCompat = mergeCompatSettings(providerCompat, modelCompat);
 
-        return {
+        const modelEntry: Record<string, unknown> = {
           id,
           name: asString(model.name) ?? id,
-          api: 'openai-completions',
-          reasoning: asBoolean(model.reasoning) ?? true,
-          input: ['text'] as Array<'text' | 'image'>,
+          reasoning: asBoolean(model.reasoning) ?? false,
+          input: normalizeInputTypes(model.input) ?? (['text'] as Array<'text' | 'image'>),
           cost: {
             input: asNumber(modelCost.input) ?? 0,
             output: asNumber(modelCost.output) ?? 0,
@@ -359,18 +461,47 @@ class PiSessionRuntime {
           contextWindow: asNumber(model.contextWindow) ?? 128000,
           maxTokens: asNumber(model.maxTokens) ?? 16384,
         };
+
+        const modelApi = asString(model.api);
+        if (modelApi) {
+          modelEntry.api = modelApi;
+        }
+
+        const modelBaseUrl = asString(model.baseUrl);
+        if (modelBaseUrl) {
+          modelEntry.baseUrl = modelBaseUrl;
+        }
+
+        const modelHeaders = asStringRecord(model.headers);
+        if (modelHeaders) {
+          modelEntry.headers = modelHeaders;
+        }
+
+        if (Object.keys(mergedCompat).length > 0) {
+          modelEntry.compat = mergedCompat;
+        }
+
+        return modelEntry;
       });
 
       const providerInput: Record<string, unknown> = {
-        api: 'openai-completions',
+        api,
       };
 
-      if (typeof options.baseURL === 'string' && options.baseURL.length > 0) {
-        providerInput.baseUrl = options.baseURL;
+      if (baseUrl) {
+        providerInput.baseUrl = baseUrl;
       }
 
-      if (typeof options.apiKey === 'string' && options.apiKey.length > 0) {
-        providerInput.apiKey = options.apiKey;
+      if (apiKey) {
+        providerInput.apiKey = apiKey;
+      }
+
+      if (headers) {
+        providerInput.headers = headers;
+      }
+
+      if (typeof authHeader === 'boolean') {
+        providerInput.authHeader = authHeader;
       }
 
       if (modelEntries.length > 0) {
