@@ -7,7 +7,13 @@
 
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
-import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from './config.js';
+import {
+  getAgentNames,
+  getDefaultSkills,
+  getModelOverrides,
+  getUnifiedModelOverride,
+  normalizeAgentConfig,
+} from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
@@ -23,6 +29,7 @@ import {
   type AgentUsageSummary,
   type ReviewUsageSummary,
 } from './review-usage.js';
+import { estimatePromptBudget, formatPromptBudgetEstimate } from './prompt-budget.js';
 
 /**
  * File with optional diff content
@@ -270,6 +277,31 @@ function getConfiguredSkillsForAgent(config: DRSConfig, agentType: string): stri
   return [...new Set([...defaultSkills, ...agentSkills])];
 }
 
+function resolveReviewModelOverrides(config: DRSConfig): Record<string, string> {
+  return {
+    ...getModelOverrides(config),
+    ...getUnifiedModelOverride(config),
+  };
+}
+
+function logPromptInputBudget(args: {
+  runtime: RuntimeClient;
+  config: DRSConfig;
+  agentType: string;
+  prompt: string;
+  modelId?: string;
+}): void {
+  const { runtime, config, agentType, prompt, modelId } = args;
+  const contextWindow = modelId ? runtime.getModelContextWindow?.(modelId) : undefined;
+  const estimate = estimatePromptBudget(prompt, {
+    tokenEstimateDivisor: config.contextCompression?.tokenEstimateDivisor,
+    contextWindow,
+  });
+
+  const modelText = modelId ? ` | model: ${modelId}` : '';
+  console.log(chalk.gray(`${formatPromptBudgetEstimate(agentType, estimate)}${modelText}\n`));
+}
+
 /**
  * Detect skill loading from Pi's native flow.
  *
@@ -340,6 +372,8 @@ export async function runUnifiedReviewAgent(
 
   let agentUsage = createAgentUsageSummary(agentType);
   const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+  const reviewModelOverrides = resolveReviewModelOverrides(config);
+  const modelId = reviewModelOverrides[agentName];
   let sawSkillToolCall = false;
 
   const describeSummary =
@@ -357,6 +391,14 @@ export async function runUnifiedReviewAgent(
       config,
       describeSummary
     );
+
+    logPromptInputBudget({
+      runtime,
+      config,
+      agentType,
+      prompt: reviewPrompt,
+      modelId,
+    });
 
     const logger = getLogger();
 
@@ -512,6 +554,7 @@ export async function runReviewAgents(
   const agentNames = getAgentNames(config);
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const agentResults: AgentResult[] = [];
+  const reviewModelOverrides = resolveReviewModelOverrides(config);
 
   const describeSummary =
     typeof additionalContext.describeSummary === 'string'
@@ -523,6 +566,7 @@ export async function runReviewAgents(
     console.log(chalk.gray(`Running ${agentType} review...\n`));
     let agentUsage = createAgentUsageSummary(agentType);
     const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+    const modelId = reviewModelOverrides[agentName];
     let sawSkillToolCall = false;
 
     try {
@@ -536,6 +580,14 @@ export async function runReviewAgents(
         config,
         describeSummary
       );
+
+      logPromptInputBudget({
+        runtime,
+        config,
+        agentType,
+        prompt: reviewPrompt,
+        modelId,
+      });
 
       const logger = getLogger();
 

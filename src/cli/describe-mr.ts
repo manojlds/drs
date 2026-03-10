@@ -22,6 +22,7 @@ import {
   applyUsageMessage,
   createAgentUsageSummary,
 } from '../lib/review-usage.js';
+import { estimatePromptBudget, formatPromptBudgetEstimate } from '../lib/prompt-budget.js';
 
 export interface DescribeMROptions {
   projectId: string;
@@ -55,6 +56,7 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
 
   // Initialize Pi runtime client with model overrides
   const modelOverrides = getDescriberModelOverride(config);
+  const describeModelId = modelOverrides['describe/pr-describer'];
   const runtimeConfig = getRuntimeConfig(config);
 
   const runtimeClient = await createRuntimeClientInstance({
@@ -85,6 +87,20 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     compression.files,
     compressionSummary,
     projectContext ?? undefined
+  );
+
+  const promptContextWindow = describeModelId
+    ? runtimeClient.getModelContextWindow?.(describeModelId)
+    : contextWindow;
+  const promptEstimate = estimatePromptBudget(instructions, {
+    tokenEstimateDivisor: config.contextCompression?.tokenEstimateDivisor,
+    contextWindow: promptContextWindow,
+  });
+  const modelText = describeModelId ? ` | model: ${describeModelId}` : '';
+  console.log(
+    chalk.gray(
+      `${formatPromptBudgetEstimate('describe/pr-describer', promptEstimate)}${modelText}\n`
+    )
   );
 
   if (options.debug) {
