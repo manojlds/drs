@@ -8,6 +8,7 @@ import { dirname, join } from 'path';
 import { reviewLocal } from './review-local.js';
 import { reviewMR } from './review-mr.js';
 import { reviewPR } from './review-pr.js';
+import { reviewByUrl } from './review-url.js';
 import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
@@ -50,7 +51,7 @@ const program = new Command();
 
 program
   .name('drs')
-  .description('Intelligent code review platform for GitLab and GitHub - Enterprise-grade analysis')
+  .description('Automated AI code reviews for GitHub pull requests and GitLab merge requests')
   .version(version);
 
 program
@@ -225,6 +226,75 @@ program
             : options.skipPostDescription === true
               ? false
               : (config.review.describe?.postDescription ?? false),
+        debug: options.debug || false,
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('review-url <url>')
+  .description('Review a GitHub pull request or GitLab merge request by URL')
+  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--unified-model <model>', 'Model override for review/unified-reviewer')
+  .option('--post-comments', 'Post review comments to the PR/MR')
+  .option('--post-error-comment', 'Post a comment if the review fails')
+  .option('--describe', 'Generate PR/MR description during review')
+  .option('--skip-describe', 'Skip PR/MR description during review')
+  .option('--post-description', 'Post generated description to the PR/MR')
+  .option('--skip-post-description', 'Do not post generated description to the PR/MR')
+  .option(
+    '--code-quality-report <path>',
+    'Generate GitLab code quality report JSON file (GitLab URLs only)'
+  )
+  .option('-o, --output <path>', 'Write review results to JSON file')
+  .option('--json', 'Output results as JSON to console')
+  .option('--base-branch <branch>', 'Override base branch used for diff command hints')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .action(async (url, options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'info',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
+      const config = loadConfig(process.cwd(), {
+        review: {
+          agents: options.agents
+            ? options.agents.split(',').map((a: string) => a.trim())
+            : undefined,
+          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
+        } as Partial<DRSConfig['review']>,
+      } as Partial<DRSConfig>);
+
+      await reviewByUrl(config, {
+        url,
+        postComments: options.postComments || false,
+        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
+        describe:
+          options.describe === true
+            ? true
+            : options.skipDescribe === true
+              ? false
+              : (config.review.describe?.enabled ?? false),
+        postDescription:
+          options.postDescription === true
+            ? true
+            : options.skipPostDescription === true
+              ? false
+              : (config.review.describe?.postDescription ?? false),
+        codeQualityReport:
+          options.codeQualityReport === true
+            ? 'gl-code-quality-report.json'
+            : options.codeQualityReport,
+        outputPath: options.output,
+        jsonOutput: options.json || false,
+        baseBranch: options.baseBranch,
         debug: options.debug || false,
       });
       process.exit(0);

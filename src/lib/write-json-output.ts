@@ -1,26 +1,15 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 import Ajv from 'ajv';
 import { describeOutputSchema, reviewOutputSchema } from './json-output-schema.js';
 import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
+import { resolveWithinWorkingDir } from './path-utils.js';
 
 const DEFAULT_INDENT = 2;
 const ajv = new Ajv({ allErrors: true });
 
 const validateDescribeOutput = ajv.compile(describeOutputSchema);
 const validateReviewOutput = ajv.compile(reviewOutputSchema);
-
-function resolveWithinWorkingDir(workingDir: string, targetPath: string): string {
-  const root = resolve(workingDir);
-  const fullPath = resolve(workingDir, targetPath);
-  const rootWithSlash = root.endsWith('/') ? root : `${root}/`;
-
-  if (fullPath !== root && !fullPath.startsWith(rootWithSlash)) {
-    throw new Error(`Refusing to write outside working directory: ${targetPath}`);
-  }
-
-  return fullPath;
-}
 
 export interface WriteJsonOutputArgs {
   outputType: OutputType;
@@ -58,7 +47,8 @@ export async function writeJsonOutput({
   const jsonContent = JSON.stringify(jsonValue, null, spacing);
   const resolvedPath = resolveWithinWorkingDir(
     workingDir ?? process.env.DRS_PROJECT_ROOT ?? process.cwd(),
-    OUTPUT_PATHS[outputType]
+    OUTPUT_PATHS[outputType],
+    'write'
   );
   await mkdir(dirname(resolvedPath), { recursive: true });
   await writeFile(resolvedPath, jsonContent, 'utf-8');

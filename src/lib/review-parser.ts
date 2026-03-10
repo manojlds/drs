@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
-import { resolve } from 'path';
 import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
+import { resolveWithinWorkingDir } from './path-utils.js';
 import { parseJsonFromAgentOutput } from './describe-parser.js';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -16,20 +16,8 @@ function isOutputPointer(value: unknown): value is ReviewOutputPointer {
 
 const REVIEW_OUTPUT_PATH = OUTPUT_PATHS.review_output;
 
-function resolveWithinWorkingDir(workingDir: string, targetPath: string): string {
-  const root = resolve(workingDir);
-  const fullPath = resolve(workingDir, targetPath);
-  const rootWithSlash = root.endsWith('/') ? root : `${root}/`;
-
-  if (fullPath !== root && !fullPath.startsWith(rootWithSlash)) {
-    throw new Error(`Refusing to read outside working directory: ${targetPath}`);
-  }
-
-  return fullPath;
-}
-
 async function readJsonIfExists(workingDir: string, targetPath: string): Promise<JsonValue | null> {
-  const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath);
+  const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath, 'read');
   try {
     const fileContents = await readFile(resolvedPath, 'utf-8');
     return JSON.parse(fileContents);
