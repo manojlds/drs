@@ -417,10 +417,6 @@ export async function runUnifiedReviewAgent(
     const session = await runtime.createSession({
       agent: agentName,
       message: reviewPrompt,
-      context: {
-        ...additionalContext,
-        files: filteredFiles,
-      },
     });
 
     const agentIssues: ReviewIssue[] = [];
@@ -606,10 +602,6 @@ export async function runReviewAgents(
       const session = await runtime.createSession({
         agent: agentName,
         message: reviewPrompt,
-        context: {
-          ...additionalContext,
-          files: filteredFiles,
-        },
       });
 
       const agentIssues: ReviewIssue[] = [];

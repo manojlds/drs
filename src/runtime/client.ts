@@ -23,7 +23,6 @@ export interface RuntimeClientConfig {
 export interface SessionCreateOptions {
   agent: string;
   message: string;
-  context?: Record<string, unknown>;
 }
 
 export interface SessionUsage {

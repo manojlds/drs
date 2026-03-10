@@ -233,9 +233,6 @@ describe('review-core', () => {
       expect(mockRuntime.createSession).toHaveBeenCalledWith({
         agent: 'review/unified-reviewer',
         message: expect.stringContaining('Review these files'),
-        context: {
-          files: ['src/app.ts'],
-        },
       });
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockRuntime.closeSession).toHaveBeenCalledWith('session-1');
