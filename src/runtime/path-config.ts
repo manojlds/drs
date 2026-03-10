@@ -4,6 +4,7 @@ import type { DRSConfig } from '../lib/config.js';
 
 const DEFAULT_AGENT_PATH = '.drs/agents';
 const DEFAULT_SKILL_PATH = '.drs/skills';
+const AGENTS_DEFAULT_SKILL_PATH = '.agents/skills';
 const PI_DEFAULT_SKILL_PATH = '.pi/skills';
 
 type ReviewPathType = 'agents' | 'skills';
@@ -69,6 +70,7 @@ function resolveConfiguredPath(
 function resolveDefaultSkillSearchPaths(projectRoot: string): string[] {
   const candidates = [
     resolve(projectRoot, DEFAULT_SKILL_PATH),
+    resolve(projectRoot, AGENTS_DEFAULT_SKILL_PATH),
     resolve(projectRoot, PI_DEFAULT_SKILL_PATH),
   ];
 

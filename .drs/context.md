@@ -12,7 +12,7 @@ Node/TypeScript CLI for AI code reviews on GitHub PRs and GitLab MRs, powered by
 ## Agents & Skills
 - Built-in agents: `.pi/agents/review/`.
 - Project overrides: `.drs/agents/<name>/agent.md`.
-- Skills: `.drs/skills/<name>/SKILL.md`.
+- Skills: `.drs/skills/<name>/SKILL.md` (also `.agents/skills/<name>/SKILL.md`, `.pi/skills/<name>/SKILL.md`).
 
 ## Config
 - Main config: `.drs/drs.config.yaml`.

@@ -10,7 +10,7 @@ DRS ships with built-in review agents (security, quality, style, performance, do
 | Add context to a built-in agent | `.drs/agents/<name>/context.md` | Injected alongside the built-in prompt |
 | Create a new agent | `.drs/agents/<name>/agent.md` + add to config | Runs as an additional reviewer |
 | Global project context | `.drs/context.md` | Injected into every agent's prompt |
-| Custom skill | `.drs/skills/<name>/SKILL.md` | Available to agents via config |
+| Custom skill | `.drs/skills/<name>/SKILL.md` (or `.agents/skills/<name>/SKILL.md`) | Available to agents via config |
 
 ---
 
@@ -224,7 +224,10 @@ Per-agent skills are **merged** with default skills. If `default.skills` is `['b
 
 Skills are discovered from:
 1. `.drs/skills/` — project-level (takes precedence)
-2. `.pi/skills/` — Pi-native skills
+2. `.agents/skills/` — legacy/shared project skills
+3. `.pi/skills/` — Pi-native skills
+
+If the same skill name exists in multiple directories, earlier paths win.
 
 Override with:
 ```yaml

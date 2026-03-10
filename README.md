@@ -500,18 +500,21 @@ contextCompression:
 
 ### Pi-Native Skill Discovery
 
-DRS now auto-discovers review skills from both directories when `review.paths.skills` is not set:
+DRS auto-discovers review skills from these directories when `review.paths.skills` is not set:
 
 1. `.drs/skills` (project-level overrides)
-2. `.pi/skills` (Pi-native skills)
+2. `.agents/skills` (legacy/shared project skills)
+3. `.pi/skills` (Pi-native skills)
 
-If the same skill name exists in both locations, `.drs/skills` wins.
+If the same skill name exists in multiple locations, earlier paths win (`.drs` > `.agents` > `.pi`).
 
 Example layout:
 
 ```text
 .drs/skills/
   secure-fetch/SKILL.md        # Project override (preferred)
+.agents/skills/
+  secure-fetch/SKILL.md        # Legacy/shared fallback
 .pi/skills/
   secure-fetch/SKILL.md        # Pi-native fallback
   db-indexing/SKILL.md         # Additional Pi-native skill

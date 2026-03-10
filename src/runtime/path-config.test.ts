@@ -43,21 +43,33 @@ describe('resolveReviewPaths', () => {
     expect(nonCanonical).toEqual(canonical);
   });
 
-  it('auto-discovers both .drs/skills and .pi/skills when present', () => {
+  it('auto-discovers .drs/skills, .agents/skills, and .pi/skills in precedence order', () => {
     const projectRoot = createTempDir('drs-path-skill-discovery-');
     mkdirSync(join(projectRoot, '.drs', 'skills'), { recursive: true });
+    mkdirSync(join(projectRoot, '.agents', 'skills'), { recursive: true });
     mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
 
     const result = resolveReviewPaths(projectRoot);
 
     expect(result.skillSearchPaths).toEqual([
       resolve(projectRoot, '.drs/skills'),
+      resolve(projectRoot, '.agents/skills'),
       resolve(projectRoot, '.pi/skills'),
     ]);
     expect(result.skillsPath).toBe(resolve(projectRoot, '.drs/skills'));
   });
 
-  it('uses .pi/skills when .drs/skills is missing', () => {
+  it('uses .agents/skills when .drs/skills is missing', () => {
+    const projectRoot = createTempDir('drs-path-agents-skills-');
+    mkdirSync(join(projectRoot, '.agents', 'skills'), { recursive: true });
+
+    const result = resolveReviewPaths(projectRoot);
+
+    expect(result.skillSearchPaths).toEqual([resolve(projectRoot, '.agents/skills')]);
+    expect(result.skillsPath).toBe(resolve(projectRoot, '.agents/skills'));
+  });
+
+  it('uses .pi/skills when .drs/skills and .agents/skills are missing', () => {
     const projectRoot = createTempDir('drs-path-pi-skills-');
     mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
 
