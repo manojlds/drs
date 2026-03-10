@@ -16,6 +16,8 @@ import type { RuntimeClient } from '../runtime/client.js';
 vi.mock('./config.js', () => ({
   getAgentNames: vi.fn((config: DRSConfig) => config.review.agents || []),
   getDefaultSkills: vi.fn(() => []),
+  getModelOverrides: vi.fn(() => ({})),
+  getUnifiedModelOverride: vi.fn(() => ({})),
   normalizeAgentConfig: vi.fn((agents: Array<string | { name: string }>) =>
     agents.map((agent) => (typeof agent === 'string' ? { name: agent } : agent))
   ),
