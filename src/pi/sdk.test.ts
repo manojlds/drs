@@ -91,17 +91,21 @@ describe('pi/sdk', () => {
     runtime.server.close();
   });
 
-  it('registers custom provider model cost metadata when configured', async () => {
+  it('registers models.json-style provider config and merges provider compat into models', async () => {
     const runtime = await createPiInProcessServer({
       config: {
         provider: {
           opencode: {
-            options: {
-              baseURL: 'https://api.example.com/v1',
-              apiKey: 'secret',
+            baseUrl: 'https://api.example.com/v1',
+            apiKey: 'TEST_API_KEY',
+            api: 'openai-completions',
+            compat: {
+              supportsStore: false,
+              supportsUsageInStreaming: false,
             },
-            models: {
-              'glm-5-free': {
+            models: [
+              {
+                id: 'glm-5-free',
                 name: 'GLM 5 Free',
                 cost: {
                   input: 1,
@@ -111,8 +115,12 @@ describe('pi/sdk', () => {
                 },
                 contextWindow: 64000,
                 maxTokens: 8192,
+                compat: {
+                  supportsStore: true,
+                  maxTokensField: 'max_tokens',
+                },
               },
-            },
+            ],
           },
         },
       },
@@ -123,6 +131,9 @@ describe('pi/sdk', () => {
     expect(registerProvider).toHaveBeenCalledWith(
       'opencode',
       expect.objectContaining({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'TEST_API_KEY',
+        api: 'openai-completions',
         models: [
           expect.objectContaining({
             id: 'glm-5-free',
@@ -134,8 +145,46 @@ describe('pi/sdk', () => {
             },
             contextWindow: 64000,
             maxTokens: 8192,
+            compat: {
+              supportsStore: true,
+              supportsUsageInStreaming: false,
+              maxTokensField: 'max_tokens',
+            },
           }),
         ],
+      })
+    );
+
+    runtime.server.close();
+  });
+
+  it('supports legacy provider config format for backward compatibility', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        provider: {
+          legacy: {
+            options: {
+              baseURL: 'https://legacy.example.com/v1',
+              apiKey: 'LEGACY_API_KEY',
+            },
+            models: {
+              'legacy-model': {
+                name: 'Legacy Model',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(mocks.modelRegistryInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(registerProvider).toHaveBeenCalledWith(
+      'legacy',
+      expect.objectContaining({
+        baseUrl: 'https://legacy.example.com/v1',
+        apiKey: 'LEGACY_API_KEY',
+        models: [expect.objectContaining({ id: 'legacy-model', name: 'Legacy Model' })],
       })
     );
 

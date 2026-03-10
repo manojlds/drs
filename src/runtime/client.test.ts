@@ -65,13 +65,15 @@ describe('RuntimeClient', () => {
         },
         provider: {
           custom: {
-            npm: '@custom/provider',
-            name: 'custom',
-            models: { model: { name: 'model' } },
-            options: {
-              baseURL: 'https://api.custom.example',
-              apiKey: '{env:CUSTOM_API_KEY}',
-            } as any,
+            baseUrl: 'https://api.custom.example/v1',
+            apiKey: 'CUSTOM_API_KEY',
+            api: 'openai-completions',
+            models: [
+              {
+                id: 'model',
+                name: 'model',
+              },
+            ],
           },
         } as any,
       });
@@ -414,13 +416,14 @@ describe('RuntimeClient', () => {
           directory: process.cwd(),
           provider: {
             'test-provider': {
-              npm: '@test/provider',
-              name: 'test-provider',
-              models: { 'test-model': { name: 'test-model' } },
-              options: {
-                baseURL: 'https://api.test.com',
-                apiKey: '{env:TEST_API_KEY}',
-              } as any,
+              baseUrl: 'https://api.test.com/v1',
+              apiKey: '{env:TEST_API_KEY}',
+              api: 'openai-completions',
+              models: [
+                {
+                  id: 'test-model',
+                },
+              ],
             },
           } as any,
         });
@@ -430,9 +433,7 @@ describe('RuntimeClient', () => {
             config: expect.objectContaining({
               provider: expect.objectContaining({
                 'test-provider': expect.objectContaining({
-                  options: expect.objectContaining({
-                    apiKey: 'test-key-123',
-                  }),
+                  apiKey: 'test-key-123',
                 }),
               }),
             }),
@@ -459,13 +460,14 @@ describe('RuntimeClient', () => {
           directory: process.cwd(),
           provider: {
             'test-provider': {
-              npm: '@test/provider',
-              name: 'test-provider',
-              models: { 'test-model': { name: 'test-model' } },
-              options: {
-                baseURL: 'https://api.test.com',
-                apiKey: '{env:NONEXISTENT_VAR}',
-              } as any,
+              baseUrl: 'https://api.test.com/v1',
+              apiKey: '{env:NONEXISTENT_VAR}',
+              api: 'openai-completions',
+              models: [
+                {
+                  id: 'test-model',
+                },
+              ],
             },
           } as any,
         });

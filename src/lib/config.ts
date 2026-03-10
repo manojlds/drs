@@ -26,24 +26,88 @@ export interface ModelPricingConfig {
   cacheWrite?: number;
 }
 
+export interface OpenAICompatibilityConfig {
+  supportsStore?: boolean;
+  supportsDeveloperRole?: boolean;
+  supportsReasoningEffort?: boolean;
+  supportsUsageInStreaming?: boolean;
+  maxTokensField?: 'max_completion_tokens' | 'max_tokens';
+  requiresToolResultName?: boolean;
+  requiresAssistantAfterToolResult?: boolean;
+  requiresThinkingAsText?: boolean;
+  requiresMistralToolIds?: boolean;
+  thinkingFormat?: 'openai' | 'zai' | 'qwen';
+  reasoningEffortMap?: Partial<Record<'minimal' | 'low' | 'medium' | 'high' | 'xhigh', string>>;
+  openRouterRouting?: {
+    only?: string[];
+    order?: string[];
+    fallbacks?: string[];
+  };
+  vercelGatewayRouting?: {
+    only?: string[];
+    order?: string[];
+  };
+  supportsStrictMode?: boolean;
+  [key: string]: unknown;
+}
+
 export interface CustomProviderModelConfig {
-  name: string;
+  id: string;
+  name?: string;
+  api?: string;
+  baseUrl?: string;
+  reasoning?: boolean;
+  input?: Array<'text' | 'image'>;
   cost?: ModelPricingConfig;
   contextWindow?: number;
   maxTokens?: number;
+  headers?: Record<string, string>;
+  compat?: OpenAICompatibilityConfig;
 }
 
 /**
- * Custom OpenAI-compatible provider configuration
+ * Legacy model map entry format (keyed by model id in YAML).
+ * Kept for backward compatibility with older DRS config files.
+ */
+export interface LegacyCustomProviderModelConfig {
+  name?: string;
+  api?: string;
+  baseUrl?: string;
+  reasoning?: boolean;
+  input?: Array<'text' | 'image'>;
+  cost?: ModelPricingConfig;
+  contextWindow?: number;
+  maxTokens?: number;
+  headers?: Record<string, string>;
+  compat?: OpenAICompatibilityConfig;
+}
+
+/**
+ * Custom provider configuration (Pi models.json-compatible).
+ *
+ * Also supports legacy DRS fields (`options.baseURL`, `options.apiKey`, map-based models)
+ * for backward compatibility.
  */
 export interface CustomProvider {
-  npm: string;
-  name: string;
-  options: {
-    baseURL: string;
-    apiKey: string;
+  baseUrl?: string;
+  apiKey?: string;
+  api?: string;
+  headers?: Record<string, string>;
+  authHeader?: boolean;
+  /**
+   * Optional OpenAI compatibility defaults applied to all models in this provider.
+   * Per-model compat values take precedence.
+   */
+  compat?: OpenAICompatibilityConfig;
+  models?: CustomProviderModelConfig[] | Record<string, LegacyCustomProviderModelConfig>;
+
+  // Legacy compatibility fields (deprecated)
+  npm?: string;
+  name?: string;
+  options?: {
+    baseURL?: string;
+    apiKey?: string;
   };
-  models: Record<string, CustomProviderModelConfig>;
 }
 
 export interface RuntimeConfig {

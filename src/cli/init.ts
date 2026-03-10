@@ -46,9 +46,9 @@ interface InitConfig {
   useCustomProvider: boolean;
   provider?: {
     name: string;
-    npm: string;
-    baseURL: string;
-    apiKeyEnvVar: string;
+    baseUrl: string;
+    api: string;
+    apiKey: string;
     modelId: string;
     modelDisplayName: string;
   };
@@ -69,17 +69,18 @@ function generateConfigYaml(config: InitConfig): string {
 
   // Add custom provider if configured
   if (config.useCustomProvider && config.provider) {
-    yaml += `# Custom AI Provider
+    yaml += `# Custom AI Provider (Pi models.json-compatible format)
 pi:
   provider:
     ${config.provider.name}:
-      npm: "${config.provider.npm}"
-      name: "${config.provider.name}"
-      options:
-        baseURL: "${config.provider.baseURL}"
-        apiKey: "{env:${config.provider.apiKeyEnvVar}}"
+      baseUrl: "${config.provider.baseUrl}"
+      api: "${config.provider.api}"
+      apiKey: "${config.provider.apiKey}"
+      # Optional OpenAI-compat defaults for all models
+      # compat:
+      #   supportsStore: false
       models:
-        ${config.provider.modelId}:
+        - id: "${config.provider.modelId}"
           name: "${config.provider.modelDisplayName}"
           # Optional pricing override (USD per 1M tokens)
           # cost:
@@ -87,6 +88,11 @@ pi:
           #   output: 1.10
           #   cacheRead: 0.00
           #   cacheWrite: 0.00
+          # Optional OpenAI-compat overrides for non-standard proxies
+          # compat:
+          #   supportsStore: false
+          #   supportsUsageInStreaming: false
+          #   maxTokensField: "max_tokens"
 
 `;
   }
@@ -296,17 +302,20 @@ export async function initProject(projectPath: string): Promise<void> {
       console.log(chalk.gray('\nConfiguring custom provider...\n'));
 
       const providerName = await prompt.ask('Provider name', 'custom');
-      const npm = await prompt.ask('NPM package', '@ai-sdk/openai-compatible');
-      const baseURL = await prompt.ask('Base URL');
-      const apiKeyEnvVar = await prompt.ask('API key environment variable name', 'OPENAI_API_KEY');
+      const baseUrl = await prompt.ask('Base URL');
+      const api = await prompt.ask('API type', 'openai-completions');
+      const apiKey = await prompt.ask(
+        'API key config value (env var name, literal key, or !command)',
+        'OPENAI_API_KEY'
+      );
       const modelId = await prompt.ask('Model identifier');
       const modelDisplayName = await prompt.ask('Model display name', modelId);
 
       initConfig.provider = {
         name: providerName,
-        npm,
-        baseURL,
-        apiKeyEnvVar,
+        baseUrl,
+        api,
+        apiKey,
         modelId,
         modelDisplayName,
       };
@@ -464,7 +473,14 @@ export async function initProject(projectPath: string): Promise<void> {
     // Determine which API key is needed
     let apiKeyHint: string;
     if (initConfig.useCustomProvider && initConfig.provider) {
-      apiKeyHint = `export ${initConfig.provider.apiKeyEnvVar}=your-key`;
+      const apiKeyConfig = initConfig.provider.apiKey;
+      if (/^[A-Z_][A-Z0-9_]*$/.test(apiKeyConfig)) {
+        apiKeyHint = `export ${apiKeyConfig}=your-key`;
+      } else if (apiKeyConfig.startsWith('!')) {
+        apiKeyHint = `${apiKeyConfig}  # command-based key resolution`;
+      } else {
+        apiKeyHint = `${apiKeyConfig}  # literal key configured in .drs/drs.config.yaml`;
+      }
     } else if (initConfig.defaultModel.startsWith('anthropic/')) {
       apiKeyHint = 'export ANTHROPIC_API_KEY=your-key';
     } else if (initConfig.defaultModel.startsWith('openai/')) {
