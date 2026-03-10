@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@diff-review-system/drs)](https://www.npmjs.com/package/@diff-review-system/drs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**AI-powered code review for GitLab MRs and GitHub PRs.**
+**Automated AI code reviews for GitHub PRs and GitLab MRs.**
 
 DRS helps teams catch critical issues earlier with specialized review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
 
@@ -88,6 +88,7 @@ drs review-local --agents security,quality
 | Review local staged changes | `drs review-local --staged` |
 | Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
 | Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
+| Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 
@@ -110,6 +111,10 @@ drs review-mr --project my-org/my-repo --mr 123 --describe --post-description
 
 # Review GitLab MR and generate code quality report
 drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-quality-report.json
+
+# Review by PR/MR URL (auto-detect GitHub vs GitLab)
+drs review-url https://github.com/octocat/hello-world/pull/456 --post-comments
+drs review-url https://gitlab.com/my-org/my-repo/-/merge_requests/123 --post-comments
 
 # Review specific GitHub PR
 drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
