@@ -1,6 +1,7 @@
 import { formatCount } from './format-utils.js';
 
 const DEFAULT_TOKEN_ESTIMATE_DIVISOR = 4;
+export const PROMPT_BUDGET_LOG_PREFIX = '[prompt-budget]';
 
 export interface PromptBudgetEstimate {
   characters: number;
@@ -47,7 +48,7 @@ export function formatPromptBudgetEstimate(
   estimate: PromptBudgetEstimate
 ): string {
   const base =
-    `Prompt input (${agentLabel}): ` +
+    `${PROMPT_BUDGET_LOG_PREFIX} Prompt input (${agentLabel}): ` +
     `${formatCount(estimate.characters)} chars ≈ ${formatCount(estimate.estimatedTokens)} tokens`;
 
   if (estimate.contextWindow && estimate.contextUsagePercent !== undefined) {
