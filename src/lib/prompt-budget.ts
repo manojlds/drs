@@ -1,13 +1,23 @@
 import { formatCount } from './format-utils.js';
 
 const DEFAULT_TOKEN_ESTIMATE_DIVISOR = 4;
+
+/** Prefix used for prompt budget log lines to simplify CI filtering. */
 export const PROMPT_BUDGET_LOG_PREFIX = '[prompt-budget]';
 
+/**
+ * Estimated prompt budget and optional context-window utilization.
+ */
 export interface PromptBudgetEstimate {
+  /** Raw prompt character length. */
   characters: number;
+  /** Estimated prompt tokens derived from character length. */
   estimatedTokens: number;
+  /** Model context window used for utilization calculation (if known). */
   contextWindow?: number;
+  /** Percentage of context window consumed by the prompt (if known). */
   contextUsagePercent?: number;
+  /** Character-to-token divisor used for the estimate. */
   tokenEstimateDivisor: number;
 }
 
@@ -18,6 +28,9 @@ function resolveTokenEstimateDivisor(value?: number): number {
   return DEFAULT_TOKEN_ESTIMATE_DIVISOR;
 }
 
+/**
+ * Estimate prompt token usage from character length.
+ */
 export function estimatePromptBudget(
   prompt: string,
   options?: { tokenEstimateDivisor?: number; contextWindow?: number }
@@ -43,6 +56,9 @@ export function estimatePromptBudget(
   };
 }
 
+/**
+ * Format a prompt budget estimate for human-readable logs.
+ */
 export function formatPromptBudgetEstimate(
   agentLabel: string,
   estimate: PromptBudgetEstimate

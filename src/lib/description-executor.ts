@@ -72,6 +72,7 @@ export async function runDescribeAgent(
 
   let compressedFiles: FileWithDiff[];
   let compressionSummary: string;
+  let contextWindow: number | undefined;
 
   if (preCompressed) {
     // Use pre-compressed data from orchestrator (avoids duplicate compression)
@@ -89,7 +90,7 @@ export async function runDescribeAgent(
     const describeModelIds = [...new Set(Object.values(describeModelOverrides))].filter(
       (id): id is string => !!id
     );
-    const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+    contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
     const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 
     const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
@@ -112,7 +113,7 @@ export async function runDescribeAgent(
 
   const promptContextWindow = describeModelId
     ? runtimeClient.getModelContextWindow?.(describeModelId)
-    : undefined;
+    : contextWindow;
   const promptEstimate = estimatePromptBudget(instructions, {
     tokenEstimateDivisor: config.contextCompression?.tokenEstimateDivisor,
     contextWindow: promptContextWindow,
