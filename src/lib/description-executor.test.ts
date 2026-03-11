@@ -59,6 +59,7 @@ describe('description-executor', () => {
         };
       }),
       getMinContextWindow: vi.fn(() => undefined),
+      getModelContextWindow: vi.fn(() => undefined),
     } as unknown as RuntimeClient;
 
     platformClient = {} as unknown as PlatformClient;
@@ -183,5 +184,25 @@ describe('description-executor', () => {
     );
 
     expect(runtimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/describe-200k']);
+  });
+
+  it('falls back to describe context window when model-specific window is unavailable', async () => {
+    (runtimeClient as any).getMinContextWindow.mockReturnValue(1000);
+    (runtimeClient as any).getModelContextWindow.mockReturnValue(undefined);
+
+    await runDescribeIfEnabled(
+      runtimeClient,
+      config,
+      platformClient,
+      'manojlds/drs',
+      pr,
+      files,
+      false,
+      process.cwd(),
+      false
+    );
+
+    const output = consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('\n');
+    expect(output).toContain('% of 1,000 context');
   });
 });
