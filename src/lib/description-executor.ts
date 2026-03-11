@@ -26,6 +26,7 @@ import {
 } from './description-formatter.js';
 import { parseDescribeOutput } from './describe-parser.js';
 import { aggregateAgentUsage, applyUsageMessage, createAgentUsageSummary } from './review-usage.js';
+import { estimatePromptBudget, formatPromptBudgetEstimate } from './prompt-budget.js';
 import type { RuntimeClient } from '../runtime/client.js';
 import { getDescriberModelOverride } from './config.js';
 
@@ -66,8 +67,12 @@ export async function runDescribeAgent(
   debug?: boolean,
   preCompressed?: PreCompressedDiffs
 ): Promise<DescribeAgentResult> {
+  const describeModelOverrides = getDescriberModelOverride(config);
+  const describeModelId = describeModelOverrides['describe/pr-describer'];
+
   let compressedFiles: FileWithDiff[];
   let compressionSummary: string;
+  let contextWindow: number | undefined;
 
   if (preCompressed) {
     // Use pre-compressed data from orchestrator (avoids duplicate compression)
@@ -82,10 +87,10 @@ export async function runDescribeAgent(
       )
     );
     const filteredFiles = files.filter((f) => filteredFileNames.has(f.filename));
-    const describeModelIds = [...new Set(Object.values(getDescriberModelOverride(config)))].filter(
+    const describeModelIds = [...new Set(Object.values(describeModelOverrides))].filter(
       (id): id is string => !!id
     );
-    const contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
+    contextWindow = runtimeClient.getMinContextWindow(describeModelIds);
     const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 
     const compression = prepareDiffsForAgent(filteredFiles, compressionOptions);
@@ -104,6 +109,20 @@ export async function runDescribeAgent(
     compressedFiles,
     compressionSummary,
     projectContext ?? undefined
+  );
+
+  const promptContextWindow = describeModelId
+    ? runtimeClient.getModelContextWindow?.(describeModelId)
+    : contextWindow;
+  const promptEstimate = estimatePromptBudget(instructions, {
+    tokenEstimateDivisor: config.contextCompression?.tokenEstimateDivisor,
+    contextWindow: promptContextWindow,
+  });
+  const modelText = describeModelId ? ` | model: ${describeModelId}` : '';
+  console.log(
+    chalk.gray(
+      `${formatPromptBudgetEstimate('describe/pr-describer', promptEstimate)}${modelText}\n`
+    )
   );
 
   if (debug) {
