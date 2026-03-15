@@ -14,6 +14,7 @@ export interface ReviewUrlOptions {
   jsonOutput?: boolean;
   baseBranch?: string;
   debug?: boolean;
+  thinkingLevel?: string;
 }
 
 export type ParsedReviewUrl =
@@ -138,6 +139,7 @@ export async function reviewByUrl(config: DRSConfig, options: ReviewUrlOptions):
       jsonOutput: options.jsonOutput,
       baseBranch: options.baseBranch,
       debug: options.debug,
+      thinkingLevel: options.thinkingLevel,
     });
     return;
   }
@@ -154,5 +156,6 @@ export async function reviewByUrl(config: DRSConfig, options: ReviewUrlOptions):
     jsonOutput: options.jsonOutput,
     baseBranch: options.baseBranch,
     debug: options.debug,
+    thinkingLevel: options.thinkingLevel,
   });
 }

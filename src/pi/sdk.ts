@@ -80,6 +80,7 @@ interface PiRuntimeConfig {
   provider?: Record<string, unknown>;
   skillSearchPaths?: string[];
   agentSkills?: Record<string, string[]>;
+  thinkingLevel?: string;
 }
 
 interface SessionRecord {
@@ -406,6 +407,7 @@ class PiSessionRuntime {
       provider: asRecord(config.provider),
       skillSearchPaths: asStringArray(config.skillSearchPaths),
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
+      thinkingLevel: asString(config.thinkingLevel),
     };
 
     this.authStorage = AuthStorage.create();
@@ -697,6 +699,14 @@ class PiSessionRuntime {
       sessionManager: SessionManager.inMemory(),
       tools: this.resolveTools(cwd, settings.tools),
       customTools: this.resolveCustomTools(cwd),
+      thinkingLevel: this.runtimeConfig.thinkingLevel as
+        | 'off'
+        | 'minimal'
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'xhigh'
+        | undefined,
     });
 
     return session;

@@ -22,6 +22,7 @@ export interface ReviewMROptions {
   jsonOutput?: boolean; // Output results as JSON to console
   baseBranch?: string;
   debug?: boolean;
+  thinkingLevel?: string;
 }
 
 interface GitLabDiffRefs {
@@ -259,5 +260,6 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     describe: options.describe,
     postDescription: options.postDescription,
     debug: options.debug,
+    thinkingLevel: options.thinkingLevel,
   });
 }

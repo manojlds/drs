@@ -17,6 +17,7 @@ export interface ReviewLocalOptions {
   outputPath?: string;
   jsonOutput?: boolean;
   debug?: boolean;
+  thinkingLevel?: string;
 }
 
 /**
@@ -63,6 +64,7 @@ export async function reviewLocal(config: DRSConfig, options: ReviewLocalOptions
     workingDir: cwd,
     debug: options.debug,
     staged: options.staged,
+    thinkingLevel: options.thinkingLevel,
   };
 
   const result = await executeReview(config, source);

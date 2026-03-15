@@ -14,6 +14,7 @@ import {
   getAgentNames,
   getModelOverrides,
   getDescriberModelOverride,
+  getDefaultThinkingLevel,
   getRuntimeConfig,
   getUnifiedModelOverride,
   type ModelOverrides,
@@ -54,6 +55,8 @@ export interface ReviewSource {
   debug?: boolean;
   /** Whether this is a staged diff (affects git diff command) */
   staged?: boolean;
+  /** Reasoning effort level for the model */
+  thinkingLevel?: string;
 }
 
 /**
@@ -104,6 +107,7 @@ export function getReviewBudgetModelIds(
 export interface ConnectOptions {
   debug?: boolean;
   modelOverrides?: ModelOverrides;
+  thinkingLevel?: string;
 }
 
 /**
@@ -125,12 +129,15 @@ export async function connectToRuntime(
 
     const runtimeConfig = getRuntimeConfig(config);
 
+    const thinkingLevel = options?.thinkingLevel ?? getDefaultThinkingLevel(config);
+
     return await createRuntimeClientInstance({
       directory: workingDir ?? process.cwd(),
       modelOverrides,
       provider: runtimeConfig.provider,
       config,
       debug: options?.debug,
+      thinkingLevel,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to Pi runtime'));
@@ -198,6 +205,7 @@ export async function executeReview(
   const runtimeClient = await connectToRuntime(config, source.workingDir, {
     debug: source.debug,
     modelOverrides: reviewOverrides,
+    thinkingLevel: source.thinkingLevel,
   });
 
   try {
