@@ -37,13 +37,41 @@ describe:
   model: anthropic/claude-sonnet-4-5-20250929
 ```
 
-## 5) Environment Variable Overrides
+## 5) Reasoning Effort / Extended Thinking
+
+Control how deeply the model reasons during reviews.
+
+### Config file
+
+```yaml
+review:
+  default:
+    thinkingLevel: medium  # off, minimal, low, medium, high, xhigh
+```
+
+### CLI flags
+
+```bash
+drs review-pr --owner octocat --repo hello-world --pr 456 --reasoning-effort high
+drs review-mr --project my-org/my-repo --mr 123 --ultrathink  # alias for --reasoning-effort high
+```
+
+### Environment variable
+
+```bash
+REVIEW_THINKING_LEVEL=medium
+```
+
+**Precedence**: CLI flag > environment variable > config file.
+
+## 6) Environment Variable Overrides
 
 ```bash
 REVIEW_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 REVIEW_UNIFIED_MODEL=anthropic/claude-opus-4-5-20251101
 DESCRIBE_MODEL=anthropic/claude-sonnet-4-5-20250929
 REVIEW_AGENT_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
+REVIEW_THINKING_LEVEL=medium
 ```
 
 ## Runtime Mode
