@@ -22,6 +22,7 @@ export interface ReviewPROptions {
   jsonOutput?: boolean; // Output results as JSON to console
   baseBranch?: string;
   debug?: boolean;
+  thinkingLevel?: string;
 }
 
 interface GitHubErrorLike {
@@ -259,5 +260,6 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     describe: options.describe,
     postDescription: options.postDescription,
     debug: options.debug,
+    thinkingLevel: options.thinkingLevel,
   });
 }

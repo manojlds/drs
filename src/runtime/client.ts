@@ -18,6 +18,7 @@ export interface RuntimeClientConfig {
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
   debug?: boolean; // Print runtime config for debugging
   config?: DRSConfig;
+  thinkingLevel?: string;
 }
 
 export interface SessionCreateOptions {
@@ -271,6 +272,10 @@ export class RuntimeClient {
 
     if (Object.keys(agentConfig).length > 0) {
       runtimeConfig.agent = agentConfig;
+    }
+
+    if (this.config.thinkingLevel) {
+      runtimeConfig.thinkingLevel = this.config.thinkingLevel;
     }
 
     runtimeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;

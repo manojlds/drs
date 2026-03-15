@@ -146,6 +146,7 @@ export interface DRSConfig {
       model?: string;
       skills?: string[];
       skillsPromptFormat?: 'text' | 'xml';
+      thinkingLevel?: string;
     };
     defaultModel?: string;
     ignorePatterns: string[];
@@ -305,6 +306,11 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
       ...config.review.unified,
       severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
     };
+  }
+  if (process.env.REVIEW_THINKING_LEVEL) {
+    config.review.default = mergeSection(config.review.default, {
+      thinkingLevel: process.env.REVIEW_THINKING_LEVEL,
+    });
   }
   if (process.env.REVIEW_SKIP_REPO_CHECK === 'true') {
     config.review.skipRepoCheck = true;
@@ -503,6 +509,10 @@ export function getDefaultModel(config: DRSConfig): string | undefined {
     process.env.REVIEW_DEFAULT_MODEL ??
     undefined
   );
+}
+
+export function getDefaultThinkingLevel(config: DRSConfig): string | undefined {
+  return config.review.default?.thinkingLevel;
 }
 
 export function getDefaultSkills(config: DRSConfig): string[] {

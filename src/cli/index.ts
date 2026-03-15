@@ -64,6 +64,11 @@ program
   .option('--json', 'Output results as JSON to console')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
       // Configure logger based on options
@@ -82,11 +87,14 @@ program
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
 
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+
       await reviewLocal(config, {
         staged: options.staged || false,
         outputPath: options.output,
         jsonOutput: options.json || false,
         debug: options.debug || false,
+        thinkingLevel,
       });
       process.exit(0);
     } catch (error) {
@@ -117,6 +125,11 @@ program
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
       // Configure logger based on options
@@ -134,6 +147,8 @@ program
           unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
+
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
 
       await reviewMR(config, {
         projectId: options.project,
@@ -160,6 +175,7 @@ program
               ? false
               : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
+        thinkingLevel,
       });
       process.exit(0);
     } catch (error) {
@@ -187,6 +203,11 @@ program
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
       // Configure logger based on options
@@ -204,6 +225,8 @@ program
           unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
+
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
 
       await reviewPR(config, {
         owner: options.owner,
@@ -227,6 +250,7 @@ program
               ? false
               : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
+        thinkingLevel,
       });
       process.exit(0);
     } catch (error) {
@@ -255,6 +279,11 @@ program
   .option('--base-branch <branch>', 'Override base branch used for diff command hints')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (url, options) => {
     try {
       configureLogger({
@@ -271,6 +300,8 @@ program
           unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
         } as Partial<DRSConfig['review']>,
       } as Partial<DRSConfig>);
+
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
 
       await reviewByUrl(config, {
         url,
@@ -296,6 +327,7 @@ program
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
         debug: options.debug || false,
+        thinkingLevel,
       });
       process.exit(0);
     } catch (error) {

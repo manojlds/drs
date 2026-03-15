@@ -88,6 +88,8 @@ export interface UnifiedReviewOptions {
   postDescription?: boolean;
   /** Debug mode - print runtime configuration */
   debug?: boolean;
+  /** Reasoning effort level for the model */
+  thinkingLevel?: string;
 }
 
 /**
@@ -169,6 +171,7 @@ export async function executeUnifiedReview(
     runtimeClient = await connectToRuntime(config, options.workingDir ?? process.cwd(), {
       debug: options.debug,
       modelOverrides,
+      thinkingLevel: options.thinkingLevel,
     });
     const describeFileNames = allFiles
       .filter((file) => file.status !== 'removed')
