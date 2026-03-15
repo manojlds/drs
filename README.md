@@ -123,6 +123,10 @@ drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
 drs review-pr --owner octocat --repo hello-world --pr 456 --describe
 drs review-pr --owner octocat --repo hello-world --pr 456 --describe --post-description
 
+# Enable extended thinking for deeper analysis
+drs review-pr --owner octocat --repo hello-world --pr 456 --reasoning-effort high
+drs review-mr --project my-org/my-repo --mr 123 --ultrathink
+
 # Override base branch used for diff hints
 drs review-pr --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
 
@@ -583,6 +587,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 # Optional
 GITLAB_URL=https://gitlab.com
 REVIEW_AGENTS=security,quality,style,performance
+REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 
 ### Configuration Files
