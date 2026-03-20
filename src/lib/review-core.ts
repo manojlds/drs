@@ -20,7 +20,7 @@ import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { RuntimeClient } from '../runtime/client.js';
-import { loadReviewAgents } from '../runtime/agent-loader.js';
+import { loadReviewAgents, type AgentDefinition } from '../runtime/agent-loader.js';
 import { getLogger } from './logger.js';
 import {
   aggregateAgentUsage,
@@ -217,10 +217,11 @@ Output requirements:
  */
 function getConfiguredAgentInfo(
   config: DRSConfig,
-  workingDir: string
+  workingDir: string,
+  cachedAgents?: AgentDefinition[]
 ): Array<{ name: string; description: string }> {
   const configuredNames = getAgentNames(config);
-  const allAgents = loadReviewAgents(workingDir, config);
+  const allAgents = cachedAgents ?? loadReviewAgents(workingDir, config);
 
   return configuredNames
     .map((name) => {
@@ -234,10 +235,14 @@ function getConfiguredAgentInfo(
     .filter((a) => a !== null);
 }
 
-function validateConfiguredReviewAgents(config: DRSConfig, workingDir: string): void {
+function validateConfiguredReviewAgents(
+  config: DRSConfig,
+  workingDir: string,
+  cachedAgents?: AgentDefinition[]
+): void {
   const configuredNames = getAgentNames(config);
   const availableAgents = new Set(
-    loadReviewAgents(workingDir, config)
+    (cachedAgents ?? loadReviewAgents(workingDir, config))
       .filter((agent) => agent.name.startsWith('review/'))
       .map((agent) => agent.name.replace(/^review\//, ''))
   );
@@ -524,6 +529,139 @@ export async function runUnifiedReviewAgent(
   }
 }
 
+async function executeSingleAgent(
+  runtime: RuntimeClient,
+  config: DRSConfig,
+  baseInstructions: string,
+  reviewLabel: string,
+  filteredFiles: string[],
+  workingDir: string,
+  debug: boolean,
+  agentType: string,
+  reviewModelOverrides: Record<string, string>,
+  describeSummary: string | undefined
+): Promise<AgentResult> {
+  const agentName = `review/${agentType}`;
+  console.log(chalk.gray(`Running ${agentType} review...\n`));
+  let agentUsage = createAgentUsageSummary(agentType);
+  const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
+  const modelId = reviewModelOverrides[agentName];
+  let sawSkillToolCall = false;
+
+  try {
+    // Build prompt with global and agent-specific context
+    const reviewPrompt = buildReviewPrompt(
+      agentType,
+      baseInstructions,
+      reviewLabel,
+      filteredFiles,
+      workingDir,
+      config,
+      describeSummary
+    );
+
+    logPromptInputBudget({
+      runtime,
+      config,
+      agentType,
+      prompt: reviewPrompt,
+      modelId,
+    });
+
+    const logger = getLogger();
+
+    if (debug) {
+      console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
+      console.log(chalk.gray(`│ Agent: ${agentName}`));
+      console.log(chalk.gray('│ Prompt:'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(reviewPrompt);
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(chalk.gray(`└── End message for ${agentName}\n`));
+    } else {
+      logger.agentInput(agentType, reviewPrompt);
+    }
+
+    const session = await runtime.createSession({
+      agent: agentName,
+      message: reviewPrompt,
+    });
+
+    const agentIssues: ReviewIssue[] = [];
+    let fullResponse = '';
+
+    // Collect results from this agent
+    for await (const message of runtime.streamMessages(session.id)) {
+      if (message.role === 'tool') {
+        // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
+        const skillFromLegacy =
+          message.toolName === 'skill'
+            ? extractSkillNameFromToolOutput(message.content)
+            : undefined;
+        const skillFromRead = extractSkillNameFromReadToolOutput(message.toolName, message.content);
+        const skillName = skillFromLegacy ?? skillFromRead;
+
+        if (skillName) {
+          logger.skillLoaded(skillName, agentType);
+          sawSkillToolCall = true;
+        } else {
+          logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
+        }
+        continue;
+      }
+
+      if (message.role === 'assistant') {
+        agentUsage = applyUsageMessage(agentUsage, message);
+
+        if (!message.content.trim()) {
+          continue;
+        }
+        fullResponse += message.content;
+        if (debug) {
+          console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
+          console.log(message.content);
+          console.log(chalk.gray(`└── End response for ${agentName}\n`));
+        } else {
+          logger.agentMessage(agentType, message.content);
+        }
+      }
+    }
+
+    if (configuredSkills.length > 0 && !sawSkillToolCall) {
+      logger.noSkillCalls(agentType);
+    }
+
+    await runtime.closeSession(session.id);
+
+    const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
+    const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
+    if (parsedIssues.length > 0) {
+      agentIssues.push(...parsedIssues);
+      console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
+    }
+    return {
+      agentType,
+      success: true,
+      issues: agentIssues,
+      usage: {
+        ...agentUsage,
+        success: true,
+      },
+    };
+  } catch (error) {
+    console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+    return {
+      agentType,
+      success: false,
+      issues: [],
+      usage: {
+        ...agentUsage,
+        success: false,
+      },
+    };
+  }
+}
+
 export async function runReviewAgents(
   runtime: RuntimeClient,
   config: DRSConfig,
@@ -536,9 +674,10 @@ export async function runReviewAgents(
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
-  validateConfiguredReviewAgents(config, workingDir);
+  const allAgents = loadReviewAgents(workingDir, config);
+  validateConfiguredReviewAgents(config, workingDir, allAgents);
 
-  const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir);
+  const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir, allAgents);
   if (configuredAgentInfo.length > 0) {
     console.log(chalk.bold('🧰 Available Review Agents'));
     configuredAgentInfo.forEach((agent) => {
@@ -549,7 +688,6 @@ export async function runReviewAgents(
 
   const agentNames = getAgentNames(config);
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
-  const agentResults: AgentResult[] = [];
   const reviewModelOverrides = resolveReviewModelOverrides(config);
 
   const describeSummary =
@@ -557,130 +695,22 @@ export async function runReviewAgents(
       ? additionalContext.describeSummary
       : undefined;
 
-  for (const agentType of agentNames) {
-    const agentName = `review/${agentType}`;
-    console.log(chalk.gray(`Running ${agentType} review...\n`));
-    let agentUsage = createAgentUsageSummary(agentType);
-    const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
-    const modelId = reviewModelOverrides[agentName];
-    let sawSkillToolCall = false;
-
-    try {
-      // Build prompt with global and agent-specific context
-      const reviewPrompt = buildReviewPrompt(
-        agentType,
+  const agentResults = await Promise.all(
+    agentNames.map((agentType) =>
+      executeSingleAgent(
+        runtime,
+        config,
         baseInstructions,
         reviewLabel,
         filteredFiles,
         workingDir,
-        config,
+        debug,
+        agentType,
+        reviewModelOverrides,
         describeSummary
-      );
-
-      logPromptInputBudget({
-        runtime,
-        config,
-        agentType,
-        prompt: reviewPrompt,
-        modelId,
-      });
-
-      const logger = getLogger();
-
-      if (debug) {
-        console.log(chalk.gray('┌── DEBUG: Message sent to review agent'));
-        console.log(chalk.gray(`│ Agent: ${agentName}`));
-        console.log(chalk.gray('│ Prompt:'));
-        console.log(chalk.gray('─'.repeat(60)));
-        console.log(reviewPrompt);
-        console.log(chalk.gray('─'.repeat(60)));
-        console.log(chalk.gray(`└── End message for ${agentName}\n`));
-      } else {
-        logger.agentInput(agentType, reviewPrompt);
-      }
-
-      const session = await runtime.createSession({
-        agent: agentName,
-        message: reviewPrompt,
-      });
-
-      const agentIssues: ReviewIssue[] = [];
-      let fullResponse = '';
-
-      // Collect results from this agent
-      for await (const message of runtime.streamMessages(session.id)) {
-        if (message.role === 'tool') {
-          // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
-          const skillFromLegacy =
-            message.toolName === 'skill'
-              ? extractSkillNameFromToolOutput(message.content)
-              : undefined;
-          const skillFromRead = extractSkillNameFromReadToolOutput(
-            message.toolName,
-            message.content
-          );
-          const skillName = skillFromLegacy ?? skillFromRead;
-
-          if (skillName) {
-            logger.skillLoaded(skillName, agentType);
-            sawSkillToolCall = true;
-          } else {
-            logger.toolOutput(message.toolName ?? 'unknown', agentType, message.content);
-          }
-          continue;
-        }
-
-        if (message.role === 'assistant') {
-          agentUsage = applyUsageMessage(agentUsage, message);
-
-          if (!message.content.trim()) {
-            continue;
-          }
-          fullResponse += message.content;
-          if (debug) {
-            console.log(chalk.gray(`┌── DEBUG: Full response from ${agentName}`));
-            console.log(message.content);
-            console.log(chalk.gray(`└── End response for ${agentName}\n`));
-          } else {
-            logger.agentMessage(agentType, message.content);
-          }
-        }
-      }
-
-      if (configuredSkills.length > 0 && !sawSkillToolCall) {
-        logger.noSkillCalls(agentType);
-      }
-
-      await runtime.closeSession(session.id);
-
-      const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
-      const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
-      if (parsedIssues.length > 0) {
-        agentIssues.push(...parsedIssues);
-        console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
-      }
-      agentResults.push({
-        agentType,
-        success: true,
-        issues: agentIssues,
-        usage: {
-          ...agentUsage,
-          success: true,
-        },
-      });
-    } catch (error) {
-      console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
-      agentResults.push({
-        agentType,
-        success: false,
-        issues: [],
-        usage: {
-          ...agentUsage,
-          success: false,
-        },
-      });
-    }
-  }
+      )
+    )
+  );
 
   // Check agent results
   const successfulAgents = agentResults.filter((r) => r.success);
