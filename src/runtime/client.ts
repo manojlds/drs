@@ -534,7 +534,12 @@ export class RuntimeClient {
           }
         }
 
-        // Wait before polling again
+        // In-process mode completes synchronously; skip polling delay
+        if (this.inProcessServer) {
+          break;
+        }
+
+        // Wait before polling again (remote runtime)
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
