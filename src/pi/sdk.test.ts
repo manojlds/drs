@@ -158,6 +158,53 @@ describe('pi/sdk', () => {
     runtime.server.close();
   });
 
+  it('passes provider and model headers into registered provider config', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        provider: {
+          custom: {
+            baseUrl: 'https://api.example.com/v1',
+            apiKey: 'TEST_API_KEY',
+            api: 'openai-completions',
+            headers: {
+              'X-Provider-Header': 'provider-value',
+            },
+            models: [
+              {
+                id: 'custom-model',
+                name: 'Custom Model',
+                headers: {
+                  'X-Model-Header': 'model-value',
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(mocks.modelRegistryInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(registerProvider).toHaveBeenCalledWith(
+      'custom',
+      expect.objectContaining({
+        headers: {
+          'X-Provider-Header': 'provider-value',
+        },
+        models: [
+          expect.objectContaining({
+            id: 'custom-model',
+            headers: {
+              'X-Model-Header': 'model-value',
+            },
+          }),
+        ],
+      })
+    );
+
+    runtime.server.close();
+  });
+
   it('supports legacy provider config format for backward compatibility', async () => {
     const runtime = await createPiInProcessServer({
       config: {

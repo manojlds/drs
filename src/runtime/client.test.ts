@@ -245,6 +245,54 @@ describe('RuntimeClient', () => {
 
       await client.shutdown();
     });
+
+    it('passes provider and model headers through to Pi runtime config', async () => {
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        provider: {
+          custom: {
+            baseUrl: 'https://api.custom.example/v1',
+            apiKey: 'CUSTOM_API_KEY',
+            api: 'openai-completions',
+            headers: {
+              'X-Provider-Header': 'provider-value',
+            },
+            models: [
+              {
+                id: 'custom-model',
+                headers: {
+                  'X-Model-Header': 'model-value',
+                },
+              },
+            ],
+          },
+        } as any,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            provider: expect.objectContaining({
+              custom: expect.objectContaining({
+                headers: {
+                  'X-Provider-Header': 'provider-value',
+                },
+                models: [
+                  expect.objectContaining({
+                    id: 'custom-model',
+                    headers: {
+                      'X-Model-Header': 'model-value',
+                    },
+                  }),
+                ],
+              }),
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
   });
 
   describe('createSession', () => {
@@ -446,6 +494,73 @@ describe('RuntimeClient', () => {
           delete process.env.TEST_API_KEY;
         } else {
           process.env.TEST_API_KEY = originalEnv;
+        }
+      }
+    });
+
+    it('resolves env references inside provider and model headers', async () => {
+      const originalProviderHeaderEnv = process.env.TEST_PROVIDER_HEADER;
+      const originalModelHeaderEnv = process.env.TEST_MODEL_HEADER;
+      process.env.TEST_PROVIDER_HEADER = 'provider-header-value';
+      process.env.TEST_MODEL_HEADER = 'model-header-value';
+
+      try {
+        const client = await createRuntimeClientInstance({
+          directory: process.cwd(),
+          provider: {
+            'test-provider': {
+              baseUrl: 'https://api.test.com/v1',
+              apiKey: 'TEST_API_KEY',
+              api: 'openai-completions',
+              headers: {
+                'X-Provider-Header': '{env:TEST_PROVIDER_HEADER}',
+              },
+              models: [
+                {
+                  id: 'test-model',
+                  headers: {
+                    'X-Model-Header': '{env:TEST_MODEL_HEADER}',
+                  },
+                },
+              ],
+            },
+          } as any,
+        });
+
+        expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: expect.objectContaining({
+              provider: expect.objectContaining({
+                'test-provider': expect.objectContaining({
+                  headers: {
+                    'X-Provider-Header': 'provider-header-value',
+                  },
+                  models: [
+                    expect.objectContaining({
+                      id: 'test-model',
+                      headers: {
+                        'X-Model-Header': 'model-header-value',
+                      },
+                    }),
+                  ],
+                }),
+              }),
+            }),
+          })
+        );
+
+        await client.shutdown();
+      } finally {
+        if (originalProviderHeaderEnv === undefined) {
+          delete process.env.TEST_PROVIDER_HEADER;
+        } else {
+          process.env.TEST_PROVIDER_HEADER = originalProviderHeaderEnv;
+        }
+
+        if (originalModelHeaderEnv === undefined) {
+          delete process.env.TEST_MODEL_HEADER;
+        } else {
+          process.env.TEST_MODEL_HEADER = originalModelHeaderEnv;
         }
       }
     });
