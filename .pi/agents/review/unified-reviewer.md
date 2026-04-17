@@ -25,7 +25,8 @@ Follow these steps **in order** before reporting any issues:
 - Consider how the new code interacts with existing code you examined in Step 1.
 
 ### Step 3: Evaluate and Filter
-- For each potential issue, ask: **"Is this pattern already used elsewhere in this codebase?"** If yes, do not flag it — the author is following established conventions.
+- For each potential issue, ask: **"Is this pattern already used elsewhere in this codebase?"** If yes, do not flag it *as a style inconsistency* — the author may be following established conventions.
+- Even when a pattern is established, still flag it if the changed lines introduce a **concrete security, correctness, or performance risk**.
 - Ask: **"Could this actually cause a bug, vulnerability, or degradation in production?"** If the answer is only theoretical, do not report it.
 - Do **not** suggest refactoring, cleanup, or improvements beyond the scope of the diff.
 
@@ -133,4 +134,4 @@ If there are no issues, set `issues` to `[]` and keep summary counts at `0`.
 - Prioritize **additions over deletions**; deletions are context only.
 - Be specific: include file names and line numbers for every issue.
 - Do **not** suggest improvements, refactors, or "nice to haves" beyond the diff scope.
-- If a pattern exists elsewhere in the codebase, the author is following convention — do not flag it.
+- If a pattern exists elsewhere in the codebase, do not flag it for style consistency alone; only flag when the changed lines create a concrete production risk.
