@@ -1,10 +1,11 @@
 import chalk from 'chalk';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
+import type { DRSConfig } from '../lib/config.js';
 import type { ReviewJsonOutput } from '../lib/json-output.js';
 import type { LineValidator, InlineCommentPosition } from '../lib/platform-client.js';
 import type { ReviewIssue } from '../lib/comment-formatter.js';
-import { inferCursorWorkspaceName } from '../lib/cursor-fix-link.js';
+import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -12,6 +13,7 @@ import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { enforceRepoBranchMatch, postReviewComments } from '../lib/unified-review-executor.js';
 
 export interface PostCommentsOptions {
+  config: DRSConfig;
   inputPath: string;
   owner?: string;
   repo?: string;
@@ -22,6 +24,7 @@ export interface PostCommentsOptions {
   skipRepoCheck?: boolean;
   skipBranchCheck?: boolean;
   fixInCursor?: boolean;
+  skipFixInCursor?: boolean;
 }
 
 function parseReviewJson(raw: string, inputPath: string): ReviewJsonOutput {
@@ -142,9 +145,13 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
 
   if (isGitHub) {
     const { owner, repo, prNumber, projectId } = resolveGitHubTarget(options, reviewJson);
-    const cursorFixLinks = options.fixInCursor
-      ? { enabled: true, workspace: inferCursorWorkspaceName(projectId, workingDir) }
-      : undefined;
+    const cursorFixLinks = resolveCursorFixLinkOptions(
+      options.config,
+      projectId,
+      workingDir,
+      options.fixInCursor,
+      options.skipFixInCursor
+    );
     const githubClient = createGitHubClient();
     const platformClient = new GitHubPlatformAdapter(githubClient);
 
@@ -201,9 +208,13 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
   }
 
   const { projectId, mrIid } = resolveGitLabTarget(options, reviewJson);
-  const cursorFixLinks = options.fixInCursor
-    ? { enabled: true, workspace: inferCursorWorkspaceName(projectId, workingDir) }
-    : undefined;
+  const cursorFixLinks = resolveCursorFixLinkOptions(
+    options.config,
+    projectId,
+    workingDir,
+    options.fixInCursor,
+    options.skipFixInCursor
+  );
   const gitlabClient = createGitLabClient();
   const platformClient = new GitLabPlatformAdapter(gitlabClient);
 

@@ -135,10 +135,8 @@ export async function reviewByUrl(config: DRSConfig, options: ReviewUrlOptions):
       prNumber: parsed.prNumber,
       postComments: options.postComments,
       postErrorComment: options.postErrorComment,
-      ...(options.fixInCursor !== undefined ? { fixInCursor: options.fixInCursor } : {}),
-      ...(options.skipFixInCursor !== undefined
-        ? { skipFixInCursor: options.skipFixInCursor }
-        : {}),
+      fixInCursor: options.fixInCursor,
+      skipFixInCursor: options.skipFixInCursor,
       describe: options.describe,
       postDescription: options.postDescription,
       outputPath: options.outputPath,
@@ -155,8 +153,8 @@ export async function reviewByUrl(config: DRSConfig, options: ReviewUrlOptions):
     mrIid: parsed.mrIid,
     postComments: options.postComments,
     postErrorComment: options.postErrorComment,
-    ...(options.fixInCursor !== undefined ? { fixInCursor: options.fixInCursor } : {}),
-    ...(options.skipFixInCursor !== undefined ? { skipFixInCursor: options.skipFixInCursor } : {}),
+    fixInCursor: options.fixInCursor,
+    skipFixInCursor: options.skipFixInCursor,
     describe: options.describe,
     postDescription: options.postDescription,
     codeQualityReport: options.codeQualityReport,

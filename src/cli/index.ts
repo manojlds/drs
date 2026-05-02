@@ -418,9 +418,13 @@ program
   .option('--skip-repo-check', 'Skip repository validation')
   .option('--skip-branch-check', 'Skip branch validation')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
+  .option('--skip-fix-in-cursor', 'Do not add Fix in Cursor deeplinks to posted comments')
   .action(async (options) => {
     try {
+      const config = loadConfig(process.cwd());
+
       await postCommentsFromJson({
+        config,
         inputPath: options.input,
         projectId: options.project,
         mrIid: options.mr ? parseInt(options.mr, 10) : undefined,
@@ -429,7 +433,8 @@ program
         prNumber: options.pr ? parseInt(options.pr, 10) : undefined,
         skipRepoCheck: options.skipRepoCheck || false,
         skipBranchCheck: options.skipBranchCheck || false,
-        fixInCursor: options.fixInCursor || false,
+        fixInCursor: options.fixInCursor,
+        skipFixInCursor: options.skipFixInCursor,
         workingDir: process.cwd(),
       });
       process.exit(0);

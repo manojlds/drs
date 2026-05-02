@@ -3,12 +3,25 @@ import type { DRSConfig } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
 
 const CURSOR_PROMPT_LINK = 'https://cursor.com/link/prompt';
+const PROMPT_LIMITS = {
+  TITLE: 160,
+  AGENT: 80,
+  FILE: 300,
+  PROBLEM: 1200,
+  SOLUTION: 1200,
+} as const;
 
+/** Options for generating Cursor fix links on review issue comments. */
 export interface CursorFixLinkOptions {
+  /** Whether Cursor fix links are enabled. */
   enabled: boolean;
+  /** Optional Cursor workspace or folder name to route the deeplink. */
   workspace?: string;
 }
 
+/**
+ * Infer a Cursor workspace name from the project ID or working directory.
+ */
 export function inferCursorWorkspaceName(projectId: string, workingDir = process.cwd()): string {
   const lastProjectSegment = projectId.split('/').filter(Boolean).at(-1);
   if (lastProjectSegment && !/^\d+$/.test(lastProjectSegment)) {
@@ -18,6 +31,10 @@ export function inferCursorWorkspaceName(projectId: string, workingDir = process
   return basename(workingDir);
 }
 
+/**
+ * Resolve Cursor fix link options from config and CLI overrides.
+ * CLI enable wins over CLI disable, and both take precedence over config.
+ */
 export function resolveCursorFixLinkOptions(
   config: DRSConfig,
   projectId: string,
@@ -26,10 +43,15 @@ export function resolveCursorFixLinkOptions(
   disableOverride?: boolean
 ): CursorFixLinkOptions | undefined {
   const configured = config.review.cursorFixLinks;
-  const enabled =
-    enableOverride === true ? true : disableOverride === true ? false : configured?.enabled;
 
-  if (!enabled) {
+  if (enableOverride === true) {
+    return {
+      enabled: true,
+      workspace: configured?.workspace ?? inferCursorWorkspaceName(projectId, workingDir),
+    };
+  }
+
+  if (disableOverride === true || !configured?.enabled) {
     return undefined;
   }
 
@@ -39,6 +61,9 @@ export function resolveCursorFixLinkOptions(
   };
 }
 
+/**
+ * Build a Cursor prompt link for a review issue, if the feature is enabled.
+ */
 export function buildCursorFixLink(
   issue: ReviewIssue,
   options?: CursorFixLinkOptions
@@ -62,11 +87,11 @@ export function buildCursorFixLink(
 
 function buildCursorFixPrompt(issue: ReviewIssue): string {
   const location = issue.line ? `${issue.file}:${issue.line}` : issue.file;
-  const title = truncateForPrompt(cleanPromptText(issue.title), 160);
-  const agent = truncateForPrompt(cleanPromptText(issue.agent), 80);
-  const file = truncateForPrompt(cleanPromptText(location), 300);
-  const problem = truncateForPrompt(cleanPromptText(issue.problem), 1200);
-  const solution = truncateForPrompt(cleanPromptText(issue.solution), 1200);
+  const title = truncateForPrompt(cleanPromptText(issue.title), PROMPT_LIMITS.TITLE);
+  const agent = truncateForPrompt(cleanPromptText(issue.agent), PROMPT_LIMITS.AGENT);
+  const file = truncateForPrompt(cleanPromptText(location), PROMPT_LIMITS.FILE);
+  const problem = truncateForPrompt(cleanPromptText(issue.problem), PROMPT_LIMITS.PROBLEM);
+  const solution = truncateForPrompt(cleanPromptText(issue.solution), PROMPT_LIMITS.SOLUTION);
 
   return [
     'Fix this DRS review issue in the current repository.',
@@ -84,12 +109,15 @@ function buildCursorFixPrompt(issue: ReviewIssue): string {
 }
 
 function cleanPromptText(value: string): string {
-  let cleaned = '';
+  const cleaned: string[] = [];
   for (const char of value) {
-    cleaned += shouldReplacePromptChar(char) ? ' ' : char;
+    cleaned.push(shouldReplacePromptChar(char) ? ' ' : char);
   }
 
-  return cleaned.replace(/[ \t]+/g, ' ').trim();
+  return cleaned
+    .join('')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
 }
 
 function shouldReplacePromptChar(char: string): boolean {
@@ -105,6 +133,8 @@ function shouldReplacePromptChar(char: string): boolean {
     (codePoint >= 0x0e && codePoint <= 0x1f) ||
     codePoint === 0x7f ||
     (codePoint >= 0x200b && codePoint <= 0x200f) ||
+    codePoint === 0x2028 ||
+    codePoint === 0x2029 ||
     (codePoint >= 0x202a && codePoint <= 0x202e) ||
     (codePoint >= 0x2060 && codePoint <= 0x206f) ||
     codePoint === 0xfeff
