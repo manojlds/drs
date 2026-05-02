@@ -25,9 +25,10 @@ import type { ReviewUsageSummary } from './review-usage.js';
  *
  * This function:
  * 1. Fetches existing comments to prevent duplicates
- * 2. Posts or updates a summary comment
+ * 2. Posts or updates a summary comment, optionally with Cursor fix links
  * 3. Posts inline comments for CRITICAL/HIGH severity issues
  * 4. Adds an "ai-reviewed" label
+ * @param cursorFixLinks Optional Cursor link settings for summary and inline issue comments.
  */
 export async function postReviewComments(
   platformClient: PlatformClient,

@@ -40,6 +40,26 @@ describe('cursor-fix-link', () => {
     expect(buildCursorFixLink(issue)).toBeUndefined();
   });
 
+  it('sanitizes hidden control characters from prompt text', () => {
+    const link = buildCursorFixLink(
+      {
+        ...issue,
+        title: 'Hidden\u2028separator',
+        problem: 'Zero\u200bwidth',
+        solution: 'Paragraph\u2029separator',
+      },
+      { enabled: true }
+    );
+
+    const prompt = new URL(link!).searchParams.get('text')!;
+    expect(prompt).toContain('Hidden separator');
+    expect(prompt).toContain('Zero width');
+    expect(prompt).toContain('Paragraph separator');
+    expect(prompt).not.toContain('\u2028');
+    expect(prompt).not.toContain('\u2029');
+    expect(prompt).not.toContain('\u200b');
+  });
+
   it('infers workspace name from repository-like project IDs', () => {
     expect(inferCursorWorkspaceName('owner/repo', '/tmp/fallback')).toBe('repo');
     expect(inferCursorWorkspaceName('123', '/tmp/drs')).toBe('drs');

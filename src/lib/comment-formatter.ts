@@ -76,8 +76,10 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
 }
 
 /**
- * Format a single review issue as a GitLab comment
- * @param fingerprint Optional fingerprint to embed in comment for deduplication
+ * Format a single review issue as a PR/MR comment.
+ * @param issue The review issue to format.
+ * @param fingerprint Optional fingerprint to embed for deduplication.
+ * @param cursorFixLinks Optional Cursor link settings. When enabled, a Fix in Cursor link is appended.
  */
 export function formatIssueComment(
   issue: ReviewIssue,
@@ -117,8 +119,13 @@ export function formatIssueComment(
 }
 
 /**
- * Format a review summary as a GitLab comment
- * @param commentId Optional comment ID to embed for update identification
+ * Format a review summary as a PR/MR comment.
+ * @param summary Aggregated review statistics.
+ * @param issues Review issues to include in the summary details.
+ * @param commentId Optional comment ID to embed for update identification.
+ * @param changeSummary Optional change summary to include before review statistics.
+ * @param reviewUsage Optional usage summary to include for cost reporting.
+ * @param cursorFixLinks Optional Cursor link settings. When enabled, per-issue links are appended.
  */
 export function formatSummaryComment(
   summary: ReviewSummary,
