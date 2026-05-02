@@ -79,8 +79,8 @@ review:
 
   # Optional: add "Fix in Cursor" deeplinks to posted review comments
   cursorFixLinks:
-    enabled: false
-    # workspace: drs  # Optional Cursor workspace/folder name override
+    enabled: true
+    workspace: drs
 
 # PR/MR Description Generator
 describe:
