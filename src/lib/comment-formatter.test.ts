@@ -92,6 +92,27 @@ describe('comment-formatter', () => {
       expect(formatted).toContain(`<!-- issue-fp: ${fingerprint} -->`);
     });
 
+    it('should include a Fix in Cursor link when enabled', () => {
+      const issue: ReviewIssue = {
+        category: 'QUALITY',
+        severity: 'HIGH',
+        title: 'Bug fix needed',
+        file: 'src/app.ts',
+        line: 7,
+        problem: 'Code is wrong',
+        solution: 'Fix the code',
+        agent: 'quality',
+      };
+
+      const formatted = formatIssueComment(issue, undefined, {
+        enabled: true,
+        workspace: 'drs',
+      });
+
+      expect(formatted).toContain('[Fix in Cursor](https://cursor.com/link/prompt?');
+      expect(formatted).toContain('workspace=drs');
+    });
+
     it('should not include fingerprint when not provided', () => {
       const issue: ReviewIssue = {
         category: 'STYLE',

@@ -401,6 +401,9 @@ review:
   describe:
     enabled: true
     postDescription: false
+  cursorFixLinks:
+    enabled: false
+    # workspace: my-repo
 
 contextCompression:
   enabled: true
@@ -418,6 +421,7 @@ describe:
 Notes:
 - `review.describe` controls auto-description when running `review-mr` or `review-pr`.
 - CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
+- `review.cursorFixLinks.enabled` adds opt-in `Fix in Cursor` links to posted review comments via Cursor's web deeplink bridge. CLI flags: `--fix-in-cursor` / `--skip-fix-in-cursor`.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.

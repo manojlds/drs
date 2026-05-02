@@ -14,6 +14,7 @@ export interface ReviewIssue {
 }
 
 import type { ChangeSummary } from './change-summary.js';
+import { buildCursorFixLink, type CursorFixLinkOptions } from './cursor-fix-link.js';
 import { formatCost, formatCount } from './format-utils.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 
@@ -78,7 +79,11 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
  * Format a single review issue as a GitLab comment
  * @param fingerprint Optional fingerprint to embed in comment for deduplication
  */
-export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): string {
+export function formatIssueComment(
+  issue: ReviewIssue,
+  fingerprint?: string,
+  cursorFixLinks?: CursorFixLinkOptions
+): string {
   const emoji = CATEGORY_EMOJI[issue.category];
   const severityEmoji = SEVERITY_EMOJI[issue.severity];
 
@@ -95,6 +100,11 @@ export function formatIssueComment(issue: ReviewIssue, fingerprint?: string): st
 
   comment += `### Problem\n${issue.problem}\n\n`;
   comment += `### Solution\n${issue.solution}\n`;
+
+  const cursorFixLink = buildCursorFixLink(issue, cursorFixLinks);
+  if (cursorFixLink) {
+    comment += `\n[Fix in Cursor](${cursorFixLink})\n`;
+  }
 
   if (issue.references && issue.references.length > 0) {
     comment += `\n### References\n`;
@@ -115,7 +125,8 @@ export function formatSummaryComment(
   issues: ReviewIssue[],
   commentId?: string,
   changeSummary?: ChangeSummary,
-  reviewUsage?: ReviewUsageSummary
+  reviewUsage?: ReviewUsageSummary,
+  cursorFixLinks?: CursorFixLinkOptions
 ): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
@@ -171,6 +182,10 @@ export function formatSummaryComment(
       details += `**File**: \`${issue.file}${issue.line ? `:${issue.line}` : ''}\` | **Category**: ${issue.category}\n\n`;
       details += `**Problem**: ${issue.problem}\n\n`;
       details += `**Solution**: ${issue.solution}\n`;
+      const cursorFixLink = buildCursorFixLink(issue, cursorFixLinks);
+      if (cursorFixLink) {
+        details += `\n[Fix in Cursor](${cursorFixLink})\n`;
+      }
       if (issue.references && issue.references.length > 0) {
         details += `\n**References**: ${issue.references.join(', ')}\n`;
       }

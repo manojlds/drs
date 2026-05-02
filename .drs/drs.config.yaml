@@ -77,6 +77,11 @@ review:
     enabled: true
     postDescription: true
 
+  # Optional: add "Fix in Cursor" deeplinks to posted review comments
+  cursorFixLinks:
+    enabled: false
+    # workspace: drs  # Optional Cursor workspace/folder name override
+
 # PR/MR Description Generator
 describe:
   # Model to use for description generation (optional, defaults to review.defaultModel)

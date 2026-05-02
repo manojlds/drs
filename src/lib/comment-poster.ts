@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import type { calculateSummary } from './comment-formatter.js';
 import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
+import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
@@ -38,7 +39,8 @@ export async function postReviewComments(
   reviewUsage: ReviewUsageSummary | undefined,
   platformData: unknown,
   lineValidator?: LineValidator,
-  createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition
+  createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition,
+  cursorFixLinks?: CursorFixLinkOptions
 ): Promise<void> {
   console.log(chalk.gray('Fetching existing comments...\n'));
 
@@ -65,7 +67,8 @@ export async function postReviewComments(
     issues,
     BOT_COMMENT_ID,
     changeSummary,
-    reviewUsage
+    reviewUsage,
+    cursorFixLinks
   );
 
   if (existingSummary) {
@@ -101,7 +104,7 @@ export async function postReviewComments(
 
   if (prepared.inlineIssues.length > 0 && createInlinePosition) {
     const inlineComments = prepared.inlineIssues.map((issue) => ({
-      body: formatIssueComment(issue, createIssueFingerprint(issue)),
+      body: formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
       position: createInlinePosition(issue, platformData),
     }));
 

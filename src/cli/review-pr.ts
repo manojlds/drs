@@ -1,4 +1,5 @@
 import type { DRSConfig } from '../lib/config.js';
+import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { executeUnifiedReview } from '../lib/unified-review-executor.js';
@@ -16,6 +17,8 @@ export interface ReviewPROptions {
   prNumber: number;
   postComments: boolean;
   postErrorComment: boolean;
+  fixInCursor?: boolean;
+  skipFixInCursor?: boolean;
   describe: boolean;
   postDescription: boolean;
   outputPath?: string; // Optional path to write JSON results file
@@ -211,7 +214,15 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
   }
 
   const projectId = `${options.owner}/${options.repo}`;
+  const workingDir = process.cwd();
   const { pullRequest, changedFiles } = await loadPullRequestContext(platformClient, options);
+  const cursorFixLinks = resolveCursorFixLinkOptions(
+    config,
+    projectId,
+    workingDir,
+    options.fixInCursor,
+    options.skipFixInCursor
+  );
 
   // Build a map of file -> valid line numbers (lines that are in the diff)
   const validLinesMap = new Map<string, Set<number>>();
@@ -256,7 +267,8 @@ export async function reviewPR(config: DRSConfig, options: ReviewPROptions): Pro
     baseBranch: options.baseBranch,
     lineValidator,
     createInlinePosition,
-    workingDir: process.cwd(),
+    cursorFixLinks,
+    workingDir,
     describe: options.describe,
     postDescription: options.postDescription,
     debug: options.debug,

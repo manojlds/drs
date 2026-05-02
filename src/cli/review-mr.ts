@@ -1,4 +1,5 @@
 import type { DRSConfig } from '../lib/config.js';
+import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { executeUnifiedReview } from '../lib/unified-review-executor.js';
@@ -15,6 +16,8 @@ export interface ReviewMROptions {
   mrIid: number;
   postComments: boolean;
   postErrorComment: boolean;
+  fixInCursor?: boolean;
+  skipFixInCursor?: boolean;
   describe: boolean;
   postDescription: boolean;
   codeQualityReport?: string; // Optional path to output code quality report JSON
@@ -199,7 +202,15 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     throw mapGitLabContextError(error, options);
   }
 
+  const workingDir = process.cwd();
   const { pullRequest, changedFiles } = await loadMergeRequestContext(platformClient, options);
+  const cursorFixLinks = resolveCursorFixLinkOptions(
+    config,
+    options.projectId,
+    workingDir,
+    options.fixInCursor,
+    options.skipFixInCursor
+  );
 
   // Build a map of file -> valid line numbers (lines that are in the diff)
   const validLinesMap = new Map<string, Set<number>>();
@@ -257,6 +268,8 @@ export async function reviewMR(config: DRSConfig, options: ReviewMROptions): Pro
     baseBranch: options.baseBranch,
     lineValidator,
     createInlinePosition,
+    cursorFixLinks,
+    workingDir,
     describe: options.describe,
     postDescription: options.postDescription,
     debug: options.debug,
