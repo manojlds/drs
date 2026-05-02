@@ -111,6 +111,8 @@ program
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
+  .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
+  .option('--skip-fix-in-cursor', 'Do not add Fix in Cursor deeplinks to posted comments')
   .option('--post-error-comment', 'Post a comment if the review fails (requires GITLAB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
   .option('--skip-describe', 'Skip PR/MR description during review')
@@ -155,6 +157,8 @@ program
         mrIid: parseInt(options.mr, 10),
         postComments: options.postComments || false,
         postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
+        fixInCursor: options.fixInCursor,
+        skipFixInCursor: options.skipFixInCursor,
         codeQualityReport:
           options.codeQualityReport === true
             ? 'gl-code-quality-report.json'
@@ -193,6 +197,8 @@ program
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
+  .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
+  .option('--skip-fix-in-cursor', 'Do not add Fix in Cursor deeplinks to posted comments')
   .option('--post-error-comment', 'Post a comment if the review fails (requires GITHUB_TOKEN)')
   .option('--describe', 'Generate PR/MR description during review')
   .option('--skip-describe', 'Skip PR/MR description during review')
@@ -234,6 +240,8 @@ program
         prNumber: parseInt(options.pr, 10),
         postComments: options.postComments || false,
         postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
+        fixInCursor: options.fixInCursor,
+        skipFixInCursor: options.skipFixInCursor,
         outputPath: options.output,
         jsonOutput: options.json || false,
         baseBranch: options.baseBranch,
@@ -265,6 +273,8 @@ program
   .option('--agents <agents>', 'Comma-separated list of review agents')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR/MR')
+  .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
+  .option('--skip-fix-in-cursor', 'Do not add Fix in Cursor deeplinks to posted comments')
   .option('--post-error-comment', 'Post a comment if the review fails')
   .option('--describe', 'Generate PR/MR description during review')
   .option('--skip-describe', 'Skip PR/MR description during review')
@@ -307,6 +317,8 @@ program
         url,
         postComments: options.postComments || false,
         postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
+        fixInCursor: options.fixInCursor,
+        skipFixInCursor: options.skipFixInCursor,
         describe:
           options.describe === true
             ? true
@@ -405,6 +417,7 @@ program
   .option('--pr <number>', 'GitHub pull request number')
   .option('--skip-repo-check', 'Skip repository validation')
   .option('--skip-branch-check', 'Skip branch validation')
+  .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
   .action(async (options) => {
     try {
       await postCommentsFromJson({
@@ -416,6 +429,7 @@ program
         prNumber: options.pr ? parseInt(options.pr, 10) : undefined,
         skipRepoCheck: options.skipRepoCheck || false,
         skipBranchCheck: options.skipBranchCheck || false,
+        fixInCursor: options.fixInCursor || false,
         workingDir: process.cwd(),
       });
       process.exit(0);

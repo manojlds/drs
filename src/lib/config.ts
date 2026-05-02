@@ -166,6 +166,11 @@ export interface DRSConfig {
       enabled?: boolean;
       postDescription?: boolean;
     };
+    cursorFixLinks?: {
+      enabled?: boolean;
+      /** Optional Cursor workspace/folder name used to route the deeplink. */
+      workspace?: string;
+    };
     skipRepoCheck?: boolean;
     skipBranchCheck?: boolean;
     postErrorComment?: boolean;
@@ -224,6 +229,9 @@ const DEFAULT_CONFIG: DRSConfig = {
     describe: {
       enabled: false,
       postDescription: false,
+    },
+    cursorFixLinks: {
+      enabled: false,
     },
     postErrorComment: false,
   },

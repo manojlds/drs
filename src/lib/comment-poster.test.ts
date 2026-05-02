@@ -364,6 +364,7 @@ describe('comment-poster', () => {
         mockIssues,
         expect.any(String),
         mockChangeSummary,
+        undefined,
         undefined
       );
     });
@@ -400,7 +401,50 @@ describe('comment-poster', () => {
         mockIssues,
         expect.any(String),
         undefined,
-        usage
+        usage,
+        undefined
+      );
+    });
+
+    it('should pass Cursor fix link options into formatted comments when enabled', async () => {
+      const mockLineValidator = {
+        isValidLine: vi.fn((_file: string, _line: number) => true),
+      };
+
+      const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({
+        path: issue.file,
+        line: issue.line!,
+      }));
+
+      const cursorFixLinks = { enabled: true, workspace: 'drs' };
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        mockIssues,
+        undefined,
+        undefined,
+        {},
+        mockLineValidator,
+        mockCreateInlinePosition,
+        cursorFixLinks
+      );
+
+      const { formatSummaryComment, formatIssueComment } = await import('./comment-formatter.js');
+      expect(formatSummaryComment).toHaveBeenCalledWith(
+        mockSummary,
+        mockIssues,
+        expect.any(String),
+        undefined,
+        undefined,
+        cursorFixLinks
+      );
+      expect(formatIssueComment).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'SQL injection vulnerability' }),
+        expect.any(String),
+        cursorFixLinks
       );
     });
   });

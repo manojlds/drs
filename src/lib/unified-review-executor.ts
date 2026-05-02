@@ -18,6 +18,7 @@ import {
   type DRSConfig,
 } from './config.js';
 import type { ReviewIssue } from './comment-formatter.js';
+import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   connectToRuntime,
   filterIgnoredFiles,
@@ -80,6 +81,8 @@ export interface UnifiedReviewOptions {
   lineValidator?: LineValidator;
   /** Optional function to create inline comment position data */
   createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition;
+  /** Optional Cursor deeplink settings for posted issue comments */
+  cursorFixLinks?: CursorFixLinkOptions;
   /** Working directory for file access */
   workingDir?: string;
   /** Generate PR/MR description during review */
@@ -265,7 +268,8 @@ export async function executeUnifiedReview(
         result.usage,
         pr.platformData,
         options.lineValidator,
-        options.createInlinePosition
+        options.createInlinePosition,
+        options.cursorFixLinks
       );
     }
 

@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import type { ReviewJsonOutput } from '../lib/json-output.js';
 import type { LineValidator, InlineCommentPosition } from '../lib/platform-client.js';
 import type { ReviewIssue } from '../lib/comment-formatter.js';
+import { inferCursorWorkspaceName } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -20,6 +21,7 @@ export interface PostCommentsOptions {
   workingDir?: string;
   skipRepoCheck?: boolean;
   skipBranchCheck?: boolean;
+  fixInCursor?: boolean;
 }
 
 function parseReviewJson(raw: string, inputPath: string): ReviewJsonOutput {
@@ -140,6 +142,9 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
 
   if (isGitHub) {
     const { owner, repo, prNumber, projectId } = resolveGitHubTarget(options, reviewJson);
+    const cursorFixLinks = options.fixInCursor
+      ? { enabled: true, workspace: inferCursorWorkspaceName(projectId, workingDir) }
+      : undefined;
     const githubClient = createGitHubClient();
     const platformClient = new GitHubPlatformAdapter(githubClient);
 
@@ -189,12 +194,16 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
       reviewJson.usage,
       pr.platformData,
       lineValidator,
-      createInlinePosition
+      createInlinePosition,
+      cursorFixLinks
     );
     return;
   }
 
   const { projectId, mrIid } = resolveGitLabTarget(options, reviewJson);
+  const cursorFixLinks = options.fixInCursor
+    ? { enabled: true, workspace: inferCursorWorkspaceName(projectId, workingDir) }
+    : undefined;
   const gitlabClient = createGitLabClient();
   const platformClient = new GitLabPlatformAdapter(gitlabClient);
 
@@ -249,7 +258,8 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     reviewJson.usage,
     pr.platformData,
     lineValidator,
-    createInlinePosition
+    createInlinePosition,
+    cursorFixLinks
   );
 }
 
