@@ -686,7 +686,9 @@ class PiSessionRuntime {
         (skillName) => !loadedSkillNames.has(skillName)
       );
       if (missingSkills.length > 0) {
-        console.warn(`⚠️  Missing skill definitions for ${agentName}: ${missingSkills.join(', ')}`);
+        throw new Error(
+          `Missing skill definitions for ${agentName}: ${missingSkills.join(', ')}. Checked skill search paths: ${skillSearchPaths.join(', ')}`
+        );
       }
     }
 

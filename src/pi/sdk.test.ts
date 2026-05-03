@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     dispose,
     session,
     createAgentSession: vi.fn(async (_opts?: Record<string, unknown>) => ({ session })),
+    availableSkills: [] as string[],
     loaderInstances: [] as Array<{
       options: Record<string, unknown>;
       reload: any;
@@ -28,7 +29,10 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
   class DefaultResourceLoader {
     options: Record<string, unknown>;
     reload = vi.fn(async () => undefined);
-    getSkills = vi.fn(() => ({ skills: [], diagnostics: [] }));
+    getSkills = vi.fn(() => ({
+      skills: mocks.availableSkills.map((name) => ({ name })),
+      diagnostics: [],
+    }));
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -69,6 +73,7 @@ describe('pi/sdk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.session.messages = [];
+    mocks.availableSkills.length = 0;
     mocks.loaderInstances.length = 0;
     mocks.modelRegistryInstances.length = 0;
   });
@@ -440,6 +445,8 @@ describe('pi/sdk', () => {
   });
 
   it('per-agent skills are filtered via skillsOverride', async () => {
+    mocks.availableSkills.push('sql-injection', 'auth-bypass', 'performance-hints');
+
     const runtime = await createPiInProcessServer({
       config: {
         agentSkills: {
@@ -480,6 +487,43 @@ describe('pi/sdk', () => {
 
     expect(filtered.skills.map((s) => s.name)).toEqual(['sql-injection', 'auth-bypass']);
     // performance-hints filtered out — not in agent config
+
+    runtime.server.close();
+  });
+
+  it('returns an error when configured skills are missing', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        agentSkills: {
+          'review/security': ['sql-injection'],
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    const promptResult = await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    expect(promptResult).toEqual({ ok: false });
+
+    const response = await runtime.client.session.messages({
+      path: { id: created.data?.id ?? '' },
+    });
+
+    const errorMessage = response.data?.find((message) => message.info?.error)?.info?.error;
+    expect(String(errorMessage)).toContain(
+      'Missing skill definitions for review/security: sql-injection'
+    );
+    expect(String(errorMessage)).toContain('Checked skill search paths:');
 
     runtime.server.close();
   });
