@@ -602,9 +602,7 @@ REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low,
 
 ## Development
 
-For comprehensive local development and testing instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
-
-Quick start:
+Quick start for local development:
 
 ```bash
 # Install dependencies
@@ -641,8 +639,6 @@ Apache-2.0
 - [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
 - [Custom Agents & Skills Guide](docs/CUSTOM_AGENTS.md) - Custom agents, context, skills, and per-agent tools
 - [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
-- [Development Guide](DEVELOPMENT.md) - Local development and testing guide
-- [Architecture Document](ARCHITECTURE.md) - Pi runtime architecture
 - [Pi Documentation](https://github.com/badlogic/pi-mono)
 
 ## Contributing

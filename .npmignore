@@ -21,7 +21,6 @@ vitest.config.*
 
 # Documentation
 DESIGN.md
-ARCHITECTURE.md
 examples/
 
 # Environment

@@ -21,7 +21,7 @@ and behavior changes that are not reflected in docs/tests.
   - `review-local`, `review-pr`, and `review-mr` should keep similar semantics where expected.
   - JSON output mode should remain script-friendly and deterministic.
 - Validate docs/test coverage for CLI behavior changes:
-  - update README/DEVELOPMENT snippets when visible CLI behavior changes.
+  - update README snippets when visible CLI behavior changes.
   - add or update tests for new flags, option interactions, and regressions.
 
 # Review Output Guidance

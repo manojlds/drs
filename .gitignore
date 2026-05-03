@@ -138,8 +138,3 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .npm-cache/
-
-# vaibhav ralph
-prd.json
-progress.txt
-.last-branch
