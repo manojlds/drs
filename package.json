@@ -50,7 +50,6 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
     "@gitbeaker/node": "^35.8.1",
     "@mariozechner/pi-coding-agent": "0.57.1",
     "@octokit/rest": "^21.0.0",
