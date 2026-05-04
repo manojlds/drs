@@ -2,6 +2,17 @@
 
 All notable changes to DRS are documented in this file.
 
+## 3.3.1 - 2026-05-04
+
+### Changed
+
+- Remove obsolete Vaibhav/Ralph project artifacts and stale repository references.
+- Remove direct `@anthropic-ai/sdk` dependency and rely on Pi's transitive SDK dependency.
+
+### Fixed
+
+- Fail review execution when configured skills are missing, with an explicit error that includes searched skill paths.
+
 ## 3.3.0 - 2026-05-03
 
 ### Added
