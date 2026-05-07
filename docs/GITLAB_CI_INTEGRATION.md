@@ -53,4 +53,4 @@ Set one model provider API key in GitLab CI/CD variables (masked/protected):
 
 - **Auth errors**: verify `GITLAB_TOKEN` and provider API key.
 - **No output/comments**: re-run with `--debug`.
-- **Model not found**: verify `review.default.model` and any per-agent overrides.
+- **Model not found**: verify `agents.default.model` and any per-agent overrides.

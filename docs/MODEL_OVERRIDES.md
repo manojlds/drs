@@ -5,7 +5,7 @@ DRS supports model overrides at global, unified-review, describer, and per-agent
 ## 1) Global Default
 
 ```yaml
-review:
+agents:
   default:
     model: anthropic/claude-sonnet-4-5-20250929
 ```
@@ -15,9 +15,9 @@ review:
 ```yaml
 review:
   agents:
-    - name: security
+    - name: review/security
       model: anthropic/claude-opus-4-5-20251101
-    - quality
+    - review/quality
 ```
 
 ## 3) Unified Reviewer Override
@@ -25,7 +25,7 @@ review:
 ```yaml
 review:
   agents:
-    - unified-reviewer
+    - review/unified-reviewer
   unified:
     model: anthropic/claude-sonnet-4-5-20250929
 ```
@@ -44,7 +44,7 @@ Control how deeply the model reasons during reviews.
 ### Config file
 
 ```yaml
-review:
+agents:
   default:
     thinkingLevel: medium  # off, minimal, low, medium, high, xhigh
 ```
@@ -70,7 +70,7 @@ REVIEW_THINKING_LEVEL=medium
 REVIEW_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 REVIEW_UNIFIED_MODEL=anthropic/claude-opus-4-5-20251101
 DESCRIBE_MODEL=anthropic/claude-sonnet-4-5-20250929
-REVIEW_AGENT_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
+REVIEW_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
 REVIEW_THINKING_LEVEL=medium
 ```
 

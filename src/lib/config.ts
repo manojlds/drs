@@ -3,12 +3,31 @@ import { resolve } from 'path';
 import * as yaml from 'yaml';
 
 /**
- * Agent configuration - supports both simple string and detailed object format
+ * Agent reference - supports both simple string and detailed object format.
+ * Agent names are fully qualified ids like "review/security" or "task/docs-updater".
  */
 export interface AgentConfig {
   name: string;
   model?: string;
   skills?: string[];
+}
+
+export interface AgentDefaultsConfig {
+  model?: string;
+  skills?: string[];
+  skillsPromptFormat?: 'text' | 'xml';
+  thinkingLevel?: string;
+  tools?: Record<string, boolean>;
+}
+
+export interface AgentsConfig {
+  paths?: {
+    agents?: string;
+    skills?: string;
+  };
+  default?: AgentDefaultsConfig;
+  namespaces?: Record<string, AgentDefaultsConfig>;
+  overrides?: Record<string, AgentDefaultsConfig>;
 }
 
 /**
@@ -119,6 +138,9 @@ export interface DRSConfig {
   // Pi runtime configuration
   pi: RuntimeConfig;
 
+  // Generic agent configuration shared by review, describe, and task agents
+  agents: AgentsConfig;
+
   /**
    * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
    */
@@ -138,17 +160,6 @@ export interface DRSConfig {
   // Review behavior
   review: {
     agents: (string | AgentConfig)[];
-    paths?: {
-      agents?: string;
-      skills?: string;
-    };
-    default?: {
-      model?: string;
-      skills?: string[];
-      skillsPromptFormat?: 'text' | 'xml';
-      thinkingLevel?: string;
-    };
-    defaultModel?: string;
     ignorePatterns: string[];
     includePatterns?: string[];
     /**
@@ -204,6 +215,12 @@ export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
   pi: {},
+  agents: {
+    default: {
+      model: process.env.REVIEW_DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4-5-20250929',
+      skills: [],
+    },
+  },
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN ?? '',
@@ -212,11 +229,13 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
-    agents: ['security', 'quality', 'style', 'performance', 'documentation'],
-    default: {
-      model: process.env.REVIEW_DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4-5-20250929',
-      skills: [],
-    },
+    agents: [
+      'review/security',
+      'review/quality',
+      'review/style',
+      'review/performance',
+      'review/documentation',
+    ],
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -289,8 +308,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     config.review.agents = process.env.REVIEW_AGENTS.split(',').map((a) => a.trim());
   }
   if (process.env.REVIEW_DEFAULT_MODEL) {
-    config.review.defaultModel = process.env.REVIEW_DEFAULT_MODEL;
-    config.review.default = mergeSection(config.review.default, {
+    config.agents.default = mergeSection(config.agents.default, {
       model: process.env.REVIEW_DEFAULT_MODEL,
     });
   }
@@ -316,7 +334,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     };
   }
   if (process.env.REVIEW_THINKING_LEVEL) {
-    config.review.default = mergeSection(config.review.default, {
+    config.agents.default = mergeSection(config.agents.default, {
       thinkingLevel: process.env.REVIEW_THINKING_LEVEL,
     });
   }
@@ -333,7 +351,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   // Validate required fields
   if (!getDefaultModel(config)) {
     throw new Error(
-      'Default model is required. Set review.default.model or defaultModel in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
+      'Default model is required. Set agents.default.model in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
         'Run "drs init" to configure your project.'
     );
   }
@@ -372,6 +390,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
   return {
     pi: mergeSection(base.pi, override.pi),
     opencode: mergeSection(base.opencode, override.opencode),
+    agents: mergeSection(base.agents, override.agents),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
@@ -418,10 +437,7 @@ export function getRuntimeConfig(config: DRSConfig): RuntimeConfig {
 /**
  * Merge a config section, skipping undefined values
  */
-function mergeSection<T extends Record<string, unknown>>(
-  base: T | undefined,
-  override?: Partial<T>
-): T {
+function mergeSection<T extends object>(base: T | undefined, override?: Partial<T>): T {
   const safeBase = (base ?? {}) as T;
   if (!override) return safeBase;
 
@@ -429,7 +445,6 @@ function mergeSection<T extends Record<string, unknown>>(
   for (const key in override) {
     const value = override[key];
     if (value !== undefined) {
-      // TypeScript knows that value is T[Extract<keyof T, string>] which is assignable to T[keyof T]
       result[key] = value;
     }
   }
@@ -453,13 +468,13 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
     );
   }
 
-  if (getAgentNames(config).length === 0) {
+  if (getReviewAgentIds(config).length === 0) {
     throw new Error('At least one review agent must be configured');
   }
 
   if (!getDefaultModel(config)) {
     throw new Error(
-      'Default model is required. Run "drs init" to configure or set REVIEW_DEFAULT_MODEL environment variable.'
+      'Default model is required. Run "drs init" to configure agents.default.model or set REVIEW_DEFAULT_MODEL environment variable.'
     );
   }
 }
@@ -510,62 +525,114 @@ export function normalizeAgentConfig(agents: (string | AgentConfig)[]): AgentCon
   });
 }
 
-export function getDefaultModel(config: DRSConfig): string | undefined {
-  return (
-    config.review.default?.model ??
-    config.review.defaultModel ??
-    process.env.REVIEW_DEFAULT_MODEL ??
-    undefined
+function parseAgentId(agentId: string): { namespace: string; name: string } {
+  const parts = agentId.split('/').filter(Boolean);
+  if (parts.length !== 2) {
+    throw new Error(
+      `Invalid agent id "${agentId}". Agents must be fully qualified as "<namespace>/<name>".`
+    );
+  }
+
+  return {
+    namespace: parts[0],
+    name: parts[1],
+  };
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))
   );
 }
 
+function getNamespaceDefaults(config: DRSConfig, namespace: string): AgentDefaultsConfig {
+  return config.agents.namespaces?.[namespace] ?? {};
+}
+
+function getAgentOverride(config: DRSConfig, agentId: string): AgentDefaultsConfig {
+  return config.agents.overrides?.[agentId] ?? {};
+}
+
+export function getDefaultModel(config: DRSConfig): string | undefined {
+  return config.agents.default?.model ?? process.env.REVIEW_DEFAULT_MODEL ?? undefined;
+}
+
 export function getDefaultThinkingLevel(config: DRSConfig): string | undefined {
-  return config.review.default?.thinkingLevel;
+  return config.agents.default?.thinkingLevel;
 }
 
 export function getDefaultSkills(config: DRSConfig): string[] {
-  if (!Array.isArray(config.review.default?.skills)) {
-    return [];
-  }
-  return config.review.default.skills.map(String).filter((skill) => skill.length > 0);
+  return dedupeStrings((config.agents.default?.skills ?? []).map(String));
 }
 
-function applyLegacyModeAgentFallback(config: DRSConfig, agentNames: string[]): string[] {
-  const deduped = Array.from(new Set(agentNames));
-  const mode = config.review.mode;
+export function resolveAgentSkills(
+  config: DRSConfig,
+  agentId: string,
+  definitionSkills: string[] = [],
+  additionalSkills: string[] = []
+): string[] {
+  const { namespace } = parseAgentId(agentId);
+  const namespaceDefaults = getNamespaceDefaults(config, namespace);
+  const agentOverride = getAgentOverride(config, agentId);
+  const reviewAgentConfig = normalizeAgentConfig(config.review.agents).find(
+    (agent) => agent.name === agentId
+  );
 
-  if (mode === 'unified' && !deduped.includes('unified-reviewer')) {
-    return ['unified-reviewer'];
-  }
+  return dedupeStrings([
+    ...(config.agents.default?.skills ?? []),
+    ...(namespaceDefaults.skills ?? []),
+    ...definitionSkills,
+    ...(agentOverride.skills ?? []),
+    ...(reviewAgentConfig?.skills ?? []),
+    ...additionalSkills,
+  ]);
+}
 
-  if (mode === 'hybrid' && !deduped.includes('unified-reviewer')) {
-    return ['unified-reviewer', ...deduped];
+export function resolveAgentModel(
+  config: DRSConfig,
+  agentId: string,
+  explicitModel?: string
+): string | undefined {
+  const { namespace } = parseAgentId(agentId);
+  const envVarName = `REVIEW_AGENT_${agentId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
+  const envModel = process.env[envVarName];
+
+  return (
+    explicitModel ??
+    envModel ??
+    getAgentOverride(config, agentId).model ??
+    getNamespaceDefaults(config, namespace).model ??
+    getDefaultModel(config)
+  );
+}
+
+/**
+ * Extract effective review agent ids from configuration.
+ */
+export function getReviewAgentIds(config: DRSConfig): string[] {
+  const configuredAgentIds = normalizeAgentConfig(config.review.agents).map((agent) => agent.name);
+  const deduped = dedupeStrings(configuredAgentIds);
+
+  for (const agentId of deduped) {
+    const { namespace } = parseAgentId(agentId);
+    if (namespace !== 'review') {
+      throw new Error(
+        `Invalid review agent "${agentId}". Review agents must be in the "review" namespace.`
+      );
+    }
   }
 
   return deduped;
 }
 
 /**
- * Extract effective agent names from configuration.
- *
- * Primary model: review.agents controls execution order and composition.
- * Legacy compatibility:
- * - mode=unified forces unified-reviewer when not explicitly configured.
- * - mode=hybrid prepends unified-reviewer when not explicitly configured.
- */
-export function getAgentNames(config: DRSConfig): string[] {
-  const configuredAgentNames = normalizeAgentConfig(config.review.agents).map(
-    (agent) => agent.name
-  );
-  return applyLegacyModeAgentFallback(config, configuredAgentNames);
-}
-
-/**
  * Build model overrides from config and environment variables
  * Precedence:
  * 1. Per-agent model in config
- * 2. Environment variable REVIEW_AGENT_<NAME>_MODEL (e.g., REVIEW_AGENT_SECURITY_MODEL)
- * 3. defaultModel in config
+ * 2. Environment variable REVIEW_AGENT_<NAMESPACE>_<NAME>_MODEL
+ * 3. agents.overrides.<agent>.model
+ * 4. agents.namespaces.<namespace>.model
+ * 5. agents.default.model
  * 4. Environment variable REVIEW_DEFAULT_MODEL
  *
  */
@@ -574,22 +641,12 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const normalizedAgents = normalizeAgentConfig(config.review.agents);
   const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
 
-  // Get default model from config or environment
-  const defaultModel = getDefaultModel(config);
-
-  for (const agentName of getAgentNames(config)) {
-    const configuredAgent = agentConfigByName.get(agentName);
-
-    // Check per-agent environment variable (e.g., REVIEW_AGENT_SECURITY_MODEL)
-    const envVarName = `REVIEW_AGENT_${agentName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
-    const envModel = process.env[envVarName];
-
-    // Precedence: agent.model > env var > defaultModel
-    const model = configuredAgent?.model ?? envModel ?? defaultModel;
+  for (const agentId of getReviewAgentIds(config)) {
+    const configuredAgent = agentConfigByName.get(agentId);
+    const model = resolveAgentModel(config, agentId, configuredAgent?.model);
 
     if (model) {
-      // Use review/<agent> format which matches how agents are invoked
-      overrides[`review/${agentName}`] = model;
+      overrides[agentId] = model;
     }
   }
 
@@ -601,17 +658,15 @@ export function getModelOverrides(config: DRSConfig): ModelOverrides {
  * Precedence:
  * 1. review.unified.model in config
  * 2. Environment variable REVIEW_UNIFIED_MODEL
- * 3. review.defaultModel in config (fallback)
- * 4. Environment variable REVIEW_DEFAULT_MODEL (fallback)
  */
 export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
 
-  const unifiedModel =
-    config.review.unified?.model ?? process.env.REVIEW_UNIFIED_MODEL ?? getDefaultModel(config);
+  const agentId = 'review/unified-reviewer';
+  const unifiedModel = config.review.unified?.model ?? process.env.REVIEW_UNIFIED_MODEL;
 
   if (unifiedModel) {
-    overrides['review/unified-reviewer'] = unifiedModel;
+    overrides[agentId] = unifiedModel;
   }
 
   return overrides;
@@ -622,18 +677,22 @@ export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
  * Precedence:
  * 1. describe.model in config
  * 2. Environment variable DESCRIBE_MODEL
- * 3. review.defaultModel in config (fallback)
- * 4. Environment variable REVIEW_DEFAULT_MODEL (fallback)
+ * 3. Generic agent model resolution
  */
 export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
 
-  // Check for describer-specific model
-  const describerModel =
-    config.describe?.model ?? process.env.DESCRIBE_MODEL ?? getDefaultModel(config);
+  const agentId = 'describe/pr-describer';
+  const describerModel = config.describe?.model ?? process.env.DESCRIBE_MODEL;
 
   if (describerModel) {
-    overrides['describe/pr-describer'] = describerModel;
+    overrides[agentId] = describerModel;
+    return overrides;
+  }
+
+  const genericModel = resolveAgentModel(config, agentId);
+  if (genericModel) {
+    overrides[agentId] = genericModel;
   }
 
   return overrides;

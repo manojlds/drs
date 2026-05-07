@@ -59,10 +59,11 @@ vi.mock('../lib/comment-formatter.js', () => ({
 
 const baseConfig = {
   pi: {},
+  agents: { default: { model: 'provider/default-model', skills: [] } },
   gitlab: { url: '', token: '' },
   github: { token: '' },
   review: {
-    agents: ['security', 'quality'],
+    agents: ['review/security', 'review/quality'],
     ignorePatterns: ['*.test.ts'],
   },
 } as unknown as DRSConfig;
@@ -113,7 +114,7 @@ describe('review-local', () => {
     expect(executeReview).toHaveBeenCalledWith(
       expect.objectContaining({
         review: expect.objectContaining({
-          agents: ['security', 'quality'],
+          agents: ['review/security', 'review/quality'],
         }),
       }),
       expect.objectContaining({

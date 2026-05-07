@@ -94,8 +94,8 @@ describeLive('review-local live e2e (real LLM)', () => {
       mkdirSync(join(repoDir, 'src'), { recursive: true });
       mkdirSync(join(repoDir, '.drs'), { recursive: true });
       mkdirSync(join(repoDir, '.drs', 'skills', 'cli-testing'), { recursive: true });
-      mkdirSync(join(repoDir, '.drs', 'agents', 'security'), { recursive: true });
-      mkdirSync(join(repoDir, '.drs', 'agents', 'sql-reviewer'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'agents', 'review', 'security'), { recursive: true });
+      mkdirSync(join(repoDir, '.drs', 'agents', 'review', 'sql-reviewer'), { recursive: true });
 
       writeFileSync(
         join(repoDir, '.drs', 'skills', 'cli-testing', 'SKILL.md'),
@@ -115,7 +115,7 @@ describeLive('review-local live e2e (real LLM)', () => {
       );
 
       writeFileSync(
-        join(repoDir, '.drs', 'agents', 'security', 'agent.md'),
+        join(repoDir, '.drs', 'agents', 'review', 'security', 'agent.md'),
         [
           '---',
           'description: Security agent override for live E2E skill assertion',
@@ -131,7 +131,7 @@ describeLive('review-local live e2e (real LLM)', () => {
       );
 
       writeFileSync(
-        join(repoDir, '.drs', 'agents', 'sql-reviewer', 'agent.md'),
+        join(repoDir, '.drs', 'agents', 'review', 'sql-reviewer', 'agent.md'),
         [
           '---',
           'description: SQL injection and database query reviewer',
@@ -147,14 +147,15 @@ describeLive('review-local live e2e (real LLM)', () => {
       writeFileSync(
         join(repoDir, '.drs/drs.config.yaml'),
         [
-          'review:',
+          'agents:',
           '  default:',
           `    model: ${liveModel}`,
           '    skills:',
           '      - cli-testing',
+          'review:',
           '  agents:',
-          '    - security',
-          '    - sql-reviewer',
+          '    - review/security',
+          '    - review/sql-reviewer',
           '  ignorePatterns: []',
           '  describe:',
           '    enabled: false',
@@ -212,12 +213,12 @@ describeLive('review-local live e2e (real LLM)', () => {
       expect(output.metadata?.source).toBe('local-unstaged');
       expect(result.logs).toContain('Loaded skill: cli-testing');
 
-      // Verify custom agent override from .drs/agents/security/agent.md was loaded
+      // Verify custom agent override from .drs/agents/review/security/agent.md was loaded
       expect(result.logs).toContain('agent definitions for Pi runtime');
 
       // Verify both agents ran: built-in override + brand new custom agent
-      expect(result.logs).toContain('Selected Agents: security, sql-reviewer');
-      expect(result.logs).toContain('Running sql-reviewer review');
+      expect(result.logs).toContain('Selected Agents: review/security, review/sql-reviewer');
+      expect(result.logs).toContain('Running review/sql-reviewer review');
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

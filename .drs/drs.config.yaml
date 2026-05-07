@@ -30,7 +30,7 @@
 #           #   supportsUsageInStreaming: false
 #           #   maxTokensField: "max_tokens"
 
-review:
+agents:
   # Default model and skills for all agents (required)
   # For built-in providers: anthropic/claude-sonnet-4-5-20250929, openai/gpt-4o, zhipuai/glm-4.7
   # For custom providers: provider-name/model-name
@@ -39,25 +39,27 @@ review:
     skills:
       - cli-testing
 
+review:
+
   # Review agents (execution order)
-  # Include unified-reviewer when you want a broad one-pass reviewer.
+  # Use fully qualified agent ids. Include review/unified-reviewer when you want a broad one-pass reviewer.
   # Simple format (uses default model):
   agents:
-    - unified-reviewer
-    - security
-    - quality
-    - style
-    - performance
-    - documentation
+    - review/unified-reviewer
+    - review/security
+    - review/quality
+    - review/style
+    - review/performance
+    - review/documentation
 
   # OR detailed format with per-agent model overrides:
   # agents:
-  #   - name: security
+  #   - name: review/security
   #     model: anthropic/claude-opus-4-5-20251101  # Premium model for security
-  #   - quality                                     # Uses defaultModel
-  #   - name: style
+  #   - review/quality                              # Uses agents.default.model
+  #   - name: review/style
   #     model: openai/gpt-4o                       # Different model for style
-  #   - performance                                 # Uses defaultModel
+  #   - review/performance                          # Uses agents.default.model
 
   # Files to ignore during review
   ignorePatterns:
@@ -84,7 +86,7 @@ review:
 
 # PR/MR Description Generator
 describe:
-  # Model to use for description generation (optional, defaults to review.defaultModel)
+  # Model to use for description generation (optional, defaults to agents.default.model)
   # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
   model: opencode-go/glm-5
   # Include .drs/context.md content in describe agent instructions

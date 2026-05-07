@@ -8,11 +8,10 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import {
-  getAgentNames,
-  getDefaultSkills,
   getModelOverrides,
+  getReviewAgentIds,
   getUnifiedModelOverride,
-  normalizeAgentConfig,
+  resolveAgentSkills,
 } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
 import { parseReviewIssues } from './issue-parser.js';
@@ -20,7 +19,7 @@ import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { RuntimeClient } from '../runtime/client.js';
-import { loadReviewAgents, type AgentDefinition } from '../runtime/agent-loader.js';
+import { loadAgents, type AgentDefinition } from '../runtime/agent-loader.js';
 import { getLogger } from './logger.js';
 import {
   aggregateAgentUsage,
@@ -220,16 +219,15 @@ function getConfiguredAgentInfo(
   workingDir: string,
   cachedAgents?: AgentDefinition[]
 ): Array<{ name: string; description: string }> {
-  const configuredNames = getAgentNames(config);
-  const allAgents = cachedAgents ?? loadReviewAgents(workingDir, config);
+  const configuredNames = getReviewAgentIds(config);
+  const allAgents = cachedAgents ?? loadAgents(workingDir, config);
 
   return configuredNames
-    .map((name) => {
-      const fullName = `review/${name}`;
-      const agent = allAgents.find((a) => a.name === fullName);
+    .map((agentId) => {
+      const agent = allAgents.find((a) => a.id === agentId);
       return {
-        name,
-        description: agent?.description ?? `${name} review agent`,
+        name: agentId,
+        description: agent?.description ?? `${agentId} review agent`,
       };
     })
     .filter((a) => a !== null);
@@ -240,14 +238,14 @@ function validateConfiguredReviewAgents(
   workingDir: string,
   cachedAgents?: AgentDefinition[]
 ): void {
-  const configuredNames = getAgentNames(config);
+  const configuredAgentIds = getReviewAgentIds(config);
   const availableAgents = new Set(
-    (cachedAgents ?? loadReviewAgents(workingDir, config))
-      .filter((agent) => agent.name.startsWith('review/'))
-      .map((agent) => agent.name.replace(/^review\//, ''))
+    (cachedAgents ?? loadAgents(workingDir, config))
+      .filter((agent) => agent.namespace === 'review')
+      .map((agent) => agent.id)
   );
 
-  const missingAgents = configuredNames.filter((name) => !availableAgents.has(name));
+  const missingAgents = configuredAgentIds.filter((agentId) => !availableAgents.has(agentId));
   if (missingAgents.length === 0) {
     return;
   }
@@ -273,13 +271,7 @@ function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
 }
 
 function getConfiguredSkillsForAgent(config: DRSConfig, agentType: string): string[] {
-  const defaultSkills = getDefaultSkills(config);
-  const normalizedAgents = normalizeAgentConfig(config.review.agents);
-  const agentConfig = normalizedAgents.find(
-    (agent) => agent.name === agentType || agent.name === `review/${agentType}`
-  );
-  const agentSkills = (agentConfig?.skills ?? []).map(String).filter((skill) => skill.length > 0);
-  return [...new Set([...defaultSkills, ...agentSkills])];
+  return resolveAgentSkills(config, agentType);
 }
 
 function resolveReviewModelOverrides(config: DRSConfig): Record<string, string> {
@@ -369,10 +361,10 @@ export async function runUnifiedReviewAgent(
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
-  const agentType = 'unified-reviewer';
-  const agentName = `review/${agentType}`;
+  const agentType = 'review/unified-reviewer';
+  const agentName = agentType;
 
-  console.log(chalk.bold('🎯 Selected Agents: unified-reviewer\n'));
+  console.log(chalk.bold('🎯 Selected Agents: review/unified-reviewer\n'));
   console.log(chalk.gray('Running unified review...\n'));
 
   let agentUsage = createAgentUsageSummary(agentType);
@@ -471,7 +463,7 @@ export async function runUnifiedReviewAgent(
 
     try {
       const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
-      const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), 'unified');
+      const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
       if (parsedIssues.length > 0) {
         agentIssues.push(...parsedIssues);
         console.log(chalk.green(`✓ [unified] Found ${parsedIssues.length} issue(s)`));
@@ -506,7 +498,7 @@ export async function runUnifiedReviewAgent(
       usage: summarizeRunUsage(agentResults),
     };
   } catch (error) {
-    console.error(chalk.red(`✗ unified-reviewer agent failed: ${error}`));
+    console.error(chalk.red(`✗ review/unified-reviewer agent failed: ${error}`));
     const agentResults: AgentResult[] = [
       {
         agentType,
@@ -541,7 +533,7 @@ async function executeSingleAgent(
   reviewModelOverrides: Record<string, string>,
   describeSummary: string | undefined
 ): Promise<AgentResult> {
-  const agentName = `review/${agentType}`;
+  const agentName = agentType;
   console.log(chalk.gray(`Running ${agentType} review...\n`));
   let agentUsage = createAgentUsageSummary(agentType);
   const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
@@ -674,7 +666,7 @@ export async function runReviewAgents(
 ): Promise<AgentReviewResult> {
   console.log(chalk.gray('Starting code analysis...\n'));
 
-  const allAgents = loadReviewAgents(workingDir, config);
+  const allAgents = loadAgents(workingDir, config);
   validateConfiguredReviewAgents(config, workingDir, allAgents);
 
   const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir, allAgents);
@@ -686,7 +678,7 @@ export async function runReviewAgents(
     console.log('');
   }
 
-  const agentNames = getAgentNames(config);
+  const agentNames = getReviewAgentIds(config);
   console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
   const reviewModelOverrides = resolveReviewModelOverrides(config);
 

@@ -329,8 +329,8 @@ Create custom agents in your project:
 
 ```bash
 # Create custom security agent
-mkdir -p .drs/agents/security
-cat > .drs/agents/security/agent.md << 'EOF'
+mkdir -p .drs/agents/review/security
+cat > .drs/agents/review/security/agent.md << 'EOF'
 ---
 description: Custom security reviewer
 model: anthropic/claude-sonnet-4-5-20250929
@@ -348,8 +348,8 @@ EOF
 Add project-specific guidance to a built-in agent without replacing its prompt:
 
 ```bash
-mkdir -p .drs/agents/quality
-cat > .drs/agents/quality/context.md << 'EOF'
+mkdir -p .drs/agents/review/quality
+cat > .drs/agents/review/quality/context.md << 'EOF'
 # Quality Context
 - Flag functions over 200 lines as HIGH
 - We use TypeORM — flag raw SQL queries
@@ -371,8 +371,8 @@ Prioritize correctness, safety, and clarity.
 Add agents that don't exist in the built-in set:
 
 ```bash
-mkdir -p .drs/agents/api-reviewer
-cat > .drs/agents/api-reviewer/agent.md << 'EOF'
+mkdir -p .drs/agents/review/api-reviewer
+cat > .drs/agents/review/api-reviewer/agent.md << 'EOF'
 ---
 description: REST API contract reviewer
 tools:
@@ -383,18 +383,23 @@ Review REST API changes for backward compatibility.
 EOF
 ```
 
-Then add to config: `agents: [security, quality, api-reviewer]`
+Then add to config: `review.agents: [review/security, review/quality, review/api-reviewer]`
 
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
 
 ```yaml
+agents:
+  default:
+    model: zhipuai/glm-4.7
+    skills: []
+
 review:
   agents:
-    - unified-reviewer
-    - security
-    - quality
+    - review/unified-reviewer
+    - review/security
+    - review/quality
   ignorePatterns:
     - "*.test.ts"
     - "*.md"
@@ -426,7 +431,7 @@ Notes:
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
 - `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
-- Built-in review agent names are: `unified-reviewer`, `security`, `quality`, `style`, `performance`, `documentation`.
+- Built-in review agent IDs are: `review/unified-reviewer`, `review/security`, `review/quality`, `review/style`, `review/performance`, `review/documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
@@ -508,7 +513,7 @@ contextCompression:
 
 ### Pi-Native Skill Discovery
 
-DRS auto-discovers review skills from these directories when `review.paths.skills` is not set:
+DRS auto-discovers skills from these directories when `agents.paths.skills` is not set:
 
 1. `.drs/skills` (project-level overrides)
 2. `.agents/skills` (legacy/shared project skills)
@@ -528,12 +533,12 @@ Example layout:
   db-indexing/SKILL.md         # Additional Pi-native skill
 ```
 
-To force a single custom skills directory, set `review.paths.skills`:
+To force a single custom skills directory, set `agents.paths.skills`:
 
 ```yaml
-review:
+agents:
   paths:
-    skills: config/review-skills
+    skills: config/agent-skills
 ```
 
 ## Review Domains

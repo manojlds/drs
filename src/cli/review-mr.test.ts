@@ -23,10 +23,11 @@ vi.mock('../lib/unified-review-executor.js', () => ({
 
 const baseConfig = {
   pi: {},
+  agents: { default: { model: 'provider/default-model', skills: [] } },
   gitlab: { url: 'https://gitlab.com', token: 'token' },
   github: { token: 'token' },
   review: {
-    agents: ['security', 'quality'],
+    agents: ['review/security', 'review/quality'],
     ignorePatterns: [],
   },
 } as unknown as DRSConfig;

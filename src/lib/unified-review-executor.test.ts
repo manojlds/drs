@@ -143,8 +143,9 @@ describe('unified-review-executor', () => {
     } as unknown as PlatformClient;
 
     mockConfig = {
+      agents: { default: { model: 'provider/default-model', skills: [] } },
       review: {
-        agents: ['security', 'quality'],
+        agents: ['review/security', 'review/quality'],
         mode: 'multi-agent',
         ignorePatterns: [],
         includePatterns: [],

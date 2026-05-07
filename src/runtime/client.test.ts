@@ -28,7 +28,7 @@ function createRuntime(
 
 const mocks = vi.hoisted(() => ({
   createPiInProcessServer: vi.fn(),
-  loadReviewAgents: vi.fn(() => []),
+  loadAgents: vi.fn(() => []),
 }));
 
 vi.mock('../pi/sdk.js', () => ({
@@ -36,7 +36,7 @@ vi.mock('../pi/sdk.js', () => ({
 }));
 
 vi.mock('./agent-loader.js', () => ({
-  loadReviewAgents: mocks.loadReviewAgents,
+  loadAgents: mocks.loadAgents,
 }));
 
 describe('RuntimeClient', () => {
@@ -46,7 +46,7 @@ describe('RuntimeClient', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     mocks.createPiInProcessServer.mockResolvedValue(createRuntime());
-    mocks.loadReviewAgents.mockReturnValue([]);
+    mocks.loadAgents.mockReturnValue([]);
   });
 
   describe('constructor', () => {
@@ -84,8 +84,10 @@ describe('RuntimeClient', () => {
 
   describe('initialize', () => {
     it('wires Pi runtime agent prompts and model overrides', async () => {
-      mocks.loadReviewAgents.mockReturnValue([
+      mocks.loadAgents.mockReturnValue([
         {
+          id: 'review/security',
+          namespace: 'review',
           name: 'review/security',
           path: '/tmp/security.md',
           description: 'Security specialist',
@@ -93,6 +95,8 @@ describe('RuntimeClient', () => {
           tools: { Read: true },
         },
         {
+          id: 'review/quality',
+          namespace: 'review',
           name: 'review/quality',
           path: '/tmp/quality.md',
           description: 'Quality specialist',
@@ -104,7 +108,9 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['security', 'quality'],
+            agents: ['review/security', 'review/quality'],
+          },
+          agents: {
             default: {
               skills: [],
             },
@@ -139,18 +145,30 @@ describe('RuntimeClient', () => {
       const projectRoot = process.cwd();
 
       const config = {
-        review: {
-          agents: [
-            {
-              name: 'security',
-              skills: ['security-audit'],
-            },
-          ],
+        agents: {
           default: {
             skills: ['baseline-review'],
           },
         },
+        review: {
+          agents: [
+            {
+              name: 'review/security',
+              skills: ['security-audit'],
+            },
+          ],
+        },
       } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'review/security',
+          namespace: 'review',
+          name: 'security',
+          path: '/tmp/security.md',
+          description: 'Security agent',
+        },
+      ] as any);
 
       const client = await createRuntimeClientInstance({
         directory: projectRoot,
@@ -171,16 +189,27 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
-    it('includes unified reviewer in skill configuration when unified mode is enabled', async () => {
+    it('includes unified reviewer in skill configuration when configured', async () => {
       const config = {
-        review: {
-          mode: 'unified',
-          agents: ['security'],
+        agents: {
           default: {
             skills: ['cli-testing'],
           },
         },
+        review: {
+          agents: ['review/unified-reviewer'],
+        },
       } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'review/unified-reviewer',
+          namespace: 'review',
+          name: 'unified-reviewer',
+          path: '/tmp/unified-reviewer.md',
+          description: 'Unified agent',
+        },
+      ] as any);
 
       const client = await createRuntimeClientInstance({
         directory: process.cwd(),
@@ -201,8 +230,10 @@ describe('RuntimeClient', () => {
     });
 
     it('passes per-agent tool overrides to Pi runtime config', async () => {
-      mocks.loadReviewAgents.mockReturnValue([
+      mocks.loadAgents.mockReturnValue([
         {
+          id: 'review/security',
+          namespace: 'review',
           name: 'review/security',
           path: '/tmp/security.md',
           description: 'Security agent',
@@ -210,6 +241,8 @@ describe('RuntimeClient', () => {
           tools: { Read: true, Bash: false, Edit: true },
         },
         {
+          id: 'review/quality',
+          namespace: 'review',
           name: 'review/quality',
           path: '/tmp/quality.md',
           description: 'Quality agent',
@@ -222,7 +255,9 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['security', 'quality'],
+            agents: ['review/security', 'review/quality'],
+          },
+          agents: {
             default: { skills: [] },
           },
         } as any,
@@ -410,6 +445,8 @@ describe('RuntimeClient', () => {
         config: {
           review: {
             agents: [],
+          },
+          agents: {
             default: {
               skills: [],
             },

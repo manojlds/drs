@@ -53,13 +53,13 @@ describe('context-loader', () => {
       });
       vi.mocked(readFileSync).mockReturnValue('# Custom Agent\n\nCustom agent definition');
 
-      const result = loadAgentContext('security', '/test/project');
+      const result = loadAgentContext('review/security', '/test/project');
 
       expect(result).toEqual({
         source: 'override',
         agentDefinition: '# Custom Agent\n\nCustom agent definition',
       });
-      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/security/agent.md');
+      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/review/security/agent.md');
     });
 
     it('should load agent context when context.md exists but not agent.md', () => {
@@ -69,35 +69,39 @@ describe('context-loader', () => {
       });
       vi.mocked(readFileSync).mockReturnValue('Agent-specific context');
 
-      const result = loadAgentContext('quality', '/test/project');
+      const result = loadAgentContext('review/quality', '/test/project');
 
       expect(result).toEqual({
         source: 'default',
         agentContext: 'Agent-specific context',
       });
-      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/quality/agent.md');
-      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/quality/context.md');
+      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/review/quality/agent.md');
+      expect(existsSync).toHaveBeenCalledWith(
+        '/test/project/.drs/agents/review/quality/context.md'
+      );
     });
 
     it('should return default when no customization exists', () => {
       vi.mocked(existsSync).mockReturnValue(false);
 
-      const result = loadAgentContext('style', '/test/project');
+      const result = loadAgentContext('review/style', '/test/project');
 
       expect(result).toEqual({
         source: 'default',
       });
-      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/style/agent.md');
-      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/style/context.md');
+      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/review/style/agent.md');
+      expect(existsSync).toHaveBeenCalledWith('/test/project/.drs/agents/review/style/context.md');
     });
 
     it('should use process.cwd() as default project root', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       const originalCwd = process.cwd();
 
-      loadAgentContext('security');
+      loadAgentContext('review/security');
 
-      expect(existsSync).toHaveBeenCalledWith(`${originalCwd}/.drs/agents/security/agent.md`);
+      expect(existsSync).toHaveBeenCalledWith(
+        `${originalCwd}/.drs/agents/review/security/agent.md`
+      );
     });
   });
 
@@ -110,7 +114,7 @@ describe('context-loader', () => {
       vi.mocked(readFileSync).mockReturnValue('# Custom Security Agent\n\nCustom instructions');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Default base prompt',
         'PR #123',
         ['src/app.ts', 'src/utils.ts'],
@@ -140,7 +144,7 @@ describe('context-loader', () => {
       });
 
       const result = buildReviewPrompt(
-        'quality',
+        'review/quality',
         'Review code quality',
         'MR !456',
         ['lib/index.ts'],
@@ -159,7 +163,7 @@ describe('context-loader', () => {
       vi.mocked(readFileSync).mockReturnValue('Just some context without header');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base instructions',
         'PR #1',
         ['file.ts'],
@@ -176,7 +180,7 @@ describe('context-loader', () => {
       vi.mocked(readFileSync).mockReturnValue('# Project Context\n\nAlready has header');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base instructions',
         'PR #1',
         ['file.ts'],
@@ -192,12 +196,12 @@ describe('context-loader', () => {
       // Mock agent context exists
       vi.mocked(existsSync).mockImplementation((path) => {
         const pathStr = path.toString();
-        return pathStr.includes('agents/security/context.md');
+        return pathStr.includes('agents/review/security/context.md');
       });
       vi.mocked(readFileSync).mockReturnValue('Focus on authentication and authorization');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base security review',
         'PR #2',
         ['auth.ts'],
@@ -211,12 +215,12 @@ describe('context-loader', () => {
 
     it('should capitalize agent name in agent context header', () => {
       vi.mocked(existsSync).mockImplementation((path) => {
-        return path.toString().includes('agents/quality/context.md');
+        return path.toString().includes('agents/review/quality/context.md');
       });
       vi.mocked(readFileSync).mockReturnValue('Quality context');
 
       const result = buildReviewPrompt(
-        'quality',
+        'review/quality',
         'Base prompt',
         'PR #3',
         ['file.ts'],
@@ -231,7 +235,8 @@ describe('context-loader', () => {
       vi.mocked(existsSync).mockImplementation((path) => {
         const pathStr = path.toString();
         return (
-          pathStr.includes('.drs/context.md') || pathStr.includes('agents/security/context.md')
+          pathStr.includes('.drs/context.md') ||
+          pathStr.includes('agents/review/security/context.md')
         );
       });
 
@@ -239,14 +244,14 @@ describe('context-loader', () => {
         if (path.toString().includes('.drs/context.md')) {
           return 'Global project context';
         }
-        if (path.toString().includes('agents/security/context.md')) {
+        if (path.toString().includes('agents/review/security/context.md')) {
           return 'Security-specific context';
         }
         return '';
       });
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base security instructions',
         'PR #4',
         ['auth.ts'],
@@ -264,7 +269,13 @@ describe('context-loader', () => {
       });
       vi.mocked(readFileSync).mockReturnValue('Custom agent');
 
-      const result = buildReviewPrompt('security', 'Base prompt', 'PR #5', [], '/test/project');
+      const result = buildReviewPrompt(
+        'review/security',
+        'Base prompt',
+        'PR #5',
+        [],
+        '/test/project'
+      );
 
       expect(result).toContain('Review the following files from PR #5');
       // Should still work with no files listed
@@ -274,10 +285,12 @@ describe('context-loader', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       const originalCwd = process.cwd();
 
-      buildReviewPrompt('security', 'Base prompt', 'PR #1', ['file.ts']);
+      buildReviewPrompt('review/security', 'Base prompt', 'PR #1', ['file.ts']);
 
       expect(existsSync).toHaveBeenCalledWith(`${originalCwd}/.drs/context.md`);
-      expect(existsSync).toHaveBeenCalledWith(`${originalCwd}/.drs/agents/security/agent.md`);
+      expect(existsSync).toHaveBeenCalledWith(
+        `${originalCwd}/.drs/agents/review/security/agent.md`
+      );
     });
 
     it('should handle whitespace-only global context', () => {
@@ -287,7 +300,7 @@ describe('context-loader', () => {
       vi.mocked(readFileSync).mockReturnValue('   \n\n   ');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base prompt',
         'PR #1',
         ['file.ts'],
@@ -306,7 +319,7 @@ describe('context-loader', () => {
       vi.mocked(readFileSync).mockReturnValue('\n\n\n# Project Context\n\nContent here');
 
       const result = buildReviewPrompt(
-        'security',
+        'review/security',
         'Base prompt',
         'PR #1',
         ['file.ts'],

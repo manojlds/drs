@@ -58,7 +58,7 @@ program
   .command('review-local')
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
@@ -108,7 +108,7 @@ program
   .description('Review a GitLab merge request')
   .requiredOption('--mr <iid>', 'Merge request IID (number)')
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -194,7 +194,7 @@ program
   .requiredOption('--pr <number>', 'Pull request number')
   .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -270,7 +270,7 @@ program
 program
   .command('review-url <url>')
   .description('Review a GitHub pull request or GitLab merge request by URL')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR/MR')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -480,14 +480,14 @@ program
 
 program
   .command('list-agents')
-  .description('List available review agents')
+  .description('List available agents')
   .action(async () => {
     try {
       const { listAgents } = await import('../runtime/agent-loader.js');
       const config = loadConfig(process.cwd());
       const agents = listAgents(process.cwd(), config);
 
-      console.log(chalk.bold('\n📋 Available Review Agents:\n'));
+      console.log(chalk.bold('\n📋 Available Agents:\n'));
 
       for (const agent of agents) {
         console.log(chalk.cyan(`  • ${agent}`));

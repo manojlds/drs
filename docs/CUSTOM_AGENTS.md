@@ -6,9 +6,9 @@ DRS ships with built-in review agents (security, quality, style, performance, do
 
 | What | Where | Effect |
 |------|-------|--------|
-| Override a built-in agent | `.drs/agents/<name>/agent.md` | Replaces the built-in prompt entirely |
-| Add context to a built-in agent | `.drs/agents/<name>/context.md` | Injected alongside the built-in prompt |
-| Create a new agent | `.drs/agents/<name>/agent.md` + add to config | Runs as an additional reviewer |
+| Override a built-in agent | `.drs/agents/<namespace>/<name>/agent.md` | Replaces the built-in prompt entirely |
+| Add context to a built-in agent | `.drs/agents/<namespace>/<name>/context.md` | Injected alongside the built-in prompt |
+| Create a new agent | `.drs/agents/<namespace>/<name>/agent.md` + add to config | Runs as an additional agent |
 | Global project context | `.drs/context.md` | Injected into every agent's prompt |
 | Custom skill | `.drs/skills/<name>/SKILL.md` (or `.agents/skills/<name>/SKILL.md`) | Available to agents via config |
 
@@ -16,14 +16,14 @@ DRS ships with built-in review agents (security, quality, style, performance, do
 
 ## Overriding Built-in Agents
 
-Create `.drs/agents/<name>/agent.md` where `<name>` matches a built-in agent (e.g., `security`, `quality`):
+Create `.drs/agents/<namespace>/<name>/agent.md` where the path matches a built-in agent id (e.g., `review/security`, `review/quality`):
 
 ```bash
-mkdir -p .drs/agents/security
+mkdir -p .drs/agents/review/security
 ```
 
 ```markdown
-<!-- .drs/agents/security/agent.md -->
+<!-- .drs/agents/review/security/agent.md -->
 ---
 description: Custom security reviewer for our fintech stack
 model: anthropic/claude-sonnet-4-5-20250929
@@ -59,11 +59,11 @@ The override **completely replaces** the built-in prompt. The frontmatter suppor
 If you want to keep the built-in prompt but add project-specific guidance, create a `context.md`:
 
 ```bash
-mkdir -p .drs/agents/quality
+mkdir -p .drs/agents/review/quality
 ```
 
 ```markdown
-<!-- .drs/agents/quality/context.md -->
+<!-- .drs/agents/review/quality/context.md -->
 # Quality Agent Context
 
 ## Project-Specific Rules
@@ -82,11 +82,11 @@ This context is **injected alongside** the built-in quality prompt, not replacin
 You can add agents that don't correspond to any built-in:
 
 ```bash
-mkdir -p .drs/agents/api-reviewer
+mkdir -p .drs/agents/review/api-reviewer
 ```
 
 ```markdown
-<!-- .drs/agents/api-reviewer/agent.md -->
+<!-- .drs/agents/review/api-reviewer/agent.md -->
 ---
 description: REST API contract reviewer
 tools:
@@ -110,12 +110,12 @@ Then add it to your config:
 # .drs/drs.config.yaml
 review:
   agents:
-    - security
-    - quality
-    - api-reviewer  # Your custom agent
+    - review/security
+    - review/quality
+    - review/api-reviewer  # Your custom agent
 ```
 
-Custom agents are auto-prefixed with `review/` internally (becomes `review/api-reviewer`). They're validated at startup — if an agent in `review.agents` doesn't have a corresponding definition, DRS throws an error listing available agents.
+Agent ids must be fully qualified. They're validated at startup — if an agent in `review.agents` doesn't have a corresponding definition, DRS throws an error listing available agents.
 
 ---
 
@@ -200,7 +200,7 @@ When reviewing database code, check for:
 ### Config: Default Skills (All Agents)
 
 ```yaml
-review:
+agents:
   default:
     skills:
       - sql-patterns   # Loaded by every agent
@@ -211,14 +211,14 @@ review:
 ```yaml
 review:
   agents:
-    - name: security
+    - name: review/security
       skills:
         - sql-patterns      # Only for security agent
         - auth-bypass
-    - quality               # Uses only default skills
+    - review/quality        # Uses only default skills
 ```
 
-Per-agent skills are **merged** with default skills. If `default.skills` is `['baseline']` and security has `skills: ['sql-patterns']`, then security gets both `['baseline', 'sql-patterns']`.
+Per-agent skills are **merged** with default skills. If `agents.default.skills` is `['baseline']` and `review/security` has `skills: ['sql-patterns']`, then security gets both `['baseline', 'sql-patterns']`.
 
 ### Skill Search Paths
 
@@ -231,9 +231,9 @@ If the same skill name exists in multiple directories, earlier paths win.
 
 Override with:
 ```yaml
-review:
+agents:
   paths:
-    skills: config/review-skills
+    skills: config/agent-skills
 ```
 
 ---
@@ -244,23 +244,28 @@ Full agent configuration example:
 
 ```yaml
 # .drs/drs.config.yaml
-review:
+agents:
   # Default model and skills for all agents
   default:
     model: anthropic/claude-sonnet-4-5-20250929
     skills:
       - cli-testing
+  # Custom agent/skill paths (optional)
+  paths:
+    agents: config/agents
+    skills: config/skills
 
+review:
   # Agents to run (execution order)
   agents:
     # Simple format (uses default model, no per-agent skills)
-    - security
-    - quality
+    - review/security
+    - review/quality
 
     # Detailed format (per-agent model and skills)
-    - name: style
+    - name: review/style
       model: openai/gpt-4o
-    - name: api-reviewer
+    - name: review/api-reviewer
       skills:
         - rest-conventions
 
@@ -268,25 +273,20 @@ review:
   ignorePatterns:
     - "*.test.ts"
     - "package-lock.json"
-
-  # Custom agent/skill paths (optional)
-  paths:
-    agents: config/agents
-    skills: config/skills
 ```
 
 ---
 
 ## Resolution Order
 
-When DRS loads an agent named `security`:
+When DRS loads an agent named `review/security`:
 
-1. Check `.drs/agents/security/agent.md` — if found, use as **full override**
+1. Check `.drs/agents/review/security/agent.md` — if found, use as **full override**
 2. Otherwise, use built-in `.pi/agents/review/security.md`
-3. Check `.drs/agents/security/context.md` — if found, **inject alongside** built-in prompt
+3. Check `.drs/agents/review/security/context.md` — if found, **inject alongside** built-in prompt
 4. Load `.drs/context.md` — inject **global context** into prompt
 5. Apply per-agent `tools` from frontmatter (overriding global tool config)
-6. Load per-agent `skills` merged with `default.skills`
+6. Load per-agent `skills` merged with `agents.default.skills`
 
 ---
 
@@ -305,13 +305,13 @@ When DRS loads an agent named `security`:
 ```
 .drs/
   context.md
-  drs.config.yaml          # agents: [security, quality, api-reviewer]
+  drs.config.yaml          # agents: [review/security, review/quality, review/api-reviewer]
   agents/
-    security/
+    review/security/
       agent.md             # Full override of security agent
-    quality/
+    review/quality/
       context.md           # Extra context for quality (keeps built-in)
-    api-reviewer/
+    review/api-reviewer/
       agent.md             # Brand new agent
   skills/
     rest-conventions/
@@ -320,13 +320,15 @@ When DRS loads an agent named `security`:
 
 Config:
 ```yaml
-review:
+agents:
   default:
     model: anthropic/claude-sonnet-4-5-20250929
+
+review:
   agents:
-    - security
-    - quality
-    - name: api-reviewer
+    - review/security
+    - review/quality
+    - name: review/api-reviewer
       skills:
         - rest-conventions
 ```

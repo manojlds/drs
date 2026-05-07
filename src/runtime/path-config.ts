@@ -7,9 +7,9 @@ const DEFAULT_SKILL_PATH = '.drs/skills';
 const AGENTS_DEFAULT_SKILL_PATH = '.agents/skills';
 const PI_DEFAULT_SKILL_PATH = '.pi/skills';
 
-type ReviewPathType = 'agents' | 'skills';
+type AgentPathType = 'agents' | 'skills';
 
-export interface ResolvedReviewPaths {
+export interface ResolvedAgentPaths {
   agentsPath: string;
   skillsPath: string;
   skillSearchPaths: string[];
@@ -25,7 +25,7 @@ function resolveConfiguredPath(
   projectRoot: string,
   configuredPath: unknown,
   fallbackPath: string,
-  pathType: ReviewPathType
+  pathType: AgentPathType
 ): string {
   if (configuredPath === undefined || configuredPath === null) {
     return resolve(projectRoot, fallbackPath);
@@ -33,14 +33,14 @@ function resolveConfiguredPath(
 
   if (typeof configuredPath !== 'string') {
     throw new Error(
-      `Invalid review.paths.${pathType}: expected a string path. Use a repo-relative path like "${fallbackPath}" or an absolute path.`
+      `Invalid agents.paths.${pathType}: expected a string path. Use a repo-relative path like "${fallbackPath}" or an absolute path.`
     );
   }
 
   const trimmed = configuredPath.trim();
   if (!trimmed) {
     throw new Error(
-      `Invalid review.paths.${pathType}: path cannot be empty. Use a repo-relative path like "${fallbackPath}" or an absolute path.`
+      `Invalid agents.paths.${pathType}: path cannot be empty. Use a repo-relative path like "${fallbackPath}" or an absolute path.`
     );
   }
 
@@ -48,19 +48,19 @@ function resolveConfiguredPath(
 
   if (!isAbsolute(trimmed) && isOutsideProjectRoot(projectRoot, resolvedPath)) {
     throw new Error(
-      `Invalid review.paths.${pathType}: "${configuredPath}" resolves outside repository root (${projectRoot}). Use a repo-relative path within the repository or an absolute path.`
+      `Invalid agents.paths.${pathType}: "${configuredPath}" resolves outside repository root (${projectRoot}). Use a repo-relative path within the repository or an absolute path.`
     );
   }
 
   if (!existsSync(resolvedPath)) {
     throw new Error(
-      `Invalid review.paths.${pathType}: "${configuredPath}" resolved to "${resolvedPath}", but the directory does not exist. Create the directory or remove review.paths.${pathType} to use "${fallbackPath}".`
+      `Invalid agents.paths.${pathType}: "${configuredPath}" resolved to "${resolvedPath}", but the directory does not exist. Create the directory or remove agents.paths.${pathType} to use "${fallbackPath}".`
     );
   }
 
   if (!statSync(resolvedPath).isDirectory()) {
     throw new Error(
-      `Invalid review.paths.${pathType}: "${configuredPath}" resolved to "${resolvedPath}", but it is not a directory. Point review.paths.${pathType} to a directory or remove it to use "${fallbackPath}".`
+      `Invalid agents.paths.${pathType}: "${configuredPath}" resolved to "${resolvedPath}", but it is not a directory. Point agents.paths.${pathType} to a directory or remove it to use "${fallbackPath}".`
     );
   }
 
@@ -90,7 +90,7 @@ function resolveDefaultSkillSearchPaths(projectRoot: string): string[] {
 }
 
 function resolveSkillSearchPaths(projectRoot: string, config?: DRSConfig): string[] {
-  const configuredSkillsPath = config?.review?.paths?.skills;
+  const configuredSkillsPath = config?.agents?.paths?.skills;
   if (configuredSkillsPath === undefined || configuredSkillsPath === null) {
     return resolveDefaultSkillSearchPaths(projectRoot);
   }
@@ -98,14 +98,14 @@ function resolveSkillSearchPaths(projectRoot: string, config?: DRSConfig): strin
   return [resolveConfiguredPath(projectRoot, configuredSkillsPath, DEFAULT_SKILL_PATH, 'skills')];
 }
 
-export function resolveReviewPaths(projectPath: string, config?: DRSConfig): ResolvedReviewPaths {
+export function resolveAgentPaths(projectPath: string, config?: DRSConfig): ResolvedAgentPaths {
   const projectRoot = resolve(projectPath);
   const skillSearchPaths = resolveSkillSearchPaths(projectRoot, config);
 
   return {
     agentsPath: resolveConfiguredPath(
       projectRoot,
-      config?.review?.paths?.agents,
+      config?.agents?.paths?.agents,
       DEFAULT_AGENT_PATH,
       'agents'
     ),

@@ -18,11 +18,11 @@ describe('Config', () => {
   it('should override agents when explicitly provided', () => {
     const config = loadConfig(process.cwd(), {
       review: {
-        agents: ['security'],
+        agents: ['review/security'],
       } as any,
     });
 
-    expect(config.review.agents).toEqual(['security']);
+    expect(config.review.agents).toEqual(['review/security']);
   });
 
   it('should load agents from config file when no override provided', () => {

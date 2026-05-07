@@ -224,7 +224,10 @@ describe('review-orchestrator', () => {
     it('should connect to in-process Pi runtime successfully', async () => {
       const config: DRSConfig = {
         pi: {},
-        review: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
+        review: { agents: [], ignorePatterns: [] },
       } as DRSConfig;
 
       const client = await connectToRuntime(config, '/test/dir');
@@ -242,7 +245,10 @@ describe('review-orchestrator', () => {
 
       const config: DRSConfig = {
         pi: {},
-        review: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
+        review: { agents: [], ignorePatterns: [] },
       } as DRSConfig;
 
       await expect(connectToRuntime(config)).rejects.toThrow('Connection failed');
@@ -264,7 +270,10 @@ describe('review-orchestrator', () => {
 
       const config: DRSConfig = {
         pi: {},
-        review: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
+        review: { agents: [], ignorePatterns: [] },
       } as DRSConfig;
 
       await connectToRuntime(config, '/test/dir', { debug: true });
@@ -286,7 +295,10 @@ describe('review-orchestrator', () => {
 
       const config: DRSConfig = {
         pi: {},
-        review: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
+        review: { agents: [], ignorePatterns: [] },
       } as DRSConfig;
 
       await connectToRuntime(config);
@@ -306,8 +318,11 @@ describe('review-orchestrator', () => {
     beforeEach(() => {
       mockConfig = {
         pi: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
         review: {
-          agents: ['security', 'quality'],
+          agents: ['review/security', 'review/quality'],
           ignorePatterns: ['*.test.ts'],
         },
         contextCompression: {
@@ -533,6 +548,7 @@ describe('review-orchestrator', () => {
           ...mockConfig,
           review: {
             ...mockConfig.review,
+            agents: ['review/unified-reviewer'],
             mode: 'unified',
           },
         } as DRSConfig,
@@ -562,6 +578,7 @@ describe('review-orchestrator', () => {
           ...mockConfig,
           review: {
             ...mockConfig.review,
+            agents: ['review/security'],
             mode: 'multi-agent',
           },
         } as DRSConfig,

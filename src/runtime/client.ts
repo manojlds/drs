@@ -6,10 +6,10 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import { resolveAgentSkills } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
-import { loadReviewAgents } from './agent-loader.js';
-import { resolveReviewPaths } from './path-config.js';
+import { loadAgents, type AgentDefinition } from './agent-loader.js';
+import { resolveAgentPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
 
 export interface RuntimeClientConfig {
@@ -94,39 +94,15 @@ function mapPiRuntimeError(operation: string, error: unknown): Error {
 }
 
 function buildAgentSkillConfiguration(
-  config: DRSConfig
+  config: DRSConfig,
+  agents: AgentDefinition[]
 ): Array<{ name: string; skills: string[] }> {
-  const normalizedAgents = normalizeAgentConfig(config.review.agents);
-  const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
-  const defaultSkills = getDefaultSkills(config);
-  const skillMap = new Map<string, Set<string>>();
-
-  const addSkills = (agentName: string, skills: string[]): void => {
-    const filtered = skills.filter((skill) => skill.length > 0);
-    if (filtered.length === 0) {
-      return;
-    }
-
-    const existing = skillMap.get(agentName) ?? new Set<string>();
-    for (const skill of filtered) {
-      existing.add(skill);
-    }
-    skillMap.set(agentName, existing);
-  };
-
-  for (const agentName of getAgentNames(config)) {
-    const agentConfig = agentConfigByName.get(agentName);
-    const fullAgentName = agentName.startsWith('review/') ? agentName : `review/${agentName}`;
-    addSkills(fullAgentName, [
-      ...defaultSkills,
-      ...(agentConfig?.skills ? agentConfig.skills.map(String) : []),
-    ]);
-  }
-
-  return Array.from(skillMap.entries()).map(([name, skills]) => ({
-    name,
-    skills: Array.from(skills),
-  }));
+  return agents
+    .map((agent) => ({
+      name: agent.id,
+      skills: resolveAgentSkills(config, agent.id, agent.skills),
+    }))
+    .filter((agent) => agent.skills.length > 0);
 }
 
 /**
@@ -202,7 +178,7 @@ export class RuntimeClient {
     // Build runtime config programmatically from DRS config
     const log = getLogger();
     const projectDir = this.directory ?? process.cwd();
-    const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
+    const agentPaths = resolveAgentPaths(projectDir, this.config.config);
 
     const runtimeConfig: Record<string, unknown> = {
       // Tools available to DRS review agents
@@ -219,9 +195,10 @@ export class RuntimeClient {
     };
 
     const agentConfig: Record<string, Record<string, unknown>> = {};
+    let runtimeAgents: AgentDefinition[] = [];
 
     if (this.config.config) {
-      const runtimeAgents = loadReviewAgents(projectDir, this.config.config);
+      runtimeAgents = loadAgents(projectDir, this.config.config);
       for (const agent of runtimeAgents) {
         const runtimeEntry: Record<string, unknown> = {};
         if (agent.model) runtimeEntry.model = agent.model;
@@ -231,7 +208,7 @@ export class RuntimeClient {
         if (agent.tools) runtimeEntry.tools = agent.tools;
 
         if (Object.keys(runtimeEntry).length > 0) {
-          agentConfig[agent.name] = runtimeEntry;
+          agentConfig[agent.id] = runtimeEntry;
         }
       }
 
@@ -278,12 +255,10 @@ export class RuntimeClient {
       runtimeConfig.thinkingLevel = this.config.thinkingLevel;
     }
 
-    runtimeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
+    runtimeConfig.skillSearchPaths = agentPaths.skillSearchPaths;
 
     if (this.config.config) {
-      const agentSkills = buildAgentSkillConfiguration(this.config.config).filter(
-        (agent) => agent.skills.length > 0
-      );
+      const agentSkills = buildAgentSkillConfiguration(this.config.config, runtimeAgents);
 
       if (agentSkills.length > 0) {
         log.info('Agent skill configuration:');
