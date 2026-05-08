@@ -74,6 +74,8 @@ REVIEW_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
 REVIEW_THINKING_LEVEL=medium
 ```
 
+`REVIEW_DEFAULT_MODEL` remains the environment variable for `agents.default.model`. Per-agent model variables are derived from the fully qualified agent id by replacing non-alphanumeric characters with `_`; for `review/security`, use `REVIEW_AGENT_REVIEW_SECURITY_MODEL`.
+
 ## Runtime Mode
 
 DRS uses Pi in-process runtime only. No runtime endpoint configuration is required.

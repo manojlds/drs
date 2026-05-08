@@ -195,6 +195,30 @@ describe('agent-loader path resolution', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('skips flat project agents with migration guidance', () => {
+    const projectRoot = createTempDir('drs-agent-flat-');
+    const agentsDir = join(projectRoot, '.drs', 'agents');
+
+    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'security', 'agent.md'),
+      '---\ndescription: Flat security\n---\n\nFlat prompt\n'
+    );
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const agents = loadAgents(projectRoot);
+
+    expect(agents.some((agent) => agent.id === 'security')).toBe(false);
+    const parseError = errorSpy.mock.calls[0]?.[1];
+    expect(parseError).toBeInstanceOf(Error);
+    expect(String((parseError as Error).message)).toContain(
+      '.drs/agents/<namespace>/<name>/agent.md'
+    );
+    expect(String((parseError as Error).message)).toContain('.drs/agents/review/security/agent.md');
+
+    errorSpy.mockRestore();
+  });
 });
 
 describe('getAgent / getAgentsByNamespace / listAgents', () => {

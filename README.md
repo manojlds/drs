@@ -10,7 +10,7 @@ DRS helps teams catch critical issues earlier with specialized review agents, un
 ## Why teams like DRS
 
 - 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
-- 🧠 **Flexible agent pipelines**: compose any review agents (including `unified-reviewer`) in execution order
+- 🧠 **Flexible agent pipelines**: compose any review agents (including `review/unified-reviewer`) in execution order
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Description generation**: optional PR/MR summary generation and posting
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
@@ -595,7 +595,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
 GITLAB_URL=https://gitlab.com
-REVIEW_AGENTS=security,quality,style,performance
+REVIEW_AGENTS=review/security,review/quality,review/style,review/performance
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 

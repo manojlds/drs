@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { DRSConfig } from './config.js';
+import { requireAgentId } from './agent-id.js';
 import { resolveAgentPaths } from '../runtime/path-config.js';
 
 export interface AgentContext {
@@ -43,8 +44,9 @@ export function loadAgentContext(
   projectRoot: string = process.cwd(),
   config?: DRSConfig
 ): AgentContext {
+  const { namespace, name } = requireAgentId(agentId);
   const { agentsPath } = resolveAgentPaths(projectRoot, config);
-  const agentDir = join(agentsPath, agentId);
+  const agentDir = join(agentsPath, namespace, name);
 
   // Check for full agent override
   const agentDefPath = join(agentDir, 'agent.md');

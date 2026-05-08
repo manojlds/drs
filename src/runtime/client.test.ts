@@ -229,6 +229,53 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
+    it('applies generic default skills to non-review agents', async () => {
+      const config = {
+        agents: {
+          default: {
+            skills: ['generic-skill'],
+          },
+        },
+        review: {
+          agents: ['review/security'],
+        },
+      } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'review/security',
+          namespace: 'review',
+          name: 'security',
+          path: '/tmp/security.md',
+          description: 'Security agent',
+        },
+        {
+          id: 'describe/pr-describer',
+          namespace: 'describe',
+          name: 'pr-describer',
+          path: '/tmp/pr-describer.md',
+          description: 'Description agent',
+        },
+      ] as any);
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agentSkills: expect.objectContaining({
+              'describe/pr-describer': ['generic-skill'],
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
     it('passes per-agent tool overrides to Pi runtime config', async () => {
       mocks.loadAgents.mockReturnValue([
         {

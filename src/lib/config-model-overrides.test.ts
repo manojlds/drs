@@ -139,7 +139,7 @@ describe('agent model and skill configuration', () => {
           review: { agents: ['security'], ignorePatterns: [] },
         })
       )
-    ).toThrow('fully qualified');
+    ).toThrow('review/security');
 
     expect(() =>
       getReviewAgentIds(
@@ -148,6 +148,18 @@ describe('agent model and skill configuration', () => {
         })
       )
     ).toThrow('"review" namespace');
+  });
+
+  it('rejects unsafe path components in agent ids', () => {
+    expect(() =>
+      getReviewAgentIds(
+        createConfig({
+          review: { agents: ['review/..'], ignorePatterns: [] },
+        })
+      )
+    ).toThrow('path components');
+
+    expect(() => resolveAgentSkills(createConfig(), 'review/.')).toThrow('path components');
   });
 
   it('keeps explicit unified reviewer override as an exact id override', () => {

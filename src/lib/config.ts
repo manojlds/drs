@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import * as yaml from 'yaml';
+import { requireAgentId } from './agent-id.js';
 
 /**
  * Agent reference - supports both simple string and detailed object format.
@@ -21,12 +22,16 @@ export interface AgentDefaultsConfig {
 }
 
 export interface AgentsConfig {
+  /** Custom search paths for project agent and skill definitions. */
   paths?: {
     agents?: string;
     skills?: string;
   };
+  /** Defaults applied to all agents unless a namespace or agent override is present. */
   default?: AgentDefaultsConfig;
+  /** Per-namespace defaults. Keys are namespaces like "review" or "describe". */
   namespaces?: Record<string, AgentDefaultsConfig>;
+  /** Per-agent overrides. Keys are fully qualified ids like "review/security". */
   overrides?: Record<string, AgentDefaultsConfig>;
 }
 
@@ -282,14 +287,16 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   // Try loading from .drs/drs.config.yaml
   const drsConfigPath = resolve(basePath, '.drs/drs.config.yaml');
   if (existsSync(drsConfigPath)) {
-    const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8'));
+    const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8')) ?? {};
+    rejectLegacyAgentConfigKeys(fileConfig, drsConfigPath);
     config = mergeConfig(config, fileConfig);
   }
 
   // Try loading from .gitlab-review.yml
   const gitlabReviewPath = resolve(basePath, '.gitlab-review.yml');
   if (existsSync(gitlabReviewPath)) {
-    const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8'));
+    const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8')) ?? {};
+    rejectLegacyAgentConfigKeys(fileConfig, gitlabReviewPath);
     config = mergeConfig(config, fileConfig);
   }
 
@@ -314,7 +321,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
   if (process.env.REVIEW_MODE) {
     console.warn(
-      '⚠ REVIEW_MODE is deprecated. Configure review.agents explicitly (include unified-reviewer when needed).'
+      '⚠ REVIEW_MODE is deprecated. Configure review.agents explicitly (include review/unified-reviewer when needed).'
     );
     config.review.mode = process.env.REVIEW_MODE as ReviewMode;
   }
@@ -363,7 +370,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
 
   if (config.review.mode) {
     console.warn(
-      '⚠ review.mode is deprecated. Configure review.agents explicitly (include unified-reviewer when needed).'
+      '⚠ review.mode is deprecated. Configure review.agents explicitly (include review/unified-reviewer when needed).'
     );
 
     const validModes: ReviewMode[] = ['multi-agent', 'unified', 'hybrid'];
@@ -381,6 +388,33 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   }
 
   return normalizeRuntimeConfig(config);
+}
+
+function rejectLegacyAgentConfigKeys(fileConfig: Partial<DRSConfig>, sourcePath: string): void {
+  const reviewConfig = fileConfig.review as
+    | (Partial<DRSConfig['review']> & {
+        default?: unknown;
+        defaultModel?: unknown;
+        paths?: unknown;
+      })
+    | undefined;
+
+  if (!reviewConfig || typeof reviewConfig !== 'object') {
+    return;
+  }
+
+  const migrations: string[] = [];
+  if ('default' in reviewConfig) migrations.push('review.default -> agents.default');
+  if ('defaultModel' in reviewConfig)
+    migrations.push('review.defaultModel -> agents.default.model');
+  if ('paths' in reviewConfig) migrations.push('review.paths -> agents.paths');
+
+  if (migrations.length > 0) {
+    throw new Error(
+      `Config file ${sourcePath} uses legacy DRS 3.x agent config keys: ${migrations.join(', ')}. ` +
+        'DRS 4.0 requires top-level agent configuration. Move model/skill defaults to agents.default and custom paths to agents.paths.'
+    );
+  }
 }
 
 /**
@@ -525,20 +559,6 @@ export function normalizeAgentConfig(agents: (string | AgentConfig)[]): AgentCon
   });
 }
 
-function parseAgentId(agentId: string): { namespace: string; name: string } {
-  const parts = agentId.split('/').filter(Boolean);
-  if (parts.length !== 2) {
-    throw new Error(
-      `Invalid agent id "${agentId}". Agents must be fully qualified as "<namespace>/<name>".`
-    );
-  }
-
-  return {
-    namespace: parts[0],
-    name: parts[1],
-  };
-}
-
 function dedupeStrings(values: string[]): string[] {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))
@@ -569,14 +589,16 @@ export function resolveAgentSkills(
   config: DRSConfig,
   agentId: string,
   definitionSkills: string[] = [],
-  additionalSkills: string[] = []
+  additionalSkills: string[] = [],
+  precomputedReviewAgentConfig?: AgentConfig | null
 ): string[] {
-  const { namespace } = parseAgentId(agentId);
+  const { namespace } = requireAgentId(agentId);
   const namespaceDefaults = getNamespaceDefaults(config, namespace);
   const agentOverride = getAgentOverride(config, agentId);
-  const reviewAgentConfig = normalizeAgentConfig(config.review.agents).find(
-    (agent) => agent.name === agentId
-  );
+  const reviewAgentConfig =
+    precomputedReviewAgentConfig === undefined
+      ? normalizeAgentConfig(config.review.agents).find((agent) => agent.name === agentId)
+      : precomputedReviewAgentConfig;
 
   return dedupeStrings([
     ...(config.agents.default?.skills ?? []),
@@ -593,7 +615,7 @@ export function resolveAgentModel(
   agentId: string,
   explicitModel?: string
 ): string | undefined {
-  const { namespace } = parseAgentId(agentId);
+  const { namespace } = requireAgentId(agentId);
   const envVarName = `REVIEW_AGENT_${agentId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
   const envModel = process.env[envVarName];
 
@@ -610,11 +632,15 @@ export function resolveAgentModel(
  * Extract effective review agent ids from configuration.
  */
 export function getReviewAgentIds(config: DRSConfig): string[] {
-  const configuredAgentIds = normalizeAgentConfig(config.review.agents).map((agent) => agent.name);
+  return getReviewAgentIdsFromNormalized(normalizeAgentConfig(config.review.agents));
+}
+
+function getReviewAgentIdsFromNormalized(normalizedAgents: AgentConfig[]): string[] {
+  const configuredAgentIds = normalizedAgents.map((agent) => agent.name);
   const deduped = dedupeStrings(configuredAgentIds);
 
   for (const agentId of deduped) {
-    const { namespace } = parseAgentId(agentId);
+    const { namespace } = requireAgentId(agentId);
     if (namespace !== 'review') {
       throw new Error(
         `Invalid review agent "${agentId}". Review agents must be in the "review" namespace.`
@@ -632,16 +658,14 @@ export function getReviewAgentIds(config: DRSConfig): string[] {
  * 2. Environment variable REVIEW_AGENT_<NAMESPACE>_<NAME>_MODEL
  * 3. agents.overrides.<agent>.model
  * 4. agents.namespaces.<namespace>.model
- * 5. agents.default.model
- * 4. Environment variable REVIEW_DEFAULT_MODEL
- *
+ * 5. agents.default.model (falls back to REVIEW_DEFAULT_MODEL)
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
   const normalizedAgents = normalizeAgentConfig(config.review.agents);
   const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
 
-  for (const agentId of getReviewAgentIds(config)) {
+  for (const agentId of getReviewAgentIdsFromNormalized(normalizedAgents)) {
     const configuredAgent = agentConfigByName.get(agentId);
     const model = resolveAgentModel(config, agentId, configuredAgent?.model);
 
@@ -677,7 +701,9 @@ export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
  * Precedence:
  * 1. describe.model in config
  * 2. Environment variable DESCRIBE_MODEL
- * 3. Generic agent model resolution
+ * 3. agents.overrides["describe/pr-describer"].model
+ * 4. agents.namespaces.describe.model
+ * 5. agents.default.model (falls back to REVIEW_DEFAULT_MODEL)
  */
 export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};

@@ -103,6 +103,11 @@ describe('context-loader', () => {
         `${originalCwd}/.drs/agents/review/security/agent.md`
       );
     });
+
+    it('rejects unsafe agent ids before building filesystem paths', () => {
+      expect(() => loadAgentContext('review/..', '/test/project')).toThrow('path components');
+      expect(existsSync).not.toHaveBeenCalled();
+    });
   });
 
   describe('buildReviewPrompt', () => {

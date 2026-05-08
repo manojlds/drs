@@ -353,17 +353,21 @@ export async function initProject(projectPath: string): Promise<void> {
     console.log(chalk.bold('\n━━━ Review Agents ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
 
     const availableAgents = [
+      'review/unified-reviewer',
       'review/security',
       'review/quality',
       'review/style',
       'review/performance',
+      'review/documentation',
     ];
 
     console.log(chalk.gray('Available agents:'));
+    console.log(chalk.gray('  • review/unified-reviewer - Broad one-pass review'));
     console.log(chalk.gray('  • review/security     - Security vulnerabilities & best practices'));
     console.log(chalk.gray('  • review/quality      - Code quality & maintainability'));
     console.log(chalk.gray('  • review/style        - Code style & consistency'));
-    console.log(chalk.gray('  • review/performance  - Performance issues & optimizations\n'));
+    console.log(chalk.gray('  • review/performance  - Performance issues & optimizations'));
+    console.log(chalk.gray('  • review/documentation - Documentation gaps & accuracy\n'));
 
     const agentsInput = await prompt.ask(
       'Agents to enable (comma-separated)',
@@ -443,9 +447,10 @@ export async function initProject(projectPath: string): Promise<void> {
         mkdirSync(agentDir, { recursive: true });
 
         const agentContextPath = join(agentDir, 'context.md');
+        const agentLabel = agentName.split('/').pop() ?? agentName;
         const contextContent = AGENT_CONTEXT_TEMPLATE.replace(
           '{AGENT}',
-          agentName.charAt(0).toUpperCase() + agentName.slice(1)
+          agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)
         );
         writeFileSync(agentContextPath, contextContent, 'utf-8');
       }

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config.js';
 
@@ -83,5 +86,37 @@ describe('Config', () => {
       input: 1,
       output: 2,
     });
+  });
+
+  it('rejects legacy review.default config with migration guidance', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-config-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['review:', '  default:', '    model: provider/legacy-model', ''].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.default -> agents.default');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects legacy review.paths config with migration guidance', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-paths-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['review:', '  paths:', '    agents: custom/agents', ''].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.paths -> agents.paths');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });

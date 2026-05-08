@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
+import { getAgentIdValidationError, parseAgentId } from '../lib/agent-id.js';
 import type { DRSConfig } from '../lib/config.js';
 import { getBuiltInAgentPaths } from './built-in-paths.js';
 import { resolveAgentPaths } from './path-config.js';
@@ -15,22 +16,12 @@ export interface AgentDefinition {
   color?: string;
   model?: string;
   tools?: Record<string, boolean>;
+  /** Skills declared in agent frontmatter and merged with config-level skills at runtime. */
   skills?: string[];
   hidden?: boolean;
 }
 
-function parseAgentId(agentId: string): { namespace: string; name: string } | null {
-  const parts = agentId.split('/').filter(Boolean);
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  return {
-    namespace: parts[0],
-    name: parts[1],
-  };
-}
-
+/** Parse a frontmatter value into a trimmed, non-empty string array. */
 function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -141,8 +132,11 @@ function parseAgentFile(
       nameOverride ?? relative(basePath, filePath).replace(/\.md$/, '').replace(/\\/g, '/');
     const parsedAgentId = parseAgentId(agentId);
     if (!parsedAgentId) {
+      const guidance = !agentId.includes('/')
+        ? ` Move it to .drs/agents/review/${agentId}/agent.md for a review agent.`
+        : '';
       throw new Error(
-        `Invalid agent id "${agentId}" for ${filePath}. Agents must be namespaced as "<namespace>/<name>".`
+        `${getAgentIdValidationError(agentId)} Project agents must be stored as .drs/agents/<namespace>/<name>/agent.md.${guidance} File: ${filePath}`
       );
     }
 

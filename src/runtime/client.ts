@@ -6,7 +6,7 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { resolveAgentSkills } from '../lib/config.js';
+import { normalizeAgentConfig, resolveAgentSkills } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
@@ -97,10 +97,20 @@ function buildAgentSkillConfiguration(
   config: DRSConfig,
   agents: AgentDefinition[]
 ): Array<{ name: string; skills: string[] }> {
+  const reviewAgentConfigByName = new Map(
+    normalizeAgentConfig(config.review.agents).map((agent) => [agent.name, agent])
+  );
+
   return agents
     .map((agent) => ({
       name: agent.id,
-      skills: resolveAgentSkills(config, agent.id, agent.skills),
+      skills: resolveAgentSkills(
+        config,
+        agent.id,
+        agent.skills,
+        [],
+        reviewAgentConfigByName.get(agent.id) ?? null
+      ),
     }))
     .filter((agent) => agent.skills.length > 0);
 }
