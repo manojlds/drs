@@ -47,6 +47,10 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
     constructor() {
       mocks.modelRegistryInstances.push({ registerProvider: this.registerProvider });
     }
+
+    static create() {
+      return new ModelRegistry();
+    }
   }
 
   return {
@@ -59,13 +63,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
       inMemory: vi.fn(() => ({ type: 'memory' })),
     },
     createAgentSession: mocks.createAgentSession,
-    createReadTool: vi.fn(() => ({ name: 'read' })),
-    createBashTool: vi.fn(() => ({ name: 'bash' })),
-    createEditTool: vi.fn(() => ({ name: 'edit' })),
-    createWriteTool: vi.fn(() => ({ name: 'write' })),
-    createGrepTool: vi.fn(() => ({ name: 'grep' })),
-    createFindTool: vi.fn(() => ({ name: 'find' })),
-    createLsTool: vi.fn(() => ({ name: 'ls' })),
+    getAgentDir: vi.fn(() => '/tmp/.pi/agent'),
   };
 });
 
@@ -383,9 +381,9 @@ describe('pi/sdk', () => {
     expect(mocks.createAgentSession).toHaveBeenCalledTimes(1);
 
     const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
-      tools: Array<{ name: string }>;
+      tools: string[];
     };
-    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+    const toolNames = sessionArgs.tools;
 
     // Per-agent override: Edit=true (overrides global false), Bash=false (overrides global true)
     expect(toolNames).toContain('read'); // global: true, no override
@@ -430,9 +428,9 @@ describe('pi/sdk', () => {
     });
 
     const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
-      tools: Array<{ name: string }>;
+      tools: string[];
     };
-    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+    const toolNames = sessionArgs.tools;
 
     // Only globally enabled tools
     expect(toolNames).toContain('read');
