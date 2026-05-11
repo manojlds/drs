@@ -88,6 +88,37 @@ describe('Config', () => {
     });
   });
 
+  it('merges pi runtime timeout and provider retry settings', () => {
+    const config = loadConfig(process.cwd(), {
+      pi: {
+        runtime: {
+          operationTimeoutMs: 111000,
+          streamTimeoutMs: 222000,
+          streamPollIntervalMs: 1500,
+        },
+        retry: {
+          provider: {
+            timeoutMs: 45000,
+            maxRetries: 2,
+            maxRetryDelayMs: 15000,
+          },
+        },
+      },
+    } as any);
+
+    expect(config.pi.runtime).toEqual({
+      operationTimeoutMs: 111000,
+      streamTimeoutMs: 222000,
+      streamPollIntervalMs: 1500,
+    });
+
+    expect(config.pi.retry?.provider).toEqual({
+      timeoutMs: 45000,
+      maxRetries: 2,
+      maxRetryDelayMs: 15000,
+    });
+  });
+
   it('rejects legacy review.default config with migration guidance', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-config-'));
 

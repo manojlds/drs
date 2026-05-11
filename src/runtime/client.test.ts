@@ -375,6 +375,33 @@ describe('RuntimeClient', () => {
 
       await client.shutdown();
     });
+
+    it('passes configured provider retry settings to Pi runtime config', async () => {
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        providerRetry: {
+          timeoutMs: 45000,
+          maxRetries: 2,
+          maxRetryDelayMs: 15000,
+        },
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            retry: {
+              provider: {
+                timeoutMs: 45000,
+                maxRetries: 2,
+                maxRetryDelayMs: 15000,
+              },
+            },
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
   });
 
   describe('createSession', () => {
@@ -451,6 +478,26 @@ describe('RuntimeClient', () => {
         })
       ).rejects.toThrow('Verify local Pi runtime setup and model provider connectivity');
     });
+
+    it('fails fast when session creation hangs', async () => {
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          create: vi.fn(() => new Promise(() => {})),
+        })
+      );
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        operationTimeoutMs: 25,
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).rejects.toThrow('Create session timed out');
+    });
   });
 
   describe('lifecycle and helper methods', () => {
@@ -518,6 +565,94 @@ describe('RuntimeClient', () => {
       expect(collected[0].usage?.cost).toBeCloseTo(0.0028, 10);
 
       await client.shutdown();
+    });
+
+    it('fails fast when message polling exceeds stream timeout', async () => {
+      const runtimeMessages = [
+        {
+          info: {
+            id: 'msg-1',
+            role: 'assistant',
+          },
+          parts: [{ text: 'still running' }],
+        },
+      ];
+
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          messages: vi.fn(async () => ({ data: runtimeMessages })),
+        })
+      );
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        streamTimeoutMs: 30,
+        streamPollIntervalMs: 10,
+      });
+
+      const collect = async () => {
+        const collected = [];
+        for await (const message of client.streamMessages('session-123')) {
+          collected.push(message);
+        }
+        return collected;
+      };
+
+      await expect(collect()).rejects.toThrow('Session session-123 timed out');
+
+      await client.shutdown();
+    });
+
+    it('prefers env timeout overrides over constructor values', async () => {
+      const previousOpTimeout = process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS;
+      const previousStreamTimeout = process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS;
+      const previousPollInterval = process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS;
+
+      process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS = '10';
+      process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS = '30';
+      process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS = '10';
+
+      try {
+        mocks.createPiInProcessServer.mockResolvedValueOnce(
+          createRuntime({
+            create: vi.fn(() => new Promise(() => {})),
+          })
+        );
+
+        const client = await createRuntimeClientInstance({
+          directory: process.cwd(),
+          operationTimeoutMs: 1000,
+          streamTimeoutMs: 1000,
+          streamPollIntervalMs: 1000,
+        });
+
+        await expect(
+          client.createSession({
+            agent: 'review/security',
+            message: 'Review this code',
+          })
+        ).rejects.toThrow('Create session timed out');
+
+        await client.shutdown();
+      } finally {
+        if (previousOpTimeout === undefined) {
+          delete process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS;
+        } else {
+          process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS = previousOpTimeout;
+        }
+
+        if (previousStreamTimeout === undefined) {
+          delete process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS;
+        } else {
+          process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS = previousStreamTimeout;
+        }
+
+        if (previousPollInterval === undefined) {
+          delete process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS;
+        } else {
+          process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS = previousPollInterval;
+        }
+      }
     });
 
     it('closeSession throws if not initialized', async () => {

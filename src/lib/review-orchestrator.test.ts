@@ -286,6 +286,10 @@ describe('review-orchestrator', () => {
           'review/unified-reviewer': 'claude-sonnet-4',
         },
         provider: undefined,
+        operationTimeoutMs: undefined,
+        streamTimeoutMs: undefined,
+        streamPollIntervalMs: undefined,
+        providerRetry: undefined,
         debug: true,
       });
     });

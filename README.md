@@ -511,6 +511,29 @@ contextCompression:
   tokenEstimateDivisor: 4
 ```
 
+### Runtime Timeouts and Provider Retry
+
+To prevent hung reviews, configure runtime-level call/stream timeouts and provider request retry limits:
+
+```yaml
+pi:
+  runtime:
+    operationTimeoutMs: 300000      # timeout for create/prompt/messages calls
+    streamTimeoutMs: 900000         # total timeout while waiting for agent completion
+    streamPollIntervalMs: 2000      # polling cadence for session messages
+  retry:
+    provider:
+      timeoutMs: 45000              # provider request timeout passed to Pi SDK
+      maxRetries: 2                 # provider request retries (Pi SDK)
+      maxRetryDelayMs: 15000        # max backoff delay between retries
+```
+
+Environment variables override runtime timeout fields:
+
+- `DRS_RUNTIME_OPERATION_TIMEOUT_MS`
+- `DRS_RUNTIME_STREAM_TIMEOUT_MS`
+- `DRS_RUNTIME_STREAM_POLL_INTERVAL_MS`
+
 ### Pi-Native Skill Discovery
 
 DRS auto-discovers skills from these directories when `agents.paths.skills` is not set:

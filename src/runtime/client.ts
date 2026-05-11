@@ -6,7 +6,7 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { normalizeAgentConfig, resolveAgentSkills } from '../lib/config.js';
+import { getRuntimeConfig, normalizeAgentConfig, resolveAgentSkills } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
@@ -19,6 +19,14 @@ export interface RuntimeClientConfig {
   debug?: boolean; // Print runtime config for debugging
   config?: DRSConfig;
   thinkingLevel?: string;
+  operationTimeoutMs?: number;
+  streamTimeoutMs?: number;
+  streamPollIntervalMs?: number;
+  providerRetry?: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    maxRetryDelayMs?: number;
+  };
 }
 
 export interface SessionCreateOptions {
@@ -115,6 +123,20 @@ function buildAgentSkillConfiguration(
     .filter((agent) => agent.skills.length > 0);
 }
 
+function parsePositiveIntEnv(name: string): number | undefined {
+  const value = process.env[name];
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
 /**
  * Runtime client wrapper for DRS backed by in-process Pi sessions.
  */
@@ -124,10 +146,46 @@ export class RuntimeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
   private client?: PiClient;
   private config: RuntimeClientConfig;
+  private readonly operationTimeoutMs: number;
+  private readonly streamTimeoutMs: number;
+  private readonly streamPollIntervalMs: number;
 
   constructor(config: RuntimeClientConfig) {
     this.directory = config.directory;
     this.config = config;
+
+    this.operationTimeoutMs =
+      parsePositiveIntEnv('DRS_RUNTIME_OPERATION_TIMEOUT_MS') ??
+      config.operationTimeoutMs ??
+      300000;
+    this.streamTimeoutMs =
+      parsePositiveIntEnv('DRS_RUNTIME_STREAM_TIMEOUT_MS') ?? config.streamTimeoutMs ?? 900000;
+    this.streamPollIntervalMs =
+      parsePositiveIntEnv('DRS_RUNTIME_STREAM_POLL_INTERVAL_MS') ??
+      config.streamPollIntervalMs ??
+      2000;
+  }
+
+  private async withTimeout<T>(operation: string, timeoutMs: number, task: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              `${operation} timed out after ${Math.round(timeoutMs / 1000)} seconds. ` +
+                `Set DRS_RUNTIME_OPERATION_TIMEOUT_MS or DRS_RUNTIME_STREAM_TIMEOUT_MS to tune limits.`
+            )
+          );
+        }, timeoutMs);
+      });
+
+      return await Promise.race([task, timeout]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   getModelContextWindow(modelId: string): number | undefined {
@@ -261,6 +319,15 @@ export class RuntimeClient {
       runtimeConfig.agent = agentConfig;
     }
 
+    const providerRetry =
+      this.config.providerRetry ??
+      (this.config.config ? getRuntimeConfig(this.config.config).retry?.provider : undefined);
+    if (providerRetry) {
+      runtimeConfig.retry = {
+        provider: providerRetry,
+      };
+    }
+
     if (this.config.thinkingLevel) {
       runtimeConfig.thinkingLevel = this.config.thinkingLevel;
     }
@@ -383,11 +450,15 @@ export class RuntimeClient {
 
     try {
       // Step 1: Create empty session
-      const createResponse = (await this.client.session.create({
-        query: {
-          directory: this.directory,
-        },
-      })) as { data?: { id?: string } };
+      const createResponse = (await this.withTimeout(
+        'Create session',
+        this.operationTimeoutMs,
+        this.client.session.create({
+          query: {
+            directory: this.directory,
+          },
+        })
+      )) as { data?: { id?: string } };
 
       const sessionId = createResponse.data?.id;
       if (!sessionId) {
@@ -395,21 +466,25 @@ export class RuntimeClient {
       }
 
       // Step 2: Send initial message to start the agent
-      await this.client.session.prompt({
-        path: { id: sessionId },
-        query: {
-          directory: this.directory,
-        },
-        body: {
-          agent: options.agent,
-          parts: [
-            {
-              type: 'text',
-              text: options.message,
-            },
-          ],
-        },
-      });
+      await this.withTimeout(
+        'Send initial prompt',
+        this.operationTimeoutMs,
+        this.client.session.prompt({
+          path: { id: sessionId },
+          query: {
+            directory: this.directory,
+          },
+          body: {
+            agent: options.agent,
+            parts: [
+              {
+                type: 'text',
+                text: options.message,
+              },
+            ],
+          },
+        })
+      );
 
       return {
         id: sessionId,
@@ -434,18 +509,19 @@ export class RuntimeClient {
     }
 
     try {
-      // Poll messages until agent completes
+      // Poll messages until agent completes or times out
       let lastMessageCount = 0;
-      let attempts = 0;
-      const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
+      const start = Date.now();
 
-      while (attempts < maxAttempts) {
-        attempts++;
-
+      while (Date.now() - start < this.streamTimeoutMs) {
         // Get current messages
-        const messagesResponse = (await this.client.session.messages({
-          path: { id: sessionId },
-        })) as { data?: PiSessionMessage[] };
+        const messagesResponse = (await this.withTimeout(
+          'Get messages',
+          this.operationTimeoutMs,
+          this.client.session.messages({
+            path: { id: sessionId },
+          })
+        )) as { data?: PiSessionMessage[] };
 
         const messages = messagesResponse.data ?? [];
 
@@ -519,17 +595,14 @@ export class RuntimeClient {
           }
         }
 
-        // In-process mode completes synchronously; skip polling delay
-        if (this.inProcessServer) {
-          break;
-        }
-
-        // Wait before polling again (remote runtime)
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Wait before polling again
+        await new Promise((resolve) => setTimeout(resolve, this.streamPollIntervalMs));
       }
 
-      if (attempts >= maxAttempts) {
-        throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
+      if (Date.now() - start >= this.streamTimeoutMs) {
+        throw new Error(
+          `Session ${sessionId} timed out after ${Math.round(this.streamTimeoutMs / 1000)} seconds`
+        );
       }
     } catch (error) {
       throw mapPiRuntimeError('get messages', error);

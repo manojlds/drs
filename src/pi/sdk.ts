@@ -7,6 +7,7 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   ModelRegistry,
+  SettingsManager,
   SessionManager,
   type AgentSession,
   type ToolDefinition,
@@ -75,6 +76,13 @@ interface PiRuntimeConfig {
   skillSearchPaths?: string[];
   agentSkills?: Record<string, string[]>;
   thinkingLevel?: string;
+  retry?: {
+    provider?: {
+      timeoutMs?: number;
+      maxRetries?: number;
+      maxRetryDelayMs?: number;
+    };
+  };
 }
 
 interface SessionRecord {
@@ -262,6 +270,14 @@ function asStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function asPositiveInt(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const rounded = Math.round(value);
+  return rounded > 0 ? rounded : undefined;
+}
+
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
   const normalized: Record<string, string[]> = {};
 
@@ -393,6 +409,7 @@ class PiSessionRuntime {
       skillSearchPaths: asStringArray(config.skillSearchPaths),
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
       thinkingLevel: asString(config.thinkingLevel),
+      retry: asRecord(config.retry) as PiRuntimeConfig['retry'],
     };
 
     this.authStorage = AuthStorage.create();
@@ -678,6 +695,23 @@ class PiSessionRuntime {
       }
     }
 
+    const providerRetry = this.runtimeConfig.retry?.provider;
+    const providerTimeoutMs = asPositiveInt(providerRetry?.timeoutMs);
+    const providerMaxRetries = asPositiveInt(providerRetry?.maxRetries);
+    const providerMaxRetryDelayMs = asPositiveInt(providerRetry?.maxRetryDelayMs);
+    const settingsManager =
+      (providerTimeoutMs ?? providerMaxRetries ?? providerMaxRetryDelayMs)
+        ? SettingsManager.inMemory({
+            retry: {
+              provider: {
+                ...(providerTimeoutMs ? { timeoutMs: providerTimeoutMs } : {}),
+                ...(providerMaxRetries ? { maxRetries: providerMaxRetries } : {}),
+                ...(providerMaxRetryDelayMs ? { maxRetryDelayMs: providerMaxRetryDelayMs } : {}),
+              },
+            },
+          })
+        : undefined;
+
     const { session } = await createAgentSession({
       cwd,
       authStorage: this.authStorage,
@@ -685,6 +719,7 @@ class PiSessionRuntime {
       model: this.resolveModel(settings.model),
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
+      settingsManager,
       tools: this.resolveTools(cwd, settings.tools),
       customTools: this.resolveCustomTools(cwd),
       thinkingLevel: this.runtimeConfig.thinkingLevel as

@@ -137,6 +137,18 @@ export interface CustomProvider {
 export interface RuntimeConfig {
   [key: string]: unknown;
   provider?: Record<string, CustomProvider>;
+  runtime?: {
+    operationTimeoutMs?: number;
+    streamTimeoutMs?: number;
+    streamPollIntervalMs?: number;
+  };
+  retry?: {
+    provider?: {
+      timeoutMs?: number;
+      maxRetries?: number;
+      maxRetryDelayMs?: number;
+    };
+  };
 }
 
 export interface DRSConfig {
@@ -453,8 +465,35 @@ function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
     ...(piRuntime.provider ?? {}),
   };
 
+  const mergedRuntimeTimeouts = {
+    ...((legacyRuntime.runtime as Record<string, unknown> | undefined) ?? {}),
+    ...((piRuntime.runtime as Record<string, unknown> | undefined) ?? {}),
+  };
+
+  const legacyProviderRetry = (legacyRuntime.retry as Record<string, unknown> | undefined)
+    ?.provider as Record<string, unknown> | undefined;
+  const piProviderRetry = (piRuntime.retry as Record<string, unknown> | undefined)?.provider as
+    | Record<string, unknown>
+    | undefined;
+  const mergedProviderRetry = {
+    ...(legacyProviderRetry ?? {}),
+    ...(piProviderRetry ?? {}),
+  };
+
   const normalizedRuntime: RuntimeConfig = {
     provider: Object.keys(mergedProvider).length > 0 ? mergedProvider : undefined,
+    runtime:
+      Object.keys(mergedRuntimeTimeouts).length > 0
+        ? (mergedRuntimeTimeouts as RuntimeConfig['runtime'])
+        : undefined,
+    retry:
+      Object.keys(mergedProviderRetry).length > 0
+        ? {
+            provider: mergedProviderRetry as NonNullable<
+              NonNullable<RuntimeConfig['retry']>['provider']
+            >,
+          }
+        : undefined,
   };
 
   return {

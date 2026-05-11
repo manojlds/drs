@@ -62,6 +62,12 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
     SessionManager: {
       inMemory: vi.fn(() => ({ type: 'memory' })),
     },
+    SettingsManager: {
+      inMemory: vi.fn((settings?: Record<string, unknown>) => ({
+        type: 'settings-memory',
+        settings,
+      })),
+    },
     createAgentSession: mocks.createAgentSession,
     getAgentDir: vi.fn(() => '/tmp/.pi/agent'),
   };
@@ -522,6 +528,52 @@ describe('pi/sdk', () => {
       'Missing skill definitions for review/security: sql-injection'
     );
     expect(String(errorMessage)).toContain('Checked skill search paths:');
+
+    runtime.server.close();
+  });
+
+  it('passes provider retry settings to Pi SettingsManager when configured', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        retry: {
+          provider: {
+            timeoutMs: 45000,
+            maxRetries: 2,
+            maxRetryDelayMs: 15000,
+          },
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+      settingsManager?: {
+        settings?: Record<string, unknown>;
+      };
+    };
+
+    expect(createArgs.settingsManager).toBeDefined();
+    expect(createArgs.settingsManager?.settings).toEqual({
+      retry: {
+        provider: {
+          timeoutMs: 45000,
+          maxRetries: 2,
+          maxRetryDelayMs: 15000,
+        },
+      },
+    });
 
     runtime.server.close();
   });
