@@ -38,6 +38,9 @@ agents:
     model: opencode-go/glm-5.1
     skills:
       - cli-testing
+  namespaces:
+    review:
+      model: opencode-go/kimi-k2.6
 
 review:
 
@@ -88,7 +91,7 @@ review:
 describe:
   # Model to use for description generation (optional, defaults to agents.default.model)
   # Used by describe-mr/describe-pr and by review-mr/review-pr when enabled.
-  model: opencode-go/glm-5.1
+  model: opencode-go/kimi-k2.6
   # Include .drs/context.md content in describe agent instructions
   includeProjectContext: true
 
