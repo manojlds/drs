@@ -88,6 +88,23 @@ describe('Config', () => {
     });
   });
 
+  it('uses DRS_DEFAULT_MODEL as the generic default model environment alias', () => {
+    const previous = process.env.DRS_DEFAULT_MODEL;
+    process.env.DRS_DEFAULT_MODEL = 'provider/env-default-model';
+
+    try {
+      const config = loadConfig(process.cwd());
+
+      expect(config.agents.default?.model).toBe('provider/env-default-model');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DRS_DEFAULT_MODEL;
+      } else {
+        process.env.DRS_DEFAULT_MODEL = previous;
+      }
+    }
+  });
+
   it('merges pi runtime timeout and provider retry settings', () => {
     const config = loadConfig(process.cwd(), {
       pi: {

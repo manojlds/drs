@@ -77,7 +77,7 @@ drs review-local
 drs review-local --staged
 
 # Use specific agents
-drs review-local --agents security,quality
+drs review-local --agents review/security,review/quality
 ```
 
 ### Most-Used Commands
@@ -91,6 +91,7 @@ drs review-local --agents security,quality
 | Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
+| Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 
 ## Deployment Modes
 
@@ -304,7 +305,7 @@ DRS uses Pi in-process runtime only.
 
 ## Architecture
 
-DRS uses Pi runtime wiring with markdown-based agent definitions:
+DRS uses Pi runtime wiring with markdown-based agent definitions. Agents are addressed by fully qualified ids: `<namespace>/<name>`.
 
 ```
 .pi/
@@ -368,7 +369,7 @@ Prioritize correctness, safety, and clarity.
 
 ### Create New Custom Agents
 
-Add agents that don't exist in the built-in set:
+Add review agents that don't exist in the built-in set:
 
 ```bash
 mkdir -p .drs/agents/review/api-reviewer
@@ -385,6 +386,39 @@ EOF
 
 Then add to config: `review.agents: [review/security, review/quality, review/api-reviewer]`
 
+For non-review work, create agents in any namespace and run them directly:
+
+```bash
+mkdir -p .drs/agents/task/docs-updater
+cat > .drs/agents/task/docs-updater/agent.md << 'EOF'
+---
+description: Documentation update assistant
+tools:
+  Read: true
+  Grep: true
+---
+Update documentation based on the user's request.
+EOF
+
+drs run-agent task/docs-updater --prompt "Summarize the latest API changes"
+```
+
+You can also put the run prompt and output behavior in config, then invoke only the agent id:
+
+```yaml
+agents:
+  overrides:
+    task/docs-updater:
+      run:
+        prompt: "Summarize the latest API changes"
+        output: .drs/docs-summary.json
+        json: true
+```
+
+```bash
+drs run task/docs-updater
+```
+
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
@@ -394,6 +428,17 @@ agents:
   default:
     model: zhipuai/glm-4.7
     skills: []
+  namespaces:
+    review:
+      model: anthropic/claude-sonnet-4-5-20250929
+    task:
+      model: openai/gpt-4o
+  overrides:
+    task/docs-updater:
+      run:
+        promptFile: prompts/docs-update.md
+        output: .drs/docs-update.json
+        json: true
 
 review:
   agents:
@@ -618,6 +663,8 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
 GITLAB_URL=https://gitlab.com
+DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
 REVIEW_AGENTS=review/security,review/quality,review/style,review/performance
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```

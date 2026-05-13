@@ -5,7 +5,9 @@ import {
   getReviewAgentIds,
   getUnifiedModelOverride,
   normalizeAgentConfig,
+  resolveAgentRunConfig,
   resolveAgentSkills,
+  resolveAgentThinkingLevel,
   type DRSConfig,
 } from './config.js';
 
@@ -14,7 +16,9 @@ describe('agent model and skill configuration', () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    delete process.env.DRS_DEFAULT_MODEL;
     delete process.env.REVIEW_DEFAULT_MODEL;
+    delete process.env.DRS_AGENT_REVIEW_SECURITY_MODEL;
     delete process.env.REVIEW_AGENT_REVIEW_SECURITY_MODEL;
     delete process.env.REVIEW_AGENT_REVIEW_QUALITY_MODEL;
     delete process.env.REVIEW_UNIFIED_MODEL;
@@ -96,8 +100,8 @@ describe('agent model and skill configuration', () => {
     });
   });
 
-  it('uses fully qualified per-agent environment variable', () => {
-    process.env.REVIEW_AGENT_REVIEW_SECURITY_MODEL = 'provider/security-env';
+  it('uses fully qualified generic per-agent environment variable', () => {
+    process.env.DRS_AGENT_REVIEW_SECURITY_MODEL = 'provider/security-env';
 
     const config = createConfig({
       review: {
@@ -109,6 +113,23 @@ describe('agent model and skill configuration', () => {
     expect(getModelOverrides(config)).toEqual({
       'review/security': 'provider/security-env',
       'review/quality': 'provider/default-model',
+    });
+  });
+
+  it('keeps REVIEW_AGENT per-agent environment variables as compatibility aliases', () => {
+    process.env.REVIEW_AGENT_REVIEW_SECURITY_MODEL = 'provider/security-env';
+
+    expect(
+      getModelOverrides(
+        createConfig({
+          review: {
+            agents: ['review/security'],
+            ignorePatterns: [],
+          },
+        })
+      )
+    ).toEqual({
+      'review/security': 'provider/security-env',
     });
   });
 
@@ -214,5 +235,45 @@ describe('agent model and skill configuration', () => {
       'override-skill',
       'configured-skill',
     ]);
+  });
+
+  it('resolves generic run config and thinking level by agent id', () => {
+    const config = createConfig({
+      agents: {
+        default: {
+          model: 'provider/default-model',
+          thinkingLevel: 'low',
+          run: {
+            json: false,
+            output: 'default-output.txt',
+          },
+        },
+        namespaces: {
+          task: {
+            thinkingLevel: 'medium',
+            run: {
+              promptFile: 'prompts/task.md',
+              json: true,
+            },
+          },
+        },
+        overrides: {
+          'task/docs-updater': {
+            thinkingLevel: 'high',
+            run: {
+              prompt: 'Configured prompt',
+            },
+          },
+        },
+      },
+    });
+
+    expect(resolveAgentThinkingLevel(config, 'task/docs-updater')).toBe('high');
+    expect(resolveAgentRunConfig(config, 'task/docs-updater')).toEqual({
+      prompt: 'Configured prompt',
+      promptFile: 'prompts/task.md',
+      output: 'default-output.txt',
+      json: true,
+    });
   });
 });

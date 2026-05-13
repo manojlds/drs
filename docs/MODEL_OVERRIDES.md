@@ -1,6 +1,6 @@
 # Model Overrides
 
-DRS supports model overrides at global, unified-review, describer, and per-agent levels.
+DRS supports model overrides at global, namespace, exact-agent, review, and describe levels.
 
 ## 1) Global Default
 
@@ -10,7 +10,23 @@ agents:
     model: anthropic/claude-sonnet-4-5-20250929
 ```
 
-## 2) Per-Agent Override
+## 2) Namespace And Exact-Agent Overrides
+
+Use `agents.namespaces` for all agents in a namespace and `agents.overrides` for one fully qualified agent id. This applies to review agents and generic agents run with `drs run-agent`.
+
+```yaml
+agents:
+  namespaces:
+    review:
+      model: anthropic/claude-sonnet-4-5-20250929
+    task:
+      model: openai/gpt-4o
+  overrides:
+    task/docs-updater:
+      model: anthropic/claude-opus-4-5-20251101
+```
+
+## 3) Review Agent Inline Override
 
 ```yaml
 review:
@@ -20,7 +36,7 @@ review:
     - review/quality
 ```
 
-## 3) Unified Reviewer Override
+## 4) Unified Reviewer Override
 
 ```yaml
 review:
@@ -30,14 +46,14 @@ review:
     model: anthropic/claude-sonnet-4-5-20250929
 ```
 
-## 4) Describer Override
+## 5) Describer Override
 
 ```yaml
 describe:
   model: anthropic/claude-sonnet-4-5-20250929
 ```
 
-## 5) Reasoning Effort / Extended Thinking
+## 6) Reasoning Effort / Extended Thinking
 
 Control how deeply the model reasons during reviews.
 
@@ -64,17 +80,18 @@ REVIEW_THINKING_LEVEL=medium
 
 **Precedence**: CLI flag > environment variable > config file.
 
-## 6) Environment Variable Overrides
+## 7) Environment Variable Overrides
 
 ```bash
-REVIEW_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
+DRS_AGENT_TASK_DOCS_UPDATER_MODEL=openai/gpt-4o
 REVIEW_UNIFIED_MODEL=anthropic/claude-opus-4-5-20251101
 DESCRIBE_MODEL=anthropic/claude-sonnet-4-5-20250929
-REVIEW_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
 REVIEW_THINKING_LEVEL=medium
 ```
 
-`REVIEW_DEFAULT_MODEL` remains the environment variable for `agents.default.model`. Per-agent model variables are derived from the fully qualified agent id by replacing non-alphanumeric characters with `_`; for `review/security`, use `REVIEW_AGENT_REVIEW_SECURITY_MODEL`.
+Per-agent model variables are derived from the fully qualified agent id by replacing non-alphanumeric characters with `_`; for `review/security`, use `DRS_AGENT_REVIEW_SECURITY_MODEL`. Legacy `REVIEW_DEFAULT_MODEL` and `REVIEW_AGENT_<ID>_MODEL` aliases are still supported for review-era configurations.
 
 ## Runtime Mode
 

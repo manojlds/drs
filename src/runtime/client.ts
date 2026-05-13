@@ -6,7 +6,13 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { getRuntimeConfig, normalizeAgentConfig, resolveAgentSkills } from '../lib/config.js';
+import {
+  getRuntimeConfig,
+  normalizeAgentConfig,
+  resolveAgentSkills,
+  resolveAgentTools,
+  resolveRuntimeAgentModel,
+} from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
@@ -269,11 +275,14 @@ export class RuntimeClient {
       runtimeAgents = loadAgents(projectDir, this.config.config);
       for (const agent of runtimeAgents) {
         const runtimeEntry: Record<string, unknown> = {};
-        if (agent.model) runtimeEntry.model = agent.model;
+        const model = resolveRuntimeAgentModel(this.config.config, agent.id, agent.model);
+        const tools = resolveAgentTools(this.config.config, agent.id, agent.tools);
+
+        if (model) runtimeEntry.model = model;
         if (agent.prompt) runtimeEntry.prompt = agent.prompt;
         if (agent.description) runtimeEntry.description = agent.description;
         if (agent.color) runtimeEntry.color = agent.color;
-        if (agent.tools) runtimeEntry.tools = agent.tools;
+        if (tools) runtimeEntry.tools = tools;
 
         if (Object.keys(runtimeEntry).length > 0) {
           agentConfig[agent.id] = runtimeEntry;

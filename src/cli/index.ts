@@ -13,6 +13,7 @@ import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
+import { runAgent } from './run-agent.js';
 import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -53,6 +54,52 @@ program
   .name('drs')
   .description('Automated AI code reviews for GitHub pull requests and GitLab merge requests')
   .version(version);
+
+program
+  .command('run-agent <agentId>')
+  .alias('run')
+  .description('Run any configured agent by fully qualified ID')
+  .option('-p, --prompt <text>', 'Prompt text to send to the agent')
+  .option('-f, --file <path>', 'Read prompt text from a file')
+  .option('--stdin', 'Read prompt text from standard input')
+  .option('--model <model>', 'Model override for this run')
+  .option('-o, --output <path>', 'Write agent response to a file')
+  .option('--json', 'Output result as JSON to console')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
+  .action(async (agentId, options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'error',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
+      const config = loadConfig(process.cwd());
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+
+      await runAgent(config, agentId, {
+        prompt: options.prompt,
+        file: options.file,
+        stdin: options.stdin,
+        model: options.model,
+        outputPath: options.output,
+        jsonOutput: options.json,
+        debug: options.debug || false,
+        thinkingLevel,
+        workingDir: process.cwd(),
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
 
 program
   .command('review-local')
@@ -517,7 +564,9 @@ program
 const isHelpOrVersion = process.argv.some((arg) =>
   ['--version', '-V', '--help', '-h', 'help'].includes(arg)
 );
-if (process.argv.length > 2 && !isHelpOrVersion) {
+const isJsonOutput = process.argv.includes('--json');
+const isRunAgentCommand = process.argv[2] === 'run-agent' || process.argv[2] === 'run';
+if (process.argv.length > 2 && !isHelpOrVersion && !isJsonOutput && !isRunAgentCommand) {
   printBanner();
 }
 

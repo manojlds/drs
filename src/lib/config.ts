@@ -13,12 +13,20 @@ export interface AgentConfig {
   skills?: string[];
 }
 
+export interface AgentRunConfig {
+  prompt?: string;
+  promptFile?: string;
+  output?: string;
+  json?: boolean;
+}
+
 export interface AgentDefaultsConfig {
   model?: string;
   skills?: string[];
   skillsPromptFormat?: 'text' | 'xml';
   thinkingLevel?: string;
   tools?: Record<string, boolean>;
+  run?: AgentRunConfig;
 }
 
 export interface AgentsConfig {
@@ -234,7 +242,7 @@ const DEFAULT_CONFIG: DRSConfig = {
   pi: {},
   agents: {
     default: {
-      model: process.env.REVIEW_DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4-5-20250929',
+      model: getDefaultModelEnv() ?? 'anthropic/claude-sonnet-4-5-20250929',
       skills: [],
     },
   },
@@ -326,9 +334,10 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     // Environment variable is always simple string format (comma-separated)
     config.review.agents = process.env.REVIEW_AGENTS.split(',').map((a) => a.trim());
   }
-  if (process.env.REVIEW_DEFAULT_MODEL) {
+  const defaultModelEnv = getDefaultModelEnv();
+  if (defaultModelEnv) {
     config.agents.default = mergeSection(config.agents.default, {
-      model: process.env.REVIEW_DEFAULT_MODEL,
+      model: defaultModelEnv,
     });
   }
   if (process.env.REVIEW_MODE) {
@@ -370,7 +379,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   // Validate required fields
   if (!getDefaultModel(config)) {
     throw new Error(
-      'Default model is required. Set agents.default.model in .drs/drs.config.yaml or REVIEW_DEFAULT_MODEL environment variable.\n' +
+      'Default model is required. Set agents.default.model in .drs/drs.config.yaml or DRS_DEFAULT_MODEL environment variable.\n' +
         'Run "drs init" to configure your project.'
     );
   }
@@ -547,7 +556,7 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
 
   if (!getDefaultModel(config)) {
     throw new Error(
-      'Default model is required. Run "drs init" to configure agents.default.model or set REVIEW_DEFAULT_MODEL environment variable.'
+      'Default model is required. Run "drs init" to configure agents.default.model or set DRS_DEFAULT_MODEL environment variable.'
     );
   }
 }
@@ -612,12 +621,68 @@ function getAgentOverride(config: DRSConfig, agentId: string): AgentDefaultsConf
   return config.agents.overrides?.[agentId] ?? {};
 }
 
+function getDefaultModelEnv(): string | undefined {
+  return process.env.DRS_DEFAULT_MODEL ?? process.env.REVIEW_DEFAULT_MODEL ?? undefined;
+}
+
+function getAgentModelEnv(agentId: string): string | undefined {
+  const suffix = agentId.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  return process.env[`DRS_AGENT_${suffix}_MODEL`] ?? process.env[`REVIEW_AGENT_${suffix}_MODEL`];
+}
+
+function mergeToolSettings(
+  ...settings: Array<Record<string, boolean> | undefined>
+): Record<string, boolean> | undefined {
+  const merged: Record<string, boolean> = {};
+
+  for (const setting of settings) {
+    if (!setting) {
+      continue;
+    }
+
+    for (const [toolName, enabled] of Object.entries(setting)) {
+      if (typeof enabled === 'boolean') {
+        merged[toolName] = enabled;
+      }
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeRunSettings(...settings: Array<AgentRunConfig | undefined>): AgentRunConfig {
+  const merged: AgentRunConfig = {};
+
+  for (const setting of settings) {
+    if (!setting) {
+      continue;
+    }
+
+    if (setting.prompt !== undefined) merged.prompt = setting.prompt;
+    if (setting.promptFile !== undefined) merged.promptFile = setting.promptFile;
+    if (setting.output !== undefined) merged.output = setting.output;
+    if (setting.json !== undefined) merged.json = setting.json;
+  }
+
+  return merged;
+}
+
 export function getDefaultModel(config: DRSConfig): string | undefined {
-  return config.agents.default?.model ?? process.env.REVIEW_DEFAULT_MODEL ?? undefined;
+  return config.agents.default?.model ?? getDefaultModelEnv();
 }
 
 export function getDefaultThinkingLevel(config: DRSConfig): string | undefined {
   return config.agents.default?.thinkingLevel;
+}
+
+export function resolveAgentThinkingLevel(config: DRSConfig, agentId: string): string | undefined {
+  const { namespace } = requireAgentId(agentId);
+
+  return (
+    getAgentOverride(config, agentId).thinkingLevel ??
+    getNamespaceDefaults(config, namespace).thinkingLevel ??
+    getDefaultThinkingLevel(config)
+  );
 }
 
 export function getDefaultSkills(config: DRSConfig): string[] {
@@ -655,8 +720,7 @@ export function resolveAgentModel(
   explicitModel?: string
 ): string | undefined {
   const { namespace } = requireAgentId(agentId);
-  const envVarName = `REVIEW_AGENT_${agentId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`;
-  const envModel = process.env[envVarName];
+  const envModel = getAgentModelEnv(agentId);
 
   return (
     explicitModel ??
@@ -664,6 +728,47 @@ export function resolveAgentModel(
     getAgentOverride(config, agentId).model ??
     getNamespaceDefaults(config, namespace).model ??
     getDefaultModel(config)
+  );
+}
+
+export function resolveRuntimeAgentModel(
+  config: DRSConfig,
+  agentId: string,
+  definitionModel?: string
+): string | undefined {
+  const { namespace } = requireAgentId(agentId);
+
+  return (
+    getAgentModelEnv(agentId) ??
+    getAgentOverride(config, agentId).model ??
+    definitionModel ??
+    getNamespaceDefaults(config, namespace).model ??
+    getDefaultModel(config)
+  );
+}
+
+export function resolveAgentTools(
+  config: DRSConfig,
+  agentId: string,
+  definitionTools?: Record<string, boolean>
+): Record<string, boolean> | undefined {
+  const { namespace } = requireAgentId(agentId);
+
+  return mergeToolSettings(
+    config.agents.default?.tools,
+    getNamespaceDefaults(config, namespace).tools,
+    definitionTools,
+    getAgentOverride(config, agentId).tools
+  );
+}
+
+export function resolveAgentRunConfig(config: DRSConfig, agentId: string): AgentRunConfig {
+  const { namespace } = requireAgentId(agentId);
+
+  return mergeRunSettings(
+    config.agents.default?.run,
+    getNamespaceDefaults(config, namespace).run,
+    getAgentOverride(config, agentId).run
   );
 }
 
@@ -694,10 +799,10 @@ function getReviewAgentIdsFromNormalized(normalizedAgents: AgentConfig[]): strin
  * Build model overrides from config and environment variables
  * Precedence:
  * 1. Per-agent model in config
- * 2. Environment variable REVIEW_AGENT_<NAMESPACE>_<NAME>_MODEL
+ * 2. Environment variable DRS_AGENT_<NAMESPACE>_<NAME>_MODEL
  * 3. agents.overrides.<agent>.model
  * 4. agents.namespaces.<namespace>.model
- * 5. agents.default.model (falls back to REVIEW_DEFAULT_MODEL)
+ * 5. agents.default.model (falls back to DRS_DEFAULT_MODEL)
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
@@ -742,7 +847,7 @@ export function getUnifiedModelOverride(config: DRSConfig): ModelOverrides {
  * 2. Environment variable DESCRIBE_MODEL
  * 3. agents.overrides["describe/pr-describer"].model
  * 4. agents.namespaces.describe.model
- * 5. agents.default.model (falls back to REVIEW_DEFAULT_MODEL)
+ * 5. agents.default.model (falls back to DRS_DEFAULT_MODEL)
  */
 export function getDescriberModelOverride(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};

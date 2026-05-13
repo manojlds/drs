@@ -1,6 +1,6 @@
 # Custom Agents, Skills & Context
 
-DRS ships with built-in review agents (security, quality, style, performance, documentation) under `.pi/agents/review/`. You can customize every aspect of the review pipeline without modifying DRS itself.
+DRS runs Pi agents addressed by fully qualified ids: `<namespace>/<name>`. It ships with built-in review agents (security, quality, style, performance, documentation) under `.pi/agents/review/`, and you can add agents in any namespace for non-review workflows.
 
 ## Quick Reference
 
@@ -8,7 +8,8 @@ DRS ships with built-in review agents (security, quality, style, performance, do
 |------|-------|--------|
 | Override a built-in agent | `.drs/agents/<namespace>/<name>/agent.md` | Replaces the built-in prompt entirely |
 | Add context to a built-in agent | `.drs/agents/<namespace>/<name>/context.md` | Injected alongside the built-in prompt |
-| Create a new agent | `.drs/agents/<namespace>/<name>/agent.md` + add to config | Runs as an additional agent |
+| Create a review agent | `.drs/agents/review/<name>/agent.md` + add to `review.agents` | Runs as an additional reviewer |
+| Create any other agent | `.drs/agents/<namespace>/<name>/agent.md` | Run with `drs run-agent <namespace>/<name>` |
 | Global project context | `.drs/context.md` | Injected into every agent's prompt |
 | Custom skill | `.drs/skills/<name>/SKILL.md` (or `.agents/skills/<name>/SKILL.md`) | Available to agents via config |
 
@@ -79,7 +80,7 @@ This context is **injected alongside** the built-in quality prompt, not replacin
 
 ## Creating Brand New Agents
 
-You can add agents that don't correspond to any built-in:
+You can add review agents that don't correspond to any built-in:
 
 ```bash
 mkdir -p .drs/agents/review/api-reviewer
@@ -117,6 +118,28 @@ review:
 
 Agent ids must be fully qualified. They're validated at startup — if an agent in `review.agents` doesn't have a corresponding definition, DRS throws an error listing available agents.
 
+You can also create agents outside the review namespace and run them directly:
+
+```bash
+mkdir -p .drs/agents/task/docs-updater
+```
+
+```markdown
+<!-- .drs/agents/task/docs-updater/agent.md -->
+---
+description: Documentation update assistant
+tools:
+  Read: true
+  Grep: true
+---
+
+You update project documentation based on the user's request.
+```
+
+```bash
+drs run-agent task/docs-updater --prompt "Summarize the API changes in this branch"
+```
+
 ---
 
 ## Global Project Context
@@ -146,7 +169,7 @@ This is useful for giving all agents shared knowledge about your project structu
 
 ## Per-Agent Tools
 
-Agent frontmatter can enable or disable specific tools. Per-agent settings override the global tool config:
+Agent frontmatter and `agents.*.tools` config can enable or disable specific tools. More specific settings override broader defaults:
 
 ```markdown
 ---
@@ -171,7 +194,24 @@ tools:
 | `Edit` | ❌ disabled | Edit files in place |
 | `Write` | ❌ disabled | Write new files |
 
-Per-agent overrides only affect that agent's session. Other agents still use the global config.
+Config-level tools can be set globally, per namespace, or per exact agent id:
+
+```yaml
+agents:
+  default:
+    tools:
+      Bash: false
+  namespaces:
+    task:
+      tools:
+        Write: true
+  overrides:
+    task/docs-updater:
+      tools:
+        Edit: true
+```
+
+Per-agent overrides only affect that agent's session. Other agents still use the broader config or runtime defaults.
 
 ---
 
@@ -250,6 +290,16 @@ agents:
     model: anthropic/claude-sonnet-4-5-20250929
     skills:
       - cli-testing
+  # Namespace defaults apply to all agents in that namespace
+  namespaces:
+    review:
+      model: anthropic/claude-sonnet-4-5-20250929
+    task:
+      model: openai/gpt-4o
+  # Exact agent overrides apply to one fully qualified agent id
+  overrides:
+    task/docs-updater:
+      model: anthropic/claude-opus-4-5-20251101
   # Custom agent/skill paths (optional)
   paths:
     agents: config/agents
@@ -285,8 +335,9 @@ When DRS loads an agent named `review/security`:
 2. Otherwise, use built-in `.pi/agents/review/security.md`
 3. Check `.drs/agents/review/security/context.md` — if found, **inject alongside** built-in prompt
 4. Load `.drs/context.md` — inject **global context** into prompt
-5. Apply per-agent `tools` from frontmatter (overriding global tool config)
-6. Load per-agent `skills` merged with `agents.default.skills`
+5. Resolve model from per-run override, env, `agents.overrides`, frontmatter, namespace defaults, then `agents.default`
+6. Apply tools from `agents.default`, namespace defaults, frontmatter, then `agents.overrides`
+7. Load per-agent `skills` merged with `agents.default.skills`
 
 ---
 
@@ -332,3 +383,55 @@ review:
       skills:
         - rest-conventions
 ```
+
+### Generic Agent Execution
+
+```
+.drs/
+  drs.config.yaml
+  agents/
+    task/docs-updater/
+      agent.md
+```
+
+Config:
+```yaml
+agents:
+  default:
+    model: anthropic/claude-sonnet-4-5-20250929
+  namespaces:
+    task:
+      model: openai/gpt-4o
+```
+
+Run:
+```bash
+drs run-agent task/docs-updater --prompt "Draft release notes for this branch"
+cat prompt.md | drs run task/docs-updater --stdin
+```
+
+Or configure the run input/output once and invoke only the agent id:
+
+```yaml
+agents:
+  overrides:
+    task/docs-updater:
+      thinkingLevel: high
+      run:
+        promptFile: prompts/release-notes.md
+        output: .drs/release-notes.json
+        json: true
+```
+
+```bash
+drs run task/docs-updater
+```
+
+Run config supports:
+
+| Field | Description |
+|-------|-------------|
+| `prompt` | Inline prompt text sent as the user message |
+| `promptFile` | Repo-relative file containing the prompt |
+| `output` | Repo-relative output file path |
+| `json` | Write/print `{ timestamp, agent, response, usage }` instead of raw text |

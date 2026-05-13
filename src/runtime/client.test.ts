@@ -276,6 +276,80 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
+    it('applies generic model defaults, namespaces, and overrides to all loaded agents', async () => {
+      const config = {
+        agents: {
+          default: {
+            model: 'provider/default-model',
+            skills: [],
+          },
+          namespaces: {
+            task: {
+              model: 'provider/task-model',
+            },
+          },
+          overrides: {
+            'task/specialist': {
+              model: 'provider/specialist-override',
+            },
+          },
+        },
+        review: {
+          agents: [],
+        },
+      } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'task/docs-updater',
+          namespace: 'task',
+          name: 'docs-updater',
+          path: '/tmp/docs-updater.md',
+          description: 'Docs updater',
+        },
+        {
+          id: 'task/specialist',
+          namespace: 'task',
+          name: 'specialist',
+          path: '/tmp/specialist.md',
+          description: 'Specialist',
+          model: 'provider/frontmatter-model',
+        },
+        {
+          id: 'ops/deploy',
+          namespace: 'ops',
+          name: 'deploy',
+          path: '/tmp/deploy.md',
+          description: 'Deploy helper',
+        },
+      ] as any);
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agent: expect.objectContaining({
+              'task/docs-updater': expect.objectContaining({
+                model: 'provider/task-model',
+              }),
+              'task/specialist': expect.objectContaining({
+                model: 'provider/specialist-override',
+              }),
+              'ops/deploy': expect.objectContaining({
+                model: 'provider/default-model',
+              }),
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
     it('passes per-agent tool overrides to Pi runtime config', async () => {
       mocks.loadAgents.mockReturnValue([
         {
