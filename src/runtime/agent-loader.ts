@@ -21,6 +21,8 @@ export interface AgentDefinition {
   hidden?: boolean;
 }
 
+class InvalidProjectAgentPathError extends Error {}
+
 /** Parse a frontmatter value into a trimmed, non-empty string array. */
 function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
@@ -112,7 +114,8 @@ function discoverAgents(basePath: string, currentPath: string): AgentDefinition[
 function parseAgentFile(
   filePath: string,
   basePath: string,
-  nameOverride?: string
+  nameOverride?: string,
+  failOnInvalidAgentId = false
 ): AgentDefinition | null {
   try {
     const content = readFileSync(filePath, 'utf-8');
@@ -135,9 +138,10 @@ function parseAgentFile(
       const guidance = !agentId.includes('/')
         ? ` Move it to .drs/agents/review/${agentId}/agent.md for a review agent.`
         : '';
-      throw new Error(
+      const error = new InvalidProjectAgentPathError(
         `${getAgentIdValidationError(agentId)} Project agents must be stored as .drs/agents/<namespace>/<name>/agent.md.${guidance} File: ${filePath}`
       );
+      throw error;
     }
 
     const prompt = content.slice(frontmatterMatch[0].length).trim();
@@ -156,6 +160,10 @@ function parseAgentFile(
       hidden: frontmatter.hidden || false,
     };
   } catch (error) {
+    if (failOnInvalidAgentId && error instanceof InvalidProjectAgentPathError) {
+      throw error;
+    }
+
     console.error(`Error parsing agent file ${filePath}:`, error);
     return null;
   }
@@ -171,7 +179,7 @@ function discoverProjectAgents(basePath: string, currentPath: string): AgentDefi
     .map((fullPath) => {
       const relativePath = relative(basePath, fullPath).replace(/\\/g, '/');
       const agentId = relativePath.replace(/\/agent\.md$/, '');
-      return parseAgentFile(fullPath, basePath, agentId);
+      return parseAgentFile(fullPath, basePath, agentId, true);
     })
     .filter((agent): agent is AgentDefinition => Boolean(agent));
 }
