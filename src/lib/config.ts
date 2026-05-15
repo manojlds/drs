@@ -20,6 +20,40 @@ export interface AgentRunConfig {
   json?: boolean;
 }
 
+export type WorkflowInputConfig =
+  | string
+  | {
+      value?: string;
+      file?: string;
+    };
+
+export interface WorkflowNodeConfig {
+  /** Agent id to run, for example "task/docs-updater". */
+  agent?: string;
+  /** Config path resolving to an agent list. Currently supports "review.agents". */
+  agentsFrom?: string;
+  /** Built-in workflow action. */
+  action?: 'write' | 'git-diff';
+  /** Action-specific options. */
+  with?: Record<string, string | number | boolean | undefined>;
+  /** Node ids that must complete before this node starts. */
+  needs?: string[];
+  /** Prompt/content template. Supports {{inputs.key}}, {{nodes.id.response}}, and {{artifacts.key}}. */
+  input?: string;
+  /** Artifact name to expose this node's primary output as. */
+  output?: string;
+  /** Repo-relative path written by agent output or write action. */
+  writes?: string;
+  /** Emit JSON for an agent node when writing to a file. */
+  json?: boolean;
+}
+
+export interface WorkflowConfig {
+  description?: string;
+  inputs?: Record<string, WorkflowInputConfig>;
+  nodes: Record<string, WorkflowNodeConfig>;
+}
+
 export interface AgentDefaultsConfig {
   model?: string;
   skills?: string[];
@@ -165,6 +199,9 @@ export interface DRSConfig {
 
   // Generic agent configuration shared by review, describe, and task agents
   agents: AgentsConfig;
+
+  // Generic workflow/DAG configuration
+  workflows?: Record<string, WorkflowConfig>;
 
   /**
    * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
@@ -446,6 +483,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     pi: mergeSection(base.pi, override.pi),
     opencode: mergeSection(base.opencode, override.opencode),
     agents: mergeSection(base.agents, override.agents),
+    workflows: mergeSection(base.workflows, override.workflows),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
