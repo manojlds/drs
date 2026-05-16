@@ -8,6 +8,10 @@ DRS workflows run configured agents and built-in actions as a dependency graph. 
 drs workflow run release-notes
 drs workflow run release-notes --input title="v1.2.3" --input-file diff=.drs/diff.md
 drs workflow run release-notes --json -o .drs/workflow-result.json
+
+# Built-in local review workflows
+drs workflow run local-review
+drs workflow run local-staged-review --json -o .drs/local-review.json
 ```
 
 ## Config Example
@@ -76,7 +80,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write` and `git-diff` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `change-source`, and `review` |
 
 Common node fields:
 
@@ -90,6 +94,42 @@ Common node fields:
 | `with` | Action-specific options |
 
 ## Built-In Actions
+
+### `change-source`
+
+Loads a structured change source artifact. This is the preferred input for workflow-based review nodes.
+
+```yaml
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: false
+    output: change
+```
+
+Currently supported source types:
+
+| Type | Description |
+|------|-------------|
+| `local` | Load local git diff from the workflow working directory |
+
+### `review`
+
+Runs the existing DRS review orchestrator against a `change-source` artifact.
+
+```yaml
+nodes:
+  review:
+    action: review
+    needs: [change]
+    with:
+      source: change
+    output: review
+```
+
+The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
 
 ### `git-diff`
 
@@ -136,6 +176,35 @@ Node inputs and write paths support `{{...}}` references:
 | `{{artifacts.summary}}` | Artifact named `summary` |
 
 Non-string values are inserted as pretty JSON.
+
+## Built-In Review Workflows
+
+DRS ships with local review workflows equivalent to the local diff source loading used by `drs review-local`:
+
+```bash
+drs workflow run local-review
+drs workflow run local-staged-review
+```
+
+They are defined conceptually as:
+
+```yaml
+workflows:
+  local-review:
+    nodes:
+      change:
+        action: change-source
+        with:
+          type: local
+          staged: false
+        output: change
+      review:
+        action: review
+        needs: [change]
+        with:
+          source: change
+        output: review
+```
 
 ## Review Agent Fan-Out
 

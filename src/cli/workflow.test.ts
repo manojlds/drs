@@ -11,6 +11,19 @@ const mocks = vi.hoisted(() => ({
     diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
   },
   simpleGit: vi.fn(),
+  parseDiff: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
+  getChangedFiles: vi.fn(() => ['src/app.ts']),
+  getFilesWithDiffs: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
+  executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
+    issues: [],
+    summary: {
+      filesReviewed: source.files.length,
+      issuesFound: 0,
+      bySeverity: {},
+      byCategory: {},
+    },
+    filesReviewed: source.files.length,
+  })),
   runAgent: vi.fn(async (_config, agent: string, options: { prompt?: string }) => ({
     timestamp: '2026-06-16T00:00:00.000Z',
     agent,
@@ -39,6 +52,16 @@ vi.mock('./run-agent.js', () => ({
   runAgent: mocks.runAgent,
 }));
 
+vi.mock('../lib/diff-parser.js', () => ({
+  parseDiff: mocks.parseDiff,
+  getChangedFiles: mocks.getChangedFiles,
+  getFilesWithDiffs: mocks.getFilesWithDiffs,
+}));
+
+vi.mock('../lib/review-orchestrator.js', () => ({
+  executeReview: mocks.executeReview,
+}));
+
 const baseConfig = {
   pi: {},
   agents: { default: { model: 'provider/default-model', skills: [] } },
@@ -64,6 +87,23 @@ describe('workflow runner', () => {
     mocks.simpleGit.mockReturnValue(mocks.git);
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
+    mocks.parseDiff.mockReturnValue([{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]);
+    mocks.getChangedFiles.mockReturnValue(['src/app.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/app.ts', patch: '@@ +1 @@\n+change' },
+    ]);
+    mocks.executeReview.mockImplementation(
+      async (_config: unknown, source: { files: string[] }) => ({
+        issues: [],
+        summary: {
+          filesReviewed: source.files.length,
+          issuesFound: 0,
+          bySeverity: {},
+          byCategory: {},
+        },
+        filesReviewed: source.files.length,
+      })
+    );
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
@@ -235,6 +275,58 @@ describe('workflow runner', () => {
         prompt: 'Summarize diff --git a/src/app.ts b/src/app.ts',
       })
     );
+  });
+
+  it('loads a local change source and reviews it', async () => {
+    const projectRoot = createTempDir('drs-workflow-review-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        localReview: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'local', staged: true },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewResult',
+              writes: '.drs/review-result.json',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'localReview', {
+      workingDir: projectRoot,
+      debug: true,
+      thinkingLevel: 'high',
+    });
+
+    expect(mocks.git.diff).toHaveBeenCalledWith(['--cached']);
+    expect(mocks.parseDiff).toHaveBeenCalledWith('diff --git a/src/app.ts b/src/app.ts');
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        name: 'Local staged diff',
+        files: ['src/app.ts'],
+        filesWithDiffs: [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }],
+        workingDir: projectRoot,
+        staged: true,
+        debug: true,
+        thinkingLevel: 'high',
+      })
+    );
+    expect(result.artifacts.reviewResult).toMatchObject({ filesReviewed: 1 });
+    expect(
+      JSON.parse(readFileSync(join(projectRoot, '.drs/review-result.json'), 'utf-8'))
+    ).toMatchObject({
+      filesReviewed: 1,
+    });
   });
 
   it('rejects dependency cycles', async () => {

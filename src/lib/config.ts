@@ -33,7 +33,7 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow action. */
-  action?: 'write' | 'git-diff';
+  action?: 'write' | 'git-diff' | 'change-source' | 'review';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
@@ -281,6 +281,50 @@ const DEFAULT_CONFIG: DRSConfig = {
     default: {
       model: getDefaultModelEnv() ?? 'anthropic/claude-sonnet-4-5-20250929',
       skills: [],
+    },
+  },
+  workflows: {
+    'local-review': {
+      description: 'Review local unstaged git diff',
+      nodes: {
+        change: {
+          action: 'change-source',
+          with: {
+            type: 'local',
+            staged: false,
+          },
+          output: 'change',
+        },
+        review: {
+          action: 'review',
+          needs: ['change'],
+          with: {
+            source: 'change',
+          },
+          output: 'review',
+        },
+      },
+    },
+    'local-staged-review': {
+      description: 'Review local staged git diff',
+      nodes: {
+        change: {
+          action: 'change-source',
+          with: {
+            type: 'local',
+            staged: true,
+          },
+          output: 'change',
+        },
+        review: {
+          action: 'review',
+          needs: ['change'],
+          with: {
+            source: 'change',
+          },
+          output: 'review',
+        },
+      },
     },
   },
   gitlab: {

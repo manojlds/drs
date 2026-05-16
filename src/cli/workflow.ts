@@ -10,6 +10,8 @@ import type {
 } from '../lib/config.js';
 import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
+import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
+import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
 import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
 import { runAgent } from './run-agent.js';
 
@@ -31,7 +33,7 @@ export interface WorkflowNodeResult {
   action?: string;
   response?: string;
   responses?: AgentRunResult[];
-  output?: string;
+  output?: unknown;
   writes?: string;
 }
 
@@ -337,8 +339,10 @@ async function runAgentsWorkflowNode(
 }
 
 async function runActionWorkflowNode(
+  config: DRSConfig,
   nodeId: string,
   node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
   workingDir: string,
   context: WorkflowTemplateContext
 ): Promise<WorkflowNodeResult> {
@@ -347,6 +351,12 @@ async function runActionWorkflowNode(
   }
   if (node.action === 'git-diff') {
     return runGitDiffWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'change-source') {
+    return runChangeSourceWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'review') {
+    return runReviewWorkflowNode(config, nodeId, node, options, workingDir, context);
   }
 
   throw new Error(`Unsupported workflow action "${node.action}" in node "${nodeId}".`);
@@ -384,6 +394,21 @@ function getBooleanActionOption(node: WorkflowNodeConfig, key: string): boolean 
   return value === true || value === 'true';
 }
 
+function getStringActionOption(
+  node: WorkflowNodeConfig,
+  key: string,
+  context: WorkflowTemplateContext
+): string | undefined {
+  const value = node.with?.[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return renderTemplate(value, context);
+  }
+  return String(value);
+}
+
 async function runGitDiffWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -409,6 +434,112 @@ async function runGitDiffWorkflowNode(
     action: node.action,
     response: diff,
     output: diff,
+    writes,
+  };
+}
+
+async function loadLocalChangeSource(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string
+): Promise<ReviewSource> {
+  const git = simpleGit({ baseDir: workingDir });
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error(`Workflow change-source node "${nodeId}" must run from a git repository.`);
+  }
+
+  const staged = getBooleanActionOption(node, 'staged');
+  const diffText = staged ? await git.diff(['--cached']) : await git.diff();
+  const diffs = parseDiff(diffText);
+  const changedFiles = getChangedFiles(diffs);
+
+  return {
+    name: `Local ${staged ? 'staged' : 'unstaged'} diff`,
+    files: changedFiles,
+    filesWithDiffs: getFilesWithDiffs(diffs),
+    context: {},
+    workingDir,
+    staged,
+  };
+}
+
+async function runChangeSourceWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const type = getStringActionOption(node, 'type', context) ?? 'local';
+  if (type !== 'local') {
+    throw new Error(
+      `Unsupported workflow change-source type "${type}" in node "${nodeId}". Currently supported: local.`
+    );
+  }
+
+  const source = await loadLocalChangeSource(nodeId, node, workingDir);
+  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  if (writes) {
+    await writeWorkflowFile(workingDir, writes, JSON.stringify(source, null, 2));
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: source.name,
+    output: source,
+    writes,
+  };
+}
+
+function isReviewSource(value: unknown): value is ReviewSource {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<ReviewSource>;
+  return (
+    typeof candidate.name === 'string' &&
+    Array.isArray(candidate.files) &&
+    typeof candidate.context === 'object' &&
+    candidate.context !== null
+  );
+}
+
+async function runReviewWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow review node "${nodeId}" needs a ReviewSource artifact. Set with.source to a change-source output.`
+    );
+  }
+
+  const reviewResult: ReviewResult = await executeReview(config, {
+    ...source,
+    workingDir: source.workingDir ?? workingDir,
+    debug: options.debug,
+    thinkingLevel: options.thinkingLevel,
+  });
+  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  if (writes) {
+    await writeWorkflowFile(workingDir, writes, JSON.stringify(reviewResult, null, 2));
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: JSON.stringify(reviewResult.summary, null, 2),
+    output: reviewResult,
     writes,
   };
 }
@@ -468,7 +599,7 @@ export async function runWorkflow(
     } else if (kind === 'agents') {
       result = await runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
     } else {
-      result = await runActionWorkflowNode(nodeId, node, workingDir, context);
+      result = await runActionWorkflowNode(config, nodeId, node, options, workingDir, context);
     }
 
     nodes[nodeId] = result;
