@@ -5,47 +5,80 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DRSConfig } from '../lib/config.js';
 import { runWorkflow } from './workflow.js';
 
-const mocks = vi.hoisted(() => ({
-  git: {
-    checkIsRepo: vi.fn(async () => true),
-    diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
-  },
-  simpleGit: vi.fn(),
-  parseDiff: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
-  getChangedFiles: vi.fn(() => ['src/app.ts']),
-  getFilesWithDiffs: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
-  executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
-    issues: [],
-    summary: {
+const mocks = vi.hoisted(() => {
+  const githubAdapter = {
+    getPullRequest: vi.fn(),
+    getChangedFiles: vi.fn(),
+  };
+  const gitlabAdapter = {
+    getPullRequest: vi.fn(),
+    getChangedFiles: vi.fn(),
+  };
+
+  return {
+    git: {
+      checkIsRepo: vi.fn(async () => true),
+      diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
+    },
+    simpleGit: vi.fn(),
+    createGitHubClient: vi.fn(() => ({ platform: 'github' })),
+    GitHubPlatformAdapter: vi.fn(() => githubAdapter),
+    githubAdapter,
+    createGitLabClient: vi.fn(() => ({ platform: 'gitlab' })),
+    GitLabPlatformAdapter: vi.fn(() => gitlabAdapter),
+    gitlabAdapter,
+    parseDiff: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
+    getChangedFiles: vi.fn(() => ['src/app.ts']),
+    getFilesWithDiffs: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
+    executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
+      issues: [],
+      summary: {
+        filesReviewed: source.files.length,
+        issuesFound: 0,
+        bySeverity: {},
+        byCategory: {},
+      },
       filesReviewed: source.files.length,
-      issuesFound: 0,
-      bySeverity: {},
-      byCategory: {},
-    },
-    filesReviewed: source.files.length,
-  })),
-  runAgent: vi.fn(async (_config, agent: string, options: { prompt?: string }) => ({
-    timestamp: '2026-06-16T00:00:00.000Z',
-    agent,
-    response: `${agent}: ${options.prompt ?? 'configured prompt'}`,
-    usage: {
+    })),
+    runAgent: vi.fn(async (_config, agent: string, options: { prompt?: string }) => ({
+      timestamp: '2026-06-16T00:00:00.000Z',
       agent,
-      success: true,
-      inputTokens: 1,
-      outputTokens: 1,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      totalTokens: 2,
-      cost: 0,
-      messages: 1,
-    },
-  })),
-}));
+      response: `${agent}: ${options.prompt ?? 'configured prompt'}`,
+      usage: {
+        agent,
+        success: true,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 2,
+        cost: 0,
+        messages: 1,
+      },
+    })),
+  };
+});
 
 mocks.simpleGit.mockReturnValue(mocks.git);
 
 vi.mock('simple-git', () => ({
   default: mocks.simpleGit,
+}));
+
+vi.mock('../github/client.js', () => ({
+  createGitHubClient: mocks.createGitHubClient,
+}));
+
+vi.mock('../github/platform-adapter.js', () => ({
+  GitHubPlatformAdapter: mocks.GitHubPlatformAdapter,
+}));
+
+vi.mock('../gitlab/client.js', () => ({
+  createGitLabClient: mocks.createGitLabClient,
+}));
+
+vi.mock('../gitlab/platform-adapter.js', () => ({
+  GitLabPlatformAdapter: mocks.GitLabPlatformAdapter,
 }));
 
 vi.mock('./run-agent.js', () => ({
@@ -91,6 +124,44 @@ describe('workflow runner', () => {
     mocks.getChangedFiles.mockReturnValue(['src/app.ts']);
     mocks.getFilesWithDiffs.mockReturnValue([
       { filename: 'src/app.ts', patch: '@@ +1 @@\n+change' },
+    ]);
+    mocks.createGitHubClient.mockReturnValue({ platform: 'github' });
+    mocks.GitHubPlatformAdapter.mockReturnValue(mocks.githubAdapter);
+    mocks.githubAdapter.getPullRequest.mockResolvedValue({
+      number: 7,
+      title: 'GitHub PR',
+      author: 'octocat',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+    });
+    mocks.githubAdapter.getChangedFiles.mockResolvedValue([
+      {
+        filename: 'src/github.ts',
+        status: 'modified',
+        additions: 2,
+        deletions: 1,
+        patch: '@@ +1 @@\n+github',
+      },
+    ]);
+    mocks.createGitLabClient.mockReturnValue({ platform: 'gitlab' });
+    mocks.GitLabPlatformAdapter.mockReturnValue(mocks.gitlabAdapter);
+    mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+      number: 8,
+      title: 'GitLab MR',
+      author: 'gitlab-user',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'def456',
+    });
+    mocks.gitlabAdapter.getChangedFiles.mockResolvedValue([
+      {
+        filename: 'src/gitlab.ts',
+        status: 'modified',
+        additions: 3,
+        deletions: 1,
+        patch: '@@ +1 @@\n+gitlab',
+      },
     ]);
     mocks.executeReview.mockImplementation(
       async (_config: unknown, source: { files: string[] }) => ({
@@ -327,6 +398,114 @@ describe('workflow runner', () => {
     ).toMatchObject({
       filesReviewed: 1,
     });
+  });
+
+  it('loads a GitHub PR change source and reviews it', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        githubReview: {
+          inputs: {
+            owner: '',
+            repo: '',
+            pr: '',
+          },
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: '{{inputs.owner}}',
+                repo: '{{inputs.repo}}',
+                pr: '{{inputs.pr}}',
+              },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'githubReview', {
+      inputs: { owner: 'octocat', repo: 'hello-world', pr: '7' },
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.createGitHubClient).toHaveBeenCalled();
+    expect(mocks.GitHubPlatformAdapter).toHaveBeenCalled();
+    expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledWith('octocat/hello-world', 7);
+    expect(mocks.githubAdapter.getChangedFiles).toHaveBeenCalledWith('octocat/hello-world', 7);
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        name: 'GitHub PR octocat/hello-world#7',
+        files: ['src/github.ts'],
+        filesWithDiffs: [{ filename: 'src/github.ts', patch: '@@ +1 @@\n+github' }],
+        context: expect.objectContaining({
+          platform: 'github',
+          projectId: 'octocat/hello-world',
+        }),
+      })
+    );
+  });
+
+  it('loads a GitLab MR change source and reviews it', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        gitlabReview: {
+          inputs: {
+            project: '',
+            mr: '',
+          },
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: '{{inputs.project}}',
+                mr: '{{inputs.mr}}',
+              },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'gitlabReview', {
+      inputs: { project: 'group/repo', mr: '8' },
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.createGitLabClient).toHaveBeenCalled();
+    expect(mocks.GitLabPlatformAdapter).toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.getPullRequest).toHaveBeenCalledWith('group/repo', 8);
+    expect(mocks.gitlabAdapter.getChangedFiles).toHaveBeenCalledWith('group/repo', 8);
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        name: 'GitLab MR group/repo!8',
+        files: ['src/gitlab.ts'],
+        filesWithDiffs: [{ filename: 'src/gitlab.ts', patch: '@@ +1 @@\n+gitlab' }],
+        context: expect.objectContaining({
+          platform: 'gitlab',
+          projectId: 'group/repo',
+        }),
+      })
+    );
   });
 
   it('rejects dependency cycles', async () => {

@@ -326,6 +326,60 @@ const DEFAULT_CONFIG: DRSConfig = {
         },
       },
     },
+    'github-pr-review': {
+      description: 'Review a GitHub pull request',
+      inputs: {
+        owner: '',
+        repo: '',
+        pr: '',
+      },
+      nodes: {
+        change: {
+          action: 'change-source',
+          with: {
+            type: 'github-pr',
+            owner: '{{inputs.owner}}',
+            repo: '{{inputs.repo}}',
+            pr: '{{inputs.pr}}',
+          },
+          output: 'change',
+        },
+        review: {
+          action: 'review',
+          needs: ['change'],
+          with: {
+            source: 'change',
+          },
+          output: 'review',
+        },
+      },
+    },
+    'gitlab-mr-review': {
+      description: 'Review a GitLab merge request',
+      inputs: {
+        project: '',
+        mr: '',
+      },
+      nodes: {
+        change: {
+          action: 'change-source',
+          with: {
+            type: 'gitlab-mr',
+            project: '{{inputs.project}}',
+            mr: '{{inputs.mr}}',
+          },
+          output: 'change',
+        },
+        review: {
+          action: 'review',
+          needs: ['change'],
+          with: {
+            source: 'change',
+          },
+          output: 'review',
+        },
+      },
+    },
   },
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',

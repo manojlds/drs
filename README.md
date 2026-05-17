@@ -89,6 +89,8 @@ drs review-local --agents review/security,review/quality
 | Review local changes via workflow | `drs workflow run local-review` |
 | Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
 | Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
+| Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |

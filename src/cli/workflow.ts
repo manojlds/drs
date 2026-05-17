@@ -12,6 +12,11 @@ import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
 import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
+import type { FileChange, PullRequest } from '../lib/platform-client.js';
+import { createGitHubClient } from '../github/client.js';
+import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
+import { createGitLabClient } from '../gitlab/client.js';
+import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
 import { runAgent } from './run-agent.js';
 
@@ -409,6 +414,33 @@ function getStringActionOption(
   return String(value);
 }
 
+function requireStringActionOption(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  key: string,
+  context: WorkflowTemplateContext
+): string {
+  const value = getStringActionOption(node, key, context)?.trim();
+  if (!value) {
+    throw new Error(`Workflow node "${nodeId}" must define with.${key}.`);
+  }
+  return value;
+}
+
+function requireNumberActionOption(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  key: string,
+  context: WorkflowTemplateContext
+): number {
+  const value = requireStringActionOption(nodeId, node, key, context);
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Workflow node "${nodeId}" with.${key} must be a positive number.`);
+  }
+  return parsed;
+}
+
 async function runGitDiffWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -464,6 +496,81 @@ async function loadLocalChangeSource(
   };
 }
 
+function createPlatformChangeSource(
+  platform: 'github' | 'gitlab',
+  name: string,
+  projectId: string,
+  pullRequest: PullRequest,
+  changedFiles: FileChange[],
+  workingDir: string
+): ReviewSource {
+  return {
+    name,
+    files: changedFiles.map((file) => file.filename),
+    filesWithDiffs: changedFiles
+      .filter((file) => file.patch && file.patch.length > 0)
+      .map((file) => ({ filename: file.filename, patch: file.patch ?? '' })),
+    context: {
+      platform,
+      projectId,
+      pullRequest,
+    },
+    workingDir,
+  };
+}
+
+async function loadGitHubChangeSource(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<ReviewSource> {
+  const owner = requireStringActionOption(nodeId, node, 'owner', context);
+  const repo = requireStringActionOption(nodeId, node, 'repo', context);
+  const prNumber = requireNumberActionOption(nodeId, node, 'pr', context);
+  const projectId = `${owner}/${repo}`;
+  const platformClient = new GitHubPlatformAdapter(createGitHubClient());
+  const pullRequest = await platformClient.getPullRequest(projectId, prNumber);
+  const changedFiles = await platformClient.getChangedFiles(projectId, prNumber);
+
+  return createPlatformChangeSource(
+    'github',
+    `GitHub PR ${projectId}#${prNumber}`,
+    projectId,
+    pullRequest,
+    changedFiles,
+    workingDir
+  );
+}
+
+async function loadGitLabChangeSource(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<ReviewSource> {
+  const project = getStringActionOption(node, 'project', context)?.trim();
+  const projectId =
+    project !== undefined && project.length > 0
+      ? project
+      : requireStringActionOption(nodeId, node, 'projectId', context);
+  const mrIid = getStringActionOption(node, 'mr', context)
+    ? requireNumberActionOption(nodeId, node, 'mr', context)
+    : requireNumberActionOption(nodeId, node, 'mrIid', context);
+  const platformClient = new GitLabPlatformAdapter(createGitLabClient());
+  const pullRequest = await platformClient.getPullRequest(projectId, mrIid);
+  const changedFiles = await platformClient.getChangedFiles(projectId, mrIid);
+
+  return createPlatformChangeSource(
+    'gitlab',
+    `GitLab MR ${projectId}!${mrIid}`,
+    projectId,
+    pullRequest,
+    changedFiles,
+    workingDir
+  );
+}
+
 async function runChangeSourceWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -471,13 +578,18 @@ async function runChangeSourceWorkflowNode(
   context: WorkflowTemplateContext
 ): Promise<WorkflowNodeResult> {
   const type = getStringActionOption(node, 'type', context) ?? 'local';
-  if (type !== 'local') {
+  let source: ReviewSource;
+  if (type === 'local') {
+    source = await loadLocalChangeSource(nodeId, node, workingDir);
+  } else if (type === 'github-pr') {
+    source = await loadGitHubChangeSource(nodeId, node, workingDir, context);
+  } else if (type === 'gitlab-mr') {
+    source = await loadGitLabChangeSource(nodeId, node, workingDir, context);
+  } else {
     throw new Error(
-      `Unsupported workflow change-source type "${type}" in node "${nodeId}". Currently supported: local.`
+      `Unsupported workflow change-source type "${type}" in node "${nodeId}". Currently supported: local, github-pr, gitlab-mr.`
     );
   }
-
-  const source = await loadLocalChangeSource(nodeId, node, workingDir);
   const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
   if (writes) {
     await writeWorkflowFile(workingDir, writes, JSON.stringify(source, null, 2));

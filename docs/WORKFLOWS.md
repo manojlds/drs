@@ -12,6 +12,10 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 # Built-in local review workflows
 drs workflow run local-review
 drs workflow run local-staged-review --json -o .drs/local-review.json
+
+# Built-in platform review workflows
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 ```
 
 ## Config Example
@@ -114,6 +118,35 @@ Currently supported source types:
 | Type | Description |
 |------|-------------|
 | `local` | Load local git diff from the workflow working directory |
+| `github-pr` | Load GitHub PR metadata and changed files |
+| `gitlab-mr` | Load GitLab MR metadata and changed files |
+
+GitHub PR source:
+
+```yaml
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: octocat
+      repo: hello-world
+      pr: 456
+    output: change
+```
+
+GitLab MR source:
+
+```yaml
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: group/repo
+      mr: 123
+    output: change
+```
 
 ### `review`
 
@@ -184,6 +217,8 @@ DRS ships with local review workflows equivalent to the local diff source loadin
 ```bash
 drs workflow run local-review
 drs workflow run local-staged-review
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 ```
 
 They are defined conceptually as:
@@ -204,7 +239,30 @@ workflows:
         with:
           source: change
         output: review
+
+  github-pr-review:
+    inputs:
+      owner: ""
+      repo: ""
+      pr: ""
+    nodes:
+      change:
+        action: change-source
+        with:
+          type: github-pr
+          owner: "{{inputs.owner}}"
+          repo: "{{inputs.repo}}"
+          pr: "{{inputs.pr}}"
+        output: change
+      review:
+        action: review
+        needs: [change]
+        with:
+          source: change
+        output: review
 ```
+
+`gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
 
 ## Review Agent Fan-Out
 
