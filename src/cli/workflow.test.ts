@@ -115,6 +115,31 @@ describe('workflow runner', () => {
     return dir;
   }
 
+  function createMockAgentResult(agent: string, response: string) {
+    return {
+      timestamp: '2026-06-16T00:00:00.000Z',
+      agent,
+      response,
+      usage: {
+        agent,
+        success: true,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 2,
+        cost: 0,
+        messages: 1,
+      },
+    };
+  }
+
+  function timeoutAfter(ms: number): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.simpleGit.mockReturnValue(mocks.git);
@@ -232,6 +257,55 @@ describe('workflow runner', () => {
     expect(result.output).toBe('Summary:\ntask/summarizer: Summarize Diff text');
   });
 
+  it('rejects writes paths that render to empty strings', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        emptyWrite: {
+          inputs: {
+            outputPath: '',
+          },
+          nodes: {
+            writeSummary: {
+              action: 'write',
+              input: 'content',
+              writes: '{{inputs.outputPath}}',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'emptyWrite')).rejects.toThrow(
+      'Workflow node "writeSummary" writes resolved to an empty path.'
+    );
+  });
+
+  it('uses strict boolean checks for node JSON writes', async () => {
+    const projectRoot = createTempDir('drs-workflow-json-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        jsonFlag: {
+          nodes: {
+            summarize: {
+              agent: 'task/summarizer',
+              input: 'Summarize',
+              writes: 'summary.txt',
+              json: 'false',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'jsonFlag', { workingDir: projectRoot });
+
+    expect(readFileSync(join(projectRoot, 'summary.txt'), 'utf-8')).toBe(
+      'task/summarizer: Summarize'
+    );
+  });
+
   it('lets CLI-style inputs override configured inputs', async () => {
     const projectRoot = createTempDir('drs-workflow-inputs-');
     writeFileSync(join(projectRoot, 'diff.md'), 'File diff');
@@ -309,6 +383,120 @@ describe('workflow runner', () => {
     );
     expect(result.artifacts.reviewResult).toContain('## review/security');
     expect(result.artifacts.reviewResult).toContain('## review/quality');
+  });
+
+  it('runs agentsFrom agents concurrently', async () => {
+    let resolveSecurity: () => void = () => {};
+    let resolveQuality: () => void = () => {};
+    let resolveBothStarted: () => void = () => {};
+    const starts: string[] = [];
+    const securityDone = new Promise<void>((resolve) => {
+      resolveSecurity = resolve;
+    });
+    const qualityDone = new Promise<void>((resolve) => {
+      resolveQuality = resolve;
+    });
+    const bothStarted = new Promise<void>((resolve) => {
+      resolveBothStarted = resolve;
+    });
+
+    mocks.runAgent.mockImplementation(async (_config: unknown, agent: string) => {
+      starts.push(agent);
+      if (starts.length === 2) {
+        resolveBothStarted();
+      }
+
+      await (agent === 'review/security' ? securityDone : qualityDone);
+      return createMockAgentResult(agent, `${agent} done`);
+    });
+
+    const config = {
+      ...baseConfig,
+      review: {
+        agents: ['review/security', 'review/quality'],
+        ignorePatterns: [],
+      },
+      workflows: {
+        review: {
+          inputs: {
+            diff: 'Diff text',
+          },
+          nodes: {
+            reviewers: {
+              agentsFrom: 'review.agents',
+              input: 'Review {{inputs.diff}}',
+              output: 'reviewResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const runPromise = runWorkflow(config, 'review', { workingDir: process.cwd() });
+    await Promise.race([bothStarted, timeoutAfter(250)]);
+    resolveSecurity();
+    resolveQuality();
+
+    const result = await runPromise;
+    expect(starts).toEqual(['review/security', 'review/quality']);
+    expect(result.artifacts.reviewResult).toContain('review/security done');
+    expect(result.artifacts.reviewResult).toContain('review/quality done');
+  });
+
+  it('runs independent workflow nodes concurrently', async () => {
+    let resolveOne: () => void = () => {};
+    let resolveTwo: () => void = () => {};
+    let resolveBothStarted: () => void = () => {};
+    const starts: string[] = [];
+    const oneDone = new Promise<void>((resolve) => {
+      resolveOne = resolve;
+    });
+    const twoDone = new Promise<void>((resolve) => {
+      resolveTwo = resolve;
+    });
+    const bothStarted = new Promise<void>((resolve) => {
+      resolveBothStarted = resolve;
+    });
+
+    mocks.runAgent.mockImplementation(async (_config: unknown, agent: string) => {
+      starts.push(agent);
+      if (starts.length === 2) {
+        resolveBothStarted();
+      }
+
+      await (agent === 'task/one' ? oneDone : twoDone);
+      return createMockAgentResult(agent, `${agent} done`);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        parallel: {
+          nodes: {
+            one: { agent: 'task/one', input: 'one', output: 'one' },
+            two: { agent: 'task/two', input: 'two', output: 'two' },
+            join: {
+              action: 'write',
+              needs: ['one', 'two'],
+              input: '{{artifacts.one}}\n{{artifacts.two}}',
+              writes: 'joined.txt',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const projectRoot = createTempDir('drs-workflow-parallel-');
+    const runPromise = runWorkflow(config, 'parallel', { workingDir: projectRoot });
+    await Promise.race([bothStarted, timeoutAfter(250)]);
+    resolveOne();
+    resolveTwo();
+
+    await runPromise;
+    expect(starts).toEqual(['task/one', 'task/two']);
+    expect(readFileSync(join(projectRoot, 'joined.txt'), 'utf-8')).toBe(
+      'task/one done\ntask/two done'
+    );
   });
 
   it('loads local git diff as an action artifact', async () => {
@@ -508,6 +696,36 @@ describe('workflow runner', () => {
     );
   });
 
+  it('rejects empty GitLab MR aliases without falling through to mrIid', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        gitlabReview: {
+          inputs: {
+            project: 'group/repo',
+            mr: '',
+          },
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: '{{inputs.project}}',
+                mr: '{{inputs.mr}}',
+              },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'gitlabReview')).rejects.toThrow(
+      'Workflow node "change" must define with.mr.'
+    );
+    expect(mocks.gitlabAdapter.getPullRequest).not.toHaveBeenCalled();
+  });
+
   it('rejects dependency cycles', async () => {
     const config = {
       ...baseConfig,
@@ -523,6 +741,21 @@ describe('workflow runner', () => {
 
     await expect(runWorkflow(config, 'cyclic')).rejects.toThrow('dependency cycle');
     expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects workflows with invalid nodes config', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        invalid: {
+          nodes: 'not an object',
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'invalid')).rejects.toThrow(
+      'Workflow "invalid" must define at least one node.'
+    );
   });
 
   it('rejects unknown template references', async () => {

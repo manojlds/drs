@@ -107,6 +107,48 @@ function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): s
   return order;
 }
 
+function getWorkflowNodes(
+  workflowName: string,
+  workflow: WorkflowConfig
+): Record<string, WorkflowNodeConfig> {
+  const nodes = workflow.nodes as unknown;
+  if (
+    typeof nodes !== 'object' ||
+    nodes === null ||
+    Array.isArray(nodes) ||
+    Object.keys(nodes).length === 0
+  ) {
+    throw new Error(`Workflow "${workflowName}" must define at least one node.`);
+  }
+
+  return nodes as Record<string, WorkflowNodeConfig>;
+}
+
+function getWorkflowExecutionWaves(
+  nodes: Record<string, WorkflowNodeConfig>,
+  executionOrder: string[]
+): string[][] {
+  const depthByNode = new Map<string, number>();
+  const waves: string[][] = [];
+
+  for (const nodeId of executionOrder) {
+    const node = nodes[nodeId];
+    if (!node) {
+      throw new Error(`Workflow references unknown node "${nodeId}".`);
+    }
+
+    const depth = getNodeNeeds(node).reduce((maxDepth, dependency) => {
+      return Math.max(maxDepth, (depthByNode.get(dependency) ?? 0) + 1);
+    }, 0);
+
+    depthByNode.set(nodeId, depth);
+    waves[depth] = waves[depth] ?? [];
+    waves[depth].push(nodeId);
+  }
+
+  return waves;
+}
+
 function getPathValue(root: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((current, part) => {
     if (current === undefined || current === null) {
@@ -241,9 +283,30 @@ async function writeWorkflowFile(
   relativeOutputPath: string,
   content: string
 ): Promise<void> {
+  if (!relativeOutputPath.trim()) {
+    throw new Error('Workflow output path cannot be empty.');
+  }
+
   const outputPath = resolveWithinWorkingDir(workingDir, relativeOutputPath, 'write');
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, content, 'utf-8');
+}
+
+function renderNodeWritesPath(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): string | undefined {
+  if (!node.writes) {
+    return undefined;
+  }
+
+  const writes = renderTemplate(node.writes, context);
+  if (!writes.trim()) {
+    throw new Error(`Workflow node "${nodeId}" writes resolved to an empty path.`);
+  }
+
+  return writes;
 }
 
 async function runAgentWorkflowNode(
@@ -267,12 +330,12 @@ async function runAgentWorkflowNode(
   }
 
   const result = await runAgent(config, agentId, createAgentOptions(prompt, options, workingDir));
-  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(
       workingDir,
       writes,
-      node.json ? JSON.stringify(result, null, 2) : result.response
+      node.json === true ? JSON.stringify(result, null, 2) : result.response
     );
   }
 
@@ -313,22 +376,21 @@ async function runAgentsWorkflowNode(
     }
   }
 
-  const responses: AgentRunResult[] = [];
-  for (const agentId of agentIds) {
-    responses.push(
-      await runAgent(config, agentId, createAgentOptions(prompt, options, workingDir))
-    );
-  }
+  const responses = await Promise.all(
+    agentIds.map((agentId) =>
+      runAgent(config, agentId, createAgentOptions(prompt, options, workingDir))
+    )
+  );
 
   const response = responses
     .map((result) => `## ${result.agent}\n\n${result.response.trim()}`.trim())
     .join('\n\n');
-  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(
       workingDir,
       writes,
-      node.json ? JSON.stringify(responses, null, 2) : response
+      node.json === true ? JSON.stringify(responses, null, 2) : response
     );
   }
 
@@ -381,7 +443,10 @@ async function runWriteWorkflowNode(
   }
 
   const content = renderTemplate(node.input, context);
-  const relativeOutputPath = renderTemplate(node.writes, context);
+  const relativeOutputPath = renderNodeWritesPath(nodeId, node, context);
+  if (!relativeOutputPath) {
+    throw new Error(`Workflow write node "${nodeId}" must define writes.`);
+  }
   await writeWorkflowFile(workingDir, relativeOutputPath, content);
 
   return {
@@ -412,6 +477,10 @@ function getStringActionOption(
     return renderTemplate(value, context);
   }
   return String(value);
+}
+
+function hasActionOption(node: WorkflowNodeConfig, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(node.with ?? {}, key);
 }
 
 function requireStringActionOption(
@@ -455,7 +524,7 @@ async function runGitDiffWorkflowNode(
 
   const staged = getBooleanActionOption(node, 'staged');
   const diff = staged ? await git.diff(['--cached']) : await git.diff();
-  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(workingDir, writes, diff);
   }
@@ -530,8 +599,10 @@ async function loadGitHubChangeSource(
   const prNumber = requireNumberActionOption(nodeId, node, 'pr', context);
   const projectId = `${owner}/${repo}`;
   const platformClient = new GitHubPlatformAdapter(createGitHubClient());
-  const pullRequest = await platformClient.getPullRequest(projectId, prNumber);
-  const changedFiles = await platformClient.getChangedFiles(projectId, prNumber);
+  const [pullRequest, changedFiles] = await Promise.all([
+    platformClient.getPullRequest(projectId, prNumber),
+    platformClient.getChangedFiles(projectId, prNumber),
+  ]);
 
   return createPlatformChangeSource(
     'github',
@@ -549,17 +620,17 @@ async function loadGitLabChangeSource(
   workingDir: string,
   context: WorkflowTemplateContext
 ): Promise<ReviewSource> {
-  const project = getStringActionOption(node, 'project', context)?.trim();
-  const projectId =
-    project !== undefined && project.length > 0
-      ? project
-      : requireStringActionOption(nodeId, node, 'projectId', context);
-  const mrIid = getStringActionOption(node, 'mr', context)
+  const projectId = hasActionOption(node, 'project')
+    ? requireStringActionOption(nodeId, node, 'project', context)
+    : requireStringActionOption(nodeId, node, 'projectId', context);
+  const mrIid = hasActionOption(node, 'mr')
     ? requireNumberActionOption(nodeId, node, 'mr', context)
     : requireNumberActionOption(nodeId, node, 'mrIid', context);
   const platformClient = new GitLabPlatformAdapter(createGitLabClient());
-  const pullRequest = await platformClient.getPullRequest(projectId, mrIid);
-  const changedFiles = await platformClient.getChangedFiles(projectId, mrIid);
+  const [pullRequest, changedFiles] = await Promise.all([
+    platformClient.getPullRequest(projectId, mrIid),
+    platformClient.getChangedFiles(projectId, mrIid),
+  ]);
 
   return createPlatformChangeSource(
     'gitlab',
@@ -590,7 +661,7 @@ async function runChangeSourceWorkflowNode(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". Currently supported: local, github-pr, gitlab-mr.`
     );
   }
-  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(workingDir, writes, JSON.stringify(source, null, 2));
   }
@@ -641,7 +712,7 @@ async function runReviewWorkflowNode(
     debug: options.debug,
     thinkingLevel: options.thinkingLevel,
   });
-  const writes = node.writes ? renderTemplate(node.writes, context) : undefined;
+  const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(workingDir, writes, JSON.stringify(reviewResult, null, 2));
   }
@@ -673,6 +744,25 @@ function formatWorkflowJson(result: WorkflowRunResult): string {
   return JSON.stringify(result, null, 2);
 }
 
+async function runSingleWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const kind = getNodeKind(node);
+
+  if (kind === 'agent') {
+    return runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
+  }
+  if (kind === 'agents') {
+    return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
+  }
+  return runActionWorkflowNode(config, nodeId, node, options, workingDir, context);
+}
+
 export async function runWorkflow(
   config: DRSConfig,
   workflowName: string,
@@ -682,44 +772,52 @@ export async function runWorkflow(
   if (!workflow) {
     throw new Error(`Unknown workflow "${workflowName}".`);
   }
-  if (!workflow.nodes || Object.keys(workflow.nodes).length === 0) {
-    throw new Error(`Workflow "${workflowName}" must define at least one node.`);
-  }
+  const workflowNodes = getWorkflowNodes(workflowName, workflow);
 
   const workingDir = options.workingDir ?? process.cwd();
   const inputs = await resolveWorkflowInputs(workflow, options, workingDir);
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const context: WorkflowTemplateContext = { inputs, nodes, artifacts };
-  const executionOrder = getWorkflowExecutionOrder(workflow.nodes);
+  const executionOrder = getWorkflowExecutionOrder(workflowNodes);
+  const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
   if (!options.jsonOutput) {
     console.log(chalk.gray(`Running workflow ${workflowName}...\n`));
   }
 
-  for (const nodeId of executionOrder) {
-    const node = workflow.nodes[nodeId];
-    const kind = getNodeKind(node);
+  for (const wave of executionWaves) {
+    const results = await Promise.all(
+      wave.map(async (nodeId) => {
+        const node = workflowNodes[nodeId];
+        if (!node) {
+          throw new Error(`Workflow references unknown node "${nodeId}".`);
+        }
 
-    if (!options.jsonOutput) {
-      console.log(chalk.gray(`Running node ${nodeId}...`));
+        if (!options.jsonOutput) {
+          console.log(chalk.gray(`Running node ${nodeId}...`));
+        }
+
+        const result = await runSingleWorkflowNode(
+          config,
+          nodeId,
+          node,
+          options,
+          workingDir,
+          context
+        );
+        return { nodeId, node, result };
+      })
+    );
+
+    for (const { nodeId, node, result } of results) {
+      nodes[nodeId] = result;
+      recordNodeArtifact(nodeId, node, result, artifacts);
     }
-
-    let result: WorkflowNodeResult;
-    if (kind === 'agent') {
-      result = await runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
-    } else if (kind === 'agents') {
-      result = await runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
-    } else {
-      result = await runActionWorkflowNode(config, nodeId, node, options, workingDir, context);
-    }
-
-    nodes[nodeId] = result;
-    recordNodeArtifact(nodeId, node, result, artifacts);
   }
 
   const lastNodeId = executionOrder[executionOrder.length - 1];
-  const lastNode = workflow.nodes[lastNodeId];
+  const lastNode = workflowNodes[lastNodeId];
   const outputKey = lastNode.output ?? lastNodeId;
   const result: WorkflowRunResult = {
     timestamp: new Date().toISOString(),
