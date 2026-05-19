@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DRSConfig } from '../lib/config.js';
+import { exitProcess } from '../lib/exit.js';
 import { runWorkflow } from './workflow.js';
 
 const mocks = vi.hoisted(() => {
@@ -586,6 +587,85 @@ describe('workflow runner', () => {
     ).toMatchObject({
       filesReviewed: 1,
     });
+  });
+
+  it('suppresses review action logs when workflow JSON output is enabled', async () => {
+    const logSpy = vi.mocked(console.log);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.executeReview.mockImplementation(
+      async (_config: unknown, source: { files: string[] }) => {
+        console.log('review progress');
+        console.warn('review warning');
+        return {
+          issues: [],
+          summary: {
+            filesReviewed: source.files.length,
+            issuesFound: 0,
+            bySeverity: {},
+            byCategory: {},
+          },
+          filesReviewed: source.files.length,
+        };
+      }
+    );
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        localReview: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'localReview', {
+      jsonOutput: true,
+      workingDir: process.cwd(),
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(() => JSON.parse(String(logSpy.mock.calls[0][0]))).not.toThrow();
+  });
+
+  it('converts review action process exits into workflow errors', async () => {
+    mocks.executeReview.mockImplementation(async () => {
+      exitProcess(1);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        localReview: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'localReview')).rejects.toThrow(
+      'Workflow review node "review" failed: all review agents failed.'
+    );
   });
 
   it('loads a GitHub PR change source and reviews it', async () => {

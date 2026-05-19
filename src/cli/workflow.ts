@@ -12,6 +12,7 @@ import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
 import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
+import { ExitError, setExitHandler } from '../lib/exit.js';
 import type { FileChange, PullRequest } from '../lib/platform-client.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
@@ -238,7 +239,7 @@ function resolveAgentsFrom(config: DRSConfig, agentsFrom: string): string[] {
   }
 
   throw new Error(
-    `Unsupported workflow agentsFrom "${agentsFrom}". Currently supported: review.agents.`
+    `Unsupported workflow agentsFrom "${agentsFrom}". ` + 'Currently supported: review.agents.'
   );
 }
 
@@ -325,7 +326,8 @@ async function runAgentWorkflowNode(
   const prompt = node.input === undefined ? undefined : renderTemplate(node.input, context);
   if (prompt === undefined && !hasConfiguredAgentPrompt(config, agentId)) {
     throw new Error(
-      `Workflow agent node "${nodeId}" must define input or configure agents.overrides.${agentId}.run.prompt/promptFile.`
+      `Workflow agent node "${nodeId}" must define input or configure ` +
+        `agents.overrides.${agentId}.run.prompt/promptFile.`
     );
   }
 
@@ -371,7 +373,8 @@ async function runAgentsWorkflowNode(
     );
     if (missingPromptAgent) {
       throw new Error(
-        `Workflow agentsFrom node "${nodeId}" must define input or configure agents.overrides.${missingPromptAgent}.run.prompt/promptFile.`
+        `Workflow agentsFrom node "${nodeId}" must define input or configure ` +
+          `agents.overrides.${missingPromptAgent}.run.prompt/promptFile.`
       );
     }
   }
@@ -658,7 +661,8 @@ async function runChangeSourceWorkflowNode(
     source = await loadGitLabChangeSource(nodeId, node, workingDir, context);
   } else {
     throw new Error(
-      `Unsupported workflow change-source type "${type}" in node "${nodeId}". Currently supported: local, github-pr, gitlab-mr.`
+      `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +
+        'Currently supported: local, github-pr, gitlab-mr.'
     );
   }
   const writes = renderNodeWritesPath(nodeId, node, context);
@@ -702,16 +706,43 @@ async function runReviewWorkflowNode(
   const source = context.artifacts[sourceArtifact];
   if (!isReviewSource(source)) {
     throw new Error(
-      `Workflow review node "${nodeId}" needs a ReviewSource artifact. Set with.source to a change-source output.`
+      `Workflow review node "${nodeId}" needs a ReviewSource artifact. ` +
+        'Set with.source to a change-source output.'
     );
   }
 
-  const reviewResult: ReviewResult = await executeReview(config, {
-    ...source,
-    workingDir: source.workingDir ?? workingDir,
-    debug: options.debug,
-    thinkingLevel: options.thinkingLevel,
+  const restoreExit = setExitHandler((code: number): never => {
+    throw new ExitError(code);
   });
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+
+  if (options.jsonOutput) {
+    console.log = () => undefined;
+    console.warn = () => undefined;
+  }
+
+  let reviewResult: ReviewResult;
+  try {
+    reviewResult = await executeReview(config, {
+      ...source,
+      workingDir: source.workingDir ?? workingDir,
+      debug: options.debug,
+      thinkingLevel: options.thinkingLevel,
+    });
+  } catch (error) {
+    if (error instanceof ExitError) {
+      throw new Error(`Workflow review node "${nodeId}" failed: all review agents failed.`);
+    }
+    throw error;
+  } finally {
+    if (options.jsonOutput) {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+    restoreExit();
+  }
+
   const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
     await writeWorkflowFile(workingDir, writes, JSON.stringify(reviewResult, null, 2));
