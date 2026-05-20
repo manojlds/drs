@@ -11,7 +11,7 @@ import type {
 import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
-import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
+import { executeReview, type ReviewSource } from '../lib/review-orchestrator.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
 import type { FileChange, PullRequest } from '../lib/platform-client.js';
 import { createGitHubClient } from '../github/client.js';
@@ -56,6 +56,24 @@ interface WorkflowTemplateContext {
   inputs: Record<string, string>;
   nodes: Record<string, WorkflowNodeResult>;
   artifacts: Record<string, unknown>;
+}
+
+// Review execution temporarily mutates process globals, so review nodes must not overlap.
+let reviewWorkflowNodeGlobalLock: Promise<void> = Promise.resolve();
+
+async function withReviewWorkflowNodeGlobals<T>(run: () => Promise<T>): Promise<T> {
+  const previousLock = reviewWorkflowNodeGlobalLock;
+  let releaseLock!: () => void;
+  reviewWorkflowNodeGlobalLock = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+
+  await previousLock;
+  try {
+    return await run();
+  } finally {
+    releaseLock();
+  }
 }
 
 function getNodeNeeds(node: WorkflowNodeConfig): string[] {
@@ -711,37 +729,38 @@ async function runReviewWorkflowNode(
     );
   }
 
-  const restoreExit = setExitHandler((code: number): never => {
-    throw new ExitError(code);
-  });
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-
-  if (options.jsonOutput) {
-    console.log = () => undefined;
-    console.warn = () => undefined;
-  }
-
-  let reviewResult: ReviewResult;
-  try {
-    reviewResult = await executeReview(config, {
-      ...source,
-      workingDir: source.workingDir ?? workingDir,
-      debug: options.debug,
-      thinkingLevel: options.thinkingLevel,
+  const reviewResult = await withReviewWorkflowNodeGlobals(async () => {
+    const restoreExit = setExitHandler((code: number): never => {
+      throw new ExitError(code);
     });
-  } catch (error) {
-    if (error instanceof ExitError) {
-      throw new Error(`Workflow review node "${nodeId}" failed: all review agents failed.`);
-    }
-    throw error;
-  } finally {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+
     if (options.jsonOutput) {
-      console.log = originalLog;
-      console.warn = originalWarn;
+      console.log = () => undefined;
+      console.warn = () => undefined;
     }
-    restoreExit();
-  }
+
+    try {
+      return await executeReview(config, {
+        ...source,
+        workingDir: source.workingDir ?? workingDir,
+        debug: options.debug,
+        thinkingLevel: options.thinkingLevel,
+      });
+    } catch (error) {
+      if (error instanceof ExitError) {
+        throw new Error(`Workflow review node "${nodeId}" failed: all review agents failed.`);
+      }
+      throw error;
+    } finally {
+      if (options.jsonOutput) {
+        console.log = originalLog;
+        console.warn = originalWarn;
+      }
+      restoreExit();
+    }
+  });
 
   const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {

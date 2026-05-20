@@ -639,6 +639,88 @@ describe('workflow runner', () => {
     expect(() => JSON.parse(String(logSpy.mock.calls[0][0]))).not.toThrow();
   });
 
+  it('keeps review action log suppression isolated for concurrent JSON nodes', async () => {
+    const logSpy = vi.mocked(console.log);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let resolveFirstStarted: () => void = () => {};
+    let resolveFirstCanReturn: () => void = () => {};
+    const firstStarted = new Promise<void>((resolve) => {
+      resolveFirstStarted = resolve;
+    });
+    const firstCanReturn = new Promise<void>((resolve) => {
+      resolveFirstCanReturn = resolve;
+    });
+    let reviewCalls = 0;
+
+    mocks.executeReview.mockImplementation(
+      async (_config: unknown, source: { files: string[] }) => {
+        const callNumber = ++reviewCalls;
+        if (callNumber === 1) {
+          console.log('first review progress');
+          resolveFirstStarted();
+          await firstCanReturn;
+        } else {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+          });
+          console.log('second review progress');
+          console.warn('second review warning');
+        }
+
+        return {
+          issues: [],
+          summary: {
+            filesReviewed: source.files.length,
+            issuesFound: 0,
+            bySeverity: {},
+            byCategory: {},
+          },
+          filesReviewed: source.files.length,
+        };
+      }
+    );
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        concurrentReview: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              output: 'change',
+            },
+            reviewOne: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewOneResult',
+            },
+            reviewTwo: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewTwoResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const runPromise = runWorkflow(config, 'concurrentReview', {
+      jsonOutput: true,
+      workingDir: process.cwd(),
+    });
+    await Promise.race([firstStarted, timeoutAfter(250)]);
+    resolveFirstCanReturn();
+    await runPromise;
+
+    expect(reviewCalls).toBe(2);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(() => JSON.parse(String(logSpy.mock.calls[0][0]))).not.toThrow();
+    expect(console.log).toBe(logSpy);
+  });
+
   it('converts review action process exits into workflow errors', async () => {
     mocks.executeReview.mockImplementation(async () => {
       exitProcess(1);
