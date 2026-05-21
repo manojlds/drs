@@ -427,25 +427,26 @@ drs run task/docs-updater
 
 Workflows compose agents and built-in actions into a dependency graph. They are useful when one agent produces an artifact that another agent or action consumes.
 
-```yaml
-workflows:
-  release-notes:
-    inputs:
-      diff:
-        file: .drs/diff.md
-    nodes:
-      summarize:
-        agent: task/change-summarizer
-        input: |
-          Summarize these changes:
+Define reusable project workflows in `.drs/workflows/*.yaml`.
 
-          {{inputs.diff}}
-        output: summary
-      write-summary:
-        action: write
-        needs: [summarize]
-        input: "{{artifacts.summary}}"
-        writes: RELEASE_NOTES.md
+```yaml
+name: release-notes
+inputs:
+  diff:
+    file: .drs/diff.md
+nodes:
+  summarize:
+    agent: task/change-summarizer
+    input: |
+      Summarize these changes:
+
+      {{inputs.diff}}
+    output: summary
+  write-summary:
+    action: write
+    needs: [summarize]
+    input: "{{artifacts.summary}}"
+    writes: RELEASE_NOTES.md
 ```
 
 ```bash

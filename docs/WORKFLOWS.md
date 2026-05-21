@@ -18,44 +18,49 @@ drs workflow run github-pr-review --input owner=octocat --input repo=hello-world
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 ```
 
-## Config Example
+## Workflow Files
+
+Workflows are YAML files. Project workflow files live in `.drs/workflows/*.yaml`:
 
 ```yaml
-workflows:
+name: release-notes
+description: Draft release notes from a diff
+inputs:
+  title: Upcoming release
+nodes:
+  diff:
+    action: git-diff
+    output: diff
+
+  summarize:
+    agent: task/change-summarizer
+    needs: [diff]
+    input: |
+      Summarize these changes for release notes.
+
+      {{artifacts.diff}}
+    output: summary
+
   release-notes:
-    description: Draft release notes from a diff
-    inputs:
-      title: Upcoming release
-    nodes:
-      diff:
-        action: git-diff
-        output: diff
+    agent: task/docs-updater
+    needs: [summarize]
+    input: |
+      Title: {{inputs.title}}
 
-      summarize:
-        agent: task/change-summarizer
-        needs: [diff]
-        input: |
-          Summarize these changes for release notes.
+      Change summary:
+      {{artifacts.summary}}
+    output: releaseNotes
 
-          {{artifacts.diff}}
-        output: summary
-
-      release-notes:
-        agent: task/docs-updater
-        needs: [summarize]
-        input: |
-          Title: {{inputs.title}}
-
-          Change summary:
-          {{artifacts.summary}}
-        output: releaseNotes
-
-      write-release-notes:
-        action: write
-        needs: [release-notes]
-        input: "{{artifacts.releaseNotes}}"
-        writes: RELEASE_NOTES.md
+  write-release-notes:
+    action: write
+    needs: [release-notes]
+    input: "{{artifacts.releaseNotes}}"
+    writes: RELEASE_NOTES.md
 ```
+
+The `name` field is optional. When omitted, DRS uses the file name without `.yaml` or `.yml`.
+
+DRS also ships packaged workflows from `.pi/workflows/*.yaml`. Project workflow files override packaged workflows with the same name.
 
 ## Inputs
 
@@ -221,45 +226,48 @@ drs workflow run github-pr-review --input owner=octocat --input repo=hello-world
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 ```
 
-They are defined conceptually as:
+They are packaged as `.pi/workflows/*.yaml` files with this shape:
 
 ```yaml
-workflows:
-  local-review:
-    nodes:
-      change:
-        action: change-source
-        with:
-          type: local
-          staged: false
-        output: change
-      review:
-        action: review
-        needs: [change]
-        with:
-          source: change
-        output: review
+name: local-review
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: false
+    output: change
+  review:
+    action: review
+    needs: [change]
+    with:
+      source: change
+    output: review
+```
 
-  github-pr-review:
-    inputs:
-      owner: ""
-      repo: ""
-      pr: ""
-    nodes:
-      change:
-        action: change-source
-        with:
-          type: github-pr
-          owner: "{{inputs.owner}}"
-          repo: "{{inputs.repo}}"
-          pr: "{{inputs.pr}}"
-        output: change
-      review:
-        action: review
-        needs: [change]
-        with:
-          source: change
-        output: review
+Platform workflows use the same file shape with inputs:
+
+```yaml
+name: github-pr-review
+inputs:
+  owner: ""
+  repo: ""
+  pr: ""
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+    output: change
+  review:
+    action: review
+    needs: [change]
+    with:
+      source: change
+    output: review
 ```
 
 `gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
@@ -269,19 +277,18 @@ workflows:
 Use `agentsFrom: review.agents` to reuse the configured review agent list in a workflow:
 
 ```yaml
-workflows:
-  custom-review:
-    inputs:
-      diff:
-        file: .drs/diff.md
-    nodes:
-      review:
-        agentsFrom: review.agents
-        input: |
-          Review this diff and report only actionable findings.
+name: custom-review
+inputs:
+  diff:
+    file: .drs/diff.md
+nodes:
+  review:
+    agentsFrom: review.agents
+    input: |
+      Review this diff and report only actionable findings.
 
-          {{inputs.diff}}
-        output: reviewResult
+      {{inputs.diff}}
+    output: reviewResult
 ```
 
 The node output is a Markdown string with one section per agent. Detailed per-agent responses are also available at `nodes.review.responses`.
