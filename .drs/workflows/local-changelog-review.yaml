@@ -1,0 +1,47 @@
+name: local-changelog-review
+description: Update CHANGELOG.md for local changes, then review the final diff
+inputs:
+  changelog:
+    file: CHANGELOG.md
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: false
+    output: change
+
+  update-changelog:
+    agent: task/changelog-updater
+    needs:
+      - change
+    input: |
+      Update CHANGELOG.md for these local changes.
+
+      Return the complete updated CHANGELOG.md file only.
+      Do not wrap the output in markdown fences.
+
+      Current CHANGELOG.md:
+      {{inputs.changelog}}
+
+      Local change source:
+      {{artifacts.change}}
+    output: changelog
+    writes: CHANGELOG.md
+
+  final-change:
+    action: change-source
+    needs:
+      - update-changelog
+    with:
+      type: local
+      staged: false
+    output: finalChange
+
+  review:
+    action: review
+    needs:
+      - final-change
+    with:
+      source: finalChange
+    output: review

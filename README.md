@@ -87,6 +87,7 @@ drs review-local --agents review/security,review/quality
 | Review local unstaged changes | `drs review-local` |
 | Review local staged changes | `drs review-local --staged` |
 | Review local unstaged changes via workflow | `drs workflow run local-review` |
+| Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
 | Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |

@@ -13,6 +13,9 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 drs workflow run local-review
 drs workflow run local-staged-review --json -o .drs/local-review.json
 
+# DRS project-local changelog workflow
+drs workflow run local-changelog-review
+
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
@@ -271,6 +274,16 @@ nodes:
 ```
 
 `gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
+
+## DRS Local Changelog Workflow
+
+This repository defines a project-local workflow at `.drs/workflows/local-changelog-review.yaml`:
+
+```bash
+drs workflow run local-changelog-review
+```
+
+It loads the local unstaged diff, runs `task/changelog-updater`, writes the complete updated `CHANGELOG.md`, reloads the local diff, then runs the normal DRS review action on the final changes.
 
 ## Review Agent Fan-Out
 
