@@ -440,6 +440,12 @@ async function runActionWorkflowNode(
   if (node.action === 'git-diff') {
     return runGitDiffWorkflowNode(nodeId, node, workingDir, context);
   }
+  if (node.action === 'git-add') {
+    return runGitAddWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'git-commit') {
+    return runGitCommitWorkflowNode(nodeId, node, workingDir, context);
+  }
   if (node.action === 'change-source') {
     return runChangeSourceWorkflowNode(nodeId, node, workingDir, context);
   }
@@ -531,6 +537,40 @@ function requireNumberActionOption(
   return parsed;
 }
 
+function getPathActionOption(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  workingDir: string
+): string[] {
+  const rawPaths = hasActionOption(node, 'paths')
+    ? requireStringActionOption(nodeId, node, 'paths', context)
+    : requireStringActionOption(nodeId, node, 'path', context);
+  const paths = rawPaths
+    .split(/[\n,]/)
+    .map((path) => path.trim())
+    .filter(Boolean);
+
+  if (paths.length === 0) {
+    throw new Error(`Workflow node "${nodeId}" must define at least one path.`);
+  }
+
+  for (const path of paths) {
+    resolveWithinWorkingDir(workingDir, path, 'access');
+  }
+
+  return paths;
+}
+
+async function requireWorkflowGitRepo(nodeId: string, workingDir: string) {
+  const git = simpleGit({ baseDir: workingDir });
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error(`Workflow git node "${nodeId}" must run from a git repository.`);
+  }
+  return git;
+}
+
 async function runGitDiffWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -557,6 +597,59 @@ async function runGitDiffWorkflowNode(
     response: diff,
     output: diff,
     writes,
+  };
+}
+
+async function runGitAddWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir);
+  const paths = getPathActionOption(nodeId, node, context, workingDir);
+  await git.add(paths);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: paths.join('\n'),
+    output: paths,
+  };
+}
+
+async function runGitCommitWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir);
+  const message = requireStringActionOption(nodeId, node, 'message', context);
+  const paths =
+    hasActionOption(node, 'paths') || hasActionOption(node, 'path')
+      ? getPathActionOption(nodeId, node, context, workingDir)
+      : undefined;
+
+  if (paths) {
+    await git.add(paths);
+  }
+
+  const commit = paths ? await git.commit(message, paths) : await git.commit(message);
+  const output = {
+    commit: commit.commit,
+    message,
+    paths,
+    summary: commit.summary,
+  };
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: commit.commit ? `Created commit ${commit.commit}` : 'Created git commit',
+    output,
   };
 }
 

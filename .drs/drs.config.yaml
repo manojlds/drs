@@ -42,6 +42,10 @@ agents:
     review:
       model: opencode-go/kimi-k2.6
 
+workflow:
+  # Default workflow used by `drs workflow run` when no workflow name is provided.
+  default: local-changelog-review
+
 review:
 
   # Review agents (execution order)

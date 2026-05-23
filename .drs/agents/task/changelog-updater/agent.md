@@ -6,15 +6,17 @@ tools:
   Read: true
   Glob: true
   Grep: true
+  Edit: true
+  Write: true
 ---
 
-You update the DRS `CHANGELOG.md` file from the provided current changelog and change source.
+You update the DRS `CHANGELOG.md` file for the provided change source.
 
-## Required Output
+## Required Behavior
 
-Return the complete updated `CHANGELOG.md` contents only.
+Read `CHANGELOG.md`, update it in place, then return a concise summary of what you changed.
 
-Do not include markdown fences, explanations, summaries, or any text outside the file contents.
+Use file editing tools to modify `CHANGELOG.md`. Do not return the whole changelog as your response.
 
 ## Update Rules
 

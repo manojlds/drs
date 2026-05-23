@@ -124,8 +124,8 @@ program
 const workflowCommand = new Command('workflow').description('Run configured workflows');
 
 workflowCommand
-  .command('run <name>')
-  .description('Run a configured workflow by name')
+  .command('run [name]')
+  .description('Run a workflow by name, or workflow.default when omitted')
   .option('-i, --input <key=value>', 'Set workflow input value', collectOption, [])
   .option('--input-file <key=path>', 'Read workflow input value from a file', collectOption, [])
   .option('-o, --output <path>', 'Write workflow result JSON to a file')
@@ -137,7 +137,7 @@ workflowCommand
     'Reasoning effort level: off, minimal, low, medium, high, xhigh'
   )
   .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
-  .action(async (name, options) => {
+  .action(async (name: string | undefined, options) => {
     try {
       configureLogger({
         level: options.debug ? 'debug' : 'error',
@@ -147,8 +147,12 @@ workflowCommand
 
       const config = loadConfig(process.cwd());
       const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+      const workflowName = name ?? config.workflow?.default;
+      if (!workflowName) {
+        throw new Error('Provide a workflow name or set workflow.default in .drs/drs.config.yaml.');
+      }
 
-      await runWorkflow(config, name, {
+      await runWorkflow(config, workflowName, {
         inputs: parseKeyValueOptions(options.input, '--input'),
         inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),
         outputPath: options.output,

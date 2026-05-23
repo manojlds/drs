@@ -6,6 +6,7 @@ DRS workflows run configured agents and built-in actions as a dependency graph. 
 
 ```bash
 drs workflow run release-notes
+drs workflow run # uses workflow.default from .drs/drs.config.yaml when configured
 drs workflow run release-notes --input title="v1.2.3" --input-file diff=.drs/diff.md
 drs workflow run release-notes --json -o .drs/workflow-result.json
 
@@ -65,6 +66,13 @@ The `name` field is optional. When omitted, DRS uses the file name without `.yam
 
 DRS also ships packaged workflows from `.pi/workflows/*.yaml`. Project workflow files override packaged workflows with the same name.
 
+Use `workflow.default` in `.drs/drs.config.yaml` to select the workflow used by `drs workflow run` when no workflow name is provided:
+
+```yaml
+workflow:
+  default: local-changelog-review
+```
+
 ## Inputs
 
 Workflow inputs are strings. They can be configured inline or read from repo-relative files:
@@ -92,7 +100,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `change-source`, and `review` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, and `review` |
 
 Common node fields:
 
@@ -194,6 +202,31 @@ nodes:
     output: diff
 ```
 
+### `git-add`
+
+Stages repo-relative paths. Use `with.path` for one path or `with.paths` for comma/newline-separated paths.
+
+```yaml
+nodes:
+  stage-changelog:
+    action: git-add
+    with:
+      paths: CHANGELOG.md, README.md
+```
+
+### `git-commit`
+
+Creates a git commit. When `with.path` or `with.paths` is provided, DRS stages and commits only those paths. Without paths, it commits the current index.
+
+```yaml
+nodes:
+  commit-changelog:
+    action: git-commit
+    with:
+      paths: CHANGELOG.md
+      message: "docs: update changelog"
+```
+
 ### `write`
 
 Writes rendered input to a repo-relative file.
@@ -283,7 +316,7 @@ This repository defines a project-local workflow at `.drs/workflows/local-change
 drs workflow run local-changelog-review
 ```
 
-It loads the local unstaged diff, runs `task/changelog-updater`, writes the complete updated `CHANGELOG.md`, reloads the local diff, then runs the normal DRS review action on the final changes.
+It loads the local unstaged diff, runs `task/changelog-updater` to edit `CHANGELOG.md` in place, reloads the local diff, runs the normal DRS review action on the final changes, then commits only `CHANGELOG.md` with `docs: update changelog`.
 
 ## Review Agent Fan-Out
 

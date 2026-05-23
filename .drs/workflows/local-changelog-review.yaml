@@ -1,8 +1,5 @@
 name: local-changelog-review
 description: Update CHANGELOG.md for local changes, then review the final diff
-inputs:
-  changelog:
-    file: CHANGELOG.md
 nodes:
   change:
     action: change-source
@@ -18,16 +15,12 @@ nodes:
     input: |
       Update CHANGELOG.md for these local changes.
 
-      Return the complete updated CHANGELOG.md file only.
-      Do not wrap the output in markdown fences.
-
-      Current CHANGELOG.md:
-      {{inputs.changelog}}
+      Read CHANGELOG.md yourself and edit it in place.
+      Do not return the full changelog content.
 
       Local change source:
       {{artifacts.change}}
     output: changelog
-    writes: CHANGELOG.md
 
   final-change:
     action: change-source
@@ -45,3 +38,12 @@ nodes:
     with:
       source: finalChange
     output: review
+
+  commit-changelog:
+    action: git-commit
+    needs:
+      - review
+    with:
+      paths: CHANGELOG.md
+      message: "docs: update changelog"
+    output: changelogCommit

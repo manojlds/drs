@@ -34,7 +34,7 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow action. */
-  action?: 'write' | 'git-diff' | 'change-source' | 'review';
+  action?: 'write' | 'git-diff' | 'git-add' | 'git-commit' | 'change-source' | 'review';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
@@ -203,6 +203,11 @@ export interface DRSConfig {
 
   // Effective workflow/DAG definitions loaded from workflow files.
   workflows?: Record<string, WorkflowConfig>;
+
+  // Workflow run defaults and project-level workflow selection.
+  workflow?: {
+    default?: string;
+  };
 
   /**
    * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
@@ -575,6 +580,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     opencode: mergeSection(base.opencode, override.opencode),
     agents: mergeSection(base.agents, override.agents),
     workflows: mergeSection(base.workflows, override.workflows),
+    workflow: mergeSection(base.workflow, override.workflow),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),

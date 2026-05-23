@@ -223,6 +223,24 @@ describe('Config', () => {
     }
   });
 
+  it('loads workflow run defaults from drs.config.yaml', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-default-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['workflow:', '  default: local-changelog-review', ''].join('\n')
+      );
+
+      const config = loadConfig(projectRoot);
+
+      expect(config.workflow?.default).toBe('local-changelog-review');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('uses DRS_DEFAULT_MODEL as the generic default model environment alias', () => {
     const previous = process.env.DRS_DEFAULT_MODEL;
     process.env.DRS_DEFAULT_MODEL = 'provider/env-default-model';

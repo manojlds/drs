@@ -97,6 +97,7 @@ drs review-local --agents review/security,review/quality
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
+| Run the default project workflow | `drs workflow run` |
 
 ## Deployment Modes
 
@@ -452,7 +453,15 @@ nodes:
 
 ```bash
 drs workflow run release-notes
+drs workflow run # uses workflow.default from .drs/drs.config.yaml when configured
 drs workflow run release-notes --input-file diff=changes.md --json
+```
+
+Select the default workflow in `.drs/drs.config.yaml`:
+
+```yaml
+workflow:
+  default: local-changelog-review
 ```
 
 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the full workflow configuration reference.

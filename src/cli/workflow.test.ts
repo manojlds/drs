@@ -20,6 +20,15 @@ const mocks = vi.hoisted(() => {
     git: {
       checkIsRepo: vi.fn(async () => true),
       diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
+      add: vi.fn(async () => ''),
+      commit: vi.fn(async () => ({
+        commit: 'abc1234',
+        summary: {
+          changes: 1,
+          insertions: 2,
+          deletions: 0,
+        },
+      })),
     },
     simpleGit: vi.fn(),
     createGitHubClient: vi.fn(() => ({ platform: 'github' })),
@@ -146,6 +155,15 @@ describe('workflow runner', () => {
     mocks.simpleGit.mockReturnValue(mocks.git);
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
+    mocks.git.add.mockResolvedValue('');
+    mocks.git.commit.mockResolvedValue({
+      commit: 'abc1234',
+      summary: {
+        changes: 1,
+        insertions: 2,
+        deletions: 0,
+      },
+    });
     mocks.parseDiff.mockReturnValue([{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]);
     mocks.getChangedFiles.mockReturnValue(['src/app.ts']);
     mocks.getFilesWithDiffs.mockReturnValue([
@@ -535,6 +553,88 @@ describe('workflow runner', () => {
         prompt: 'Summarize diff --git a/src/app.ts b/src/app.ts',
       })
     );
+  });
+
+  it('stages paths with a git-add action', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-add-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        stageChangelog: {
+          nodes: {
+            stage: {
+              action: 'git-add',
+              with: { paths: 'CHANGELOG.md, README.md' },
+              output: 'stagedPaths',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'stageChangelog', {
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.git.add).toHaveBeenCalledWith(['CHANGELOG.md', 'README.md']);
+    expect(result.artifacts.stagedPaths).toEqual(['CHANGELOG.md', 'README.md']);
+  });
+
+  it('commits only configured paths with a git-commit action', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-commit-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        commitChangelog: {
+          nodes: {
+            commit: {
+              action: 'git-commit',
+              with: {
+                paths: 'CHANGELOG.md',
+                message: 'docs: update changelog',
+              },
+              output: 'commitResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'commitChangelog', {
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.git.add).toHaveBeenCalledWith(['CHANGELOG.md']);
+    expect(mocks.git.commit).toHaveBeenCalledWith('docs: update changelog', ['CHANGELOG.md']);
+    expect(result.artifacts.commitResult).toMatchObject({
+      commit: 'abc1234',
+      message: 'docs: update changelog',
+      paths: ['CHANGELOG.md'],
+    });
+  });
+
+  it('rejects git action paths outside the working directory', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-path-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        unsafeStage: {
+          nodes: {
+            stage: {
+              action: 'git-add',
+              with: { path: '../outside.md' },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'unsafeStage', {
+        workingDir: projectRoot,
+      })
+    ).rejects.toThrow('Refusing to access outside working directory');
+    expect(mocks.git.add).not.toHaveBeenCalled();
   });
 
   it('loads a local change source and reviews it', async () => {
