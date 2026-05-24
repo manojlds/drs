@@ -34,7 +34,15 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow action. */
-  action?: 'write' | 'git-diff' | 'git-add' | 'git-commit' | 'change-source' | 'review';
+  action?:
+    | 'write'
+    | 'git-diff'
+    | 'git-add'
+    | 'git-commit'
+    | 'change-source'
+    | 'review'
+    | 'post-comment'
+    | 'post-review-comments';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */

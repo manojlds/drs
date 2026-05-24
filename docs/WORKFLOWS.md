@@ -19,7 +19,9 @@ drs workflow run local-changelog-review
 
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
 ```
 
 ## Workflow Files
@@ -100,7 +102,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, and `review` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `post-comment`, and `post-review-comments` |
 
 Common node fields:
 
@@ -179,6 +181,51 @@ nodes:
 ```
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
+
+### `post-comment`
+
+Posts a general PR/MR comment. Use `with.marker` to update an existing DRS-managed comment instead of creating duplicates.
+
+```yaml
+nodes:
+  announce:
+    action: post-comment
+    input: "Release notes are ready."
+    with:
+      platform: github
+      owner: octocat
+      repo: hello-world
+      pr: 456
+      marker: release-notes
+```
+
+When a workflow already has a platform `change-source` artifact, `post-comment` can reuse it:
+
+```yaml
+nodes:
+  announce:
+    action: post-comment
+    input: "Release notes are ready."
+    with:
+      source: change
+      marker: release-notes
+```
+
+### `post-review-comments`
+
+Posts DRS review results to GitHub or GitLab using the same summary marker and issue fingerprints as `review-pr --post-comments` and `review-mr --post-comments`.
+
+```yaml
+nodes:
+  post-comments:
+    action: post-review-comments
+    needs: [review]
+    with:
+      source: change
+      review: review
+```
+
+The `source` must be a platform `change-source` artifact and `review` must be the output artifact from an `action: review` node.
 
 ### `git-diff`
 
@@ -259,7 +306,9 @@ DRS ships with local review workflows equivalent to the local diff source loadin
 drs workflow run local-review
 drs workflow run local-staged-review
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
 ```
 
 They are packaged as `.pi/workflows/*.yaml` files with this shape:

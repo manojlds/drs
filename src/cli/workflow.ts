@@ -11,9 +11,20 @@ import type {
 import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
-import { executeReview, type ReviewSource } from '../lib/review-orchestrator.js';
+import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
-import type { FileChange, PullRequest } from '../lib/platform-client.js';
+import type {
+  FileChange,
+  InlineCommentPosition,
+  LineValidator,
+  PlatformClient,
+  PullRequest,
+} from '../lib/platform-client.js';
+import type { ReviewIssue } from '../lib/comment-formatter.js';
+import { postReviewComments } from '../lib/comment-poster.js';
+import { findExistingCommentById, type PlatformComment } from '../lib/comment-manager.js';
+import { removeErrorComment } from '../lib/error-comment-poster.js';
+import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -58,13 +69,30 @@ interface WorkflowTemplateContext {
   artifacts: Record<string, unknown>;
 }
 
-// Review execution temporarily mutates process globals, so review nodes must not overlap.
-let reviewWorkflowNodeGlobalLock: Promise<void> = Promise.resolve();
+type WorkflowPlatform = 'github' | 'gitlab';
 
-async function withReviewWorkflowNodeGlobals<T>(run: () => Promise<T>): Promise<T> {
-  const previousLock = reviewWorkflowNodeGlobalLock;
+interface WorkflowPostTarget {
+  platform: WorkflowPlatform;
+  platformClient: PlatformClient;
+  projectId: string;
+  prNumber: number;
+  pullRequest?: PullRequest;
+  changedFiles?: FileChange[];
+}
+
+interface GitLabDiffRefs {
+  base_sha?: string;
+  head_sha?: string;
+  start_sha?: string;
+}
+
+// Some workflow actions temporarily mutate process globals, so those sections must not overlap.
+let workflowProcessGlobalLock: Promise<void> = Promise.resolve();
+
+async function withWorkflowProcessGlobals<T>(run: () => Promise<T>): Promise<T> {
+  const previousLock = workflowProcessGlobalLock;
   let releaseLock!: () => void;
-  reviewWorkflowNodeGlobalLock = new Promise<void>((resolve) => {
+  workflowProcessGlobalLock = new Promise<void>((resolve) => {
     releaseLock = resolve;
   });
 
@@ -74,6 +102,28 @@ async function withReviewWorkflowNodeGlobals<T>(run: () => Promise<T>): Promise<
   } finally {
     releaseLock();
   }
+}
+
+async function withWorkflowConsoleSuppressed<T>(
+  suppress: boolean,
+  run: () => Promise<T>
+): Promise<T> {
+  if (!suppress) {
+    return run();
+  }
+
+  return withWorkflowProcessGlobals(async () => {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = () => undefined;
+    console.warn = () => undefined;
+    try {
+      return await run();
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+  });
 }
 
 function getNodeNeeds(node: WorkflowNodeConfig): string[] {
@@ -452,6 +502,12 @@ async function runActionWorkflowNode(
   if (node.action === 'review') {
     return runReviewWorkflowNode(config, nodeId, node, options, workingDir, context);
   }
+  if (node.action === 'post-comment') {
+    return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context);
+  }
+  if (node.action === 'post-review-comments') {
+    return runPostReviewCommentsWorkflowNode(config, nodeId, node, options, workingDir, context);
+  }
 
   throw new Error(`Unsupported workflow action "${node.action}" in node "${nodeId}".`);
 }
@@ -697,6 +753,7 @@ function createPlatformChangeSource(
       platform,
       projectId,
       pullRequest,
+      changedFiles,
     },
     workingDir,
   };
@@ -791,6 +848,361 @@ async function runChangeSourceWorkflowNode(
   };
 }
 
+function isWorkflowPlatform(value: string | undefined): value is WorkflowPlatform {
+  return value === 'github' || value === 'gitlab';
+}
+
+function createWorkflowPlatformClient(platform: WorkflowPlatform): PlatformClient {
+  if (platform === 'github') {
+    return new GitHubPlatformAdapter(createGitHubClient());
+  }
+
+  return new GitLabPlatformAdapter(createGitLabClient());
+}
+
+function readSourcePostTarget(source: ReviewSource | undefined): Partial<WorkflowPostTarget> {
+  if (!source) {
+    return {};
+  }
+
+  const platform =
+    typeof source.context.platform === 'string' ? source.context.platform : undefined;
+  const projectId =
+    typeof source.context.projectId === 'string' ? source.context.projectId : undefined;
+  const pullRequest = isPullRequest(source.context.pullRequest)
+    ? source.context.pullRequest
+    : undefined;
+  const changedFiles = Array.isArray(source.context.changedFiles)
+    ? source.context.changedFiles.filter(isFileChange)
+    : undefined;
+
+  return {
+    platform: isWorkflowPlatform(platform) ? platform : undefined,
+    projectId,
+    prNumber: pullRequest?.number,
+    pullRequest,
+    changedFiles,
+  };
+}
+
+function resolvePostTarget(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  source?: ReviewSource
+): WorkflowPostTarget {
+  const sourceTarget = readSourcePostTarget(source);
+  const explicitPlatform = getStringActionOption(node, 'platform', context);
+  const platform = explicitPlatform ?? sourceTarget.platform;
+  if (!isWorkflowPlatform(platform)) {
+    throw new Error(
+      `Workflow post node "${nodeId}" must resolve with.platform to github or gitlab.`
+    );
+  }
+
+  const projectId =
+    hasActionOption(node, 'owner') || hasActionOption(node, 'repo')
+      ? `${requireStringActionOption(nodeId, node, 'owner', context)}/${requireStringActionOption(
+          nodeId,
+          node,
+          'repo',
+          context
+        )}`
+      : (getStringActionOption(node, 'project', context) ??
+        getStringActionOption(node, 'projectId', context) ??
+        sourceTarget.projectId);
+  if (!projectId) {
+    throw new Error(`Workflow post node "${nodeId}" must define a project target.`);
+  }
+
+  const prNumber = hasActionOption(node, 'pr')
+    ? requireNumberActionOption(nodeId, node, 'pr', context)
+    : hasActionOption(node, 'mr')
+      ? requireNumberActionOption(nodeId, node, 'mr', context)
+      : hasActionOption(node, 'prNumber')
+        ? requireNumberActionOption(nodeId, node, 'prNumber', context)
+        : hasActionOption(node, 'mrIid')
+          ? requireNumberActionOption(nodeId, node, 'mrIid', context)
+          : sourceTarget.prNumber;
+  if (!prNumber) {
+    throw new Error(`Workflow post node "${nodeId}" must define a PR/MR number.`);
+  }
+
+  return {
+    platform,
+    platformClient: createWorkflowPlatformClient(platform),
+    projectId,
+    prNumber,
+    pullRequest: sourceTarget.pullRequest,
+    changedFiles: sourceTarget.changedFiles,
+  };
+}
+
+function isPullRequest(value: unknown): value is PullRequest {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<PullRequest>;
+  return (
+    typeof candidate.number === 'number' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.author === 'string' &&
+    typeof candidate.sourceBranch === 'string' &&
+    typeof candidate.targetBranch === 'string' &&
+    typeof candidate.headSha === 'string'
+  );
+}
+
+function isFileChange(value: unknown): value is FileChange {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<FileChange>;
+  return typeof candidate.filename === 'string' && typeof candidate.status === 'string';
+}
+
+function parseValidLinesFromPatch(patch: string): Set<number> {
+  const validLines = new Set<number>();
+  const lines = patch.split('\n');
+  let currentLine = 0;
+
+  for (const line of lines) {
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      currentLine = parseInt(hunkMatch[1], 10);
+      continue;
+    }
+
+    if (!line) continue;
+
+    const prefix = line[0];
+    if (prefix === '+') {
+      validLines.add(currentLine);
+      currentLine++;
+    } else if (prefix === ' ') {
+      validLines.add(currentLine);
+      currentLine++;
+    }
+  }
+
+  return validLines;
+}
+
+function createWorkflowLineValidator(
+  platform: WorkflowPlatform,
+  source: ReviewSource
+): LineValidator | undefined {
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  const platformData = pullRequest?.platformData as { diff_refs?: GitLabDiffRefs } | undefined;
+  const diffRefs = platformData?.diff_refs;
+  if (platform === 'gitlab' && (!diffRefs?.base_sha || !diffRefs.head_sha || !diffRefs.start_sha)) {
+    return undefined;
+  }
+
+  const fileChanges = Array.isArray(source.context.changedFiles)
+    ? source.context.changedFiles.filter(isFileChange)
+    : [];
+  const patchSources = fileChanges.length > 0 ? fileChanges : (source.filesWithDiffs ?? []);
+  const validLinesMap = new Map<string, Set<number>>();
+  for (const file of patchSources) {
+    if ('status' in file && file.status === 'removed') {
+      continue;
+    }
+    const patch = file.patch;
+    if (patch) {
+      validLinesMap.set(file.filename, parseValidLinesFromPatch(patch));
+    }
+  }
+
+  return {
+    isValidLine(file: string, line: number): boolean {
+      const validLines = validLinesMap.get(file);
+      return validLines !== undefined && validLines.has(line);
+    },
+  };
+}
+
+function createWorkflowInlinePosition(
+  platform: WorkflowPlatform,
+  source: ReviewSource
+): ((issue: ReviewIssue, platformData: unknown) => InlineCommentPosition) | undefined {
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  if (!pullRequest) {
+    return undefined;
+  }
+
+  if (platform === 'github') {
+    return (issue: ReviewIssue) => ({
+      path: issue.file,
+      line: issue.line!,
+      commitSha: pullRequest.headSha,
+    });
+  }
+
+  return (issue: ReviewIssue, platformData: unknown) => {
+    const data = platformData as { diff_refs?: GitLabDiffRefs } | undefined;
+    const refs = data?.diff_refs;
+    return {
+      path: issue.file,
+      line: issue.line!,
+      baseSha: refs?.base_sha,
+      headSha: refs?.head_sha,
+      startSha: refs?.start_sha,
+    };
+  };
+}
+
+function isReviewResult(value: unknown): value is ReviewResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<ReviewResult>;
+  return Array.isArray(candidate.issues) && typeof candidate.summary === 'object';
+}
+
+function formatMarkedComment(body: string, marker: string | undefined): string {
+  if (!marker) {
+    return body;
+  }
+
+  const markerComment = `<!-- drs-comment-id: ${marker} -->`;
+  return body.includes(markerComment) ? body : `${markerComment}\n${body}`;
+}
+
+async function runPostCommentWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = isReviewSource(context.artifacts[sourceArtifact])
+    ? context.artifacts[sourceArtifact]
+    : undefined;
+  const target = resolvePostTarget(nodeId, node, context, source);
+  const rawBody =
+    node.input === undefined
+      ? requireStringActionOption(nodeId, node, 'body', context)
+      : renderTemplate(node.input, context);
+  const marker = getStringActionOption(node, 'marker', context)?.trim();
+  const body = formatMarkedComment(rawBody, marker);
+  let operation = 'created';
+
+  if (marker) {
+    const comments = await target.platformClient.getComments(target.projectId, target.prNumber);
+    const mappedComments: PlatformComment[] = comments.map((comment) => ({
+      id: comment.id,
+      body: comment.body,
+    }));
+    const existingComment = findExistingCommentById(mappedComments, marker);
+    if (existingComment) {
+      await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+        target.platformClient.updateComment(
+          target.projectId,
+          target.prNumber,
+          existingComment.id,
+          body
+        )
+      );
+      operation = 'updated';
+    } else {
+      await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+        target.platformClient.createComment(target.projectId, target.prNumber, body)
+      );
+    }
+  } else {
+    await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+      target.platformClient.createComment(target.projectId, target.prNumber, body)
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `${operation} comment on ${target.platform} ${target.projectId}#${target.prNumber}`,
+    output: {
+      platform: target.platform,
+      projectId: target.projectId,
+      prNumber: target.prNumber,
+      marker,
+      operation,
+    },
+  };
+}
+
+async function runPostReviewCommentsWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
+  const source = context.artifacts[sourceArtifact];
+  const reviewResult = context.artifacts[reviewArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow post-review-comments node "${nodeId}" needs a ReviewSource artifact.`
+    );
+  }
+  if (!isReviewResult(reviewResult)) {
+    throw new Error(
+      `Workflow post-review-comments node "${nodeId}" needs a ReviewResult artifact.`
+    );
+  }
+
+  const target = resolvePostTarget(nodeId, node, context, source);
+  const pullRequest = target.pullRequest;
+  const platformData = pullRequest?.platformData;
+  const lineValidator = createWorkflowLineValidator(target.platform, source);
+  const createInlinePosition = lineValidator
+    ? createWorkflowInlinePosition(target.platform, source)
+    : undefined;
+  const shouldRemoveErrorComment =
+    !hasActionOption(node, 'removeErrorComment') ||
+    getBooleanActionOption(node, 'removeErrorComment');
+  await withWorkflowConsoleSuppressed(options.jsonOutput === true, async () => {
+    if (shouldRemoveErrorComment) {
+      await removeErrorComment(target.platformClient, target.projectId, target.prNumber);
+    }
+
+    const cursorFixLinks = resolveCursorFixLinkOptions(config, target.projectId, workingDir);
+    await postReviewComments(
+      target.platformClient,
+      target.projectId,
+      target.prNumber,
+      reviewResult.summary,
+      reviewResult.issues,
+      reviewResult.changeSummary,
+      reviewResult.usage,
+      platformData,
+      lineValidator,
+      createInlinePosition,
+      cursorFixLinks
+    );
+  });
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `posted review comments on ${target.platform} ${target.projectId}#${target.prNumber}`,
+    output: {
+      platform: target.platform,
+      projectId: target.projectId,
+      prNumber: target.prNumber,
+      issues: reviewResult.issues.length,
+    },
+  };
+}
+
 function isReviewSource(value: unknown): value is ReviewSource {
   if (!value || typeof value !== 'object') {
     return false;
@@ -822,7 +1234,7 @@ async function runReviewWorkflowNode(
     );
   }
 
-  const reviewResult = await withReviewWorkflowNodeGlobals(async () => {
+  const reviewResult = await withWorkflowProcessGlobals(async () => {
     const restoreExit = setExitHandler((code: number): never => {
       throw new ExitError(code);
     });
