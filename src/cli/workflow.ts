@@ -11,6 +11,7 @@ import type {
 import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
+import { parseValidLinesFromPatch } from '../lib/diff-lines.js';
 import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
 import type {
@@ -885,6 +886,54 @@ function readSourcePostTarget(source: ReviewSource | undefined): Partial<Workflo
   };
 }
 
+function resolvePostProjectId(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  sourceTarget: Partial<WorkflowPostTarget>
+): string {
+  if (hasActionOption(node, 'owner') || hasActionOption(node, 'repo')) {
+    const owner = requireStringActionOption(nodeId, node, 'owner', context);
+    const repo = requireStringActionOption(nodeId, node, 'repo', context);
+    return `${owner}/${repo}`;
+  }
+
+  const projectId =
+    getStringActionOption(node, 'project', context) ??
+    getStringActionOption(node, 'projectId', context) ??
+    sourceTarget.projectId;
+  if (!projectId) {
+    throw new Error(`Workflow post node "${nodeId}" must define a project target.`);
+  }
+
+  return projectId;
+}
+
+function resolvePostPrNumber(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  sourceTarget: Partial<WorkflowPostTarget>
+): number {
+  if (hasActionOption(node, 'pr')) {
+    return requireNumberActionOption(nodeId, node, 'pr', context);
+  }
+  if (hasActionOption(node, 'mr')) {
+    return requireNumberActionOption(nodeId, node, 'mr', context);
+  }
+  if (hasActionOption(node, 'prNumber')) {
+    return requireNumberActionOption(nodeId, node, 'prNumber', context);
+  }
+  if (hasActionOption(node, 'mrIid')) {
+    return requireNumberActionOption(nodeId, node, 'mrIid', context);
+  }
+  if (sourceTarget.prNumber) {
+    return sourceTarget.prNumber;
+  }
+
+  throw new Error(`Workflow post node "${nodeId}" must define a PR/MR number.`);
+}
+
 function resolvePostTarget(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -900,33 +949,8 @@ function resolvePostTarget(
     );
   }
 
-  const projectId =
-    hasActionOption(node, 'owner') || hasActionOption(node, 'repo')
-      ? `${requireStringActionOption(nodeId, node, 'owner', context)}/${requireStringActionOption(
-          nodeId,
-          node,
-          'repo',
-          context
-        )}`
-      : (getStringActionOption(node, 'project', context) ??
-        getStringActionOption(node, 'projectId', context) ??
-        sourceTarget.projectId);
-  if (!projectId) {
-    throw new Error(`Workflow post node "${nodeId}" must define a project target.`);
-  }
-
-  const prNumber = hasActionOption(node, 'pr')
-    ? requireNumberActionOption(nodeId, node, 'pr', context)
-    : hasActionOption(node, 'mr')
-      ? requireNumberActionOption(nodeId, node, 'mr', context)
-      : hasActionOption(node, 'prNumber')
-        ? requireNumberActionOption(nodeId, node, 'prNumber', context)
-        : hasActionOption(node, 'mrIid')
-          ? requireNumberActionOption(nodeId, node, 'mrIid', context)
-          : sourceTarget.prNumber;
-  if (!prNumber) {
-    throw new Error(`Workflow post node "${nodeId}" must define a PR/MR number.`);
-  }
+  const projectId = resolvePostProjectId(nodeId, node, context, sourceTarget);
+  const prNumber = resolvePostPrNumber(nodeId, node, context, sourceTarget);
 
   return {
     platform,
@@ -961,33 +985,6 @@ function isFileChange(value: unknown): value is FileChange {
 
   const candidate = value as Partial<FileChange>;
   return typeof candidate.filename === 'string' && typeof candidate.status === 'string';
-}
-
-function parseValidLinesFromPatch(patch: string): Set<number> {
-  const validLines = new Set<number>();
-  const lines = patch.split('\n');
-  let currentLine = 0;
-
-  for (const line of lines) {
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
-      continue;
-    }
-
-    if (!line) continue;
-
-    const prefix = line[0];
-    if (prefix === '+') {
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === ' ') {
-      validLines.add(currentLine);
-      currentLine++;
-    }
-  }
-
-  return validLines;
 }
 
 function createWorkflowLineValidator(

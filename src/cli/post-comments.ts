@@ -11,6 +11,7 @@ import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { enforceRepoBranchMatch, postReviewComments } from '../lib/unified-review-executor.js';
+import { parseValidLinesFromDiff, parseValidLinesFromPatch } from '../lib/diff-lines.js';
 
 export interface PostCommentsOptions {
   config: DRSConfig;
@@ -272,70 +273,4 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     createInlinePosition,
     cursorFixLinks
   );
-}
-
-/**
- * Parse a GitHub diff patch to extract valid line numbers for review comments
- * GitHub only allows comments on lines that are in the diff (added, removed, or context)
- */
-function parseValidLinesFromPatch(patch: string): Set<number> {
-  const validLines = new Set<number>();
-  const lines = patch.split('\n');
-  let currentLine = 0;
-
-  for (const line of lines) {
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
-      continue;
-    }
-
-    if (!line || line.length === 0) continue;
-
-    const prefix = line[0];
-    if (prefix === '+') {
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === ' ') {
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === '-') {
-      continue;
-    }
-  }
-
-  return validLines;
-}
-
-/**
- * Parse a GitLab diff to extract valid line numbers for review comments
- * GitLab only allows comments on lines that are in the diff (added or context)
- */
-function parseValidLinesFromDiff(diff: string): Set<number> {
-  const validLines = new Set<number>();
-  const lines = diff.split('\n');
-  let currentLine = 0;
-
-  for (const line of lines) {
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
-      continue;
-    }
-
-    if (!line || line.length === 0) continue;
-
-    const prefix = line[0];
-    if (prefix === '+') {
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === ' ') {
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === '-') {
-      continue;
-    }
-  }
-
-  return validLines;
 }
