@@ -70,6 +70,15 @@ interface WorkflowTemplateContext {
   artifacts: Record<string, unknown>;
 }
 
+interface WorkflowExecutionContext {
+  gitClients: Map<string, ReturnType<typeof simpleGit>>;
+  platformClients: Partial<Record<WorkflowPlatform, PlatformClient>>;
+  locks: {
+    exit: WorkflowLock;
+    console: WorkflowLock;
+  };
+}
+
 type WorkflowPlatform = 'github' | 'gitlab';
 
 interface WorkflowPostTarget {
@@ -87,13 +96,18 @@ interface GitLabDiffRefs {
   start_sha?: string;
 }
 
-// Some workflow actions temporarily mutate process globals, so those sections must not overlap.
-let workflowProcessGlobalLock: Promise<void> = Promise.resolve();
+interface WorkflowLock {
+  current: Promise<void>;
+}
 
-async function withWorkflowProcessGlobals<T>(run: () => Promise<T>): Promise<T> {
-  const previousLock = workflowProcessGlobalLock;
+function createWorkflowLock(): WorkflowLock {
+  return { current: Promise.resolve() };
+}
+
+async function withWorkflowLock<T>(lock: WorkflowLock, run: () => Promise<T>): Promise<T> {
+  const previousLock = lock.current;
   let releaseLock!: () => void;
-  workflowProcessGlobalLock = new Promise<void>((resolve) => {
+  lock.current = new Promise<void>((resolve) => {
     releaseLock = resolve;
   });
 
@@ -106,6 +120,7 @@ async function withWorkflowProcessGlobals<T>(run: () => Promise<T>): Promise<T> 
 }
 
 async function withWorkflowConsoleSuppressed<T>(
+  executionContext: WorkflowExecutionContext,
   suppress: boolean,
   run: () => Promise<T>
 ): Promise<T> {
@@ -113,7 +128,7 @@ async function withWorkflowConsoleSuppressed<T>(
     return run();
   }
 
-  return withWorkflowProcessGlobals(async () => {
+  return withWorkflowLock(executionContext.locks.console, async () => {
     const originalLog = console.log;
     const originalWarn = console.warn;
     console.log = () => undefined;
@@ -125,6 +140,37 @@ async function withWorkflowConsoleSuppressed<T>(
       console.warn = originalWarn;
     }
   });
+}
+
+function getWorkflowGitClient(
+  executionContext: WorkflowExecutionContext,
+  workingDir: string
+): ReturnType<typeof simpleGit> {
+  const existing = executionContext.gitClients.get(workingDir);
+  if (existing) {
+    return existing;
+  }
+
+  const git = simpleGit({ baseDir: workingDir });
+  executionContext.gitClients.set(workingDir, git);
+  return git;
+}
+
+function getWorkflowPlatformClient(
+  executionContext: WorkflowExecutionContext,
+  platform: WorkflowPlatform
+): PlatformClient {
+  const existing = executionContext.platformClients[platform];
+  if (existing) {
+    return existing;
+  }
+
+  const client =
+    platform === 'github'
+      ? new GitHubPlatformAdapter(createGitHubClient())
+      : new GitLabPlatformAdapter(createGitLabClient());
+  executionContext.platformClients[platform] = client;
+  return client;
 }
 
 function getNodeNeeds(node: WorkflowNodeConfig): string[] {
@@ -483,31 +529,48 @@ async function runActionWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   if (node.action === 'write') {
     return runWriteWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'git-diff') {
-    return runGitDiffWorkflowNode(nodeId, node, workingDir, context);
+    return runGitDiffWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'git-add') {
-    return runGitAddWorkflowNode(nodeId, node, workingDir, context);
+    return runGitAddWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'git-commit') {
-    return runGitCommitWorkflowNode(nodeId, node, workingDir, context);
+    return runGitCommitWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'change-source') {
     return runChangeSourceWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'review') {
-    return runReviewWorkflowNode(config, nodeId, node, options, workingDir, context);
+    return runReviewWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
   }
   if (node.action === 'post-comment') {
-    return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context);
+    return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context, executionContext);
   }
   if (node.action === 'post-review-comments') {
-    return runPostReviewCommentsWorkflowNode(config, nodeId, node, options, workingDir, context);
+    return runPostReviewCommentsWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
   }
 
   throw new Error(`Unsupported workflow action "${node.action}" in node "${nodeId}".`);
@@ -619,8 +682,12 @@ function getPathActionOption(
   return paths;
 }
 
-async function requireWorkflowGitRepo(nodeId: string, workingDir: string) {
-  const git = simpleGit({ baseDir: workingDir });
+async function requireWorkflowGitRepo(
+  nodeId: string,
+  workingDir: string,
+  executionContext: WorkflowExecutionContext
+) {
+  const git = getWorkflowGitClient(executionContext, workingDir);
   const isRepo = await git.checkIsRepo();
   if (!isRepo) {
     throw new Error(`Workflow git node "${nodeId}" must run from a git repository.`);
@@ -632,9 +699,10 @@ async function runGitDiffWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
-  const git = simpleGit({ baseDir: workingDir });
+  const git = getWorkflowGitClient(executionContext, workingDir);
   const isRepo = await git.checkIsRepo();
   if (!isRepo) {
     throw new Error(`Workflow git-diff node "${nodeId}" must run from a git repository.`);
@@ -661,9 +729,10 @@ async function runGitAddWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
-  const git = await requireWorkflowGitRepo(nodeId, workingDir);
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
   const paths = getPathActionOption(nodeId, node, context, workingDir);
   await git.add(paths);
 
@@ -680,9 +749,10 @@ async function runGitCommitWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
-  const git = await requireWorkflowGitRepo(nodeId, workingDir);
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
   const message = requireStringActionOption(nodeId, node, 'message', context);
   const paths =
     hasActionOption(node, 'paths') || hasActionOption(node, 'path')
@@ -853,14 +923,6 @@ function isWorkflowPlatform(value: string | undefined): value is WorkflowPlatfor
   return value === 'github' || value === 'gitlab';
 }
 
-function createWorkflowPlatformClient(platform: WorkflowPlatform): PlatformClient {
-  if (platform === 'github') {
-    return new GitHubPlatformAdapter(createGitHubClient());
-  }
-
-  return new GitLabPlatformAdapter(createGitLabClient());
-}
-
 function readSourcePostTarget(source: ReviewSource | undefined): Partial<WorkflowPostTarget> {
   if (!source) {
     return {};
@@ -938,6 +1000,7 @@ function resolvePostTarget(
   nodeId: string,
   node: WorkflowNodeConfig,
   context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext,
   source?: ReviewSource
 ): WorkflowPostTarget {
   const sourceTarget = readSourcePostTarget(source);
@@ -954,7 +1017,7 @@ function resolvePostTarget(
 
   return {
     platform,
-    platformClient: createWorkflowPlatformClient(platform),
+    platformClient: getWorkflowPlatformClient(executionContext, platform),
     projectId,
     prNumber,
     pullRequest: sourceTarget.pullRequest,
@@ -1074,13 +1137,14 @@ async function runPostCommentWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
   const source = isReviewSource(context.artifacts[sourceArtifact])
     ? context.artifacts[sourceArtifact]
     : undefined;
-  const target = resolvePostTarget(nodeId, node, context, source);
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
   const rawBody =
     node.input === undefined
       ? requireStringActionOption(nodeId, node, 'body', context)
@@ -1097,7 +1161,7 @@ async function runPostCommentWorkflowNode(
     }));
     const existingComment = findExistingCommentById(mappedComments, marker);
     if (existingComment) {
-      await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
         target.platformClient.updateComment(
           target.projectId,
           target.prNumber,
@@ -1107,12 +1171,12 @@ async function runPostCommentWorkflowNode(
       );
       operation = 'updated';
     } else {
-      await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
         target.platformClient.createComment(target.projectId, target.prNumber, body)
       );
     }
   } else {
-    await withWorkflowConsoleSuppressed(options.jsonOutput === true, () =>
+    await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
       target.platformClient.createComment(target.projectId, target.prNumber, body)
     );
   }
@@ -1138,7 +1202,8 @@ async function runPostReviewCommentsWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
   const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
@@ -1155,7 +1220,7 @@ async function runPostReviewCommentsWorkflowNode(
     );
   }
 
-  const target = resolvePostTarget(nodeId, node, context, source);
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
   const pullRequest = target.pullRequest;
   const platformData = pullRequest?.platformData;
   const lineValidator = createWorkflowLineValidator(target.platform, source);
@@ -1165,7 +1230,7 @@ async function runPostReviewCommentsWorkflowNode(
   const shouldRemoveErrorComment =
     !hasActionOption(node, 'removeErrorComment') ||
     getBooleanActionOption(node, 'removeErrorComment');
-  await withWorkflowConsoleSuppressed(options.jsonOutput === true, async () => {
+  await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, async () => {
     if (shouldRemoveErrorComment) {
       await removeErrorComment(target.platformClient, target.projectId, target.prNumber);
     }
@@ -1220,7 +1285,8 @@ async function runReviewWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
   const source = context.artifacts[sourceArtifact];
@@ -1231,7 +1297,7 @@ async function runReviewWorkflowNode(
     );
   }
 
-  const reviewResult = await withWorkflowProcessGlobals(async () => {
+  const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
     const restoreExit = setExitHandler((code: number): never => {
       throw new ExitError(code);
     });
@@ -1302,7 +1368,8 @@ async function runSingleWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const kind = getNodeKind(node);
 
@@ -1312,7 +1379,15 @@ async function runSingleWorkflowNode(
   if (kind === 'agents') {
     return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
   }
-  return runActionWorkflowNode(config, nodeId, node, options, workingDir, context);
+  return runActionWorkflowNode(
+    config,
+    nodeId,
+    node,
+    options,
+    workingDir,
+    context,
+    executionContext
+  );
 }
 
 export async function runWorkflow(
@@ -1331,6 +1406,14 @@ export async function runWorkflow(
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const context: WorkflowTemplateContext = { inputs, nodes, artifacts };
+  const executionContext: WorkflowExecutionContext = {
+    gitClients: new Map(),
+    platformClients: {},
+    locks: {
+      exit: createWorkflowLock(),
+      console: createWorkflowLock(),
+    },
+  };
   const executionOrder = getWorkflowExecutionOrder(workflowNodes);
   const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
@@ -1356,7 +1439,8 @@ export async function runWorkflow(
           node,
           options,
           workingDir,
-          context
+          context,
+          executionContext
         );
         return { nodeId, node, result };
       })

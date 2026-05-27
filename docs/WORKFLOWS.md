@@ -66,6 +66,8 @@ nodes:
 
 The `name` field is optional. When omitted, DRS uses the file name without `.yaml` or `.yml`.
 
+Inline `workflows:` maps in `.drs/drs.config.yaml` and `.gitlab-review.yml` are not supported in DRS 4.0 and are rejected at load time. Move each workflow into its own file under `.drs/workflows/*.yaml`.
+
 DRS also ships packaged workflows from `.pi/workflows/*.yaml`. Project workflow files override packaged workflows with the same name.
 
 Use `workflow.default` in `.drs/drs.config.yaml` to select the workflow used by `drs workflow run` when no workflow name is provided:
@@ -226,6 +228,10 @@ nodes:
 ```
 
 The `source` must be a platform `change-source` artifact and `review` must be the output artifact from an `action: review` node.
+
+Optional flags:
+
+- `with.removeErrorComment` (default `true`): set to `false` to keep any existing DRS error comment instead of removing it before posting review comments.
 
 ### `git-diff`
 

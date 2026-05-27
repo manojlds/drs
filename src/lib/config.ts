@@ -395,27 +395,19 @@ function loadWorkflowFilesFromDirectory(directoryPath: string): Record<string, W
     throw new Error(`Workflow path ${directoryPath} exists but is not a directory.`);
   }
 
-  return readdirSync(directoryPath)
-    .filter(isWorkflowFileName)
-    .sort()
-    .reduce<Record<string, WorkflowConfig>>((workflows, fileName) => {
-      return {
-        ...workflows,
-        ...loadWorkflowFile(join(directoryPath, fileName)),
-      };
-    }, {});
+  const workflows: Record<string, WorkflowConfig> = {};
+  for (const fileName of readdirSync(directoryPath).filter(isWorkflowFileName).sort()) {
+    Object.assign(workflows, loadWorkflowFile(join(directoryPath, fileName)));
+  }
+  return workflows;
 }
 
 function loadBuiltInWorkflowFiles(): Record<string, WorkflowConfig> {
-  return getBuiltInWorkflowPaths().reduce<Record<string, WorkflowConfig>>(
-    (workflows, directory) => {
-      return {
-        ...workflows,
-        ...loadWorkflowFilesFromDirectory(directory),
-      };
-    },
-    {}
-  );
+  const workflows: Record<string, WorkflowConfig> = {};
+  for (const directory of getBuiltInWorkflowPaths()) {
+    Object.assign(workflows, loadWorkflowFilesFromDirectory(directory));
+  }
+  return workflows;
 }
 
 /**

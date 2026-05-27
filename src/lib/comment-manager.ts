@@ -75,6 +75,9 @@ export function findExistingSummaryComment(comments: PlatformComment[]): Platfor
   return findExistingCommentById(comments, BOT_COMMENT_ID);
 }
 
+/**
+ * Find an existing comment by DRS marker id (for example drs-review-summary).
+ */
 export function findExistingCommentById(
   comments: PlatformComment[],
   commentId: string
