@@ -545,7 +545,7 @@ async function runActionWorkflowNode(
     return runGitCommitWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'change-source') {
-    return runChangeSourceWorkflowNode(nodeId, node, workingDir, context);
+    return runChangeSourceWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'review') {
     return runReviewWorkflowNode(
@@ -834,13 +834,14 @@ async function loadGitHubChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<ReviewSource> {
   const owner = requireStringActionOption(nodeId, node, 'owner', context);
   const repo = requireStringActionOption(nodeId, node, 'repo', context);
   const prNumber = requireNumberActionOption(nodeId, node, 'pr', context);
   const projectId = `${owner}/${repo}`;
-  const platformClient = new GitHubPlatformAdapter(createGitHubClient());
+  const platformClient = getWorkflowPlatformClient(executionContext, 'github');
   const [pullRequest, changedFiles] = await Promise.all([
     platformClient.getPullRequest(projectId, prNumber),
     platformClient.getChangedFiles(projectId, prNumber),
@@ -860,7 +861,8 @@ async function loadGitLabChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<ReviewSource> {
   const projectId = hasActionOption(node, 'project')
     ? requireStringActionOption(nodeId, node, 'project', context)
@@ -868,7 +870,7 @@ async function loadGitLabChangeSource(
   const mrIid = hasActionOption(node, 'mr')
     ? requireNumberActionOption(nodeId, node, 'mr', context)
     : requireNumberActionOption(nodeId, node, 'mrIid', context);
-  const platformClient = new GitLabPlatformAdapter(createGitLabClient());
+  const platformClient = getWorkflowPlatformClient(executionContext, 'gitlab');
   const [pullRequest, changedFiles] = await Promise.all([
     platformClient.getPullRequest(projectId, mrIid),
     platformClient.getChangedFiles(projectId, mrIid),
@@ -888,16 +890,17 @@ async function runChangeSourceWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const type = getStringActionOption(node, 'type', context) ?? 'local';
   let source: ReviewSource;
   if (type === 'local') {
     source = await loadLocalChangeSource(nodeId, node, workingDir);
   } else if (type === 'github-pr') {
-    source = await loadGitHubChangeSource(nodeId, node, workingDir, context);
+    source = await loadGitHubChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'gitlab-mr') {
-    source = await loadGitLabChangeSource(nodeId, node, workingDir, context);
+    source = await loadGitLabChangeSource(nodeId, node, workingDir, context, executionContext);
   } else {
     throw new Error(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +

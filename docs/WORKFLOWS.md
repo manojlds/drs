@@ -66,7 +66,7 @@ nodes:
 
 The `name` field is optional. When omitted, DRS uses the file name without `.yaml` or `.yml`.
 
-Inline `workflows:` maps in `.drs/drs.config.yaml` and `.gitlab-review.yml` are not supported in DRS 4.0 and are rejected at load time. Move each workflow into its own file under `.drs/workflows/*.yaml`.
+Inline `workflows:` maps in `.drs/drs.config.yaml` and `.gitlab-review.yml` are not supported and are rejected at load time. Move each workflow into its own file under `.drs/workflows/*.yaml`.
 
 DRS also ships packaged workflows from `.pi/workflows/*.yaml`. Project workflow files override packaged workflows with the same name.
 
