@@ -23,7 +23,7 @@ import type {
 } from '../lib/platform-client.js';
 import type { ReviewIssue } from '../lib/comment-formatter.js';
 import { postReviewComments } from '../lib/comment-poster.js';
-import { findExistingCommentById, type PlatformComment } from '../lib/comment-manager.js';
+import { findExistingCommentById } from '../lib/comment-manager.js';
 import { removeErrorComment } from '../lib/error-comment-poster.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
@@ -1158,11 +1158,7 @@ async function runPostCommentWorkflowNode(
 
   if (marker) {
     const comments = await target.platformClient.getComments(target.projectId, target.prNumber);
-    const mappedComments: PlatformComment[] = comments.map((comment) => ({
-      id: comment.id,
-      body: comment.body,
-    }));
-    const existingComment = findExistingCommentById(mappedComments, marker);
+    const existingComment = findExistingCommentById(comments, marker);
     if (existingComment) {
       await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
         target.platformClient.updateComment(

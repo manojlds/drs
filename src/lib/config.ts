@@ -412,13 +412,13 @@ function loadBuiltInWorkflowFiles(): Record<string, WorkflowConfig> {
 
 /**
  * Load configuration from various sources with precedence:
- * 1. CLI arguments (passed as overrides)
- * 2. Environment variables
- * 3. .gitlab-review.yml
+ * 1. Default values
+ * 2. Built-in workflow files
+ * 3. .drs/workflows/*.yaml
  * 4. .drs/drs.config.yaml
- * 5. .drs/workflows/*.yaml
- * 6. Built-in workflow files
- * 7. Default values
+ * 5. .gitlab-review.yml
+ * 6. Environment variables
+ * 7. CLI arguments (passed as overrides)
  */
 export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>): DRSConfig {
   const basePath = projectPath ?? process.cwd();

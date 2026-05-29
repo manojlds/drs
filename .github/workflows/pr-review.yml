@@ -111,9 +111,9 @@ jobs:
           fi
 
           node dist/cli/index.js workflow run github-pr-review-post \
-            --input owner=${{ github.event.repository.owner.login }} \
-            --input repo=${{ github.event.repository.name }} \
-            --input pr=${{ github.event.pull_request.number }}
+            --input owner="${{ github.event.repository.owner.login }}" \
+            --input repo="${{ github.event.repository.name }}" \
+            --input pr="${{ github.event.pull_request.number }}"
 
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
@@ -188,9 +188,9 @@ jobs:
           fi
 
           node dist/cli/index.js workflow run github-pr-review-post \
-            --input owner=${{ github.event.repository.owner.login }} \
-            --input repo=${{ github.event.repository.name }} \
-            --input pr=${{ github.event.pull_request.number }}
+            --input owner="${{ github.event.repository.owner.login }}" \
+            --input repo="${{ github.event.repository.name }}" \
+            --input pr="${{ github.event.pull_request.number }}"
 
   # Notify when external PR is waiting for approval
   notify-external:
