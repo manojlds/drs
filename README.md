@@ -5,12 +5,12 @@
 
 **Automated AI code reviews for GitHub PRs and GitLab MRs.**
 
-DRS helps teams catch critical issues earlier with specialized review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
+DRS helps teams catch critical issues earlier with a packaged unified reviewer, customizable project-specific review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
 
 ## Why teams like DRS
 
-- 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
-- 🧠 **Flexible agent pipelines**: compose any review agents (including `review/unified-reviewer`) in execution order
+- 🎯 **Packaged unified review**: `review/unified-reviewer` is included out of the box
+- 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` agents in execution order
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Description generation**: optional PR/MR summary generation and posting
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
@@ -77,7 +77,7 @@ drs review-local
 drs review-local --staged
 
 # Use specific agents
-drs review-local --agents review/security,review/quality
+drs review-local --agents review/unified-reviewer,review/my-project-reviewer
 ```
 
 ### Most-Used Commands
@@ -524,8 +524,9 @@ Notes:
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
-- `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
-- Built-in review agent IDs are: `review/unified-reviewer`, `review/security`, `review/quality`, `review/style`, `review/performance`, `review/documentation`.
+- `review.agents` controls exactly which review agents run.
+- Packaged built-in review agent ID: `review/unified-reviewer`.
+- Add project-specific review agents under `.drs/agents/review/<name>/agent.md` and include them in `review.agents`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
@@ -714,7 +715,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 GITLAB_URL=https://gitlab.com
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
-REVIEW_AGENTS=review/security,review/quality,review/style,review/performance
+REVIEW_AGENTS=review/unified-reviewer
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 

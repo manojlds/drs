@@ -106,7 +106,8 @@ pi:
 review:
 
   # Review agents (execution order)
-  # Use fully qualified agent ids. Include review/unified-reviewer when you want a one-pass broad review.
+  # Use fully qualified agent ids. review/unified-reviewer is the packaged default.
+  # Add project-specific agents under .drs/agents/review/<name>/agent.md as needed.
   agents:
 `;
 
@@ -249,8 +250,7 @@ Then add to \`.drs/drs.config.yaml\`:
 \`\`\`yaml
 review:
   agents:
-    - review/security
-    - review/quality
+    - review/unified-reviewer
     - review/rails-reviewer  # Your custom agent
 \`\`\`
 
@@ -352,26 +352,17 @@ export async function initProject(projectPath: string): Promise<void> {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     console.log(chalk.bold('\n━━━ Review Agents ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
 
-    const availableAgents = [
-      'review/unified-reviewer',
-      'review/security',
-      'review/quality',
-      'review/style',
-      'review/performance',
-      'review/documentation',
-    ];
+    const availableAgents = ['review/unified-reviewer'];
 
     console.log(chalk.gray('Available agents:'));
-    console.log(chalk.gray('  • review/unified-reviewer - Broad one-pass review'));
-    console.log(chalk.gray('  • review/security     - Security vulnerabilities & best practices'));
-    console.log(chalk.gray('  • review/quality      - Code quality & maintainability'));
-    console.log(chalk.gray('  • review/style        - Code style & consistency'));
-    console.log(chalk.gray('  • review/performance  - Performance issues & optimizations'));
-    console.log(chalk.gray('  • review/documentation - Documentation gaps & accuracy\n'));
+    console.log(chalk.gray('  • review/unified-reviewer - Packaged one-pass reviewer'));
+    console.log(
+      chalk.gray('  • review/<your-agent>      - Optional custom project reviewer (you define)\n')
+    );
 
     const agentsInput = await prompt.ask(
       'Agents to enable (comma-separated)',
-      'review/security,review/quality,review/style,review/performance'
+      'review/unified-reviewer'
     );
 
     initConfig.agents = agentsInput

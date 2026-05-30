@@ -305,13 +305,7 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
-    agents: [
-      'review/security',
-      'review/quality',
-      'review/style',
-      'review/performance',
-      'review/documentation',
-    ],
+    agents: ['review/unified-reviewer'],
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',

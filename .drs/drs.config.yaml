@@ -42,15 +42,11 @@ workflow:
 review:
 
   # Review agents (execution order)
-  # Use fully qualified agent ids. Include review/unified-reviewer when you want a broad one-pass reviewer.
+  # Use fully qualified agent ids. review/unified-reviewer is the packaged default.
+  # Add your own project-specific reviewers under .drs/agents/review/<name>/agent.md.
   # Simple format (uses default model):
   agents:
     - review/unified-reviewer
-    - review/security
-    - review/quality
-    - review/style
-    - review/performance
-    - review/documentation
 
   # OR detailed format with per-agent model overrides:
   # agents:
