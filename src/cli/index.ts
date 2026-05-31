@@ -5,10 +5,7 @@ import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { reviewLocal } from './review-local.js';
-import { reviewMR } from './review-mr.js';
-import { reviewPR } from './review-pr.js';
-import { reviewByUrl } from './review-url.js';
+import { parseReviewUrl } from './review-url.js';
 import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
@@ -66,6 +63,30 @@ function parseKeyValueOptions(
     parsed[value.slice(0, separatorIndex)] = value.slice(separatorIndex + 1);
   }
   return parsed;
+}
+
+function loadReviewConfig(options: { agents?: string; unifiedModel?: string }): DRSConfig {
+  return loadConfig(process.cwd(), {
+    review: {
+      agents: options.agents ? options.agents.split(',').map((a: string) => a.trim()) : undefined,
+      unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
+    } as Partial<DRSConfig['review']>,
+  } as Partial<DRSConfig>);
+}
+
+function ensureWorkflowCompatibleReviewOptions(
+  commandName: string,
+  unsupported: Array<{ enabled: boolean; flag: string }>
+): void {
+  const enabledFlags = unsupported.filter((item) => item.enabled).map((item) => item.flag);
+  if (enabledFlags.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    `${commandName} is now workflow-backed and does not support ${enabledFlags.join(', ')}. ` +
+      'Use `drs workflow run` with a custom workflow for these options.'
+  );
 }
 
 const program = new Command();
@@ -172,7 +193,7 @@ program.addCommand(workflowCommand);
 
 program
   .command('review-local')
-  .description('Review local git diff before pushing')
+  .description('Review local git diff before pushing (workflow-backed)')
   .option('--staged', 'Review staged changes only (git diff --cached)')
   .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
@@ -187,30 +208,22 @@ program
   .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
-      // Configure logger based on options
       configureLogger({
         level: options.debug ? 'debug' : 'info',
         format: (options.logFormat as LogFormat) || 'human',
         timestamps: options.logFormat === 'json',
       });
 
-      const config = loadConfig(process.cwd(), {
-        review: {
-          agents: options.agents
-            ? options.agents.split(',').map((a: string) => a.trim())
-            : undefined,
-          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
-        } as Partial<DRSConfig['review']>,
-      } as Partial<DRSConfig>);
-
+      const config = loadReviewConfig(options);
       const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+      const workflowName = options.staged ? 'local-staged-review' : 'local-review';
 
-      await reviewLocal(config, {
-        staged: options.staged || false,
+      await runWorkflow(config, workflowName, {
         outputPath: options.output,
         jsonOutput: options.json || false,
         debug: options.debug || false,
         thinkingLevel,
+        workingDir: process.cwd(),
       });
       process.exit(0);
     } catch (error) {
@@ -221,7 +234,7 @@ program
 
 program
   .command('review-mr')
-  .description('Review a GitLab merge request')
+  .description('Review a GitLab merge request (workflow-backed)')
   .requiredOption('--mr <iid>', 'Merge request IID (number)')
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
   .option('--agents <agents>', 'Comma-separated list of review agent IDs')
@@ -250,52 +263,38 @@ program
   .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
-      // Configure logger based on options
       configureLogger({
         level: options.debug ? 'debug' : 'info',
         format: (options.logFormat as LogFormat) || 'human',
         timestamps: options.logFormat === 'json',
       });
 
-      const config = loadConfig(process.cwd(), {
-        review: {
-          agents: options.agents
-            ? options.agents.split(',').map((a: string) => a.trim())
-            : undefined,
-          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
-        } as Partial<DRSConfig['review']>,
-      } as Partial<DRSConfig>);
+      ensureWorkflowCompatibleReviewOptions('review-mr', [
+        { enabled: options.postErrorComment === true, flag: '--post-error-comment' },
+        { enabled: options.fixInCursor === true, flag: '--fix-in-cursor' },
+        { enabled: options.skipFixInCursor === true, flag: '--skip-fix-in-cursor' },
+        { enabled: options.describe === true, flag: '--describe' },
+        { enabled: options.skipDescribe === true, flag: '--skip-describe' },
+        { enabled: options.postDescription === true, flag: '--post-description' },
+        { enabled: options.skipPostDescription === true, flag: '--skip-post-description' },
+        { enabled: Boolean(options.codeQualityReport), flag: '--code-quality-report' },
+        { enabled: Boolean(options.baseBranch), flag: '--base-branch' },
+      ]);
 
+      const config = loadReviewConfig(options);
       const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+      const workflowName = options.postComments ? 'gitlab-mr-review-post' : 'gitlab-mr-review';
 
-      await reviewMR(config, {
-        projectId: options.project,
-        mrIid: parseInt(options.mr, 10),
-        postComments: options.postComments || false,
-        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
-        fixInCursor: options.fixInCursor,
-        skipFixInCursor: options.skipFixInCursor,
-        codeQualityReport:
-          options.codeQualityReport === true
-            ? 'gl-code-quality-report.json'
-            : options.codeQualityReport,
+      await runWorkflow(config, workflowName, {
+        inputs: {
+          project: options.project,
+          mr: String(parseInt(options.mr, 10)),
+        },
         outputPath: options.output,
         jsonOutput: options.json || false,
-        baseBranch: options.baseBranch,
-        describe:
-          options.describe === true
-            ? true
-            : options.skipDescribe === true
-              ? false
-              : (config.review.describe?.enabled ?? false),
-        postDescription:
-          options.postDescription === true
-            ? true
-            : options.skipPostDescription === true
-              ? false
-              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
         thinkingLevel,
+        workingDir: process.cwd(),
       });
       process.exit(0);
     } catch (error) {
@@ -306,7 +305,7 @@ program
 
 program
   .command('review-pr')
-  .description('Review a GitHub pull request')
+  .description('Review a GitHub pull request (workflow-backed)')
   .requiredOption('--pr <number>', 'Pull request number')
   .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
@@ -332,49 +331,38 @@ program
   .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
   .action(async (options) => {
     try {
-      // Configure logger based on options
       configureLogger({
         level: options.debug ? 'debug' : 'info',
         format: (options.logFormat as LogFormat) || 'human',
         timestamps: options.logFormat === 'json',
       });
 
-      const config = loadConfig(process.cwd(), {
-        review: {
-          agents: options.agents
-            ? options.agents.split(',').map((a: string) => a.trim())
-            : undefined,
-          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
-        } as Partial<DRSConfig['review']>,
-      } as Partial<DRSConfig>);
+      ensureWorkflowCompatibleReviewOptions('review-pr', [
+        { enabled: options.postErrorComment === true, flag: '--post-error-comment' },
+        { enabled: options.fixInCursor === true, flag: '--fix-in-cursor' },
+        { enabled: options.skipFixInCursor === true, flag: '--skip-fix-in-cursor' },
+        { enabled: options.describe === true, flag: '--describe' },
+        { enabled: options.skipDescribe === true, flag: '--skip-describe' },
+        { enabled: options.postDescription === true, flag: '--post-description' },
+        { enabled: options.skipPostDescription === true, flag: '--skip-post-description' },
+        { enabled: Boolean(options.baseBranch), flag: '--base-branch' },
+      ]);
 
+      const config = loadReviewConfig(options);
       const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+      const workflowName = options.postComments ? 'github-pr-review-post' : 'github-pr-review';
 
-      await reviewPR(config, {
-        owner: options.owner,
-        repo: options.repo,
-        prNumber: parseInt(options.pr, 10),
-        postComments: options.postComments || false,
-        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
-        fixInCursor: options.fixInCursor,
-        skipFixInCursor: options.skipFixInCursor,
+      await runWorkflow(config, workflowName, {
+        inputs: {
+          owner: options.owner,
+          repo: options.repo,
+          pr: String(parseInt(options.pr, 10)),
+        },
         outputPath: options.output,
         jsonOutput: options.json || false,
-        baseBranch: options.baseBranch,
-        describe:
-          options.describe === true
-            ? true
-            : options.skipDescribe === true
-              ? false
-              : (config.review.describe?.enabled ?? false),
-        postDescription:
-          options.postDescription === true
-            ? true
-            : options.skipPostDescription === true
-              ? false
-              : (config.review.describe?.postDescription ?? false),
         debug: options.debug || false,
         thinkingLevel,
+        workingDir: process.cwd(),
       });
       process.exit(0);
     } catch (error) {
@@ -385,7 +373,7 @@ program
 
 program
   .command('review-url <url>')
-  .description('Review a GitHub pull request or GitLab merge request by URL')
+  .description('Review a GitHub pull request or GitLab merge request by URL (workflow-backed)')
   .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR/MR')
@@ -418,45 +406,57 @@ program
         timestamps: options.logFormat === 'json',
       });
 
-      const config = loadConfig(process.cwd(), {
-        review: {
-          agents: options.agents
-            ? options.agents.split(',').map((a: string) => a.trim())
-            : undefined,
-          unified: options.unifiedModel ? { model: options.unifiedModel } : undefined,
-        } as Partial<DRSConfig['review']>,
-      } as Partial<DRSConfig>);
+      ensureWorkflowCompatibleReviewOptions('review-url', [
+        { enabled: options.postErrorComment === true, flag: '--post-error-comment' },
+        { enabled: options.fixInCursor === true, flag: '--fix-in-cursor' },
+        { enabled: options.skipFixInCursor === true, flag: '--skip-fix-in-cursor' },
+        { enabled: options.describe === true, flag: '--describe' },
+        { enabled: options.skipDescribe === true, flag: '--skip-describe' },
+        { enabled: options.postDescription === true, flag: '--post-description' },
+        { enabled: options.skipPostDescription === true, flag: '--skip-post-description' },
+        { enabled: Boolean(options.codeQualityReport), flag: '--code-quality-report' },
+        { enabled: Boolean(options.baseBranch), flag: '--base-branch' },
+      ]);
 
+      const config = loadReviewConfig(options);
       const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+      const parsed = parseReviewUrl(url);
 
-      await reviewByUrl(config, {
-        url,
-        postComments: options.postComments || false,
-        postErrorComment: options.postErrorComment || (config.review.postErrorComment ?? false),
-        fixInCursor: options.fixInCursor,
-        skipFixInCursor: options.skipFixInCursor,
-        describe:
-          options.describe === true
-            ? true
-            : options.skipDescribe === true
-              ? false
-              : (config.review.describe?.enabled ?? false),
-        postDescription:
-          options.postDescription === true
-            ? true
-            : options.skipPostDescription === true
-              ? false
-              : (config.review.describe?.postDescription ?? false),
-        codeQualityReport:
-          options.codeQualityReport === true
-            ? 'gl-code-quality-report.json'
-            : options.codeQualityReport,
-        outputPath: options.output,
-        jsonOutput: options.json || false,
-        baseBranch: options.baseBranch,
-        debug: options.debug || false,
-        thinkingLevel,
-      });
+      if (parsed.platform === 'github') {
+        await runWorkflow(
+          config,
+          options.postComments ? 'github-pr-review-post' : 'github-pr-review',
+          {
+            inputs: {
+              owner: parsed.owner,
+              repo: parsed.repo,
+              pr: String(parsed.prNumber),
+            },
+            outputPath: options.output,
+            jsonOutput: options.json || false,
+            debug: options.debug || false,
+            thinkingLevel,
+            workingDir: process.cwd(),
+          }
+        );
+      } else {
+        await runWorkflow(
+          config,
+          options.postComments ? 'gitlab-mr-review-post' : 'gitlab-mr-review',
+          {
+            inputs: {
+              project: parsed.projectId,
+              mr: String(parsed.mrIid),
+            },
+            outputPath: options.output,
+            jsonOutput: options.json || false,
+            debug: options.debug || false,
+            thinkingLevel,
+            workingDir: process.cwd(),
+          }
+        );
+      }
+
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
