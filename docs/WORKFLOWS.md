@@ -215,7 +215,7 @@ nodes:
 
 ### `post-review-comments`
 
-Posts DRS review results to GitHub or GitLab using the same summary marker and issue fingerprints as `review-pr --post-comments` and `review-mr --post-comments`.
+Posts DRS review results to GitHub or GitLab using the same summary marker and issue fingerprints as the packaged `*-review-post` workflows.
 
 ```yaml
 nodes:
@@ -306,7 +306,7 @@ Non-string values are inserted as pretty JSON.
 
 ## Built-In Review Workflows
 
-DRS ships with local review workflows equivalent to the local diff source loading used by `drs review-local`:
+DRS ships with built-in review workflows for local diffs, GitHub PRs, and GitLab MRs:
 
 ```bash
 drs workflow run local-review

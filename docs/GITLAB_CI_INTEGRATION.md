@@ -15,7 +15,7 @@ ai_review:
   image: node:20-alpine
   script:
     - npm install -g @diff-review-system/drs
-    - drs review-mr --project "$CI_PROJECT_PATH" --mr "$CI_MERGE_REQUEST_IID" --post-comments
+    - drs workflow run gitlab-mr-review-post --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID"
   variables:
     GITLAB_TOKEN: "$CI_JOB_TOKEN"
     GITLAB_URL: "$CI_SERVER_URL"
@@ -31,14 +31,9 @@ DRS uses Pi in-process runtime only. No external runtime endpoint variables are 
 
 ## Optional Code Quality Report
 
-```yaml
-script:
-  - drs review-mr --project "$CI_PROJECT_PATH" --mr "$CI_MERGE_REQUEST_IID" \
-      --code-quality-report gl-code-quality-report.json
-artifacts:
-  reports:
-    codequality: gl-code-quality-report.json
-```
+Code quality report generation is not included in the packaged review workflows.
+If you need GitLab code quality artifacts, add a custom project workflow with the
+required code-quality step before publishing the artifact.
 
 ## Required Secrets
 
@@ -52,5 +47,5 @@ Set one model provider API key in GitLab CI/CD variables (masked/protected):
 ## Troubleshooting
 
 - **Auth errors**: verify `GITLAB_TOKEN` and provider API key.
-- **No output/comments**: re-run with `--debug`.
+- **No output/comments**: re-run with `drs workflow run ... --debug`.
 - **Model not found**: verify `agents.default.model` and any per-agent overrides.

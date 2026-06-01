@@ -1,7 +1,7 @@
 import { loadConfig, validateConfig } from '../lib/config.js';
 import { exitProcess } from '../lib/exit.js';
 import { getLogger } from '../lib/logger.js';
-import { reviewMR } from '../cli/review-mr.js';
+import { runWorkflow } from '../cli/workflow.js';
 
 export interface CIEnvironment {
   platform: 'gitlab' | 'unknown';
@@ -78,13 +78,12 @@ export async function runCIReview(): Promise<void> {
 
   // Run review
   try {
-    await reviewMR(config, {
-      projectId: env.projectId,
-      mrIid: env.mrIid,
-      postComments: true, // Always post comments in CI
-      postErrorComment: config.review.postErrorComment ?? false,
-      describe: config.review.describe?.enabled ?? false,
-      postDescription: config.review.describe?.postDescription ?? false,
+    await runWorkflow(config, 'gitlab-mr-review-post', {
+      inputs: {
+        project: env.projectId,
+        mr: String(env.mrIid),
+      },
+      workingDir: projectDir,
     });
 
     log.info('Review complete');

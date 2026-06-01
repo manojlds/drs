@@ -71,30 +71,26 @@ DRS CLI now loads `.env` automatically from your current working directory.
 
 ```bash
 # Review unstaged changes
-drs review-local
+drs workflow run local-review
 
 # Review staged changes
-drs review-local --staged
+drs workflow run local-staged-review
 
 # Use specific agents
-drs review-local --agents review/unified-reviewer,review/my-project-reviewer
+drs workflow run local-review --input agent=review/my-project-reviewer
 ```
 
 ### Most-Used Commands
 
 | Goal | Command |
 |---|---|
-| Review local unstaged changes | `drs review-local` |
-| Review local staged changes | `drs review-local --staged` |
-| Review local unstaged changes via workflow | `drs workflow run local-review` |
+| Review local unstaged changes | `drs workflow run local-review` |
+| Review local staged changes | `drs workflow run local-staged-review` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
-| Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
-| Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
-| Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
@@ -109,39 +105,26 @@ Review code locally before pushing:
 
 ```bash
 # Review local changes
-drs review-local
+drs workflow run local-review
 
 # Review specific GitLab MR
-drs review-mr --project my-org/my-repo --mr 123 --post-comments
-
-# Review GitLab MR and auto-generate a description (optionally post it)
-drs review-mr --project my-org/my-repo --mr 123 --describe
-drs review-mr --project my-org/my-repo --mr 123 --describe --post-description
-
-# Review GitLab MR and generate code quality report
-drs review-mr --project my-org/my-repo --mr 123 --code-quality-report gl-code-quality-report.json
-
-# Review by PR/MR URL (auto-detect GitHub vs GitLab)
-drs review-url https://github.com/octocat/hello-world/pull/456 --post-comments
-drs review-url https://gitlab.com/my-org/my-repo/-/merge_requests/123 --post-comments
+drs workflow run gitlab-mr-review-post --input project=my-org/my-repo --input mr=123
 
 # Review specific GitHub PR
-drs review-pr --owner octocat --repo hello-world --pr 456 --post-comments
+drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
 
-# Review GitHub PR and auto-generate a description (optionally post it)
-drs review-pr --owner octocat --repo hello-world --pr 456 --describe
-drs review-pr --owner octocat --repo hello-world --pr 456 --describe --post-description
+# Review local staged changes
+drs workflow run local-staged-review
 
-# Enable extended thinking for deeper analysis
-drs review-pr --owner octocat --repo hello-world --pr 456 --reasoning-effort high
-drs review-mr --project my-org/my-repo --mr 123 --ultrathink
-
-# Override base branch used for diff hints
-drs review-pr --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
+# Override model/agent behavior through config, then run workflows
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
 
 # Generate review JSON first, then post comments after manual review
-drs review-pr --owner octocat --repo hello-world --pr 456 -o review.json
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 -o review.json
 drs post-comments --input review.json --owner octocat --repo hello-world --pr 456
+
+# Use ultrathink with workflows
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --ultrathink
 
 # Show the diff context passed to agents
 drs show-changes --owner octocat --repo hello-world --pr 456
@@ -232,14 +215,10 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 ### CLI Usage
 
 ```bash
-# Generate code quality report only
-drs review-mr --project my-org/my-repo --mr 123 \
-  --code-quality-report gl-code-quality-report.json
+# Use workflow-based MR review with comments
+drs workflow run gitlab-mr-review-post --input project=my-org/my-repo --input mr=123
 
-# Use both comments and code quality report
-drs review-mr --project my-org/my-repo --mr 123 \
-  --post-comments \
-  --code-quality-report gl-code-quality-report.json
+# For code quality artifacts, run a custom project workflow that adds report generation.
 ```
 
 ### GitLab CI Integration
@@ -253,12 +232,7 @@ code_review:
   before_script:
     - npm install -g @diff-review-system/drs
   script:
-    - drs review-mr --project $CI_PROJECT_PATH --mr $CI_MERGE_REQUEST_IID
-        --code-quality-report gl-code-quality-report.json
-  artifacts:
-    reports:
-      codequality: gl-code-quality-report.json
-    expire_in: 1 week
+    - drs workflow run gitlab-mr-review-post --input project=$CI_PROJECT_PATH --input mr=$CI_MERGE_REQUEST_IID
   only:
     - merge_requests
 ```
@@ -304,7 +278,7 @@ DRS runs on Pi SDK as the sole review runtime.
 By default, DRS starts Pi runtime in-process:
 
 ```bash
-drs review-local
+drs workflow run local-review
 ```
 
 ### Runtime Mode
@@ -319,11 +293,7 @@ DRS uses Pi runtime wiring with markdown-based agent definitions. Agents are add
 .pi/
 └── agents/
     └── review/
-        ├── security.md          # Security specialist
-        ├── quality.md           # Code quality expert
-        ├── style.md             # Style checker
-        ├── performance.md       # Performance analyzer
-        └── documentation.md     # Documentation reviewer
+        └── unified-reviewer.md  # Packaged unified reviewer
 ```
 
 Built-in agent definitions live under `.pi/agents`.
@@ -518,9 +488,7 @@ describe:
 ```
 
 Notes:
-- `review.describe` controls auto-description when running `review-mr` or `review-pr`.
-- CLI flags override config: `--describe` / `--skip-describe` and `--post-description` / `--skip-post-description`.
-- `review.cursorFixLinks.enabled` adds opt-in `Fix in Cursor` links to posted review comments via Cursor's web deeplink bridge. CLI flags override config: `--fix-in-cursor` / `--skip-fix-in-cursor`.
+- Review orchestration is workflow-first in v4: use `drs workflow run ...` for local/PR/MR review.
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
