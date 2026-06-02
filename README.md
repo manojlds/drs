@@ -76,8 +76,8 @@ drs workflow run local-review
 # Review staged changes
 drs workflow run local-staged-review
 
-# Use specific agents
-drs workflow run local-review --input agent=review/my-project-reviewer
+# To use project-specific agents, configure review.agents in .drs/drs.config.yaml
+# then run the same workflow.
 ```
 
 ### Most-Used Commands
@@ -119,8 +119,7 @@ drs workflow run local-staged-review
 # Override model/agent behavior through config, then run workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
 
-# Generate review JSON first, then post comments after manual review
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 -o review.json
+# Post comments from an existing review output JSON (generated outside workflow-run output envelope)
 drs post-comments --input review.json --owner octocat --repo hello-world --pr 456
 
 # Use ultrathink with workflows

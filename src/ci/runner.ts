@@ -2,6 +2,10 @@ import { loadConfig, validateConfig } from '../lib/config.js';
 import { exitProcess } from '../lib/exit.js';
 import { getLogger } from '../lib/logger.js';
 import { runWorkflow } from '../cli/workflow.js';
+import { describeMR } from '../cli/describe-mr.js';
+import { postErrorComment } from '../lib/error-comment-poster.js';
+import { createGitLabClient } from '../gitlab/client.js';
+import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 
 export interface CIEnvironment {
   platform: 'gitlab' | 'unknown';
@@ -86,8 +90,27 @@ export async function runCIReview(): Promise<void> {
       workingDir: projectDir,
     });
 
+    if (config.review.describe?.postDescription === true) {
+      await describeMR(config, {
+        projectId: env.projectId,
+        mrIid: env.mrIid,
+        postDescription: true,
+      });
+    }
+
     log.info('Review complete');
   } catch (error) {
+    if (config.review.postErrorComment === true) {
+      try {
+        const platformClient = new GitLabPlatformAdapter(createGitLabClient());
+        await postErrorComment(platformClient, env.projectId, env.mrIid);
+      } catch (postError) {
+        log.warn(
+          `Failed to post error comment: ${postError instanceof Error ? postError.message : String(postError)}`
+        );
+      }
+    }
+
     log.error('Review failed', undefined, error);
     exitProcess(1);
   }
