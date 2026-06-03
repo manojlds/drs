@@ -67,12 +67,14 @@ review:
     - "yarn.lock"
     - "pnpm-lock.yaml"
 
-  # Auto-generate a description during workflow-based review.
+  # Legacy review.describe controls are ignored by packaged workflow-based review.
+  # To auto-generate or post descriptions in review, add explicit workflow nodes.
   describe:
     enabled: true
     postDescription: true
 
-  # Optional: add "Fix in Cursor" deeplinks to posted review comments
+  # Legacy cursorFixLinks controls are ignored by packaged workflow-based review.
+  # Configure this behavior through explicit workflow nodes/options.
   cursorFixLinks:
     enabled: true
     workspace: drs
@@ -80,7 +82,7 @@ review:
 # PR/MR Description Generator
 describe:
   # Model to use for description generation (optional, defaults to agents.default.model)
-  # Used by describe-mr/describe-pr and by workflow review nodes when enabled.
+  # Used by describe-mr/describe-pr commands.
   model: opencode-go/kimi-k2.7-code
   # Include .drs/context.md content in describe agent instructions
   includeProjectContext: true
