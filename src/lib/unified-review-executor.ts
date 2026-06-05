@@ -269,7 +269,12 @@ export async function executeUnifiedReview(
         pr.platformData,
         options.lineValidator,
         options.createInlinePosition,
-        options.cursorFixLinks
+        options.cursorFixLinks,
+        {
+          headSha: pr.headSha,
+          sourceBranch: pr.sourceBranch,
+          targetBranch: pr.targetBranch,
+        }
       );
     }
 

@@ -1246,7 +1246,14 @@ async function runPostReviewCommentsWorkflowNode(
       platformData,
       lineValidator,
       createInlinePosition,
-      cursorFixLinks
+      cursorFixLinks,
+      pullRequest
+        ? {
+            headSha: pullRequest.headSha,
+            sourceBranch: pullRequest.sourceBranch,
+            targetBranch: pullRequest.targetBranch,
+          }
+        : undefined
     );
   });
 

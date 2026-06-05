@@ -25,6 +25,12 @@ export interface ReviewSummary {
   byCategory: Record<IssueCategory, number>;
 }
 
+export interface ReviewMetadata {
+  headSha?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
+}
+
 const SEVERITY_EMOJI: Record<IssueSeverity, string> = {
   CRITICAL: '🔴',
   HIGH: '🟡',
@@ -39,6 +45,36 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
   PERFORMANCE: '⚡',
   DOCUMENTATION: '📝',
 };
+
+function cleanMetadataValue(value?: string): string | undefined {
+  const cleaned = value?.trim().replace(/[\r\n]+/g, ' ');
+  return cleaned ? cleaned : undefined;
+}
+
+function formatShortSha(sha: string): string {
+  return sha.length > 12 ? sha.slice(0, 12) : sha;
+}
+
+function formatReviewMetadataSection(metadata: ReviewMetadata): string {
+  const headSha = cleanMetadataValue(metadata.headSha);
+  const sourceBranch = cleanMetadataValue(metadata.sourceBranch);
+  const targetBranch = cleanMetadataValue(metadata.targetBranch);
+  const lines: string[] = [];
+
+  if (headSha) {
+    lines.push(`- **Reviewed Commit**: \`${formatShortSha(headSha)}\``);
+  }
+
+  if (sourceBranch && targetBranch) {
+    lines.push(`- **Branch**: \`${sourceBranch}\` -> \`${targetBranch}\``);
+  }
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return `## 🔎 Review Context\n\n${lines.join('\n')}\n\n`;
+}
 
 function formatReviewUsageSection(usage: ReviewUsageSummary): string {
   const total = usage.total;
@@ -126,6 +162,7 @@ export function formatIssueComment(
  * @param changeSummary Optional change summary to include before review statistics.
  * @param reviewUsage Optional usage summary to include for cost reporting.
  * @param cursorFixLinks Optional Cursor link settings. When enabled, per-issue links are appended.
+ * @param reviewMetadata Optional PR/MR metadata for identifying the reviewed commit.
  */
 export function formatSummaryComment(
   summary: ReviewSummary,
@@ -133,15 +170,24 @@ export function formatSummaryComment(
   commentId?: string,
   changeSummary?: ChangeSummary,
   reviewUsage?: ReviewUsageSummary,
-  cursorFixLinks?: CursorFixLinkOptions
+  cursorFixLinks?: CursorFixLinkOptions,
+  reviewMetadata?: ReviewMetadata
 ): string {
   // Add hidden identifier for update-or-create logic
   let comment = '';
   if (commentId) {
     comment += `<!-- drs-comment-id: ${commentId} -->\n`;
   }
+  const headSha = cleanMetadataValue(reviewMetadata?.headSha);
+  if (headSha) {
+    comment += `<!-- drs-reviewed-head-sha: ${headSha} -->\n`;
+  }
 
   comment += `# 📋 Code Review Analysis\n\n`;
+
+  if (reviewMetadata) {
+    comment += formatReviewMetadataSection(reviewMetadata);
+  }
 
   if (changeSummary) {
     comment += `## 🧭 Change Summary\n\n`;

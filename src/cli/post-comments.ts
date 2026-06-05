@@ -203,7 +203,12 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
       pr.platformData,
       lineValidator,
       createInlinePosition,
-      cursorFixLinks
+      cursorFixLinks,
+      {
+        headSha: pr.headSha,
+        sourceBranch: pr.sourceBranch,
+        targetBranch: pr.targetBranch,
+      }
     );
     return;
   }
@@ -271,6 +276,11 @@ export async function postCommentsFromJson(options: PostCommentsOptions): Promis
     pr.platformData,
     lineValidator,
     createInlinePosition,
-    cursorFixLinks
+    cursorFixLinks,
+    {
+      headSha: pr.headSha,
+      sourceBranch: pr.sourceBranch,
+      targetBranch: pr.targetBranch,
+    }
   );
 }

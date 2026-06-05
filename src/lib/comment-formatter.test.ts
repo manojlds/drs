@@ -243,6 +243,34 @@ describe('comment-formatter', () => {
       expect(formatted).toContain(`<!-- drs-comment-id: ${commentId} -->`);
     });
 
+    it('should include review metadata when provided', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          headSha: 'abcdef1234567890',
+          sourceBranch: 'feature/review-metadata',
+          targetBranch: 'main',
+        }
+      );
+
+      expect(formatted).toContain('<!-- drs-reviewed-head-sha: abcdef1234567890 -->');
+      expect(formatted).toContain('🔎 Review Context');
+      expect(formatted).toContain('Reviewed Commit**: `abcdef123456`');
+      expect(formatted).toContain('Branch**: `feature/review-metadata` -> `main`');
+    });
+
     it('should include change summary when provided', () => {
       const summary: ReviewSummary = {
         filesReviewed: 1,
