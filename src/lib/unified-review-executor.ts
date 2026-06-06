@@ -48,7 +48,7 @@ import {
 } from './context-compression.js';
 import { runDescribeIfEnabled } from './description-executor.js';
 import { formatDescribeSummary, type Description } from './description-formatter.js';
-import { postErrorComment, removeErrorComment } from './error-comment-poster.js';
+import { removeErrorComment } from './error-comment-poster.js';
 
 // Re-export functions for backward compatibility
 export { enforceRepoBranchMatch } from './repository-validator.js';
@@ -67,8 +67,6 @@ export interface UnifiedReviewOptions {
   changedFiles?: FileChange[];
   /** Whether to post comments to the platform */
   postComments: boolean;
-  /** Whether to post an error comment if the review fails */
-  postErrorComment?: boolean;
   /** Optional path to output GitLab code quality report JSON */
   codeQualityReport?: string;
   /** Optional path to write JSON results file */
@@ -324,16 +322,6 @@ export async function executeUnifiedReview(
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
   } catch (error) {
-    // Post error comment if enabled (note: error details are logged to CI, not in comment)
-    if (options.postErrorComment) {
-      try {
-        await postErrorComment(platformClient, projectId, prNumber);
-      } catch (postError) {
-        const postErrorMessage = postError instanceof Error ? postError.message : String(postError);
-        console.warn(chalk.yellow(`Could not post error comment: ${postErrorMessage}`));
-      }
-    }
-
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
       if (runtimeClient) {
