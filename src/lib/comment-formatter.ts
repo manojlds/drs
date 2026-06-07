@@ -55,6 +55,18 @@ function formatShortSha(sha: string): string {
   return sha.length > 12 ? sha.slice(0, 12) : sha;
 }
 
+function escapeHtmlCommentValue(value: string): string {
+  return value.replace(/--/g, '- -');
+}
+
+function formatMarkdownCodeSpan(value: string): string {
+  const backtickRuns = value.match(/`+/g) ?? [];
+  const delimiterLength = Math.max(1, ...backtickRuns.map((run) => run.length + 1));
+  const delimiter = '`'.repeat(delimiterLength);
+  const padding = value.startsWith('`') || value.endsWith('`') ? ' ' : '';
+  return `${delimiter}${padding}${value}${padding}${delimiter}`;
+}
+
 function formatReviewMetadataSection(metadata: ReviewMetadata): string {
   const headSha = cleanMetadataValue(metadata.headSha);
   const sourceBranch = cleanMetadataValue(metadata.sourceBranch);
@@ -62,11 +74,15 @@ function formatReviewMetadataSection(metadata: ReviewMetadata): string {
   const lines: string[] = [];
 
   if (headSha) {
-    lines.push(`- **Reviewed Commit**: \`${formatShortSha(headSha)}\``);
+    lines.push(
+      `- **Reviewed Commit**: ${formatMarkdownCodeSpan(formatShortSha(escapeHtmlCommentValue(headSha)))}`
+    );
   }
 
   if (sourceBranch && targetBranch) {
-    lines.push(`- **Branch**: \`${sourceBranch}\` -> \`${targetBranch}\``);
+    lines.push(
+      `- **Branch**: ${formatMarkdownCodeSpan(sourceBranch)} -> ${formatMarkdownCodeSpan(targetBranch)}`
+    );
   }
 
   if (lines.length === 0) {
@@ -180,7 +196,7 @@ export function formatSummaryComment(
   }
   const headSha = cleanMetadataValue(reviewMetadata?.headSha);
   if (headSha) {
-    comment += `<!-- drs-reviewed-head-sha: ${headSha} -->\n`;
+    comment += `<!-- drs-reviewed-head-sha: ${escapeHtmlCommentValue(headSha)} -->\n`;
   }
 
   comment += `# 📋 Code Review Analysis\n\n`;

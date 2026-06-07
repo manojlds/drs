@@ -162,8 +162,7 @@ export async function executeUnifiedReview(
       ...unifiedModelOverrides,
     };
     const describeEnabled = options.describe ?? config.review.describe?.enabled ?? false;
-    const postDescriptionEnabled =
-      options.postDescription ?? config.review.describe?.postDescription ?? false;
+    const postDescriptionEnabled = options.postDescription ?? false;
 
     const describeOverrides = describeEnabled ? getDescriberModelOverride(config) : {};
     const modelOverrides = { ...reviewOverrides, ...describeOverrides };

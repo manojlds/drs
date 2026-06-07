@@ -320,4 +320,28 @@ describe('Config', () => {
       rmSync(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it('rejects removed implicit review posting config keys', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-removed-posting-config-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        [
+          'review:',
+          '  postErrorComment: true',
+          '  describe:',
+          '    enabled: true',
+          '    postDescription: true',
+          '',
+        ].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.postErrorComment');
+      expect(() => loadConfig(projectRoot)).toThrow('review.describe.postDescription');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
 });

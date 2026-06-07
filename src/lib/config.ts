@@ -251,7 +251,6 @@ export interface DRSConfig {
     };
     describe?: {
       enabled?: boolean;
-      postDescription?: boolean;
     };
     cursorFixLinks?: {
       enabled?: boolean;
@@ -316,7 +315,6 @@ const DEFAULT_CONFIG: DRSConfig = {
     ],
     describe: {
       enabled: false,
-      postDescription: false,
     },
     cursorFixLinks: {
       enabled: false,
@@ -424,6 +422,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (existsSync(drsConfigPath)) {
     const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, drsConfigPath);
+    rejectRemovedReviewPostingConfigKeys(fileConfig, drsConfigPath);
     rejectInlineWorkflowConfig(fileConfig, drsConfigPath);
     config = mergeConfig(config, fileConfig);
   }
@@ -433,6 +432,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (existsSync(gitlabReviewPath)) {
     const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, gitlabReviewPath);
+    rejectRemovedReviewPostingConfigKeys(fileConfig, gitlabReviewPath);
     rejectInlineWorkflowConfig(fileConfig, gitlabReviewPath);
     config = mergeConfig(config, fileConfig);
   }
@@ -557,6 +557,34 @@ function rejectInlineWorkflowConfig(fileConfig: Partial<DRSConfig>, sourcePath: 
   }
 
   throw new Error(`Config file ${sourcePath} cannot define top-level workflows.`);
+}
+
+function rejectRemovedReviewPostingConfigKeys(
+  fileConfig: Partial<DRSConfig>,
+  sourcePath: string
+): void {
+  if (!isRecord(fileConfig) || !isRecord(fileConfig.review)) {
+    return;
+  }
+
+  const removedKeys: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(fileConfig.review, 'postErrorComment')) {
+    removedKeys.push('review.postErrorComment');
+  }
+
+  if (
+    isRecord(fileConfig.review.describe) &&
+    Object.prototype.hasOwnProperty.call(fileConfig.review.describe, 'postDescription')
+  ) {
+    removedKeys.push('review.describe.postDescription');
+  }
+
+  if (removedKeys.length > 0) {
+    throw new Error(
+      `Config file ${sourcePath} uses removed DRS 4.0 review posting keys: ${removedKeys.join(', ')}. ` +
+        'Run posting explicitly with workflows, or use describe-pr/describe-mr --post-description when updating PR/MR descriptions.'
+    );
+  }
 }
 
 /**

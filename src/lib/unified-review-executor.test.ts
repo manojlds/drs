@@ -518,7 +518,6 @@ describe('unified-review-executor', () => {
           ...mockConfig.review,
           describe: {
             enabled: true,
-            postDescription: true,
           },
         },
       };

@@ -680,7 +680,7 @@ describe('review-orchestrator', () => {
         ...mockConfig,
         review: {
           ...mockConfig.review,
-          describe: { enabled: true, postDescription: false },
+          describe: { enabled: true },
         },
       } as DRSConfig;
 

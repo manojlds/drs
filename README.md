@@ -468,7 +468,6 @@ review:
     - "*.md"
   describe:
     enabled: true
-    postDescription: false
   cursorFixLinks:
     enabled: false
     # workspace: my-repo
