@@ -8,11 +8,20 @@ import type {
   WorkflowInputConfig,
   WorkflowNodeConfig,
 } from '../lib/config.js';
-import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
+import {
+  getDescriberModelOverride,
+  normalizeAgentConfig,
+  resolveAgentRunConfig,
+} from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
 import { parseValidLinesFromPatch } from '../lib/diff-lines.js';
-import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
+import {
+  connectToRuntime,
+  executeReview,
+  type ReviewResult,
+  type ReviewSource,
+} from '../lib/review-orchestrator.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
 import type {
   FileChange,
@@ -25,6 +34,9 @@ import type { ReviewIssue } from '../lib/comment-formatter.js';
 import { postReviewComments } from '../lib/comment-poster.js';
 import { findExistingCommentById } from '../lib/comment-manager.js';
 import { removeErrorComment } from '../lib/error-comment-poster.js';
+import { runDescribeIfEnabled } from '../lib/description-executor.js';
+import type { Description } from '../lib/description-formatter.js';
+import type { FileWithDiff } from '../lib/review-core.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
@@ -549,6 +561,17 @@ async function runActionWorkflowNode(
   }
   if (node.action === 'review') {
     return runReviewWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
+  }
+  if (node.action === 'describe') {
+    return runDescribeWorkflowNode(
       config,
       nodeId,
       node,
@@ -1124,6 +1147,79 @@ function isReviewResult(value: unknown): value is ReviewResult {
 
   const candidate = value as Partial<ReviewResult>;
   return Array.isArray(candidate.issues) && typeof candidate.summary === 'object';
+}
+
+function getDescribeFiles(source: ReviewSource, target: WorkflowPostTarget): FileWithDiff[] {
+  if (source.filesWithDiffs && source.filesWithDiffs.length > 0) {
+    return source.filesWithDiffs;
+  }
+
+  return (target.changedFiles ?? [])
+    .filter((file) => file.status !== 'removed')
+    .map((file) => ({ filename: file.filename, patch: file.patch }));
+}
+
+async function runDescribeWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow describe node "${nodeId}" needs a ReviewSource artifact. ` +
+        'Set with.source to a change-source output.'
+    );
+  }
+
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
+  if (!target.pullRequest) {
+    throw new Error(`Workflow describe node "${nodeId}" needs a platform change-source target.`);
+  }
+
+  const shouldPostDescription =
+    getBooleanActionOption(node, 'post') || getBooleanActionOption(node, 'postDescription');
+  const runtimeClient = await connectToRuntime(config, source.workingDir ?? workingDir, {
+    debug: options.debug,
+    modelOverrides: getDescriberModelOverride(config),
+    thinkingLevel: options.thinkingLevel,
+  });
+
+  let description: Description | null = null;
+  try {
+    description = await runDescribeIfEnabled(
+      runtimeClient,
+      config,
+      target.platformClient,
+      target.projectId,
+      target.pullRequest,
+      getDescribeFiles(source, target),
+      shouldPostDescription,
+      source.workingDir ?? workingDir,
+      options.debug
+    );
+  } finally {
+    await runtimeClient.shutdown();
+  }
+
+  const writes = renderNodeWritesPath(nodeId, node, context);
+  if (writes) {
+    await writeWorkflowFile(workingDir, writes, JSON.stringify(description, null, 2));
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: description ? JSON.stringify(description, null, 2) : 'description generation skipped',
+    output: description,
+    writes,
+  };
 }
 
 function formatMarkedComment(body: string, marker: string | undefined): string {

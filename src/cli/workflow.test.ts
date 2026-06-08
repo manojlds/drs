@@ -54,6 +54,11 @@ const mocks = vi.hoisted(() => {
     parseDiff: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
     getChangedFiles: vi.fn(() => ['src/app.ts']),
     getFilesWithDiffs: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
+    runtimeClient: {
+      shutdown: vi.fn(async () => undefined),
+    },
+    connectToRuntime: vi.fn(),
+    runDescribeIfEnabled: vi.fn(),
     executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
       issues: [] as unknown[],
       summary: {
@@ -116,7 +121,12 @@ vi.mock('../lib/diff-parser.js', () => ({
 }));
 
 vi.mock('../lib/review-orchestrator.js', () => ({
+  connectToRuntime: mocks.connectToRuntime,
   executeReview: mocks.executeReview,
+}));
+
+vi.mock('../lib/description-executor.js', () => ({
+  runDescribeIfEnabled: mocks.runDescribeIfEnabled,
 }));
 
 const baseConfig = {
@@ -183,6 +193,13 @@ describe('workflow runner', () => {
     mocks.getFilesWithDiffs.mockReturnValue([
       { filename: 'src/app.ts', patch: '@@ +1 @@\n+change' },
     ]);
+    mocks.runtimeClient.shutdown.mockResolvedValue(undefined);
+    mocks.connectToRuntime.mockResolvedValue(mocks.runtimeClient);
+    mocks.runDescribeIfEnabled.mockResolvedValue({
+      type: 'feature',
+      title: 'Generated description',
+      summary: ['Describe the change'],
+    });
     mocks.createGitHubClient.mockReturnValue({ platform: 'github' });
     mocks.GitHubPlatformAdapter.mockReturnValue(mocks.githubAdapter);
     mocks.githubAdapter.getPullRequest.mockResolvedValue({
@@ -930,6 +947,67 @@ describe('workflow runner', () => {
           projectId: 'octocat/hello-world',
         }),
       })
+    );
+  });
+
+  it('generates and posts a GitHub PR description from workflow artifacts', async () => {
+    const projectRoot = createTempDir('drs-workflow-describe-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        githubDescribe: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'change',
+            },
+            describe: {
+              action: 'describe',
+              needs: ['change'],
+              with: { source: 'change', post: true },
+              output: 'description',
+              writes: '.drs/description.json',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'githubDescribe', {
+      workingDir: projectRoot,
+      debug: true,
+      thinkingLevel: 'high',
+    });
+
+    expect(mocks.connectToRuntime).toHaveBeenCalledWith(
+      config,
+      projectRoot,
+      expect.objectContaining({
+        debug: true,
+        thinkingLevel: 'high',
+      })
+    );
+    expect(mocks.runDescribeIfEnabled).toHaveBeenCalledWith(
+      mocks.runtimeClient,
+      config,
+      mocks.githubAdapter,
+      'octocat/hello-world',
+      expect.objectContaining({ number: 7 }),
+      [{ filename: 'src/github.ts', patch: '@@ +1 @@\n+github' }],
+      true,
+      projectRoot,
+      true
+    );
+    expect(mocks.runtimeClient.shutdown).toHaveBeenCalled();
+    expect(result.artifacts.description).toMatchObject({ title: 'Generated description' });
+    expect(JSON.parse(readFileSync(join(projectRoot, '.drs/description.json'), 'utf-8'))).toEqual(
+      result.artifacts.description
     );
   });
 

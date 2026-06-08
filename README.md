@@ -91,8 +91,10 @@ drs workflow run local-staged-review
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
-| Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
-| Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
+| Generate PR description | `drs workflow run github-pr-describe --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Generate MR description | `drs workflow run gitlab-mr-describe --input project=<group/repo> --input mr=<number>` |
+| Post or update a PR comment | `drs workflow run github-pr-post-comment --input owner=<owner> --input repo=<repo> --input pr=<number> --input body="..." --input marker=<id>` |
+| Post or update an MR comment | `drs workflow run gitlab-mr-post-comment --input project=<group/repo> --input mr=<number> --input body="..." --input marker=<id>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 | Run the default project workflow | `drs workflow run` |
@@ -135,10 +137,14 @@ drs show-changes --owner octocat --repo hello-world --pr 456 --file src/app.ts
 drs show-changes --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
 
 # Generate PR/MR descriptions on demand
-drs describe-pr --owner octocat --repo hello-world --pr 456
-drs describe-pr --owner octocat --repo hello-world --pr 456 --post-description
-drs describe-mr --project my-org/my-repo --mr 123
-drs describe-mr --project my-org/my-repo --mr 123 --post-description
+drs workflow run github-pr-describe --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-describe-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run gitlab-mr-describe --input project=my-org/my-repo --input mr=123
+drs workflow run gitlab-mr-describe-post --input project=my-org/my-repo --input mr=123
+
+# Post or update a single marked PR/MR comment
+drs workflow run github-pr-post-comment --input owner=octocat --input repo=hello-world --input pr=456 --input body="Release notes are ready." --input marker=release-notes
+drs workflow run gitlab-mr-post-comment --input project=my-org/my-repo --input mr=123 --input body="Release notes are ready." --input marker=release-notes
 ```
 
 ### Mode 2: GitLab CI/CD
@@ -207,7 +213,7 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 - **Non-intrusive**: Doesn't create discussion threads
 
 **When to Use:**
-- Use **inline comments** (`--post-comments`) for critical issues requiring discussion
+- Use review-post workflows for critical issues requiring discussion
 - Use **code quality reports** (`--code-quality-report`) for comprehensive static analysis
 - Use **both together** for maximum visibility
 
@@ -487,7 +493,7 @@ describe:
 
 Notes:
 - Review orchestration is workflow-first in v4: use `drs workflow run ...` for local/PR/MR review.
-- `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
+- `describe.model` is used by describe workflows and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
 - `review.agents` controls exactly which review agents run.

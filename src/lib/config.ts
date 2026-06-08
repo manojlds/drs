@@ -41,6 +41,7 @@ export interface WorkflowNodeConfig {
     | 'git-commit'
     | 'change-source'
     | 'review'
+    | 'describe'
     | 'post-comment'
     | 'post-review-comments';
   /** Action-specific options. */
@@ -582,7 +583,7 @@ function rejectRemovedReviewPostingConfigKeys(
   if (removedKeys.length > 0) {
     throw new Error(
       `Config file ${sourcePath} uses removed DRS 4.0 review posting keys: ${removedKeys.join(', ')}. ` +
-        'Run posting explicitly with workflows, or use describe-pr/describe-mr --post-description when updating PR/MR descriptions.'
+        'Run posting explicitly with workflows, or use github-pr-describe-post/gitlab-mr-describe-post when updating PR/MR descriptions.'
     );
   }
 }

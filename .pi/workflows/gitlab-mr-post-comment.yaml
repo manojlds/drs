@@ -1,0 +1,17 @@
+name: gitlab-mr-post-comment
+description: Post or update a GitLab merge request comment
+inputs:
+  project: ""
+  mr: ""
+  body: ""
+  marker: ""
+nodes:
+  comment:
+    action: post-comment
+    input: "{{inputs.body}}"
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+      marker: "{{inputs.marker}}"
+    output: comment

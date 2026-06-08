@@ -109,6 +109,29 @@ describe('Config', () => {
         project: '',
         mr: '',
       });
+      expect(config.workflows?.['github-pr-describe-post']).toMatchObject({
+        description: 'Generate and post a GitHub pull request description',
+        nodes: {
+          describe: {
+            action: 'describe',
+            with: {
+              post: true,
+            },
+          },
+        },
+      });
+      expect(config.workflows?.['gitlab-mr-describe']?.inputs).toEqual({
+        project: '',
+        mr: '',
+      });
+      expect(config.workflows?.['github-pr-post-comment']).toMatchObject({
+        description: 'Post or update a GitHub pull request comment',
+        nodes: {
+          comment: {
+            action: 'post-comment',
+          },
+        },
+      });
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }

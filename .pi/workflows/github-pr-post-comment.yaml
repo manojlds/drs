@@ -1,0 +1,19 @@
+name: github-pr-post-comment
+description: Post or update a GitHub pull request comment
+inputs:
+  owner: ""
+  repo: ""
+  pr: ""
+  body: ""
+  marker: ""
+nodes:
+  comment:
+    action: post-comment
+    input: "{{inputs.body}}"
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+      marker: "{{inputs.marker}}"
+    output: comment
