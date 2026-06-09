@@ -38,6 +38,7 @@ import { runDescribeIfEnabled } from '../lib/description-executor.js';
 import type { Description } from '../lib/description-formatter.js';
 import type { FileWithDiff } from '../lib/review-core.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
+import { enforceRepoBranchMatch } from '../lib/repository-validator.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -1498,6 +1499,32 @@ function isReviewSource(value: unknown): value is ReviewSource {
   );
 }
 
+async function enforceWorkflowReviewTarget(
+  config: DRSConfig,
+  source: ReviewSource,
+  workingDir: string
+): Promise<void> {
+  const platform =
+    typeof source.context.platform === 'string' ? source.context.platform : undefined;
+  if (!isWorkflowPlatform(platform)) {
+    return;
+  }
+
+  const projectId =
+    typeof source.context.projectId === 'string' ? source.context.projectId : undefined;
+  const pullRequest = isPullRequest(source.context.pullRequest)
+    ? source.context.pullRequest
+    : undefined;
+  if (!projectId || !pullRequest) {
+    throw new Error('Workflow platform review source is missing project or PR/MR metadata.');
+  }
+
+  await enforceRepoBranchMatch(workingDir, projectId, pullRequest, {
+    skipRepoCheck: config.review.skipRepoCheck,
+    skipBranchCheck: config.review.skipBranchCheck,
+  });
+}
+
 async function runReviewWorkflowNode(
   config: DRSConfig,
   nodeId: string,
@@ -1529,6 +1556,7 @@ async function runReviewWorkflowNode(
     }
 
     try {
+      await enforceWorkflowReviewTarget(config, source, source.workingDir ?? workingDir);
       return await executeReview(config, {
         ...source,
         workingDir: source.workingDir ?? workingDir,
