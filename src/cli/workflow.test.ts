@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => {
     },
     connectToRuntime: vi.fn(),
     runDescribeIfEnabled: vi.fn(),
+    enforceRepoBranchMatch: vi.fn(async () => undefined),
     executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
       issues: [] as unknown[],
       summary: {
@@ -128,6 +129,10 @@ vi.mock('../lib/review-orchestrator.js', () => ({
 
 vi.mock('../lib/description-executor.js', () => ({
   runDescribeIfEnabled: mocks.runDescribeIfEnabled,
+}));
+
+vi.mock('../lib/repository-validator.js', () => ({
+  enforceRepoBranchMatch: mocks.enforceRepoBranchMatch,
 }));
 
 const baseConfig = {
@@ -202,6 +207,7 @@ describe('workflow runner', () => {
       title: 'Generated description',
       summary: ['Describe the change'],
     });
+    mocks.enforceRepoBranchMatch.mockResolvedValue(undefined);
     mocks.createGitHubClient.mockReturnValue({ platform: 'github' });
     mocks.GitHubPlatformAdapter.mockReturnValue(mocks.githubAdapter);
     mocks.githubAdapter.getPullRequest.mockResolvedValue({
@@ -1049,6 +1055,15 @@ describe('workflow runner', () => {
     expect(mocks.GitHubPlatformAdapter).toHaveBeenCalled();
     expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledWith('octocat/hello-world', 7);
     expect(mocks.githubAdapter.getChangedFiles).toHaveBeenCalledWith('octocat/hello-world', 7);
+    expect(mocks.enforceRepoBranchMatch).toHaveBeenCalledWith(
+      process.cwd(),
+      'octocat/hello-world',
+      expect.objectContaining({ number: 7 }),
+      {
+        skipRepoCheck: undefined,
+        skipBranchCheck: undefined,
+      }
+    );
     expect(mocks.executeReview).toHaveBeenCalledWith(
       config,
       expect.objectContaining({
@@ -1272,6 +1287,11 @@ describe('workflow runner', () => {
   it('loads a GitLab MR change source and reviews it', async () => {
     const config = {
       ...baseConfig,
+      review: {
+        ...baseConfig.review,
+        skipRepoCheck: true,
+        skipBranchCheck: true,
+      },
       workflows: {
         gitlabReview: {
           inputs: {
@@ -1308,6 +1328,15 @@ describe('workflow runner', () => {
     expect(mocks.GitLabPlatformAdapter).toHaveBeenCalled();
     expect(mocks.gitlabAdapter.getPullRequest).toHaveBeenCalledWith('group/repo', 8);
     expect(mocks.gitlabAdapter.getChangedFiles).toHaveBeenCalledWith('group/repo', 8);
+    expect(mocks.enforceRepoBranchMatch).toHaveBeenCalledWith(
+      process.cwd(),
+      'group/repo',
+      expect.objectContaining({ number: 8 }),
+      {
+        skipRepoCheck: true,
+        skipBranchCheck: true,
+      }
+    );
     expect(mocks.executeReview).toHaveBeenCalledWith(
       config,
       expect.objectContaining({
