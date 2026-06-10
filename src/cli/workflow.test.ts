@@ -1284,6 +1284,84 @@ describe('workflow runner', () => {
     });
   });
 
+  it('writes a GitLab code quality report from workflow review artifacts', async () => {
+    const projectRoot = createTempDir('drs-workflow-code-quality-');
+    mocks.executeReview.mockImplementation(async () => ({
+      issues: [
+        {
+          category: 'QUALITY',
+          severity: 'HIGH',
+          title: 'Validate input',
+          file: 'src/gitlab.ts',
+          line: 1,
+          problem: 'Input is not validated.',
+          solution: 'Validate it before use.',
+          agent: 'review/quality',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+    }));
+    const config = {
+      ...baseConfig,
+      workflows: {
+        codeQuality: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+              },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            report: {
+              action: 'code-quality-report',
+              needs: ['review'],
+              with: {
+                review: 'review',
+                path: 'gl-code-quality-report.json',
+              },
+              output: 'codeQualityReport',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'codeQuality', { workingDir: projectRoot });
+
+    const report = JSON.parse(
+      readFileSync(join(projectRoot, 'gl-code-quality-report.json'), 'utf-8')
+    );
+    expect(report).toEqual([
+      expect.objectContaining({
+        check_name: 'drs-quality',
+        severity: 'critical',
+        location: {
+          path: 'src/gitlab.ts',
+          lines: { begin: 1 },
+        },
+      }),
+    ]);
+    expect(result.artifacts.codeQualityReport).toMatchObject({
+      path: 'gl-code-quality-report.json',
+      issues: 1,
+    });
+  });
+
   it('loads a GitLab MR change source and reviews it', async () => {
     const config = {
       ...baseConfig,

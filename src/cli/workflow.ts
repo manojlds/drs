@@ -39,6 +39,7 @@ import type { Description } from '../lib/description-formatter.js';
 import type { FileWithDiff } from '../lib/review-core.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { enforceRepoBranchMatch } from '../lib/repository-validator.js';
+import { formatCodeQualityReport, generateCodeQualityReport } from '../lib/code-quality-report.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -588,6 +589,9 @@ async function runActionWorkflowNode(
       context,
       executionContext
     );
+  }
+  if (node.action === 'code-quality-report') {
+    return runCodeQualityReportWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'post-comment') {
     return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context, executionContext);
@@ -1275,6 +1279,43 @@ function getDescribeFiles(source: ReviewSource, target: WorkflowPostTarget): Fil
   return (target.changedFiles ?? [])
     .filter((file) => file.status !== 'removed')
     .map((file) => ({ filename: file.filename, patch: file.patch }));
+}
+
+async function runCodeQualityReportWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
+  const reviewResult = context.artifacts[reviewArtifact];
+  if (!isReviewResult(reviewResult)) {
+    throw new Error(`Workflow code-quality-report node "${nodeId}" needs a ReviewResult artifact.`);
+  }
+
+  const reportPath = hasActionOption(node, 'path')
+    ? requireStringActionOption(nodeId, node, 'path', context)
+    : renderNodeWritesPath(nodeId, node, context);
+  if (!reportPath) {
+    throw new Error(
+      `Workflow code-quality-report node "${nodeId}" must define with.path or writes.`
+    );
+  }
+
+  const report = generateCodeQualityReport(reviewResult.issues);
+  await writeWorkflowFile(workingDir, reportPath, formatCodeQualityReport(report));
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `wrote GitLab code quality report to ${reportPath}`,
+    output: {
+      path: reportPath,
+      issues: report.length,
+    },
+    writes: reportPath,
+  };
 }
 
 async function runDescribeWorkflowNode(

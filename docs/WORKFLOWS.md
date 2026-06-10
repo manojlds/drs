@@ -28,6 +28,8 @@ drs workflow run github-pr-review --input owner=octocat --input repo=hello-world
 drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review-code-quality --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo --input mr=123
 ```
 
 ## Workflow Files
@@ -110,7 +112,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `describe`, `post-comment`, and `post-review-comments` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `describe`, `code-quality-report`, `post-comment`, and `post-review-comments` |
 
 Common node fields:
 
@@ -205,6 +207,34 @@ nodes:
 ```
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
+
+### `code-quality-report`
+
+Writes a GitLab Code Quality report from a `review` artifact. Use the packaged `gitlab-mr-review-code-quality` or `gitlab-mr-review-post-code-quality` workflows when you want GitLab CI artifacts.
+
+```yaml
+nodes:
+  code-quality:
+    action: code-quality-report
+    needs: [review]
+    with:
+      review: review
+      path: gl-code-quality-report.json
+    output: codeQualityReport
+```
+
+You can make the report path configurable through workflow inputs:
+
+```yaml
+inputs:
+  codeQualityReport: gl-code-quality-report.json
+nodes:
+  code-quality:
+    action: code-quality-report
+    with:
+      review: review
+      path: "{{inputs.codeQualityReport}}"
+```
 
 ### `describe`
 

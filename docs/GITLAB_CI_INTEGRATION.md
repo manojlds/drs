@@ -31,9 +31,23 @@ DRS uses Pi in-process runtime only. No external runtime endpoint variables are 
 
 ## Optional Code Quality Report
 
-Code quality report generation is not included in the packaged review workflows.
-If you need GitLab code quality artifacts, add a custom project workflow with the
-required code-quality step before publishing the artifact.
+Use the packaged code-quality workflow when you want GitLab Code Quality artifacts:
+
+```yaml
+ai_review_code_quality:
+  stage: review
+  image: node:20-alpine
+  script:
+    - npm install -g @diff-review-system/drs
+    - drs workflow run gitlab-mr-review-code-quality --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID"
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    when: always
+    expire_in: 1 week
+  only:
+    - merge_requests
+```
 
 ## Required Secrets
 

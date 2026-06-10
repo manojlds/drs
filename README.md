@@ -108,6 +108,8 @@ drs workflow run local-update-agents-md
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
+| Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review-code-quality --input project=<group/repo> --input mr=<number>` |
+| Review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review-post-code-quality --input project=<group/repo> --input mr=<number>` |
 | Generate PR description | `drs workflow run github-pr-describe --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Generate MR description | `drs workflow run gitlab-mr-describe --input project=<group/repo> --input mr=<number>` |
 | Post or update a PR comment | `drs workflow run github-pr-post-comment --input owner=<owner> --input repo=<repo> --input pr=<number> --input body="..." --input marker=<id>` |
@@ -240,7 +242,8 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 # Use workflow-based MR review with comments
 drs workflow run gitlab-mr-review-post --input project=my-org/my-repo --input mr=123
 
-# For code quality artifacts, run a custom project workflow that adds report generation.
+# For code quality artifacts, run a packaged code-quality workflow
+drs workflow run gitlab-mr-review-code-quality --input project=my-org/my-repo --input mr=123
 ```
 
 ### GitLab CI Integration
