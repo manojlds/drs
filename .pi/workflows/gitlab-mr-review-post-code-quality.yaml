@@ -1,0 +1,40 @@
+name: gitlab-mr-review-post-code-quality
+description: Review a GitLab merge request, post DRS comments, and write a GitLab Code Quality report
+inputs:
+  project: ""
+  mr: ""
+  codeQualityReport: gl-code-quality-report.json
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+    output: change
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+    output: review
+
+  post-comments:
+    action: post-review-comments
+    needs:
+      - review
+    with:
+      source: change
+      review: review
+    output: postedReview
+
+  code-quality:
+    action: code-quality-report
+    needs:
+      - review
+    with:
+      review: review
+      path: "{{inputs.codeQualityReport}}"
+    output: codeQualityReport

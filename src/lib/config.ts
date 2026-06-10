@@ -42,6 +42,7 @@ export interface WorkflowNodeConfig {
     | 'change-source'
     | 'review'
     | 'describe'
+    | 'code-quality-report'
     | 'post-comment'
     | 'post-review-comments';
   /** Action-specific options. */
