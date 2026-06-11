@@ -14,7 +14,7 @@
 - Vitest for tests
 
 ### Important Paths
-- `src/cli/` — CLI commands (`workflow run`, `post-comments`, `show-changes`, `run-agent`)
+- `src/cli/` — CLI commands (`workflow run`, `show-changes`, `run-agent`)
 - `src/lib/` — core review orchestration/utilities
 - `src/runtime/` — runtime client + agent loading
 - `src/pi/` — Pi SDK adapter

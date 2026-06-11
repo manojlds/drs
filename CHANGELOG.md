@@ -34,6 +34,7 @@ All notable changes to DRS are documented in this file.
 
 - Remove packaged standalone review agents (`security`, `quality`, `style`, `performance`, `documentation`) in favor of `review/unified-reviewer` and project-specific `review/*` agents.
 - Remove `review.postErrorComment` and `review.describe.postDescription` config keys; posting is now explicit via workflows.
+- Remove the standalone `post-comments` CLI command; use review-post workflows or `post-review-comments` workflow actions instead.
 - Remove inline `workflows:` map support in `.drs/drs.config.yaml`; workflows must be defined as separate files under `.drs/workflows/*.yaml`.
 
 ## 3.3.1 - 2026-05-04
