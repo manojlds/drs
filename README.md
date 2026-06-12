@@ -106,6 +106,8 @@ drs workflow run local-update-agents-md
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
+| Show GitHub PR review context | `drs workflow run github-pr-show-changes --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Show GitLab MR review context | `drs workflow run gitlab-mr-show-changes --input project=<group/repo> --input mr=<number>` |
 | Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
 | Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review-code-quality --input project=<group/repo> --input mr=<number>` |
@@ -144,13 +146,10 @@ drs workflow run github-pr-review --input owner=octocat --input repo=hello-world
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --ultrathink
 
 # Show the diff context passed to agents
-drs show-changes --owner octocat --repo hello-world --pr 456
+drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 
 # Show diff context for a single file
-drs show-changes --owner octocat --repo hello-world --pr 456 --file src/app.ts
-
-# Show diff context using a specific base branch
-drs show-changes --owner octocat --repo hello-world --pr 456 --base-branch release/2026-01
+drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456 --input file=src/app.ts
 
 # Generate PR/MR descriptions on demand
 drs workflow run github-pr-describe --input owner=octocat --input repo=hello-world --input pr=456

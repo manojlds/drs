@@ -1,0 +1,25 @@
+name: github-pr-show-changes
+description: Show the review context for a GitHub pull request
+inputs:
+  owner: ""
+  repo: ""
+  pr: ""
+  file: ""
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+    output: change
+
+  context:
+    action: review-context
+    needs:
+      - change
+    with:
+      source: change
+      file: "{{inputs.file}}"
+    output: reviewContext

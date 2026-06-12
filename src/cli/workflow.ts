@@ -19,6 +19,7 @@ import { parseValidLinesFromPatch } from '../lib/diff-lines.js';
 import {
   connectToRuntime,
   executeReview,
+  filterIgnoredFiles,
   type ReviewResult,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
@@ -36,9 +37,13 @@ import { findExistingCommentById } from '../lib/comment-manager.js';
 import { removeErrorComment } from '../lib/error-comment-poster.js';
 import { runDescribeIfEnabled } from '../lib/description-executor.js';
 import type { Description } from '../lib/description-formatter.js';
-import type { FileWithDiff } from '../lib/review-core.js';
+import { buildBaseInstructions, type FileWithDiff } from '../lib/review-core.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
-import { enforceRepoBranchMatch } from '../lib/repository-validator.js';
+import {
+  enforceRepoBranchMatch,
+  getCanonicalDiffCommand,
+  resolveBaseBranch,
+} from '../lib/repository-validator.js';
 import { formatCodeQualityReport, generateCodeQualityReport } from '../lib/code-quality-report.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
@@ -578,6 +583,9 @@ async function runActionWorkflowNode(
       context,
       executionContext
     );
+  }
+  if (node.action === 'review-context') {
+    return runReviewContextWorkflowNode(config, nodeId, node, workingDir, context);
   }
   if (node.action === 'describe') {
     return runDescribeWorkflowNode(
@@ -1269,6 +1277,84 @@ function isReviewResult(value: unknown): value is ReviewResult {
 
   const candidate = value as Partial<ReviewResult>;
   return Array.isArray(candidate.issues) && typeof candidate.summary === 'object';
+}
+
+function getReviewSourceDiffCommand(source: ReviewSource, baseBranch?: string): string {
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  if (pullRequest) {
+    return getCanonicalDiffCommand(
+      pullRequest,
+      resolveBaseBranch(baseBranch, pullRequest.targetBranch)
+    );
+  }
+
+  return source.staged ? 'git diff --cached -- <file>' : 'git diff -- <file>';
+}
+
+function getReviewContextFiles(
+  config: DRSConfig,
+  source: ReviewSource,
+  fileFilter?: string
+): FileWithDiff[] {
+  const filteredFiles = filterIgnoredFiles(source.files, config);
+  const patchByFile = new Map(
+    (source.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
+  );
+  const files = filteredFiles.map((filename) => ({
+    filename,
+    patch: patchByFile.get(filename),
+  }));
+
+  if (!fileFilter) {
+    return files;
+  }
+
+  const matches = files.filter((file) => file.filename === fileFilter);
+  if (matches.length === 0) {
+    throw new Error(`No matching file "${fileFilter}" found in review source.`);
+  }
+  return matches;
+}
+
+async function runReviewContextWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow review-context node "${nodeId}" needs a ReviewSource artifact. ` +
+        'Set with.source to a change-source output.'
+    );
+  }
+
+  const rawFileFilter = getStringActionOption(node, 'file', context)?.trim();
+  const rawBaseBranch = getStringActionOption(node, 'baseBranch', context)?.trim();
+  const fileFilter = rawFileFilter === '' ? undefined : rawFileFilter;
+  const baseBranch = rawBaseBranch === '' ? undefined : rawBaseBranch;
+  const files = getReviewContextFiles(config, source, fileFilter);
+  const instructions = buildBaseInstructions(
+    source.name,
+    files,
+    getReviewSourceDiffCommand(source, baseBranch)
+  );
+  const writes = renderNodeWritesPath(nodeId, node, context);
+  if (writes) {
+    await writeWorkflowFile(workingDir, writes, instructions);
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: instructions,
+    output: instructions,
+    writes,
+  };
 }
 
 function getDescribeFiles(source: ReviewSource, target: WorkflowPostTarget): FileWithDiff[] {
