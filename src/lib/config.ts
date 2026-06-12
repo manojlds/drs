@@ -41,6 +41,7 @@ export interface WorkflowNodeConfig {
     | 'git-commit'
     | 'change-source'
     | 'review'
+    | 'review-context'
     | 'describe'
     | 'code-quality-report'
     | 'post-comment'

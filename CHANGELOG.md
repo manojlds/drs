@@ -9,10 +9,11 @@ All notable changes to DRS are documented in this file.
 - Introduce workflow-first CLI: `drs workflow run <name>` runs packaged or project-defined DAG workflows, and `drs run-agent` (alias `drs run`) executes any configured agent by id.
 - Add packaged review workflows: `local-review`, `local-staged-review`, `github-pr-review`, `github-pr-review-post`, `gitlab-mr-review`, and `gitlab-mr-review-post`.
 - Add packaged GitLab Code Quality workflows: `gitlab-mr-review-code-quality` and `gitlab-mr-review-post-code-quality`.
+- Add packaged review context workflows: `github-pr-show-changes` and `gitlab-mr-show-changes`.
 - Add packaged description workflows: `github-pr-describe`, `github-pr-describe-post`, `gitlab-mr-describe`, and `gitlab-mr-describe-post`.
 - Add packaged maintenance workflows: `local-changelog-update`, `tag-changelog-update`, `local-fix-review-issues`, `local-update-agents-md`, and project-local `local-changelog-review`.
 - Add built-in maintenance agents: `task/changelog-updater`, `task/review-issue-fixer`, and `task/agents-md-updater`.
-- Add workflow actions: `change-source`, `review`, `describe`, `code-quality-report`, `post-comment`, `post-review-comments`, `write`, `git-diff`, `git-add`, and `git-commit`.
+- Add workflow actions: `change-source`, `review`, `review-context`, `describe`, `code-quality-report`, `post-comment`, `post-review-comments`, `write`, `git-diff`, `git-add`, and `git-commit`.
 - Support workflow inputs, dependency graphs, concurrent nodes, and `{{inputs}}`/`{{artifacts}}`/`{{nodes}}` templates.
 - Add top-level `agents` config with `default`, `namespaces`, and `overrides` for model, skills, tools, and run settings.
 - Add runtime timeout and provider retry controls (`pi.runtime.*`, `pi.retry.provider.*`) with `DRS_RUNTIME_*` environment overrides.
@@ -35,6 +36,7 @@ All notable changes to DRS are documented in this file.
 - Remove packaged standalone review agents (`security`, `quality`, `style`, `performance`, `documentation`) in favor of `review/unified-reviewer` and project-specific `review/*` agents.
 - Remove `review.postErrorComment` and `review.describe.postDescription` config keys; posting is now explicit via workflows.
 - Remove the standalone `post-comments` CLI command; use review-post workflows or `post-review-comments` workflow actions instead.
+- Remove the standalone `show-changes` CLI command; use `github-pr-show-changes` or `gitlab-mr-show-changes` workflows instead.
 - Remove inline `workflows:` map support in `.drs/drs.config.yaml`; workflows must be defined as separate files under `.drs/workflows/*.yaml`.
 
 ## 3.3.1 - 2026-05-04

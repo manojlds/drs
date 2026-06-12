@@ -125,6 +125,8 @@ vi.mock('../lib/diff-parser.js', () => ({
 vi.mock('../lib/review-orchestrator.js', () => ({
   connectToRuntime: mocks.connectToRuntime,
   executeReview: mocks.executeReview,
+  filterIgnoredFiles: (files: string[], config: DRSConfig) =>
+    files.filter((file) => !(config.review.ignorePatterns ?? []).includes(file)),
 }));
 
 vi.mock('../lib/description-executor.js', () => ({
@@ -133,6 +135,11 @@ vi.mock('../lib/description-executor.js', () => ({
 
 vi.mock('../lib/repository-validator.js', () => ({
   enforceRepoBranchMatch: mocks.enforceRepoBranchMatch,
+  resolveBaseBranch: (_baseBranch?: string, targetBranch?: string) => ({
+    resolvedBaseBranch: targetBranch ? `origin/${targetBranch}` : undefined,
+    source: targetBranch ? 'pr:targetBranch' : undefined,
+  }),
+  getCanonicalDiffCommand: () => 'git diff origin/main origin/feature -- <file>',
 }));
 
 const baseConfig = {
@@ -1076,6 +1083,89 @@ describe('workflow runner', () => {
         }),
       })
     );
+  });
+
+  it('shows GitHub PR review context with embedded diff content', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        githubContext: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'change',
+            },
+            context: {
+              action: 'review-context',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'reviewContext',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'githubContext', { workingDir: process.cwd() });
+
+    expect(result.output).toEqual(expect.stringContaining('## Diff Content'));
+    expect(result.output).toEqual(expect.stringContaining('### src/github.ts'));
+    expect(result.output).toEqual(expect.stringContaining('+github'));
+  });
+
+  it('filters review context to a requested file', async () => {
+    mocks.gitlabAdapter.getChangedFiles.mockResolvedValue([
+      {
+        filename: 'src/one.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        patch: '@@ +1 @@\n+one',
+      },
+      {
+        filename: 'src/two.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        patch: '@@ +1 @@\n+two',
+      },
+    ]);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        gitlabContext: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+              },
+              output: 'change',
+            },
+            context: {
+              action: 'review-context',
+              needs: ['change'],
+              with: { source: 'change', file: 'src/two.ts' },
+              output: 'reviewContext',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'gitlabContext', { workingDir: process.cwd() });
+
+    expect(result.output).toEqual(expect.stringContaining('### src/two.ts'));
+    expect(result.output).toEqual(expect.stringContaining('+two'));
+    expect(result.output).not.toEqual(expect.stringContaining('### src/one.ts'));
   });
 
   it('generates and posts a GitHub PR description from workflow artifacts', async () => {

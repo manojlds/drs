@@ -26,8 +26,10 @@ drs workflow run local-changelog-review
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-show-changes --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review-code-quality --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo --input mr=123
 ```
@@ -112,7 +114,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `describe`, `code-quality-report`, `post-comment`, and `post-review-comments` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `review-context`, `describe`, `code-quality-report`, `post-comment`, and `post-review-comments` |
 
 Common node fields:
 
@@ -207,6 +209,23 @@ nodes:
 ```
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
+
+### `review-context`
+
+Builds and outputs the review instructions/context for a `change-source` artifact without running review agents. This is useful for debugging what DRS will send to agents.
+
+```yaml
+nodes:
+  context:
+    action: review-context
+    needs: [change]
+    with:
+      source: change
+      file: src/app.ts
+    output: reviewContext
+```
+
+Packaged workflows: `github-pr-show-changes`, `gitlab-mr-show-changes`.
 
 ### `code-quality-report`
 
