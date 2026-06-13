@@ -10,8 +10,10 @@ import type {
 } from '../lib/config.js';
 import {
   getDescriberModelOverride,
+  loadWorkflowSourceInfo,
   normalizeAgentConfig,
   resolveAgentRunConfig,
+  type WorkflowSource,
 } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
@@ -1852,4 +1854,67 @@ export async function runWorkflow(
   }
 
   return result;
+}
+
+export interface WorkflowListEntry {
+  name: string;
+  source: WorkflowSource;
+  overridden: boolean;
+  description?: string;
+}
+
+export interface WorkflowListOptions {
+  json?: boolean;
+  workingDir?: string;
+}
+
+/**
+ * List available workflows and their source origin.
+ *
+ * Packaged workflows are always returned. Project-defined workflows
+ * appear as 'project' and mark any packaged workflow they replace
+ * as overridden.
+ */
+export function listWorkflows(
+  config: DRSConfig,
+  options: WorkflowListOptions = {}
+): WorkflowListEntry[] {
+  const workingDir = options.workingDir ?? process.cwd();
+  const sourceInfo = loadWorkflowSourceInfo(workingDir);
+  const workflows = config.workflows ?? {};
+  const entries = Object.entries(workflows)
+    .map(([name, workflow]) => {
+      const info = sourceInfo[name] ?? {
+        source: 'packaged' as WorkflowSource,
+        overridesPackaged: false,
+      };
+      return {
+        name,
+        source: info.source,
+        overridden: info.overridesPackaged,
+        description: workflow.description,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (options.json) {
+    console.log(JSON.stringify(entries, null, 2));
+  } else {
+    const sourceLabel = (source: WorkflowSource, overridden: boolean) => {
+      const label = source === 'packaged' ? chalk.gray('packaged') : chalk.cyan('project');
+      return overridden ? `${label} ${chalk.yellow('(overrides packaged)')}` : label;
+    };
+
+    console.log(chalk.bold('\n📋 Available Workflows:\n'));
+    for (const entry of entries) {
+      console.log(`  ${chalk.white(entry.name)}`);
+      console.log(`    Source: ${sourceLabel(entry.source, entry.overridden)}`);
+      if (entry.description) {
+        console.log(`    ${chalk.gray(entry.description)}`);
+      }
+    }
+    console.log('');
+  }
+
+  return entries;
 }

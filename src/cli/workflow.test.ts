@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DRSConfig } from '../lib/config.js';
+import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { exitProcess } from '../lib/exit.js';
-import { runWorkflow } from './workflow.js';
+import { runWorkflow, listWorkflows } from './workflow.js';
 
 const mocks = vi.hoisted(() => {
   const githubAdapter = {
@@ -1597,5 +1597,33 @@ describe('workflow runner', () => {
       'Unknown workflow template value "{{inputs.missing}}"'
     );
     expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('lists workflows with packaged source by default', () => {
+    const config = loadConfig(process.cwd());
+
+    const entries = listWorkflows(config, { workingDir: process.cwd() });
+
+    expect(entries.some((entry) => entry.source === 'packaged' && !entry.overridden)).toBe(true);
+  });
+
+  it('lists project workflows that override packaged ones', () => {
+    const projectRoot = createTempDir('drs-workflow-list-');
+    mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.drs', 'workflows', 'local-review.yaml'),
+      'description: Project override\nnodes:\n  step:\n    action: write\n    input: hi\n    writes: out.txt\n',
+      'utf-8'
+    );
+
+    const config = loadConfig(projectRoot);
+    const entries = listWorkflows(config, { workingDir: projectRoot });
+    const localReview = entries.find((entry) => entry.name === 'local-review');
+
+    expect(localReview).toMatchObject({
+      source: 'project',
+      overridden: true,
+      description: 'Project override',
+    });
   });
 });

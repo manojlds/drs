@@ -34,6 +34,15 @@ drs workflow run gitlab-mr-review-code-quality --input project=group/repo --inpu
 drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo --input mr=123
 ```
 
+## List Workflows
+
+```bash
+drs workflow list
+drs workflow list --json
+```
+
+This shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one.
+
 ## Workflow Files
 
 Workflows are YAML files. Project workflow files live in `.drs/workflows/*.yaml`:

@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import { runWorkflow } from './workflow.js';
+import { runWorkflow, listWorkflows } from './workflow.js';
 import { loadConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -151,6 +151,24 @@ workflowCommand
         jsonOutput: options.json,
         debug: options.debug || false,
         thinkingLevel,
+        workingDir: process.cwd(),
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('list')
+  .description('List available workflows (packaged and project-defined)')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const config = loadConfig(process.cwd());
+      listWorkflows(config, {
+        json: options.json || false,
         workingDir: process.cwd(),
       });
       process.exit(0);
