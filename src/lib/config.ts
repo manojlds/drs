@@ -66,6 +66,8 @@ export interface WorkflowConfig {
   nodes: Record<string, WorkflowNodeConfig>;
 }
 
+export type WorkflowSource = 'packaged' | 'project';
+
 export interface AgentDefaultsConfig {
   model?: string;
   skills?: string[];
@@ -379,9 +381,12 @@ function loadWorkflowFile(filePath: string): Record<string, WorkflowConfig> {
   };
 }
 
-function loadWorkflowFilesFromDirectory(directoryPath: string): Record<string, WorkflowConfig> {
+function loadWorkflowFilesFromDirectory(
+  directoryPath: string,
+  source: WorkflowSource
+): { workflows: Record<string, WorkflowConfig>; sources: Record<string, WorkflowSource> } {
   if (!existsSync(directoryPath)) {
-    return {};
+    return { workflows: {}, sources: {} };
   }
 
   if (!statSync(directoryPath).isDirectory()) {
@@ -389,18 +394,72 @@ function loadWorkflowFilesFromDirectory(directoryPath: string): Record<string, W
   }
 
   const workflows: Record<string, WorkflowConfig> = {};
+  const sources: Record<string, WorkflowSource> = {};
   for (const fileName of readdirSync(directoryPath).filter(isWorkflowFileName).sort()) {
-    Object.assign(workflows, loadWorkflowFile(join(directoryPath, fileName)));
+    const fileWorkflows = loadWorkflowFile(join(directoryPath, fileName));
+    for (const workflowName of Object.keys(fileWorkflows)) {
+      sources[workflowName] = source;
+    }
+    Object.assign(workflows, fileWorkflows);
   }
-  return workflows;
+  return { workflows, sources };
 }
 
-function loadBuiltInWorkflowFiles(): Record<string, WorkflowConfig> {
-  const workflows: Record<string, WorkflowConfig> = {};
+function loadBuiltInWorkflowFiles(): {
+  workflows: Record<string, WorkflowConfig>;
+  sources: Record<string, WorkflowSource>;
+} {
+  const result: {
+    workflows: Record<string, WorkflowConfig>;
+    sources: Record<string, WorkflowSource>;
+  } = {
+    workflows: {},
+    sources: {},
+  };
   for (const directory of getBuiltInWorkflowPaths()) {
-    Object.assign(workflows, loadWorkflowFilesFromDirectory(directory));
+    const loaded = loadWorkflowFilesFromDirectory(directory, 'packaged');
+    Object.assign(result.workflows, loaded.workflows);
+    Object.assign(result.sources, loaded.sources);
   }
-  return workflows;
+  return result;
+}
+
+/**
+ * Load map of workflow names to their source origin (packaged or project).
+ */
+export function loadWorkflowSources(projectPath?: string): Record<string, WorkflowSource> {
+  const basePath = projectPath ?? process.cwd();
+  const builtIn = loadBuiltInWorkflowFiles();
+  const project = loadWorkflowFilesFromDirectory(resolve(basePath, '.drs/workflows'), 'project');
+
+  // Project workflows take precedence, so they override packaged sources.
+  return { ...builtIn.sources, ...project.sources };
+}
+
+export interface WorkflowSourceInfo {
+  source: WorkflowSource;
+  overridesPackaged: boolean;
+}
+
+/**
+ * Load map of workflow names to their source origin, including whether
+ * a project workflow is overriding an existing packaged workflow.
+ */
+export function loadWorkflowSourceInfo(projectPath?: string): Record<string, WorkflowSourceInfo> {
+  const basePath = projectPath ?? process.cwd();
+  const builtIn = loadBuiltInWorkflowFiles();
+  const project = loadWorkflowFilesFromDirectory(resolve(basePath, '.drs/workflows'), 'project');
+  const info: Record<string, WorkflowSourceInfo> = {};
+
+  for (const name of Object.keys(builtIn.sources)) {
+    info[name] = { source: 'packaged', overridesPackaged: false };
+  }
+
+  for (const name of Object.keys(project.sources)) {
+    info[name] = { source: 'project', overridesPackaged: name in builtIn.sources };
+  }
+
+  return info;
 }
 
 /**
@@ -415,10 +474,12 @@ function loadBuiltInWorkflowFiles(): Record<string, WorkflowConfig> {
  */
 export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>): DRSConfig {
   const basePath = projectPath ?? process.cwd();
-  let config = mergeConfig({ ...DEFAULT_CONFIG }, { workflows: loadBuiltInWorkflowFiles() });
+  const builtIn = loadBuiltInWorkflowFiles();
+  let config = mergeConfig({ ...DEFAULT_CONFIG }, { workflows: builtIn.workflows });
 
   const projectWorkflowPath = resolve(basePath, '.drs/workflows');
-  config = mergeConfig(config, { workflows: loadWorkflowFilesFromDirectory(projectWorkflowPath) });
+  const project = loadWorkflowFilesFromDirectory(projectWorkflowPath, 'project');
+  config = mergeConfig(config, { workflows: project.workflows });
 
   // Try loading from .drs/drs.config.yaml
   const drsConfigPath = resolve(basePath, '.drs/drs.config.yaml');

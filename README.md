@@ -119,6 +119,7 @@ drs workflow run local-update-agents-md
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 | Run the default project workflow | `drs workflow run` |
+| List available workflows | `drs workflow list` |
 
 ## Deployment Modes
 
