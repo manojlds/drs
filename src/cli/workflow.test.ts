@@ -1599,6 +1599,35 @@ describe('workflow runner', () => {
     expect(mocks.runAgent).not.toHaveBeenCalled();
   });
 
+  it('waits for sibling side effects in a wave before surfacing a node failure', async () => {
+    const workingDir = createTempDir('drs-workflow-wave-failure-');
+    let writeNodeFinished = false;
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      if (agent === 'task/fail') {
+        throw new Error('agent failed');
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+      writeNodeFinished = true;
+      return createMockAgentResult(agent, options.prompt ?? 'ok');
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        waveFail: {
+          nodes: {
+            fail: { agent: 'task/fail', input: 'fail' },
+            slow: { agent: 'task/slow', input: 'slow', writes: 'out.txt' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'waveFail', { workingDir })).rejects.toThrow('agent failed');
+    expect(writeNodeFinished).toBe(true);
+    expect(readFileSync(join(workingDir, 'out.txt'), 'utf-8')).toBe('slow');
+  });
+
   it('lists workflows with packaged source by default', () => {
     const config = loadConfig(process.cwd());
 

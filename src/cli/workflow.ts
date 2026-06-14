@@ -1798,7 +1798,7 @@ export async function runWorkflow(
   }
 
   for (const wave of executionWaves) {
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       wave.map(async (nodeId) => {
         const node = workflowNodes[nodeId];
         if (!node) {
@@ -1822,7 +1822,23 @@ export async function runWorkflow(
       })
     );
 
-    for (const { nodeId, node, result } of results) {
+    const firstRejection = settled.find(
+      (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected'
+    );
+    if (firstRejection) {
+      throw firstRejection.reason instanceof Error
+        ? firstRejection.reason
+        : new Error(String(firstRejection.reason));
+    }
+
+    for (const outcome of settled) {
+      const { nodeId, node, result } = (
+        outcome as PromiseFulfilledResult<{
+          nodeId: string;
+          node: WorkflowNodeConfig;
+          result: WorkflowNodeResult;
+        }>
+      ).value;
       nodes[nodeId] = result;
       recordNodeArtifact(nodeId, node, result, artifacts);
     }
