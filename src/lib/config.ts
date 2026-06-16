@@ -1,7 +1,8 @@
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { basename, extname, join, resolve } from 'path';
 import * as yaml from 'yaml';
 import { requireAgentId } from './agent-id.js';
+import { getBuiltInWorkflowPaths } from '../runtime/built-in-paths.js';
 
 /**
  * Agent reference - supports both simple string and detailed object format.
@@ -33,7 +34,15 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow action. */
-  action?: 'write' | 'git-diff' | 'change-source' | 'review';
+  action?:
+    | 'write'
+    | 'git-diff'
+    | 'git-add'
+    | 'git-commit'
+    | 'change-source'
+    | 'review'
+    | 'post-comment'
+    | 'post-review-comments';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
@@ -200,8 +209,13 @@ export interface DRSConfig {
   // Generic agent configuration shared by review, describe, and task agents
   agents: AgentsConfig;
 
-  // Generic workflow/DAG configuration
+  // Effective workflow/DAG definitions loaded from workflow files.
   workflows?: Record<string, WorkflowConfig>;
+
+  // Workflow run defaults and project-level workflow selection.
+  workflow?: {
+    default?: string;
+  };
 
   /**
    * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
@@ -283,104 +297,6 @@ const DEFAULT_CONFIG: DRSConfig = {
       skills: [],
     },
   },
-  workflows: {
-    'local-review': {
-      description: 'Review local unstaged git diff',
-      nodes: {
-        change: {
-          action: 'change-source',
-          with: {
-            type: 'local',
-            staged: false,
-          },
-          output: 'change',
-        },
-        review: {
-          action: 'review',
-          needs: ['change'],
-          with: {
-            source: 'change',
-          },
-          output: 'review',
-        },
-      },
-    },
-    'local-staged-review': {
-      description: 'Review local staged git diff',
-      nodes: {
-        change: {
-          action: 'change-source',
-          with: {
-            type: 'local',
-            staged: true,
-          },
-          output: 'change',
-        },
-        review: {
-          action: 'review',
-          needs: ['change'],
-          with: {
-            source: 'change',
-          },
-          output: 'review',
-        },
-      },
-    },
-    'github-pr-review': {
-      description: 'Review a GitHub pull request',
-      inputs: {
-        owner: '',
-        repo: '',
-        pr: '',
-      },
-      nodes: {
-        change: {
-          action: 'change-source',
-          with: {
-            type: 'github-pr',
-            owner: '{{inputs.owner}}',
-            repo: '{{inputs.repo}}',
-            pr: '{{inputs.pr}}',
-          },
-          output: 'change',
-        },
-        review: {
-          action: 'review',
-          needs: ['change'],
-          with: {
-            source: 'change',
-          },
-          output: 'review',
-        },
-      },
-    },
-    'gitlab-mr-review': {
-      description: 'Review a GitLab merge request',
-      inputs: {
-        project: '',
-        mr: '',
-      },
-      nodes: {
-        change: {
-          action: 'change-source',
-          with: {
-            type: 'gitlab-mr',
-            project: '{{inputs.project}}',
-            mr: '{{inputs.mr}}',
-          },
-          output: 'change',
-        },
-        review: {
-          action: 'review',
-          needs: ['change'],
-          with: {
-            source: 'change',
-          },
-          output: 'review',
-        },
-      },
-    },
-  },
   gitlab: {
     url: process.env.GITLAB_URL ?? 'https://gitlab.com',
     token: process.env.GITLAB_TOKEN ?? '',
@@ -389,13 +305,7 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
-    agents: [
-      'review/security',
-      'review/quality',
-      'review/style',
-      'review/performance',
-      'review/documentation',
-    ],
+    agents: ['review/unified-reviewer'],
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -427,23 +337,96 @@ const DEFAULT_CONFIG: DRSConfig = {
   },
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isWorkflowFileName(fileName: string): boolean {
+  return fileName.endsWith('.yaml') || fileName.endsWith('.yml');
+}
+
+function validateWorkflowDefinition(
+  workflowName: string,
+  workflow: unknown,
+  sourcePath: string
+): WorkflowConfig {
+  if (!isRecord(workflow) || !isRecord(workflow.nodes)) {
+    throw new Error(`Workflow "${workflowName}" in ${sourcePath} must define a nodes object.`);
+  }
+
+  return workflow as unknown as WorkflowConfig;
+}
+
+function loadWorkflowFile(filePath: string): Record<string, WorkflowConfig> {
+  const parsed = yaml.parse(readFileSync(filePath, 'utf-8')) ?? {};
+  if (!isRecord(parsed)) {
+    throw new Error(`Workflow file ${filePath} must contain a YAML object.`);
+  }
+
+  if (parsed.workflows !== undefined) {
+    throw new Error(`Workflow file ${filePath} must define one workflow directly.`);
+  }
+
+  const workflowName =
+    parsed.name === undefined ? basename(filePath, extname(filePath)) : parsed.name;
+  if (typeof workflowName !== 'string' || !workflowName.trim()) {
+    throw new Error(`Workflow file ${filePath} must use a non-empty string name.`);
+  }
+
+  const workflow = { ...parsed };
+  delete workflow.name;
+  return {
+    [workflowName.trim()]: validateWorkflowDefinition(workflowName.trim(), workflow, filePath),
+  };
+}
+
+function loadWorkflowFilesFromDirectory(directoryPath: string): Record<string, WorkflowConfig> {
+  if (!existsSync(directoryPath)) {
+    return {};
+  }
+
+  if (!statSync(directoryPath).isDirectory()) {
+    throw new Error(`Workflow path ${directoryPath} exists but is not a directory.`);
+  }
+
+  const workflows: Record<string, WorkflowConfig> = {};
+  for (const fileName of readdirSync(directoryPath).filter(isWorkflowFileName).sort()) {
+    Object.assign(workflows, loadWorkflowFile(join(directoryPath, fileName)));
+  }
+  return workflows;
+}
+
+function loadBuiltInWorkflowFiles(): Record<string, WorkflowConfig> {
+  const workflows: Record<string, WorkflowConfig> = {};
+  for (const directory of getBuiltInWorkflowPaths()) {
+    Object.assign(workflows, loadWorkflowFilesFromDirectory(directory));
+  }
+  return workflows;
+}
+
 /**
  * Load configuration from various sources with precedence:
- * 1. CLI arguments (passed as overrides)
- * 2. Environment variables
- * 3. .drs/drs.config.yaml or .drs/drs.config.json
- * 4. .gitlab-review.yml
- * 5. Default values
+ * 1. Default values
+ * 2. Built-in workflow files
+ * 3. .drs/workflows/*.yaml
+ * 4. .drs/drs.config.yaml
+ * 5. .gitlab-review.yml
+ * 6. Environment variables
+ * 7. CLI arguments (passed as overrides)
  */
 export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>): DRSConfig {
   const basePath = projectPath ?? process.cwd();
-  let config = { ...DEFAULT_CONFIG };
+  let config = mergeConfig({ ...DEFAULT_CONFIG }, { workflows: loadBuiltInWorkflowFiles() });
+
+  const projectWorkflowPath = resolve(basePath, '.drs/workflows');
+  config = mergeConfig(config, { workflows: loadWorkflowFilesFromDirectory(projectWorkflowPath) });
 
   // Try loading from .drs/drs.config.yaml
   const drsConfigPath = resolve(basePath, '.drs/drs.config.yaml');
   if (existsSync(drsConfigPath)) {
     const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, drsConfigPath);
+    rejectInlineWorkflowConfig(fileConfig, drsConfigPath);
     config = mergeConfig(config, fileConfig);
   }
 
@@ -452,6 +435,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (existsSync(gitlabReviewPath)) {
     const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, gitlabReviewPath);
+    rejectInlineWorkflowConfig(fileConfig, gitlabReviewPath);
     config = mergeConfig(config, fileConfig);
   }
 
@@ -573,6 +557,14 @@ function rejectLegacyAgentConfigKeys(fileConfig: Partial<DRSConfig>, sourcePath:
   }
 }
 
+function rejectInlineWorkflowConfig(fileConfig: Partial<DRSConfig>, sourcePath: string): void {
+  if (!isRecord(fileConfig) || fileConfig.workflows === undefined) {
+    return;
+  }
+
+  throw new Error(`Config file ${sourcePath} cannot define top-level workflows.`);
+}
+
 /**
  * Deep merge two config objects, skipping undefined values
  */
@@ -582,6 +574,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     opencode: mergeSection(base.opencode, override.opencode),
     agents: mergeSection(base.agents, override.agents),
     workflows: mergeSection(base.workflows, override.workflows),
+    workflow: mergeSection(base.workflow, override.workflow),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),

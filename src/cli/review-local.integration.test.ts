@@ -67,7 +67,7 @@ const integrationConfig = {
   gitlab: { url: '', token: '' },
   github: { token: '' },
   review: {
-    agents: ['review/security'],
+    agents: ['review/unified-reviewer'],
     ignorePatterns: ['*.test.ts'],
     mode: 'multi-agent',
     describe: {
@@ -93,7 +93,7 @@ describe('review-local integration (simulated diffs)', () => {
 
     mocks.createSession.mockResolvedValue({
       id: 'session-1',
-      agent: 'review/security',
+      agent: 'review/unified-reviewer',
       createdAt: new Date('2026-02-22T00:00:00Z'),
     });
 
@@ -126,7 +126,7 @@ describe('review-local integration (simulated diffs)', () => {
           problem: 'Query strings are built using concatenated user input.',
           solution: 'Use parameterized queries to avoid injection risks.',
           references: [],
-          agent: 'security',
+          agent: 'unified',
         },
       ],
     };
@@ -162,7 +162,7 @@ describe('review-local integration (simulated diffs)', () => {
     expect(mocks.createSession).toHaveBeenCalledTimes(1);
     expect(mocks.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        agent: 'review/security',
+        agent: 'review/unified-reviewer',
       })
     );
 
@@ -214,7 +214,7 @@ describe('review-local integration (simulated diffs)', () => {
           solution:
             'Add an integration test that verifies the new flag is parsed and propagated to command execution.',
           references: [],
-          agent: 'quality',
+          agent: 'unified',
         },
       ],
     };
@@ -247,7 +247,7 @@ describe('review-local integration (simulated diffs)', () => {
       },
       review: {
         ...integrationConfig.review,
-        agents: ['review/quality'],
+        agents: ['review/unified-reviewer'],
       },
     } as unknown as DRSConfig;
 
@@ -255,7 +255,7 @@ describe('review-local integration (simulated diffs)', () => {
 
     expect(mocks.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        agent: 'review/quality',
+        agent: 'review/unified-reviewer',
       })
     );
 
@@ -316,7 +316,7 @@ describe('review-local integration (simulated diffs)', () => {
     await reviewLocal(integrationConfig, { staged: false, jsonOutput: false, debug: false });
 
     expect(buildPromptSpy).toHaveBeenCalledWith(
-      'review/security',
+      'review/unified-reviewer',
       expect.any(String),
       expect.any(String),
       expect.any(Array),

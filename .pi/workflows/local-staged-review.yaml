@@ -1,0 +1,17 @@
+name: local-staged-review
+description: Review local staged git diff
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: true
+    output: change
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+    output: review

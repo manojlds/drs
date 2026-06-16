@@ -33,103 +33,93 @@ describe('agent-loader path resolution', () => {
   it('loads override agents from configured repo-relative path', () => {
     const projectRoot = createTempDir('drs-agent-loader-');
     const customAgentsRoot = join(projectRoot, 'config', 'agents');
-    const customAgentPath = join(customAgentsRoot, 'review', 'security', 'agent.md');
+    const customAgentPath = join(customAgentsRoot, 'review', 'unified-reviewer', 'agent.md');
 
-    mkdirSync(join(customAgentsRoot, 'review', 'security'), { recursive: true });
+    mkdirSync(join(customAgentsRoot, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
       customAgentPath,
-      `---\ndescription: Custom security override\nmodel: anthropic/custom-security\n---\n\nCustom security instructions\n`
+      `---\ndescription: Custom unified override\nmodel: anthropic/custom-unified\n---\n\nCustom unified instructions\n`
     );
 
     const agents = loadAgents(projectRoot, createConfig('config/agents'));
 
-    const securityAgent = agents.find((agent) => agent.id === 'review/security');
-    expect(securityAgent).toBeDefined();
-    expect(securityAgent?.description).toBe('Custom security override');
-    expect(securityAgent?.path).toBe(resolve(customAgentPath));
+    const unifiedAgent = agents.find((agent) => agent.id === 'review/unified-reviewer');
+    expect(unifiedAgent).toBeDefined();
+    expect(unifiedAgent?.description).toBe('Custom unified override');
+    expect(unifiedAgent?.path).toBe(resolve(customAgentPath));
 
-    expect(agents.some((agent) => agent.id === 'review/quality')).toBe(true);
+    expect(agents.some((agent) => agent.id === 'review/unified-reviewer')).toBe(true);
   });
 
   it('custom agent override replaces built-in prompt and model', () => {
     const projectRoot = createTempDir('drs-agent-override-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
       [
         '---',
-        'description: Project-specific security reviewer',
-        'model: openai/gpt-4o',
+        'description: Project-specific unified reviewer',
+        'model: openai/gpt-4o-mini',
         '---',
         '',
-        'You are a security reviewer for our Rails application.',
-        'Focus on mass assignment and CSRF vulnerabilities.',
+        'You are a unified reviewer for our Rails application.',
+        'Focus on correctness and security issues.',
         '',
       ].join('\n')
     );
 
     const agents = loadAgents(projectRoot);
 
-    const securityAgent = agents.find((a) => a.id === 'review/security');
-    expect(securityAgent).toBeDefined();
-    expect(securityAgent?.description).toBe('Project-specific security reviewer');
-    expect(securityAgent?.model).toBe('openai/gpt-4o');
-    expect(securityAgent?.prompt).toContain('Rails application');
-    expect(securityAgent?.prompt).toContain('CSRF vulnerabilities');
+    const unifiedAgent = agents.find((a) => a.id === 'review/unified-reviewer');
+    expect(unifiedAgent).toBeDefined();
+    expect(unifiedAgent?.description).toBe('Project-specific unified reviewer');
+    expect(unifiedAgent?.model).toBe('openai/gpt-4o-mini');
+    expect(unifiedAgent?.prompt).toContain('Rails application');
+    expect(unifiedAgent?.prompt).toContain('correctness and security');
     // Must NOT contain the built-in prompt
-    expect(securityAgent?.prompt).not.toContain('Security Vulnerability Assessment');
-
-    // Other built-in agents still loaded
-    const qualityAgent = agents.find((a) => a.id === 'review/quality');
-    expect(qualityAgent).toBeDefined();
-    expect(qualityAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]quality\.md$/);
+    expect(unifiedAgent?.prompt).not.toContain('Security Vulnerability Assessment');
   });
 
-  it('multiple custom agents override their respective built-ins', () => {
+  it('supports custom review agents alongside packaged unified reviewer', () => {
     const projectRoot = createTempDir('drs-agent-multi-override-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
-    mkdirSync(join(agentsDir, 'review', 'style'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'sql-reviewer'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'api-reviewer'), { recursive: true });
 
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
-      '---\ndescription: Custom security\n---\n\nCustom security prompt\n'
+      join(agentsDir, 'review', 'sql-reviewer', 'agent.md'),
+      '---\ndescription: Custom SQL reviewer\n---\n\nCustom SQL prompt\n'
     );
     writeFileSync(
-      join(agentsDir, 'review', 'style', 'agent.md'),
-      '---\ndescription: Custom style\n---\n\nCustom style prompt\n'
+      join(agentsDir, 'review', 'api-reviewer', 'agent.md'),
+      '---\ndescription: Custom API reviewer\n---\n\nCustom API prompt\n'
     );
 
     const agents = loadAgents(projectRoot);
 
-    const security = agents.find((a) => a.id === 'review/security');
-    const style = agents.find((a) => a.id === 'review/style');
-    const quality = agents.find((a) => a.id === 'review/quality');
+    const sqlReviewer = agents.find((a) => a.id === 'review/sql-reviewer');
+    const apiReviewer = agents.find((a) => a.id === 'review/api-reviewer');
+    const unified = agents.find((a) => a.id === 'review/unified-reviewer');
 
-    expect(security?.prompt).toBe('Custom security prompt');
-    expect(style?.prompt).toBe('Custom style prompt');
-    // quality remains built-in
-    expect(quality?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]quality\.md$/);
+    expect(sqlReviewer?.prompt).toBe('Custom SQL prompt');
+    expect(apiReviewer?.prompt).toBe('Custom API prompt');
+    expect(unified?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]unified-reviewer\.md$/);
   });
 
-  it('loads built-in Pi-native review agents and keeps all core categories', () => {
+  it('loads packaged unified review agent', () => {
     const agents = loadAgents(process.cwd());
     const reviewAgentNames = new Set(
       agents.filter((agent) => agent.namespace === 'review').map((agent) => agent.id)
     );
 
-    expect(reviewAgentNames.has('review/security')).toBe(true);
-    expect(reviewAgentNames.has('review/quality')).toBe(true);
-    expect(reviewAgentNames.has('review/style')).toBe(true);
-    expect(reviewAgentNames.has('review/performance')).toBe(true);
-    expect(reviewAgentNames.has('review/documentation')).toBe(true);
+    expect(reviewAgentNames.has('review/unified-reviewer')).toBe(true);
 
-    const securityAgent = agents.find((agent) => agent.id === 'review/security');
-    expect(securityAgent?.prompt).toContain('Security Vulnerability Assessment');
-    expect(securityAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]security\.md$/);
+    const unifiedAgent = agents.find((agent) => agent.id === 'review/unified-reviewer');
+    expect(unifiedAgent?.prompt).toContain('unified code review agent');
+    expect(unifiedAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]unified-reviewer\.md$/);
   });
 
   it('throws actionable error when configured agent path is invalid', () => {
@@ -144,9 +134,9 @@ describe('agent-loader path resolution', () => {
     const projectRoot = createTempDir('drs-agent-frontmatter-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
       [
         '---',
         'description: Themed agent',
@@ -166,31 +156,31 @@ describe('agent-loader path resolution', () => {
     );
 
     const agents = loadAgents(projectRoot);
-    const security = agents.find((a) => a.id === 'review/security');
+    const unified = agents.find((a) => a.id === 'review/unified-reviewer');
 
-    expect(security?.color).toBe('#FF5733');
-    expect(security?.hidden).toBe(true);
-    expect(security?.tools).toEqual({ Read: true, Grep: false });
-    expect(security?.skills).toEqual(['secure-code-review', 'dependency-audit']);
-    expect(security?.prompt).toBe('Custom prompt with all frontmatter fields.');
+    expect(unified?.color).toBe('#FF5733');
+    expect(unified?.hidden).toBe(true);
+    expect(unified?.tools).toEqual({ Read: true, Grep: false });
+    expect(unified?.skills).toEqual(['secure-code-review', 'dependency-audit']);
+    expect(unified?.prompt).toBe('Custom prompt with all frontmatter fields.');
   });
 
   it('agent.md without frontmatter is skipped with warning', () => {
     const projectRoot = createTempDir('drs-agent-no-frontmatter-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
       'Just plain text, no frontmatter at all.\n'
     );
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const agents = loadAgents(projectRoot);
 
-    // Override skipped — built-in security still loaded
-    const security = agents.find((a) => a.id === 'review/security');
-    expect(security?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]security\.md$/);
+    // Override skipped — built-in unified reviewer still loaded
+    const unified = agents.find((a) => a.id === 'review/unified-reviewer');
+    expect(unified?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]unified-reviewer\.md$/);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('No frontmatter'));
 
     warnSpy.mockRestore();
@@ -200,14 +190,14 @@ describe('agent-loader path resolution', () => {
     const projectRoot = createTempDir('drs-agent-flat-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'security', 'agent.md'),
+      join(agentsDir, 'unified-reviewer', 'agent.md'),
       '---\ndescription: Flat security\n---\n\nFlat prompt\n'
     );
 
     expect(() => loadAgents(projectRoot)).toThrow('.drs/agents/<namespace>/<name>/agent.md');
-    expect(() => loadAgents(projectRoot)).toThrow('.drs/agents/review/security/agent.md');
+    expect(() => loadAgents(projectRoot)).toThrow('.drs/agents/review/unified-reviewer/agent.md');
   });
 });
 
@@ -227,10 +217,10 @@ describe('getAgent / getAgentsByNamespace / listAgents', () => {
   });
 
   it('getAgent returns a specific agent by full name', () => {
-    const agent = getAgent(process.cwd(), 'review/security');
+    const agent = getAgent(process.cwd(), 'review/unified-reviewer');
     expect(agent).not.toBeNull();
-    expect(agent?.id).toBe('review/security');
-    expect(agent?.prompt).toContain('Security Vulnerability Assessment');
+    expect(agent?.id).toBe('review/unified-reviewer');
+    expect(agent?.prompt).toContain('unified code review agent');
   });
 
   it('getAgent returns null for non-existent agent', () => {
@@ -242,20 +232,20 @@ describe('getAgent / getAgentsByNamespace / listAgents', () => {
     const projectRoot = createTempDir('drs-get-agent-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
       '---\ndescription: Override via getAgent\n---\n\nOverride prompt\n'
     );
 
-    const agent = getAgent(projectRoot, 'review/security');
+    const agent = getAgent(projectRoot, 'review/unified-reviewer');
     expect(agent?.description).toBe('Override via getAgent');
     expect(agent?.prompt).toBe('Override prompt');
   });
 
   it('getAgentsByNamespace returns only review agents', () => {
     const agents = getAgentsByNamespace(process.cwd(), 'review');
-    expect(agents.length).toBeGreaterThanOrEqual(5);
+    expect(agents.length).toBeGreaterThanOrEqual(1);
     expect(agents.every((a) => a.namespace === 'review')).toBe(true);
   });
 
@@ -263,39 +253,35 @@ describe('getAgent / getAgentsByNamespace / listAgents', () => {
     const projectRoot = createTempDir('drs-get-review-agents-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'quality'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'quality', 'agent.md'),
-      '---\ndescription: Custom quality\n---\n\nCustom quality prompt\n'
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
+      '---\ndescription: Custom unified\n---\n\nCustom unified prompt\n'
     );
 
     const agents = getAgentsByNamespace(projectRoot, 'review');
-    const quality = agents.find((a) => a.id === 'review/quality');
-    expect(quality?.description).toBe('Custom quality');
+    const unified = agents.find((a) => a.id === 'review/unified-reviewer');
+    expect(unified?.description).toBe('Custom unified');
   });
 
   it('listAgents returns all agent names as strings', () => {
     const names = listAgents(process.cwd());
-    expect(names).toContain('review/security');
-    expect(names).toContain('review/quality');
-    expect(names).toContain('review/style');
-    expect(names).toContain('review/performance');
-    expect(names).toContain('review/documentation');
+    expect(names).toContain('review/unified-reviewer');
   });
 
   it('listAgents reflects overrides without duplication', () => {
     const projectRoot = createTempDir('drs-list-agents-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
       '---\ndescription: Override\n---\n\nOverride prompt\n'
     );
 
     const names = listAgents(projectRoot);
-    const securityCount = names.filter((n) => n === 'review/security').length;
-    expect(securityCount).toBe(1);
+    const unifiedCount = names.filter((n) => n === 'review/unified-reviewer').length;
+    expect(unifiedCount).toBe(1);
   });
 });
 
@@ -345,9 +331,8 @@ describe('new custom agent (not overriding built-in)', () => {
     expect(rails?.prompt).toContain('mass assignment');
     expect(rails?.prompt).toContain('N+1 queries');
 
-    // Built-ins still present
-    expect(agents.some((a) => a.id === 'review/security')).toBe(true);
-    expect(agents.some((a) => a.id === 'review/quality')).toBe(true);
+    // Packaged unified reviewer still present
+    expect(agents.some((a) => a.id === 'review/unified-reviewer')).toBe(true);
   });
 
   it('new agent is accessible via getAgent', () => {
@@ -387,12 +372,12 @@ describe('new custom agent (not overriding built-in)', () => {
     const projectRoot = createTempDir('drs-new-plus-override-');
     const agentsDir = join(projectRoot, '.drs', 'agents');
 
-    mkdirSync(join(agentsDir, 'review', 'security'), { recursive: true });
+    mkdirSync(join(agentsDir, 'review', 'unified-reviewer'), { recursive: true });
     mkdirSync(join(agentsDir, 'review', 'rails-reviewer'), { recursive: true });
 
     writeFileSync(
-      join(agentsDir, 'review', 'security', 'agent.md'),
-      '---\ndescription: Custom security\n---\n\nCustom security prompt\n'
+      join(agentsDir, 'review', 'unified-reviewer', 'agent.md'),
+      '---\ndescription: Custom unified\n---\n\nCustom unified prompt\n'
     );
     writeFileSync(
       join(agentsDir, 'review', 'rails-reviewer', 'agent.md'),
@@ -402,15 +387,14 @@ describe('new custom agent (not overriding built-in)', () => {
     const agents = loadAgents(projectRoot);
 
     // Override replaces built-in
-    const security = agents.find((a) => a.id === 'review/security');
-    expect(security?.prompt).toBe('Custom security prompt');
+    const unified = agents.find((a) => a.id === 'review/unified-reviewer');
+    expect(unified?.prompt).toBe('Custom unified prompt');
 
     // New agent added
     const rails = agents.find((a) => a.id === 'review/rails-reviewer');
     expect(rails?.prompt).toBe('Rails review prompt');
 
-    // Other built-ins still present
-    expect(agents.some((a) => a.id === 'review/quality')).toBe(true);
-    expect(agents.some((a) => a.id === 'review/style')).toBe(true);
+    // Packaged unified reviewer can be overridden while custom agents coexist
+    expect(agents.some((a) => a.id === 'review/unified-reviewer')).toBe(true);
   });
 });

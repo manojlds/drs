@@ -5,12 +5,12 @@
 
 **Automated AI code reviews for GitHub PRs and GitLab MRs.**
 
-DRS helps teams catch critical issues earlier with specialized review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
+DRS helps teams catch critical issues earlier with a packaged unified reviewer, customizable project-specific review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
 
 ## Why teams like DRS
 
-- 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
-- 🧠 **Flexible agent pipelines**: compose any review agents (including `review/unified-reviewer`) in execution order
+- 🎯 **Packaged unified review**: `review/unified-reviewer` is included out of the box
+- 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` agents in execution order
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Description generation**: optional PR/MR summary generation and posting
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
@@ -77,7 +77,7 @@ drs review-local
 drs review-local --staged
 
 # Use specific agents
-drs review-local --agents review/security,review/quality
+drs review-local --agents review/unified-reviewer,review/my-project-reviewer
 ```
 
 ### Most-Used Commands
@@ -87,15 +87,19 @@ drs review-local --agents review/security,review/quality
 | Review local unstaged changes | `drs review-local` |
 | Review local staged changes | `drs review-local --staged` |
 | Review local unstaged changes via workflow | `drs workflow run local-review` |
+| Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
 | Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
+| Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
 | Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
+| Run the default project workflow | `drs workflow run` |
 
 ## Deployment Modes
 
@@ -427,30 +431,39 @@ drs run task/docs-updater
 
 Workflows compose agents and built-in actions into a dependency graph. They are useful when one agent produces an artifact that another agent or action consumes.
 
-```yaml
-workflows:
-  release-notes:
-    inputs:
-      diff:
-        file: .drs/diff.md
-    nodes:
-      summarize:
-        agent: task/change-summarizer
-        input: |
-          Summarize these changes:
+Define reusable project workflows in `.drs/workflows/*.yaml`.
 
-          {{inputs.diff}}
-        output: summary
-      write-summary:
-        action: write
-        needs: [summarize]
-        input: "{{artifacts.summary}}"
-        writes: RELEASE_NOTES.md
+```yaml
+name: release-notes
+inputs:
+  diff:
+    file: .drs/diff.md
+nodes:
+  summarize:
+    agent: task/change-summarizer
+    input: |
+      Summarize these changes:
+
+      {{inputs.diff}}
+    output: summary
+  write-summary:
+    action: write
+    needs: [summarize]
+    input: "{{artifacts.summary}}"
+    writes: RELEASE_NOTES.md
 ```
 
 ```bash
 drs workflow run release-notes
+drs workflow run # uses workflow.default from .drs/drs.config.yaml when configured
 drs workflow run release-notes --input-file diff=changes.md --json
+```
+
+Select the default workflow in `.drs/drs.config.yaml`:
+
+```yaml
+workflow:
+  default: local-changelog-review
 ```
 
 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the full workflow configuration reference.
@@ -511,8 +524,9 @@ Notes:
 - `describe.model` is used by `describe-mr`/`describe-pr` and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
-- `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
-- Built-in review agent IDs are: `review/unified-reviewer`, `review/security`, `review/quality`, `review/style`, `review/performance`, `review/documentation`.
+- `review.agents` controls exactly which review agents run.
+- Packaged built-in review agent ID: `review/unified-reviewer`.
+- Add project-specific review agents under `.drs/agents/review/<name>/agent.md` and include them in `review.agents`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
@@ -701,7 +715,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 GITLAB_URL=https://gitlab.com
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
-REVIEW_AGENTS=review/security,review/quality,review/style,review/performance
+REVIEW_AGENTS=review/unified-reviewer
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 

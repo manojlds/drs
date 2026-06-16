@@ -7,10 +7,19 @@ const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..');
 
 const piBuiltInAgentPath = join(packageRoot, '.pi', 'agents');
+const piBuiltInWorkflowPath = join(packageRoot, '.pi', 'workflows');
 
 export function getBuiltInAgentPaths(): string[] {
   if (existsSync(piBuiltInAgentPath)) {
     return [piBuiltInAgentPath];
+  }
+
+  return [];
+}
+
+export function getBuiltInWorkflowPaths(): string[] {
+  if (existsSync(piBuiltInWorkflowPath)) {
+    return [piBuiltInWorkflowPath];
   }
 
   return [];

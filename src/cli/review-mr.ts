@@ -3,6 +3,7 @@ import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import { executeUnifiedReview } from '../lib/unified-review-executor.js';
+import { parseValidLinesFromDiff } from '../lib/diff-lines.js';
 import type {
   FileChange,
   PullRequest,
@@ -42,44 +43,6 @@ interface GitLabErrorLike {
     statusCode?: number;
   };
   cause?: unknown;
-}
-
-/**
- * Parse a GitLab diff to extract valid line numbers for review comments.
- * GitLab only allows comments on lines that are in the diff (added or context).
- */
-function parseValidLinesFromDiff(diff: string): Set<number> {
-  const validLines = new Set<number>();
-  const lines = diff.split('\n');
-  let currentLine = 0;
-
-  for (const line of lines) {
-    // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
-      continue;
-    }
-
-    // Skip empty lines or lines without proper diff prefix
-    if (!line || line.length === 0) continue;
-
-    const prefix = line[0];
-    if (prefix === '+') {
-      // Added line - can comment on this
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === ' ') {
-      // Context line - can comment on this
-      validLines.add(currentLine);
-      currentLine++;
-    } else if (prefix === '-') {
-      // Removed line - cannot comment on "new" version, skip
-      continue;
-    }
-  }
-
-  return validLines;
 }
 
 function parseStatusCodeFromMessage(message: string): number | undefined {

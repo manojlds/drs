@@ -88,6 +88,159 @@ describe('Config', () => {
     });
   });
 
+  it('loads built-in workflow files', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-builtins-'));
+
+    try {
+      const config = loadConfig(projectRoot);
+
+      expect(config.workflows?.['local-review']).toMatchObject({
+        description: 'Review local unstaged git diff',
+        nodes: {
+          change: {
+            action: 'change-source',
+          },
+          review: {
+            action: 'review',
+          },
+        },
+      });
+      expect(config.workflows?.['gitlab-mr-review']?.inputs).toEqual({
+        project: '',
+        mr: '',
+      });
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('loads project workflow files from .drs/workflows', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-project-workflow-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'workflows', 'release-notes.yaml'),
+        [
+          'description: Draft release notes',
+          'nodes:',
+          '  write:',
+          '    action: write',
+          '    input: hello',
+          '    writes: RELEASE_NOTES.md',
+          '',
+        ].join('\n')
+      );
+
+      const config = loadConfig(projectRoot);
+
+      expect(config.workflows?.['release-notes']).toMatchObject({
+        description: 'Draft release notes',
+        nodes: {
+          write: {
+            action: 'write',
+            writes: 'RELEASE_NOTES.md',
+          },
+        },
+      });
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('lets project workflow files override built-in workflow files', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-override-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'workflows', 'local-review.yaml'),
+        [
+          'description: Project local review override',
+          'nodes:',
+          '  write:',
+          '    action: write',
+          '    input: project',
+          '    writes: project.txt',
+          '',
+        ].join('\n')
+      );
+
+      const config = loadConfig(projectRoot);
+
+      expect(config.workflows?.['local-review']).toMatchObject({
+        description: 'Project local review override',
+        nodes: {
+          write: {
+            action: 'write',
+          },
+        },
+      });
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects top-level workflows in drs.config.yaml', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-config-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        [
+          'workflows:',
+          '  custom:',
+          '    description: Inline workflow',
+          '    nodes:',
+          '      write:',
+          '        action: write',
+          '',
+        ].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('cannot define top-level workflows');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects workflow files that contain a workflows map', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-map-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'workflows', 'custom.yaml'),
+        ['workflows:', '  custom:', '    nodes:', '      write:', '        action: write', ''].join(
+          '\n'
+        )
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('must define one workflow directly');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('loads workflow run defaults from drs.config.yaml', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-default-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['workflow:', '  default: local-changelog-review', ''].join('\n')
+      );
+
+      const config = loadConfig(projectRoot);
+
+      expect(config.workflow?.default).toBe('local-changelog-review');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('uses DRS_DEFAULT_MODEL as the generic default model environment alias', () => {
     const previous = process.env.DRS_DEFAULT_MODEL;
     process.env.DRS_DEFAULT_MODEL = 'provider/env-default-model';

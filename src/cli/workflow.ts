@@ -11,9 +11,21 @@ import type {
 import { normalizeAgentConfig, resolveAgentRunConfig } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
-import { executeReview, type ReviewSource } from '../lib/review-orchestrator.js';
+import { parseValidLinesFromPatch } from '../lib/diff-lines.js';
+import { executeReview, type ReviewResult, type ReviewSource } from '../lib/review-orchestrator.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
-import type { FileChange, PullRequest } from '../lib/platform-client.js';
+import type {
+  FileChange,
+  InlineCommentPosition,
+  LineValidator,
+  PlatformClient,
+  PullRequest,
+} from '../lib/platform-client.js';
+import type { ReviewIssue } from '../lib/comment-formatter.js';
+import { postReviewComments } from '../lib/comment-poster.js';
+import { findExistingCommentById } from '../lib/comment-manager.js';
+import { removeErrorComment } from '../lib/error-comment-poster.js';
+import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -58,13 +70,44 @@ interface WorkflowTemplateContext {
   artifacts: Record<string, unknown>;
 }
 
-// Review execution temporarily mutates process globals, so review nodes must not overlap.
-let reviewWorkflowNodeGlobalLock: Promise<void> = Promise.resolve();
+interface WorkflowExecutionContext {
+  gitClients: Map<string, ReturnType<typeof simpleGit>>;
+  platformClients: Partial<Record<WorkflowPlatform, PlatformClient>>;
+  locks: {
+    exit: WorkflowLock;
+    console: WorkflowLock;
+  };
+}
 
-async function withReviewWorkflowNodeGlobals<T>(run: () => Promise<T>): Promise<T> {
-  const previousLock = reviewWorkflowNodeGlobalLock;
+type WorkflowPlatform = 'github' | 'gitlab';
+
+interface WorkflowPostTarget {
+  platform: WorkflowPlatform;
+  platformClient: PlatformClient;
+  projectId: string;
+  prNumber: number;
+  pullRequest?: PullRequest;
+  changedFiles?: FileChange[];
+}
+
+interface GitLabDiffRefs {
+  base_sha?: string;
+  head_sha?: string;
+  start_sha?: string;
+}
+
+interface WorkflowLock {
+  current: Promise<void>;
+}
+
+function createWorkflowLock(): WorkflowLock {
+  return { current: Promise.resolve() };
+}
+
+async function withWorkflowLock<T>(lock: WorkflowLock, run: () => Promise<T>): Promise<T> {
+  const previousLock = lock.current;
   let releaseLock!: () => void;
-  reviewWorkflowNodeGlobalLock = new Promise<void>((resolve) => {
+  lock.current = new Promise<void>((resolve) => {
     releaseLock = resolve;
   });
 
@@ -74,6 +117,60 @@ async function withReviewWorkflowNodeGlobals<T>(run: () => Promise<T>): Promise<
   } finally {
     releaseLock();
   }
+}
+
+async function withWorkflowConsoleSuppressed<T>(
+  executionContext: WorkflowExecutionContext,
+  suppress: boolean,
+  run: () => Promise<T>
+): Promise<T> {
+  if (!suppress) {
+    return run();
+  }
+
+  return withWorkflowLock(executionContext.locks.console, async () => {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = () => undefined;
+    console.warn = () => undefined;
+    try {
+      return await run();
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+  });
+}
+
+function getWorkflowGitClient(
+  executionContext: WorkflowExecutionContext,
+  workingDir: string
+): ReturnType<typeof simpleGit> {
+  const existing = executionContext.gitClients.get(workingDir);
+  if (existing) {
+    return existing;
+  }
+
+  const git = simpleGit({ baseDir: workingDir });
+  executionContext.gitClients.set(workingDir, git);
+  return git;
+}
+
+function getWorkflowPlatformClient(
+  executionContext: WorkflowExecutionContext,
+  platform: WorkflowPlatform
+): PlatformClient {
+  const existing = executionContext.platformClients[platform];
+  if (existing) {
+    return existing;
+  }
+
+  const client =
+    platform === 'github'
+      ? new GitHubPlatformAdapter(createGitHubClient())
+      : new GitLabPlatformAdapter(createGitLabClient());
+  executionContext.platformClients[platform] = client;
+  return client;
 }
 
 function getNodeNeeds(node: WorkflowNodeConfig): string[] {
@@ -432,19 +529,48 @@ async function runActionWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   if (node.action === 'write') {
     return runWriteWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'git-diff') {
-    return runGitDiffWorkflowNode(nodeId, node, workingDir, context);
+    return runGitDiffWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'git-add') {
+    return runGitAddWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'git-commit') {
+    return runGitCommitWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'change-source') {
-    return runChangeSourceWorkflowNode(nodeId, node, workingDir, context);
+    return runChangeSourceWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
   if (node.action === 'review') {
-    return runReviewWorkflowNode(config, nodeId, node, options, workingDir, context);
+    return runReviewWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
+  }
+  if (node.action === 'post-comment') {
+    return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context, executionContext);
+  }
+  if (node.action === 'post-review-comments') {
+    return runPostReviewCommentsWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
   }
 
   throw new Error(`Unsupported workflow action "${node.action}" in node "${nodeId}".`);
@@ -531,13 +657,52 @@ function requireNumberActionOption(
   return parsed;
 }
 
+function getPathActionOption(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  workingDir: string
+): string[] {
+  const rawPaths = hasActionOption(node, 'paths')
+    ? requireStringActionOption(nodeId, node, 'paths', context)
+    : requireStringActionOption(nodeId, node, 'path', context);
+  const paths = rawPaths
+    .split(/[\n,]/)
+    .map((path) => path.trim())
+    .filter(Boolean);
+
+  if (paths.length === 0) {
+    throw new Error(`Workflow node "${nodeId}" must define at least one path.`);
+  }
+
+  for (const path of paths) {
+    resolveWithinWorkingDir(workingDir, path, 'access');
+  }
+
+  return paths;
+}
+
+async function requireWorkflowGitRepo(
+  nodeId: string,
+  workingDir: string,
+  executionContext: WorkflowExecutionContext
+) {
+  const git = getWorkflowGitClient(executionContext, workingDir);
+  const isRepo = await git.checkIsRepo();
+  if (!isRepo) {
+    throw new Error(`Workflow git node "${nodeId}" must run from a git repository.`);
+  }
+  return git;
+}
+
 async function runGitDiffWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
-  const git = simpleGit({ baseDir: workingDir });
+  const git = getWorkflowGitClient(executionContext, workingDir);
   const isRepo = await git.checkIsRepo();
   if (!isRepo) {
     throw new Error(`Workflow git-diff node "${nodeId}" must run from a git repository.`);
@@ -557,6 +722,61 @@ async function runGitDiffWorkflowNode(
     response: diff,
     output: diff,
     writes,
+  };
+}
+
+async function runGitAddWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const paths = getPathActionOption(nodeId, node, context, workingDir);
+  await git.add(paths);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: paths.join('\n'),
+    output: paths,
+  };
+}
+
+async function runGitCommitWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const message = requireStringActionOption(nodeId, node, 'message', context);
+  const paths =
+    hasActionOption(node, 'paths') || hasActionOption(node, 'path')
+      ? getPathActionOption(nodeId, node, context, workingDir)
+      : undefined;
+
+  if (paths) {
+    await git.add(paths);
+  }
+
+  const commit = paths ? await git.commit(message, paths) : await git.commit(message);
+  const output = {
+    commit: commit.commit,
+    message,
+    paths,
+    summary: commit.summary,
+  };
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: commit.commit ? `Created commit ${commit.commit}` : 'Created git commit',
+    output,
   };
 }
 
@@ -604,6 +824,7 @@ function createPlatformChangeSource(
       platform,
       projectId,
       pullRequest,
+      changedFiles,
     },
     workingDir,
   };
@@ -613,13 +834,14 @@ async function loadGitHubChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<ReviewSource> {
   const owner = requireStringActionOption(nodeId, node, 'owner', context);
   const repo = requireStringActionOption(nodeId, node, 'repo', context);
   const prNumber = requireNumberActionOption(nodeId, node, 'pr', context);
   const projectId = `${owner}/${repo}`;
-  const platformClient = new GitHubPlatformAdapter(createGitHubClient());
+  const platformClient = getWorkflowPlatformClient(executionContext, 'github');
   const [pullRequest, changedFiles] = await Promise.all([
     platformClient.getPullRequest(projectId, prNumber),
     platformClient.getChangedFiles(projectId, prNumber),
@@ -639,7 +861,8 @@ async function loadGitLabChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<ReviewSource> {
   const projectId = hasActionOption(node, 'project')
     ? requireStringActionOption(nodeId, node, 'project', context)
@@ -647,7 +870,7 @@ async function loadGitLabChangeSource(
   const mrIid = hasActionOption(node, 'mr')
     ? requireNumberActionOption(nodeId, node, 'mr', context)
     : requireNumberActionOption(nodeId, node, 'mrIid', context);
-  const platformClient = new GitLabPlatformAdapter(createGitLabClient());
+  const platformClient = getWorkflowPlatformClient(executionContext, 'gitlab');
   const [pullRequest, changedFiles] = await Promise.all([
     platformClient.getPullRequest(projectId, mrIid),
     platformClient.getChangedFiles(projectId, mrIid),
@@ -667,16 +890,17 @@ async function runChangeSourceWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const type = getStringActionOption(node, 'type', context) ?? 'local';
   let source: ReviewSource;
   if (type === 'local') {
     source = await loadLocalChangeSource(nodeId, node, workingDir);
   } else if (type === 'github-pr') {
-    source = await loadGitHubChangeSource(nodeId, node, workingDir, context);
+    source = await loadGitHubChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'gitlab-mr') {
-    source = await loadGitLabChangeSource(nodeId, node, workingDir, context);
+    source = await loadGitLabChangeSource(nodeId, node, workingDir, context, executionContext);
   } else {
     throw new Error(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +
@@ -695,6 +919,348 @@ async function runChangeSourceWorkflowNode(
     response: source.name,
     output: source,
     writes,
+  };
+}
+
+function isWorkflowPlatform(value: string | undefined): value is WorkflowPlatform {
+  return value === 'github' || value === 'gitlab';
+}
+
+function readSourcePostTarget(source: ReviewSource | undefined): Partial<WorkflowPostTarget> {
+  if (!source) {
+    return {};
+  }
+
+  const platform =
+    typeof source.context.platform === 'string' ? source.context.platform : undefined;
+  const projectId =
+    typeof source.context.projectId === 'string' ? source.context.projectId : undefined;
+  const pullRequest = isPullRequest(source.context.pullRequest)
+    ? source.context.pullRequest
+    : undefined;
+  const changedFiles = Array.isArray(source.context.changedFiles)
+    ? source.context.changedFiles.filter(isFileChange)
+    : undefined;
+
+  return {
+    platform: isWorkflowPlatform(platform) ? platform : undefined,
+    projectId,
+    prNumber: pullRequest?.number,
+    pullRequest,
+    changedFiles,
+  };
+}
+
+function resolvePostProjectId(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  sourceTarget: Partial<WorkflowPostTarget>
+): string {
+  if (hasActionOption(node, 'owner') || hasActionOption(node, 'repo')) {
+    const owner = requireStringActionOption(nodeId, node, 'owner', context);
+    const repo = requireStringActionOption(nodeId, node, 'repo', context);
+    return `${owner}/${repo}`;
+  }
+
+  const projectId =
+    getStringActionOption(node, 'project', context) ??
+    getStringActionOption(node, 'projectId', context) ??
+    sourceTarget.projectId;
+  if (!projectId) {
+    throw new Error(`Workflow post node "${nodeId}" must define a project target.`);
+  }
+
+  return projectId;
+}
+
+function resolvePostPrNumber(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  sourceTarget: Partial<WorkflowPostTarget>
+): number {
+  if (hasActionOption(node, 'pr')) {
+    return requireNumberActionOption(nodeId, node, 'pr', context);
+  }
+  if (hasActionOption(node, 'mr')) {
+    return requireNumberActionOption(nodeId, node, 'mr', context);
+  }
+  if (hasActionOption(node, 'prNumber')) {
+    return requireNumberActionOption(nodeId, node, 'prNumber', context);
+  }
+  if (hasActionOption(node, 'mrIid')) {
+    return requireNumberActionOption(nodeId, node, 'mrIid', context);
+  }
+  if (sourceTarget.prNumber) {
+    return sourceTarget.prNumber;
+  }
+
+  throw new Error(`Workflow post node "${nodeId}" must define a PR/MR number.`);
+}
+
+function resolvePostTarget(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext,
+  source?: ReviewSource
+): WorkflowPostTarget {
+  const sourceTarget = readSourcePostTarget(source);
+  const explicitPlatform = getStringActionOption(node, 'platform', context);
+  const platform = explicitPlatform ?? sourceTarget.platform;
+  if (!isWorkflowPlatform(platform)) {
+    throw new Error(
+      `Workflow post node "${nodeId}" must resolve with.platform to github or gitlab.`
+    );
+  }
+
+  const projectId = resolvePostProjectId(nodeId, node, context, sourceTarget);
+  const prNumber = resolvePostPrNumber(nodeId, node, context, sourceTarget);
+
+  return {
+    platform,
+    platformClient: getWorkflowPlatformClient(executionContext, platform),
+    projectId,
+    prNumber,
+    pullRequest: sourceTarget.pullRequest,
+    changedFiles: sourceTarget.changedFiles,
+  };
+}
+
+function isPullRequest(value: unknown): value is PullRequest {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<PullRequest>;
+  return (
+    typeof candidate.number === 'number' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.author === 'string' &&
+    typeof candidate.sourceBranch === 'string' &&
+    typeof candidate.targetBranch === 'string' &&
+    typeof candidate.headSha === 'string'
+  );
+}
+
+function isFileChange(value: unknown): value is FileChange {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<FileChange>;
+  return typeof candidate.filename === 'string' && typeof candidate.status === 'string';
+}
+
+function createWorkflowLineValidator(
+  platform: WorkflowPlatform,
+  source: ReviewSource
+): LineValidator | undefined {
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  const platformData = pullRequest?.platformData as { diff_refs?: GitLabDiffRefs } | undefined;
+  const diffRefs = platformData?.diff_refs;
+  if (platform === 'gitlab' && (!diffRefs?.base_sha || !diffRefs.head_sha || !diffRefs.start_sha)) {
+    return undefined;
+  }
+
+  const fileChanges = Array.isArray(source.context.changedFiles)
+    ? source.context.changedFiles.filter(isFileChange)
+    : [];
+  const patchSources = fileChanges.length > 0 ? fileChanges : (source.filesWithDiffs ?? []);
+  const validLinesMap = new Map<string, Set<number>>();
+  for (const file of patchSources) {
+    if ('status' in file && file.status === 'removed') {
+      continue;
+    }
+    const patch = file.patch;
+    if (patch) {
+      validLinesMap.set(file.filename, parseValidLinesFromPatch(patch));
+    }
+  }
+
+  return {
+    isValidLine(file: string, line: number): boolean {
+      const validLines = validLinesMap.get(file);
+      return validLines !== undefined && validLines.has(line);
+    },
+  };
+}
+
+function createWorkflowInlinePosition(
+  platform: WorkflowPlatform,
+  source: ReviewSource
+): ((issue: ReviewIssue, platformData: unknown) => InlineCommentPosition) | undefined {
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  if (!pullRequest) {
+    return undefined;
+  }
+
+  if (platform === 'github') {
+    return (issue: ReviewIssue) => ({
+      path: issue.file,
+      line: issue.line!,
+      commitSha: pullRequest.headSha,
+    });
+  }
+
+  return (issue: ReviewIssue, platformData: unknown) => {
+    const data = platformData as { diff_refs?: GitLabDiffRefs } | undefined;
+    const refs = data?.diff_refs;
+    return {
+      path: issue.file,
+      line: issue.line!,
+      baseSha: refs?.base_sha,
+      headSha: refs?.head_sha,
+      startSha: refs?.start_sha,
+    };
+  };
+}
+
+function isReviewResult(value: unknown): value is ReviewResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<ReviewResult>;
+  return Array.isArray(candidate.issues) && typeof candidate.summary === 'object';
+}
+
+function formatMarkedComment(body: string, marker: string | undefined): string {
+  if (!marker) {
+    return body;
+  }
+
+  const markerComment = `<!-- drs-comment-id: ${marker} -->`;
+  return body.includes(markerComment) ? body : `${markerComment}\n${body}`;
+}
+
+async function runPostCommentWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = isReviewSource(context.artifacts[sourceArtifact])
+    ? context.artifacts[sourceArtifact]
+    : undefined;
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
+  const rawBody =
+    node.input === undefined
+      ? requireStringActionOption(nodeId, node, 'body', context)
+      : renderTemplate(node.input, context);
+  const marker = getStringActionOption(node, 'marker', context)?.trim();
+  const body = formatMarkedComment(rawBody, marker);
+  let operation = 'created';
+
+  if (marker) {
+    const comments = await target.platformClient.getComments(target.projectId, target.prNumber);
+    const existingComment = findExistingCommentById(comments, marker);
+    if (existingComment) {
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
+        target.platformClient.updateComment(
+          target.projectId,
+          target.prNumber,
+          existingComment.id,
+          body
+        )
+      );
+      operation = 'updated';
+    } else {
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
+        target.platformClient.createComment(target.projectId, target.prNumber, body)
+      );
+    }
+  } else {
+    await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
+      target.platformClient.createComment(target.projectId, target.prNumber, body)
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `${operation} comment on ${target.platform} ${target.projectId}#${target.prNumber}`,
+    output: {
+      platform: target.platform,
+      projectId: target.projectId,
+      prNumber: target.prNumber,
+      marker,
+      operation,
+    },
+  };
+}
+
+async function runPostReviewCommentsWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
+  const source = context.artifacts[sourceArtifact];
+  const reviewResult = context.artifacts[reviewArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow post-review-comments node "${nodeId}" needs a ReviewSource artifact.`
+    );
+  }
+  if (!isReviewResult(reviewResult)) {
+    throw new Error(
+      `Workflow post-review-comments node "${nodeId}" needs a ReviewResult artifact.`
+    );
+  }
+
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
+  const pullRequest = target.pullRequest;
+  const platformData = pullRequest?.platformData;
+  const lineValidator = createWorkflowLineValidator(target.platform, source);
+  const createInlinePosition = lineValidator
+    ? createWorkflowInlinePosition(target.platform, source)
+    : undefined;
+  const shouldRemoveErrorComment =
+    !hasActionOption(node, 'removeErrorComment') ||
+    getBooleanActionOption(node, 'removeErrorComment');
+  await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, async () => {
+    if (shouldRemoveErrorComment) {
+      await removeErrorComment(target.platformClient, target.projectId, target.prNumber);
+    }
+
+    const cursorFixLinks = resolveCursorFixLinkOptions(config, target.projectId, workingDir);
+    await postReviewComments(
+      target.platformClient,
+      target.projectId,
+      target.prNumber,
+      reviewResult.summary,
+      reviewResult.issues,
+      reviewResult.changeSummary,
+      reviewResult.usage,
+      platformData,
+      lineValidator,
+      createInlinePosition,
+      cursorFixLinks
+    );
+  });
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `posted review comments on ${target.platform} ${target.projectId}#${target.prNumber}`,
+    output: {
+      platform: target.platform,
+      projectId: target.projectId,
+      prNumber: target.prNumber,
+      issues: reviewResult.issues.length,
+    },
   };
 }
 
@@ -718,7 +1284,8 @@ async function runReviewWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
   const source = context.artifacts[sourceArtifact];
@@ -729,7 +1296,7 @@ async function runReviewWorkflowNode(
     );
   }
 
-  const reviewResult = await withReviewWorkflowNodeGlobals(async () => {
+  const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
     const restoreExit = setExitHandler((code: number): never => {
       throw new ExitError(code);
     });
@@ -800,7 +1367,8 @@ async function runSingleWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const kind = getNodeKind(node);
 
@@ -810,7 +1378,15 @@ async function runSingleWorkflowNode(
   if (kind === 'agents') {
     return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
   }
-  return runActionWorkflowNode(config, nodeId, node, options, workingDir, context);
+  return runActionWorkflowNode(
+    config,
+    nodeId,
+    node,
+    options,
+    workingDir,
+    context,
+    executionContext
+  );
 }
 
 export async function runWorkflow(
@@ -829,6 +1405,14 @@ export async function runWorkflow(
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const context: WorkflowTemplateContext = { inputs, nodes, artifacts };
+  const executionContext: WorkflowExecutionContext = {
+    gitClients: new Map(),
+    platformClients: {},
+    locks: {
+      exit: createWorkflowLock(),
+      console: createWorkflowLock(),
+    },
+  };
   const executionOrder = getWorkflowExecutionOrder(workflowNodes);
   const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
@@ -854,7 +1438,8 @@ export async function runWorkflow(
           node,
           options,
           workingDir,
-          context
+          context,
+          executionContext
         );
         return { nodeId, node, result };
       })

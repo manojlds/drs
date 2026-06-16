@@ -10,16 +10,39 @@ const mocks = vi.hoisted(() => {
   const githubAdapter = {
     getPullRequest: vi.fn(),
     getChangedFiles: vi.fn(),
+    getComments: vi.fn(),
+    getInlineComments: vi.fn(),
+    createComment: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
+    createBulkInlineComments: vi.fn(),
+    addLabels: vi.fn(),
   };
   const gitlabAdapter = {
     getPullRequest: vi.fn(),
     getChangedFiles: vi.fn(),
+    getComments: vi.fn(),
+    getInlineComments: vi.fn(),
+    createComment: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
+    createBulkInlineComments: vi.fn(),
+    addLabels: vi.fn(),
   };
 
   return {
     git: {
       checkIsRepo: vi.fn(async () => true),
       diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
+      add: vi.fn(async () => ''),
+      commit: vi.fn(async () => ({
+        commit: 'abc1234',
+        summary: {
+          changes: 1,
+          insertions: 2,
+          deletions: 0,
+        },
+      })),
     },
     simpleGit: vi.fn(),
     createGitHubClient: vi.fn(() => ({ platform: 'github' })),
@@ -32,12 +55,12 @@ const mocks = vi.hoisted(() => {
     getChangedFiles: vi.fn(() => ['src/app.ts']),
     getFilesWithDiffs: vi.fn(() => [{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]),
     executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
-      issues: [],
+      issues: [] as unknown[],
       summary: {
         filesReviewed: source.files.length,
         issuesFound: 0,
-        bySeverity: {},
-        byCategory: {},
+        bySeverity: {} as Record<string, number>,
+        byCategory: {} as Record<string, number>,
       },
       filesReviewed: source.files.length,
     })),
@@ -146,6 +169,15 @@ describe('workflow runner', () => {
     mocks.simpleGit.mockReturnValue(mocks.git);
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
+    mocks.git.add.mockResolvedValue('');
+    mocks.git.commit.mockResolvedValue({
+      commit: 'abc1234',
+      summary: {
+        changes: 1,
+        insertions: 2,
+        deletions: 0,
+      },
+    });
     mocks.parseDiff.mockReturnValue([{ filename: 'src/app.ts', patch: '@@ +1 @@\n+change' }]);
     mocks.getChangedFiles.mockReturnValue(['src/app.ts']);
     mocks.getFilesWithDiffs.mockReturnValue([
@@ -170,6 +202,13 @@ describe('workflow runner', () => {
         patch: '@@ +1 @@\n+github',
       },
     ]);
+    mocks.githubAdapter.getComments.mockResolvedValue([]);
+    mocks.githubAdapter.getInlineComments.mockResolvedValue([]);
+    mocks.githubAdapter.createComment.mockResolvedValue(undefined);
+    mocks.githubAdapter.updateComment.mockResolvedValue(undefined);
+    mocks.githubAdapter.deleteComment.mockResolvedValue(undefined);
+    mocks.githubAdapter.createBulkInlineComments.mockResolvedValue(undefined);
+    mocks.githubAdapter.addLabels.mockResolvedValue(undefined);
     mocks.createGitLabClient.mockReturnValue({ platform: 'gitlab' });
     mocks.GitLabPlatformAdapter.mockReturnValue(mocks.gitlabAdapter);
     mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
@@ -189,6 +228,13 @@ describe('workflow runner', () => {
         patch: '@@ +1 @@\n+gitlab',
       },
     ]);
+    mocks.gitlabAdapter.getComments.mockResolvedValue([]);
+    mocks.gitlabAdapter.getInlineComments.mockResolvedValue([]);
+    mocks.gitlabAdapter.createComment.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.updateComment.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.deleteComment.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.createBulkInlineComments.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.addLabels.mockResolvedValue(undefined);
     mocks.executeReview.mockImplementation(
       async (_config: unknown, source: { files: string[] }) => ({
         issues: [],
@@ -537,6 +583,88 @@ describe('workflow runner', () => {
     );
   });
 
+  it('stages paths with a git-add action', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-add-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        stageChangelog: {
+          nodes: {
+            stage: {
+              action: 'git-add',
+              with: { paths: 'CHANGELOG.md, README.md' },
+              output: 'stagedPaths',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'stageChangelog', {
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.git.add).toHaveBeenCalledWith(['CHANGELOG.md', 'README.md']);
+    expect(result.artifacts.stagedPaths).toEqual(['CHANGELOG.md', 'README.md']);
+  });
+
+  it('commits only configured paths with a git-commit action', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-commit-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        commitChangelog: {
+          nodes: {
+            commit: {
+              action: 'git-commit',
+              with: {
+                paths: 'CHANGELOG.md',
+                message: 'docs: update changelog',
+              },
+              output: 'commitResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'commitChangelog', {
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.git.add).toHaveBeenCalledWith(['CHANGELOG.md']);
+    expect(mocks.git.commit).toHaveBeenCalledWith('docs: update changelog', ['CHANGELOG.md']);
+    expect(result.artifacts.commitResult).toMatchObject({
+      commit: 'abc1234',
+      message: 'docs: update changelog',
+      paths: ['CHANGELOG.md'],
+    });
+  });
+
+  it('rejects git action paths outside the working directory', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-path-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        unsafeStage: {
+          nodes: {
+            stage: {
+              action: 'git-add',
+              with: { path: '../outside.md' },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'unsafeStage', {
+        workingDir: projectRoot,
+      })
+    ).rejects.toThrow('Refusing to access outside working directory');
+    expect(mocks.git.add).not.toHaveBeenCalled();
+  });
+
   it('loads a local change source and reviews it', async () => {
     const projectRoot = createTempDir('drs-workflow-review-');
     const config = {
@@ -803,6 +931,151 @@ describe('workflow runner', () => {
         }),
       })
     );
+  });
+
+  it('updates an existing marked platform comment', async () => {
+    mocks.githubAdapter.getComments.mockResolvedValue([
+      { id: 9, body: '<!-- drs-comment-id: release-notes -->\nold body' },
+    ]);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        postComment: {
+          nodes: {
+            comment: {
+              action: 'post-comment',
+              input: 'new body',
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+                marker: 'release-notes',
+              },
+              output: 'commentResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'postComment', { workingDir: process.cwd() });
+
+    expect(mocks.githubAdapter.updateComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      9,
+      '<!-- drs-comment-id: release-notes -->\nnew body'
+    );
+    expect(mocks.githubAdapter.createComment).not.toHaveBeenCalled();
+    expect(result.artifacts.commentResult).toMatchObject({
+      platform: 'github',
+      projectId: 'octocat/hello-world',
+      prNumber: 7,
+      marker: 'release-notes',
+      operation: 'updated',
+    });
+  });
+
+  it('posts GitHub review comments from workflow review artifacts', async () => {
+    mocks.githubAdapter.getChangedFiles.mockResolvedValue([
+      {
+        filename: 'src/github.ts',
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+        patch: '@@ -0,0 +1 @@\n+github',
+      },
+    ]);
+    mocks.executeReview.mockImplementation(async () => ({
+      issues: [
+        {
+          category: 'QUALITY',
+          severity: 'HIGH',
+          title: 'Validate input',
+          file: 'src/github.ts',
+          line: 1,
+          problem: 'Input is not validated.',
+          solution: 'Validate it before use.',
+          agent: 'review/quality',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+    }));
+    const config = {
+      ...baseConfig,
+      workflows: {
+        githubReview: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            post: {
+              action: 'post-review-comments',
+              needs: ['review'],
+              with: {
+                source: 'change',
+                review: 'review',
+              },
+              output: 'postResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'githubReview', { workingDir: process.cwd() });
+
+    expect(mocks.githubAdapter.deleteComment).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.createComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      expect.stringContaining('<!-- drs-comment-id: drs-review-summary -->')
+    );
+    expect(mocks.githubAdapter.createBulkInlineComments).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      [
+        expect.objectContaining({
+          body: expect.stringContaining(
+            '<!-- issue-fp: src/github.ts:1:QUALITY:Validate input -->'
+          ),
+          position: {
+            path: 'src/github.ts',
+            line: 1,
+            commitSha: 'abc123',
+          },
+        }),
+      ]
+    );
+    expect(mocks.githubAdapter.addLabels).toHaveBeenCalledWith('octocat/hello-world', 7, [
+      'ai-reviewed',
+    ]);
+    expect(result.artifacts.postResult).toMatchObject({
+      platform: 'github',
+      projectId: 'octocat/hello-world',
+      prNumber: 7,
+      issues: 1,
+    });
   });
 
   it('loads a GitLab MR change source and reviews it', async () => {
