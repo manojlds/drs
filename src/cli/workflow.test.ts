@@ -808,8 +808,8 @@ describe('workflow runner', () => {
       },
     } as unknown as DRSConfig;
     mocks.git.raw.mockImplementation(async (args?: string[]) => {
-      if (args?.[0] === 'describe') {
-        return 'v3.3.1\n';
+      if (args?.[0] === 'tag') {
+        return 'v4.0.0-rc.1\nv3.3.1\nv3.3.0\n';
       }
       return 'def456\x1fGrace Hopper\x1f2026-06-16T00:00:00Z\x1fPrepare 4.0\n';
     });
@@ -820,10 +820,10 @@ describe('workflow runner', () => {
       });
 
       expect(mocks.git.raw).toHaveBeenCalledWith([
-        'describe',
-        '--tags',
-        '--abbrev=0',
-        'v4.0.0-rc.1^',
+        'tag',
+        '--merged',
+        'v4.0.0-rc.1',
+        '--sort=-v:refname',
       ]);
       expect(mocks.git.diff).toHaveBeenCalledWith(['v3.3.1..v4.0.0-rc.1']);
       expect(result.artifacts.change).toMatchObject({

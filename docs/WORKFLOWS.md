@@ -161,7 +161,7 @@ nodes:
     output: change
 ```
 
-When `from` and `to` are omitted, `git-range` infers `to` from a GitHub Actions tag event (`GITHUB_REF_NAME`) or the tag currently checked out at `HEAD`, then infers `from` from the previous reachable tag.
+When `from` and `to` are omitted, `git-range` infers `to` from a GitHub Actions tag event (`GITHUB_REF_NAME`) or the tag currently checked out at `HEAD`, then infers `from` from the previous reachable stable semver tag. Set `with.includePrereleaseFrom: true` if an RC-to-RC range is desired.
 
 GitHub PR source:
 
@@ -426,7 +426,7 @@ These workflows are intentionally local and do not commit changes. Compose them 
 
 ### Tag Changelog In GitHub Actions
 
-`tag-changelog-update` is designed for tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable tag with `git describe --tags --abbrev=0 <current-tag>^`.
+`tag-changelog-update` is designed for tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable stable semver tag. This means `v4.0.0-rc.1` compares against the previous stable tag, not an older release-candidate tag.
 
 ```yaml
 name: Update changelog from tag

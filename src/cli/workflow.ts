@@ -863,6 +863,34 @@ async function resolveGitRangeToRef(git: ReturnType<typeof simpleGit>): Promise<
   return tag;
 }
 
+function isStableSemverTag(tag: string): boolean {
+  return /^v?\d+\.\d+\.\d+$/.test(tag);
+}
+
+async function resolvePreviousGitRangeTag(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  git: ReturnType<typeof simpleGit>,
+  toRef: string
+): Promise<string> {
+  const includePrerelease = getBooleanActionOption(node, 'includePrereleaseFrom');
+  const tagOutput = await git.raw(['tag', '--merged', toRef, '--sort=-v:refname']);
+  const tags = tagOutput
+    .split('\n')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0 && tag !== toRef);
+  const previousTag = tags.find((tag) => includePrerelease || isStableSemverTag(tag)) ?? tags[0];
+
+  if (!previousTag) {
+    throw new Error(
+      `Workflow node "${nodeId}" could not infer the previous tag for ${toRef}. ` +
+        'Provide with.from explicitly.'
+    );
+  }
+
+  return previousTag;
+}
+
 async function resolveGitRangeRefs(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -874,7 +902,7 @@ async function resolveGitRangeRefs(
   const configuredFromRef = getStringActionOption(node, 'from', context)?.trim();
   const fromRef = configuredFromRef
     ? configuredFromRef
-    : (await git.raw(['describe', '--tags', '--abbrev=0', `${toRef}^`])).trim();
+    : await resolvePreviousGitRangeTag(nodeId, node, git, toRef);
 
   if (!fromRef) {
     throw new Error(

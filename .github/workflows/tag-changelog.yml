@@ -34,6 +34,7 @@ jobs:
       - name: Update changelog from tag range
         run: node dist/cli/index.js workflow run tag-changelog-update
         env:
+          DRS_DEFAULT_MODEL: opencode-go/kimi-k2.7-code
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 
       - name: Commit changelog update
