@@ -2,17 +2,38 @@
 
 All notable changes to DRS are documented in this file.
 
-## 4.0.0 - 2026-06-16
+## Unreleased
 
 ### Added
 
-- Add packaged maintenance workflows: `local-changelog-update`, `local-fix-review-issues`, and `local-update-agents-md`.
-- Add built-in `task/changelog-updater`, `task/review-issue-fixer`, and `task/agents-md-updater` agents for workflow-driven repository maintenance.
+- Introduce workflow-first CLI: `drs workflow run <name>` runs packaged or project-defined DAG workflows, and `drs run-agent` (alias `drs run`) executes any configured agent by id.
+- Add packaged review workflows: `local-review`, `local-staged-review`, `github-pr-review`, `github-pr-review-post`, `gitlab-mr-review`, and `gitlab-mr-review-post`.
+- Add packaged description workflows: `github-pr-describe`, `github-pr-describe-post`, `gitlab-mr-describe`, and `gitlab-mr-describe-post`.
+- Add packaged maintenance workflows: `local-changelog-update`, `tag-changelog-update`, `local-fix-review-issues`, `local-update-agents-md`, and project-local `local-changelog-review`.
+- Add built-in maintenance agents: `task/changelog-updater`, `task/review-issue-fixer`, and `task/agents-md-updater`.
+- Add workflow actions: `change-source`, `review`, `describe`, `post-comment`, `post-review-comments`, `write`, `git-diff`, `git-add`, and `git-commit`.
+- Support workflow inputs, dependency graphs, concurrent nodes, and `{{inputs}}`/`{{artifacts}}`/`{{nodes}}` templates.
+- Add top-level `agents` config with `default`, `namespaces`, and `overrides` for model, skills, tools, and run settings.
+- Add runtime timeout and provider retry controls (`pi.runtime.*`, `pi.retry.provider.*`) with `DRS_RUNTIME_*` environment overrides.
+- Include reviewed commit SHA and branch metadata in posted review summary comments.
+- Add `docs/WORKFLOWS.md` with the full workflow configuration reference.
 
 ### Changed
 
-- Reposition DRS as a workflow-first AI code maintenance runtime with review as a first-class packaged workflow family.
-- Update CLI and package metadata for the 4.0.0 breaking release.
+- Reposition DRS as a workflow-first AI code maintenance runtime; review is now a packaged workflow family instead of hard-coded CLI commands.
+- Replace legacy `review-local`, `review-pr`, `review-mr`, `review-url`, `describe-pr`, and `describe-mr` commands with workflow-based equivalents.
+- Adopt fully qualified agent ids (`<namespace>/<name>`); the default review agent is now `review/unified-reviewer`.
+- Move agent defaults and search paths from `review.default`/`review.paths` to the top-level `agents` config.
+- Move default model configuration from `review.default.model`/`REVIEW_DEFAULT_MODEL` to `agents.default.model`/`DRS_DEFAULT_MODEL`.
+- Update the CLI banner, help text, and package metadata for the 4.0.0 breaking release.
+- Update GitHub Actions and GitLab CI templates to run packaged workflows.
+- Upgrade bundled Pi SDK to 0.73.1.
+
+### Removed
+
+- Remove packaged standalone review agents (`security`, `quality`, `style`, `performance`, `documentation`) in favor of `review/unified-reviewer` and project-specific `review/*` agents.
+- Remove `review.postErrorComment` and `review.describe.postDescription` config keys; posting is now explicit via workflows.
+- Remove inline `workflows:` map support in `.drs/drs.config.yaml`; workflows must be defined as separate files under `.drs/workflows/*.yaml`.
 
 ## 3.3.1 - 2026-05-04
 
