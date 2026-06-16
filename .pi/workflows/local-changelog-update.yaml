@@ -1,0 +1,23 @@
+name: local-changelog-update
+description: Update CHANGELOG.md from local unstaged changes
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: false
+    output: change
+
+  update-changelog:
+    agent: task/changelog-updater
+    needs:
+      - change
+    input: |
+      Update CHANGELOG.md for these local changes.
+
+      Read CHANGELOG.md yourself and edit it in place.
+      Do not return the full changelog content.
+
+      Local change source:
+      {{artifacts.change}}
+    output: changelog

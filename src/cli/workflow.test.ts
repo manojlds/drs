@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => {
     git: {
       checkIsRepo: vi.fn(async () => true),
       diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
+      raw: vi.fn(async (_args?: string[]) => ''),
       add: vi.fn(async () => ''),
       commit: vi.fn(async () => ({
         commit: 'abc1234',
@@ -179,6 +180,7 @@ describe('workflow runner', () => {
     mocks.simpleGit.mockReturnValue(mocks.git);
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
+    mocks.git.raw.mockResolvedValue('');
     mocks.git.add.mockResolvedValue('');
     mocks.git.commit.mockResolvedValue({
       commit: 'abc1234',
@@ -732,6 +734,117 @@ describe('workflow runner', () => {
     ).toMatchObject({
       filesReviewed: 1,
     });
+  });
+
+  it('loads a git range change source from explicit refs', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-range-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        releaseChanges: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'git-range', from: 'v3.3.1', to: 'v4.0.0-rc.1' },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+    mocks.git.raw.mockResolvedValue(
+      'abc123\x1fAda Lovelace\x1f2026-06-16T00:00:00Z\x1fAdd workflow runtime\n'
+    );
+
+    const result = await runWorkflow(config, 'releaseChanges', {
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.git.diff).toHaveBeenCalledWith(['v3.3.1..v4.0.0-rc.1']);
+    expect(mocks.git.raw).toHaveBeenCalledWith([
+      'log',
+      '--format=%H%x1f%an%x1f%aI%x1f%s',
+      '--no-merges',
+      'v3.3.1..v4.0.0-rc.1',
+    ]);
+    expect(result.artifacts.change).toMatchObject({
+      name: 'Git range v3.3.1..v4.0.0-rc.1',
+      files: ['src/app.ts'],
+      context: {
+        sourceType: 'git-range',
+        fromRef: 'v3.3.1',
+        toRef: 'v4.0.0-rc.1',
+        range: 'v3.3.1..v4.0.0-rc.1',
+        commits: [
+          {
+            sha: 'abc123',
+            author: 'Ada Lovelace',
+            date: '2026-06-16T00:00:00Z',
+            subject: 'Add workflow runtime',
+          },
+        ],
+      },
+    });
+  });
+
+  it('infers git range refs from a GitHub Actions tag event', async () => {
+    const previousRefType = process.env.GITHUB_REF_TYPE;
+    const previousRefName = process.env.GITHUB_REF_NAME;
+    process.env.GITHUB_REF_TYPE = 'tag';
+    process.env.GITHUB_REF_NAME = 'v4.0.0-rc.1';
+    const projectRoot = createTempDir('drs-workflow-github-tag-range-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        releaseChanges: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'git-range' },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+    mocks.git.raw.mockImplementation(async (args?: string[]) => {
+      if (args?.[0] === 'describe') {
+        return 'v3.3.1\n';
+      }
+      return 'def456\x1fGrace Hopper\x1f2026-06-16T00:00:00Z\x1fPrepare 4.0\n';
+    });
+
+    try {
+      const result = await runWorkflow(config, 'releaseChanges', {
+        workingDir: projectRoot,
+      });
+
+      expect(mocks.git.raw).toHaveBeenCalledWith([
+        'describe',
+        '--tags',
+        '--abbrev=0',
+        'v4.0.0-rc.1^',
+      ]);
+      expect(mocks.git.diff).toHaveBeenCalledWith(['v3.3.1..v4.0.0-rc.1']);
+      expect(result.artifacts.change).toMatchObject({
+        name: 'Git range v3.3.1..v4.0.0-rc.1',
+        context: {
+          fromRef: 'v3.3.1',
+          toRef: 'v4.0.0-rc.1',
+        },
+      });
+    } finally {
+      if (previousRefType === undefined) {
+        delete process.env.GITHUB_REF_TYPE;
+      } else {
+        process.env.GITHUB_REF_TYPE = previousRefType;
+      }
+      if (previousRefName === undefined) {
+        delete process.env.GITHUB_REF_NAME;
+      } else {
+        process.env.GITHUB_REF_NAME = previousRefName;
+      }
+    }
   });
 
   it('suppresses review action logs when workflow JSON output is enabled', async () => {

@@ -2,10 +2,11 @@
 
 ## Project Context
 
-**DRS (Diff Review System)** is an AI-powered code review tool for:
-- GitLab Merge Requests
-- GitHub Pull Requests
-- Local diff review
+**DRS (Diff Review System)** is a workflow-first AI code maintenance tool for:
+- GitLab Merge Request workflows
+- GitHub Pull Request workflows
+- Local diff review and maintenance workflows
+- Agentic repository upkeep such as changelog, review-fix, and agent guidance updates
 
 ### Stack
 - Node.js + TypeScript
@@ -18,6 +19,8 @@
 - `src/runtime/` — runtime client + agent loading
 - `src/pi/` — Pi SDK adapter
 - `.pi/agents/review/` — built-in review agents
+- `.pi/agents/task/` — built-in maintenance agents
+- `.pi/workflows/` — packaged workflows
 - `.drs/drs.config.yaml` — project config
 
 ---

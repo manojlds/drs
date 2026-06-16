@@ -2,6 +2,18 @@
 
 All notable changes to DRS are documented in this file.
 
+## 4.0.0 - 2026-06-16
+
+### Added
+
+- Add packaged maintenance workflows: `local-changelog-update`, `local-fix-review-issues`, and `local-update-agents-md`.
+- Add built-in `task/changelog-updater`, `task/review-issue-fixer`, and `task/agents-md-updater` agents for workflow-driven repository maintenance.
+
+### Changed
+
+- Reposition DRS as a workflow-first AI code maintenance runtime with review as a first-class packaged workflow family.
+- Update CLI and package metadata for the 4.0.0 breaking release.
+
 ## 3.3.1 - 2026-05-04
 
 ### Changed

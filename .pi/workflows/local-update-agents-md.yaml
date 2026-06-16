@@ -1,0 +1,24 @@
+name: local-update-agents-md
+description: Update repository agent guidance from local changes
+inputs:
+  path: ""
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: false
+    output: change
+
+  update-guidance:
+    agent: task/agents-md-updater
+    needs:
+      - change
+    input: |
+      Update repository coding-agent guidance for these local changes.
+
+      Preferred guidance path, if non-empty: {{inputs.path}}
+
+      Local change source:
+      {{artifacts.change}}
+    output: guidance

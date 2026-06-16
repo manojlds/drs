@@ -1,0 +1,26 @@
+name: tag-changelog-update
+description: Update CHANGELOG.md from changes between two git refs or tags
+inputs:
+  from: ""
+  to: ""
+nodes:
+  release-change:
+    action: change-source
+    with:
+      type: git-range
+      from: "{{inputs.from}}"
+      to: "{{inputs.to}}"
+    output: change
+
+  update-changelog:
+    agent: task/changelog-updater
+    needs:
+      - release-change
+    input: |
+      Update CHANGELOG.md for the release changes between {{inputs.from}} and {{inputs.to}}.
+
+      Use this git range change source as the authoritative release diff:
+      {{artifacts.change}}
+
+      If {{inputs.to}} is a release candidate tag, prepare changelog content for the upcoming final release without inventing a final release date.
+    output: changelog

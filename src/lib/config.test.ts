@@ -132,6 +132,54 @@ describe('Config', () => {
           },
         },
       });
+      expect(config.workflows?.['local-changelog-update']).toMatchObject({
+        description: 'Update CHANGELOG.md from local unstaged changes',
+        nodes: {
+          'update-changelog': {
+            agent: 'task/changelog-updater',
+          },
+        },
+      });
+      expect(config.workflows?.['local-fix-review-issues']).toMatchObject({
+        description: 'Fix actionable issues from a saved DRS review result',
+        inputs: {
+          review: '',
+        },
+        nodes: {
+          'fix-issues': {
+            agent: 'task/review-issue-fixer',
+          },
+          review: {
+            action: 'review',
+          },
+        },
+      });
+      expect(config.workflows?.['local-update-agents-md']).toMatchObject({
+        description: 'Update repository agent guidance from local changes',
+        nodes: {
+          'update-guidance': {
+            agent: 'task/agents-md-updater',
+          },
+        },
+      });
+      expect(config.workflows?.['tag-changelog-update']).toMatchObject({
+        description: 'Update CHANGELOG.md from changes between two git refs or tags',
+        inputs: {
+          from: '',
+          to: '',
+        },
+        nodes: {
+          'release-change': {
+            action: 'change-source',
+            with: {
+              type: 'git-range',
+            },
+          },
+          'update-changelog': {
+            agent: 'task/changelog-updater',
+          },
+        },
+      });
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }

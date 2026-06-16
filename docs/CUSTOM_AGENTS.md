@@ -1,6 +1,6 @@
 # Custom Agents, Skills & Context
 
-DRS runs Pi agents addressed by fully qualified ids: `<namespace>/<name>`. It ships with built-in review agents (security, quality, style, performance, documentation) under `.pi/agents/review/`, and you can add agents in any namespace for non-review workflows.
+DRS runs Pi agents addressed by fully qualified ids: `<namespace>/<name>`. It ships with built-in `review/*` and `task/*` agents under `.pi/agents/`, and you can add agents in any namespace for project workflows.
 
 ## Quick Reference
 
@@ -17,14 +17,14 @@ DRS runs Pi agents addressed by fully qualified ids: `<namespace>/<name>`. It sh
 
 ## Overriding Built-in Agents
 
-Create `.drs/agents/<namespace>/<name>/agent.md` where the path matches a built-in agent id (e.g., `review/security`, `review/quality`):
+Create `.drs/agents/<namespace>/<name>/agent.md` where the path matches a built-in agent id (for example `review/unified-reviewer` or `task/changelog-updater`):
 
 ```bash
-mkdir -p .drs/agents/review/security
+mkdir -p .drs/agents/review/unified-reviewer
 ```
 
 ```markdown
-<!-- .drs/agents/review/security/agent.md -->
+<!-- .drs/agents/review/unified-reviewer/agent.md -->
 ---
 description: Custom security reviewer for our fintech stack
 model: anthropic/claude-sonnet-4-5-20250929
@@ -60,12 +60,12 @@ The override **completely replaces** the built-in prompt. The frontmatter suppor
 If you want to keep the built-in prompt but add project-specific guidance, create a `context.md`:
 
 ```bash
-mkdir -p .drs/agents/review/quality
+mkdir -p .drs/agents/review/unified-reviewer
 ```
 
 ```markdown
-<!-- .drs/agents/review/quality/context.md -->
-# Quality Agent Context
+<!-- .drs/agents/review/unified-reviewer/context.md -->
+# Unified Reviewer Context
 
 ## Project-Specific Rules
 - Functions over 200 lines should be flagged HIGH, not MEDIUM
@@ -74,7 +74,7 @@ mkdir -p .drs/agents/review/quality
 - Our error handling pattern: try-catch with graceful fallback + log
 ```
 
-This context is **injected alongside** the built-in quality prompt, not replacing it. You can have both `agent.md` (override) and `context.md` in the same directory — but if `agent.md` exists, it takes precedence and `context.md` is not used.
+This context is **injected alongside** the built-in unified reviewer prompt, not replacing it. You can have both `agent.md` (override) and `context.md` in the same directory — but if `agent.md` exists, it takes precedence and `context.md` is not used.
 
 ---
 
@@ -111,8 +111,7 @@ Then add it to your config:
 # .drs/drs.config.yaml
 review:
   agents:
-    - review/security
-    - review/quality
+    - review/unified-reviewer
     - review/api-reviewer  # Your custom agent
 ```
 
@@ -251,14 +250,13 @@ agents:
 ```yaml
 review:
   agents:
-    - name: review/security
+    - name: review/api-reviewer
       skills:
-        - sql-patterns      # Only for security agent
-        - auth-bypass
-    - review/quality        # Uses only default skills
+        - sql-patterns      # Only for this custom agent
+    - review/unified-reviewer # Uses only default skills
 ```
 
-Per-agent skills are **merged** with default skills. If `agents.default.skills` is `['baseline']` and `review/security` has `skills: ['sql-patterns']`, then security gets both `['baseline', 'sql-patterns']`.
+Per-agent skills are **merged** with default skills. If `agents.default.skills` is `['baseline']` and `review/api-reviewer` has `skills: ['sql-patterns']`, then `review/api-reviewer` gets both `['baseline', 'sql-patterns']`.
 
 ### Skill Search Paths
 
@@ -309,13 +307,11 @@ review:
   # Agents to run (execution order)
   agents:
     # Simple format (uses default model, no per-agent skills)
-    - review/security
-    - review/quality
+    - review/unified-reviewer
 
     # Detailed format (per-agent model and skills)
-    - name: review/style
-      model: openai/gpt-4o
     - name: review/api-reviewer
+      model: openai/gpt-4o
       skills:
         - rest-conventions
 
@@ -329,11 +325,11 @@ review:
 
 ## Resolution Order
 
-When DRS loads an agent named `review/security`:
+When DRS loads an agent named `review/unified-reviewer`:
 
-1. Check `.drs/agents/review/security/agent.md` — if found, use as **full override**
-2. Otherwise, use built-in `.pi/agents/review/security.md`
-3. Check `.drs/agents/review/security/context.md` — if found, **inject alongside** built-in prompt
+1. Check `.drs/agents/review/unified-reviewer/agent.md` — if found, use as **full override**
+2. Otherwise, use built-in `.pi/agents/review/unified-reviewer.md`
+3. Check `.drs/agents/review/unified-reviewer/context.md` — if found, **inject alongside** built-in prompt
 4. Load `.drs/context.md` — inject **global context** into prompt
 5. Resolve model from per-run override, env, `agents.overrides`, frontmatter, namespace defaults, then `agents.default`
 6. Apply tools from `agents.default`, namespace defaults, frontmatter, then `agents.overrides`
@@ -356,12 +352,10 @@ When DRS loads an agent named `review/security`:
 ```
 .drs/
   context.md
-  drs.config.yaml          # agents: [review/security, review/quality, review/api-reviewer]
+  drs.config.yaml          # agents: [review/unified-reviewer, review/api-reviewer]
   agents/
-    review/security/
-      agent.md             # Full override of security agent
-    review/quality/
-      context.md           # Extra context for quality (keeps built-in)
+    review/unified-reviewer/
+      context.md           # Extra context for packaged reviewer
     review/api-reviewer/
       agent.md             # Brand new agent
   skills/
@@ -377,8 +371,7 @@ agents:
 
 review:
   agents:
-    - review/security
-    - review/quality
+    - review/unified-reviewer
     - name: review/api-reviewer
       skills:
         - rest-conventions

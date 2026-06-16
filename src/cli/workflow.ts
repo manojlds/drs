@@ -108,6 +108,13 @@ interface GitLabDiffRefs {
   start_sha?: string;
 }
 
+interface GitRangeCommit {
+  sha: string;
+  author: string;
+  date: string;
+  subject: string;
+}
+
 interface WorkflowLock {
   current: Promise<void>;
 }
@@ -829,6 +836,86 @@ async function loadLocalChangeSource(
   };
 }
 
+function parseGitRangeCommits(logOutput: string): GitRangeCommit[] {
+  return logOutput
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [sha = '', author = '', date = '', subject = ''] = line.split('\x1f');
+      return { sha, author, date, subject };
+    })
+    .filter((commit) => commit.sha.length > 0);
+}
+
+async function resolveGitRangeToRef(git: ReturnType<typeof simpleGit>): Promise<string> {
+  if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME) {
+    return process.env.GITHUB_REF_NAME;
+  }
+
+  const tag = (await git.raw(['describe', '--tags', '--exact-match', 'HEAD'])).trim();
+  if (!tag) {
+    throw new Error(
+      'Workflow git-range change-source could not infer the current tag. ' +
+        'Run from a tag checkout or provide with.to.'
+    );
+  }
+  return tag;
+}
+
+async function resolveGitRangeRefs(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  git: ReturnType<typeof simpleGit>
+): Promise<{ fromRef: string; toRef: string }> {
+  const configuredToRef = getStringActionOption(node, 'to', context)?.trim();
+  const toRef = configuredToRef ? configuredToRef : await resolveGitRangeToRef(git);
+  const configuredFromRef = getStringActionOption(node, 'from', context)?.trim();
+  const fromRef = configuredFromRef
+    ? configuredFromRef
+    : (await git.raw(['describe', '--tags', '--abbrev=0', `${toRef}^`])).trim();
+
+  if (!fromRef) {
+    throw new Error(
+      `Workflow node "${nodeId}" could not infer the previous tag for ${toRef}. ` +
+        'Provide with.from explicitly.'
+    );
+  }
+
+  return { fromRef, toRef };
+}
+
+async function loadGitRangeChangeSource(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<ReviewSource> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const { fromRef, toRef } = await resolveGitRangeRefs(nodeId, node, context, git);
+  const range = `${fromRef}..${toRef}`;
+  const diffText = await git.diff([range]);
+  const logOutput = await git.raw(['log', '--format=%H%x1f%an%x1f%aI%x1f%s', '--no-merges', range]);
+  const diffs = parseDiff(diffText);
+  const changedFiles = getChangedFiles(diffs);
+
+  return {
+    name: `Git range ${range}`,
+    files: changedFiles,
+    filesWithDiffs: getFilesWithDiffs(diffs),
+    context: {
+      sourceType: 'git-range',
+      fromRef,
+      toRef,
+      range,
+      commits: parseGitRangeCommits(logOutput),
+    },
+    workingDir,
+  };
+}
+
 function createPlatformChangeSource(
   platform: 'github' | 'gitlab',
   name: string,
@@ -920,6 +1007,8 @@ async function runChangeSourceWorkflowNode(
   let source: ReviewSource;
   if (type === 'local') {
     source = await loadLocalChangeSource(nodeId, node, workingDir);
+  } else if (type === 'git-range') {
+    source = await loadGitRangeChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'github-pr') {
     source = await loadGitHubChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'gitlab-mr') {
@@ -927,7 +1016,7 @@ async function runChangeSourceWorkflowNode(
   } else {
     throw new Error(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +
-        'Currently supported: local, github-pr, gitlab-mr.'
+        'Currently supported: local, git-range, github-pr, gitlab-mr.'
     );
   }
   const writes = renderNodeWritesPath(nodeId, node, context);

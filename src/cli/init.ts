@@ -210,9 +210,9 @@ Project-wide context applied to ALL agents. Use this for:
 
 **Additive** - Enhances the default agent with project-specific rules.
 
-Example: \`.drs/agents/review/security/context.md\`
+Example: \`.drs/agents/review/unified-reviewer/context.md\`
 \`\`\`markdown
-# Security Agent Context
+# Unified Reviewer Context
 
 ## What NOT to Flag
 - process.env for configuration (standard practice)
@@ -227,16 +227,16 @@ Example: \`.drs/agents/review/security/context.md\`
 
 **Replacement** - Completely replaces the default agent.
 
-Example: \`.drs/agents/review/security/agent.md\`
+Example: \`.drs/agents/review/unified-reviewer/agent.md\`
 \`\`\`markdown
 ---
-description: Custom security reviewer
+description: Custom unified reviewer
 tools:
   Read: true
   Grep: true
 ---
 
-You are a security expert specialized in [your domain].
+You are a reviewer specialized in [your domain].
 
 [Complete custom instructions here]
 \`\`\`

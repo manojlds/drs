@@ -3,16 +3,17 @@
 [![npm version](https://img.shields.io/npm/v/@diff-review-system/drs)](https://www.npmjs.com/package/@diff-review-system/drs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Automated AI code reviews for GitHub PRs and GitLab MRs.**
+**Workflow-first AI code maintenance for reviews, changelogs, docs, and repository upkeep.**
 
-DRS helps teams catch critical issues earlier with a packaged unified reviewer, customizable project-specific review agents, unified reporting, and CI-friendly automation — all powered by Pi SDK.
+DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review is a first-class packaged workflow, and the same workflow engine can update changelogs, fix review findings, refresh agent guidance, post comments, and compose project-specific maintenance pipelines — all powered by Pi SDK.
 
 ## Why teams like DRS
 
-- 🎯 **Packaged unified review**: `review/unified-reviewer` is included out of the box
-- 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` agents in execution order
+- 🧭 **Workflow-first automation**: run packaged or project-defined DAG workflows with `drs workflow run`
+- 🎯 **First-class review workflows**: `local-review`, `github-pr-review`, and `gitlab-mr-review` are included out of the box
+- 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` and `task/*` agents
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
-- ✍️ **Description generation**: optional PR/MR summary generation and posting
+- ✍️ **Maintenance workflows**: update changelogs, fix review issues, refresh AGENTS.md-style guidance, and generate PR/MR descriptions
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
 - 🎯 **Smart context compression**: dynamic budget sizing with `contextCompression.thresholdPercent`
 
@@ -67,7 +68,7 @@ DRS CLI now loads `.env` automatically from your current working directory.
 
 **Note**: DRS runs Pi in-process by default and does not require a remote runtime endpoint.
 
-### 5. Review Local Changes
+### 5. Run Local Workflows
 
 ```bash
 # Review unstaged changes
@@ -75,6 +76,18 @@ drs workflow run local-review
 
 # Review staged changes
 drs workflow run local-staged-review
+
+# Update CHANGELOG.md from local changes
+drs workflow run local-changelog-update
+
+# Update CHANGELOG.md from the previous tag to the current tag, or explicit refs
+drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
+
+# Fix issues from a saved workflow review result
+drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+
+# Refresh AGENTS.md or equivalent repository guidance
+drs workflow run local-update-agents-md
 
 # To use project-specific agents, configure review.agents in .drs/drs.config.yaml
 # then run the same workflow.
@@ -86,6 +99,10 @@ drs workflow run local-staged-review
 |---|---|
 | Review local unstaged changes | `drs workflow run local-review` |
 | Review local staged changes | `drs workflow run local-staged-review` |
+| Update changelog from local changes | `drs workflow run local-changelog-update` |
+| Update changelog from tag range | `drs workflow run tag-changelog-update` |
+| Fix issues from saved review output | `drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json` |
+| Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
@@ -312,15 +329,15 @@ Built-in agent definitions live under `.pi/agents`.
 Create custom agents in your project:
 
 ```bash
-# Create custom security agent
-mkdir -p .drs/agents/review/security
-cat > .drs/agents/review/security/agent.md << 'EOF'
+# Override the packaged unified reviewer
+mkdir -p .drs/agents/review/unified-reviewer
+cat > .drs/agents/review/unified-reviewer/agent.md << 'EOF'
 ---
-description: Custom security reviewer
+description: Custom unified reviewer
 model: anthropic/claude-sonnet-4-5-20250929
 ---
 
-You are a security expert for this specific application.
+You are a reviewer for this specific application.
 
 ## Project-Specific Rules
 [Add your custom rules here]
@@ -332,9 +349,9 @@ EOF
 Add project-specific guidance to a built-in agent without replacing its prompt:
 
 ```bash
-mkdir -p .drs/agents/review/quality
-cat > .drs/agents/review/quality/context.md << 'EOF'
-# Quality Context
+mkdir -p .drs/agents/review/unified-reviewer
+cat > .drs/agents/review/unified-reviewer/context.md << 'EOF'
+# Unified Reviewer Context
 - Flag functions over 200 lines as HIGH
 - We use TypeORM — flag raw SQL queries
 EOF
@@ -367,7 +384,7 @@ Review REST API changes for backward compatibility.
 EOF
 ```
 
-Then add to config: `review.agents: [review/security, review/quality, review/api-reviewer]`
+Then add to config: `review.agents: [review/unified-reviewer, review/api-reviewer]`
 
 For non-review work, create agents in any namespace and run them directly:
 
@@ -467,8 +484,6 @@ agents:
 review:
   agents:
     - review/unified-reviewer
-    - review/security
-    - review/quality
   ignorePatterns:
     - "*.test.ts"
     - "*.md"

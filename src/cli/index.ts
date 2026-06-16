@@ -26,7 +26,7 @@ const version = packageJson.version;
 
 function printBanner() {
   const bannerWidth = 42;
-  const title = '  DRS - Diff Review System';
+  const title = '  DRS - Workflow Runtime';
   const versionText = `  Version: ${version}`;
   const titlePadding = ' '.repeat(bannerWidth - title.length);
   const versionPadding = ' '.repeat(bannerWidth - versionText.length);
@@ -66,7 +66,7 @@ const program = new Command();
 
 program
   .name('drs')
-  .description('Automated AI code reviews for GitHub pull requests and GitLab merge requests')
+  .description('Workflow-first AI code maintenance for reviews, docs, and repository upkeep')
   .version(version);
 
 program
@@ -115,7 +115,7 @@ program
     }
   });
 
-const workflowCommand = new Command('workflow').description('Run configured workflows');
+const workflowCommand = new Command('workflow').description('Run configured maintenance workflows');
 
 workflowCommand
   .command('run [name]')

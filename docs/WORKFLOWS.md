@@ -14,6 +14,12 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 drs workflow run local-review
 drs workflow run local-staged-review --json -o .drs/local-review.json
 
+# Built-in local maintenance workflows
+drs workflow run local-changelog-update
+drs workflow run tag-changelog-update
+drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+drs workflow run local-update-agents-md
+
 # DRS project-local changelog workflow
 drs workflow run local-changelog-review
 
@@ -138,8 +144,24 @@ Currently supported source types:
 | Type | Description |
 |------|-------------|
 | `local` | Load local git diff from the workflow working directory |
+| `git-range` | Load a git diff and commit list between two refs or inferred tags |
 | `github-pr` | Load GitHub PR metadata and changed files |
 | `gitlab-mr` | Load GitLab MR metadata and changed files |
+
+Git range source:
+
+```yaml
+nodes:
+  change:
+    action: change-source
+    with:
+      type: git-range
+      from: v3.3.1
+      to: v4.0.0-rc.1
+    output: change
+```
+
+When `from` and `to` are omitted, `git-range` infers `to` from a GitHub Actions tag event (`GITHUB_REF_NAME`) or the tag currently checked out at `HEAD`, then infers `from` from the previous reachable tag.
 
 GitHub PR source:
 
@@ -379,6 +401,87 @@ nodes:
 ```
 
 `gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
+
+## Built-In Maintenance Workflows
+
+DRS 4.0 ships maintenance workflows alongside review workflows:
+
+| Workflow | Purpose |
+|----------|---------|
+| `local-changelog-update` | Update `CHANGELOG.md` from local unstaged changes using `task/changelog-updater` |
+| `tag-changelog-update` | Update `CHANGELOG.md` from changes between the previous tag and current tag, or explicit refs |
+| `local-fix-review-issues` | Fix actionable issues from a saved DRS review result using `task/review-issue-fixer`, then re-run local review |
+| `local-update-agents-md` | Update `AGENTS.md` or equivalent agent guidance using `task/agents-md-updater` |
+
+Examples:
+
+```bash
+drs workflow run local-changelog-update
+drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
+drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+drs workflow run local-update-agents-md --input path=AGENTS.md
+```
+
+These workflows are intentionally local and do not commit changes. Compose them with `git-add`, `git-commit`, review, or platform posting nodes in project workflows when your repository wants stronger automation.
+
+### Tag Changelog In GitHub Actions
+
+`tag-changelog-update` is designed for tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable tag with `git describe --tags --abbrev=0 <current-tag>^`.
+
+```yaml
+name: Update changelog from tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: node dist/cli/index.js workflow run tag-changelog-update
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "No changelog update needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update changelog for $GITHUB_REF_NAME"
+          git push
+```
+
+For release-candidate testing before final `v4.0.0`, create and push an RC tag:
+
+```bash
+git tag v4.0.0-rc.1
+git push origin v4.0.0-rc.1
+```
+
+For local dry-runs, pass explicit refs:
+
+```bash
+drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
+```
 
 ## DRS Local Changelog Workflow
 

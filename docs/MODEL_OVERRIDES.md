@@ -31,9 +31,9 @@ agents:
 ```yaml
 review:
   agents:
-    - name: review/security
+    - name: review/unified-reviewer
       model: anthropic/claude-opus-4-5-20251101
-    - review/quality
+    - review/api-reviewer
 ```
 
 ## 4) Unified Reviewer Override
@@ -84,14 +84,14 @@ REVIEW_THINKING_LEVEL=medium
 
 ```bash
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
-DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
+DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
 DRS_AGENT_TASK_DOCS_UPDATER_MODEL=openai/gpt-4o
 REVIEW_UNIFIED_MODEL=anthropic/claude-opus-4-5-20251101
 DESCRIBE_MODEL=anthropic/claude-sonnet-4-5-20250929
 REVIEW_THINKING_LEVEL=medium
 ```
 
-Per-agent model variables are derived from the fully qualified agent id by replacing non-alphanumeric characters with `_`; for `review/security`, use `DRS_AGENT_REVIEW_SECURITY_MODEL`. Legacy `REVIEW_DEFAULT_MODEL` and `REVIEW_AGENT_<ID>_MODEL` aliases are still supported for review-era configurations.
+Per-agent model variables are derived from the fully qualified agent id by replacing non-alphanumeric characters with `_`; for `review/unified-reviewer`, use `DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL`. Legacy `REVIEW_DEFAULT_MODEL` and `REVIEW_AGENT_<ID>_MODEL` aliases are still supported for review-era configurations.
 
 ## Runtime Mode
 
