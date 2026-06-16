@@ -6,10 +6,16 @@
  */
 
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
-import { getAgentNames, getDefaultSkills, normalizeAgentConfig } from '../lib/config.js';
+import {
+  getRuntimeConfig,
+  normalizeAgentConfig,
+  resolveAgentSkills,
+  resolveAgentTools,
+  resolveRuntimeAgentModel,
+} from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
-import { loadReviewAgents } from './agent-loader.js';
-import { resolveReviewPaths } from './path-config.js';
+import { loadAgents, type AgentDefinition } from './agent-loader.js';
+import { resolveAgentPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
 
 export interface RuntimeClientConfig {
@@ -19,6 +25,14 @@ export interface RuntimeClientConfig {
   debug?: boolean; // Print runtime config for debugging
   config?: DRSConfig;
   thinkingLevel?: string;
+  operationTimeoutMs?: number;
+  streamTimeoutMs?: number;
+  streamPollIntervalMs?: number;
+  providerRetry?: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    maxRetryDelayMs?: number;
+  };
 }
 
 export interface SessionCreateOptions {
@@ -94,39 +108,39 @@ function mapPiRuntimeError(operation: string, error: unknown): Error {
 }
 
 function buildAgentSkillConfiguration(
-  config: DRSConfig
+  config: DRSConfig,
+  agents: AgentDefinition[]
 ): Array<{ name: string; skills: string[] }> {
-  const normalizedAgents = normalizeAgentConfig(config.review.agents);
-  const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
-  const defaultSkills = getDefaultSkills(config);
-  const skillMap = new Map<string, Set<string>>();
+  const reviewAgentConfigByName = new Map(
+    normalizeAgentConfig(config.review.agents).map((agent) => [agent.name, agent])
+  );
 
-  const addSkills = (agentName: string, skills: string[]): void => {
-    const filtered = skills.filter((skill) => skill.length > 0);
-    if (filtered.length === 0) {
-      return;
-    }
+  return agents
+    .map((agent) => ({
+      name: agent.id,
+      skills: resolveAgentSkills(
+        config,
+        agent.id,
+        agent.skills,
+        [],
+        reviewAgentConfigByName.get(agent.id) ?? null
+      ),
+    }))
+    .filter((agent) => agent.skills.length > 0);
+}
 
-    const existing = skillMap.get(agentName) ?? new Set<string>();
-    for (const skill of filtered) {
-      existing.add(skill);
-    }
-    skillMap.set(agentName, existing);
-  };
-
-  for (const agentName of getAgentNames(config)) {
-    const agentConfig = agentConfigByName.get(agentName);
-    const fullAgentName = agentName.startsWith('review/') ? agentName : `review/${agentName}`;
-    addSkills(fullAgentName, [
-      ...defaultSkills,
-      ...(agentConfig?.skills ? agentConfig.skills.map(String) : []),
-    ]);
+function parsePositiveIntEnv(name: string): number | undefined {
+  const value = process.env[name];
+  if (!value) {
+    return undefined;
   }
 
-  return Array.from(skillMap.entries()).map(([name, skills]) => ({
-    name,
-    skills: Array.from(skills),
-  }));
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
 }
 
 /**
@@ -138,10 +152,46 @@ export class RuntimeClient {
   private inProcessServer?: Awaited<ReturnType<typeof createPiInProcessServer>>;
   private client?: PiClient;
   private config: RuntimeClientConfig;
+  private readonly operationTimeoutMs: number;
+  private readonly streamTimeoutMs: number;
+  private readonly streamPollIntervalMs: number;
 
   constructor(config: RuntimeClientConfig) {
     this.directory = config.directory;
     this.config = config;
+
+    this.operationTimeoutMs =
+      parsePositiveIntEnv('DRS_RUNTIME_OPERATION_TIMEOUT_MS') ??
+      config.operationTimeoutMs ??
+      300000;
+    this.streamTimeoutMs =
+      parsePositiveIntEnv('DRS_RUNTIME_STREAM_TIMEOUT_MS') ?? config.streamTimeoutMs ?? 900000;
+    this.streamPollIntervalMs =
+      parsePositiveIntEnv('DRS_RUNTIME_STREAM_POLL_INTERVAL_MS') ??
+      config.streamPollIntervalMs ??
+      2000;
+  }
+
+  private async withTimeout<T>(operation: string, timeoutMs: number, task: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              `${operation} timed out after ${Math.round(timeoutMs / 1000)} seconds. ` +
+                `Set DRS_RUNTIME_OPERATION_TIMEOUT_MS or DRS_RUNTIME_STREAM_TIMEOUT_MS to tune limits.`
+            )
+          );
+        }, timeoutMs);
+      });
+
+      return await Promise.race([task, timeout]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   getModelContextWindow(modelId: string): number | undefined {
@@ -202,7 +252,7 @@ export class RuntimeClient {
     // Build runtime config programmatically from DRS config
     const log = getLogger();
     const projectDir = this.directory ?? process.cwd();
-    const reviewPaths = resolveReviewPaths(projectDir, this.config.config);
+    const agentPaths = resolveAgentPaths(projectDir, this.config.config);
 
     const runtimeConfig: Record<string, unknown> = {
       // Tools available to DRS review agents
@@ -219,19 +269,23 @@ export class RuntimeClient {
     };
 
     const agentConfig: Record<string, Record<string, unknown>> = {};
+    let runtimeAgents: AgentDefinition[] = [];
 
     if (this.config.config) {
-      const runtimeAgents = loadReviewAgents(projectDir, this.config.config);
+      runtimeAgents = loadAgents(projectDir, this.config.config);
       for (const agent of runtimeAgents) {
         const runtimeEntry: Record<string, unknown> = {};
-        if (agent.model) runtimeEntry.model = agent.model;
+        const model = resolveRuntimeAgentModel(this.config.config, agent.id, agent.model);
+        const tools = resolveAgentTools(this.config.config, agent.id, agent.tools);
+
+        if (model) runtimeEntry.model = model;
         if (agent.prompt) runtimeEntry.prompt = agent.prompt;
         if (agent.description) runtimeEntry.description = agent.description;
         if (agent.color) runtimeEntry.color = agent.color;
-        if (agent.tools) runtimeEntry.tools = agent.tools;
+        if (tools) runtimeEntry.tools = tools;
 
         if (Object.keys(runtimeEntry).length > 0) {
-          agentConfig[agent.name] = runtimeEntry;
+          agentConfig[agent.id] = runtimeEntry;
         }
       }
 
@@ -274,16 +328,23 @@ export class RuntimeClient {
       runtimeConfig.agent = agentConfig;
     }
 
+    const providerRetry =
+      this.config.providerRetry ??
+      (this.config.config ? getRuntimeConfig(this.config.config).retry?.provider : undefined);
+    if (providerRetry) {
+      runtimeConfig.retry = {
+        provider: providerRetry,
+      };
+    }
+
     if (this.config.thinkingLevel) {
       runtimeConfig.thinkingLevel = this.config.thinkingLevel;
     }
 
-    runtimeConfig.skillSearchPaths = reviewPaths.skillSearchPaths;
+    runtimeConfig.skillSearchPaths = agentPaths.skillSearchPaths;
 
     if (this.config.config) {
-      const agentSkills = buildAgentSkillConfiguration(this.config.config).filter(
-        (agent) => agent.skills.length > 0
-      );
+      const agentSkills = buildAgentSkillConfiguration(this.config.config, runtimeAgents);
 
       if (agentSkills.length > 0) {
         log.info('Agent skill configuration:');
@@ -398,11 +459,15 @@ export class RuntimeClient {
 
     try {
       // Step 1: Create empty session
-      const createResponse = (await this.client.session.create({
-        query: {
-          directory: this.directory,
-        },
-      })) as { data?: { id?: string } };
+      const createResponse = (await this.withTimeout(
+        'Create session',
+        this.operationTimeoutMs,
+        this.client.session.create({
+          query: {
+            directory: this.directory,
+          },
+        })
+      )) as { data?: { id?: string } };
 
       const sessionId = createResponse.data?.id;
       if (!sessionId) {
@@ -410,21 +475,25 @@ export class RuntimeClient {
       }
 
       // Step 2: Send initial message to start the agent
-      await this.client.session.prompt({
-        path: { id: sessionId },
-        query: {
-          directory: this.directory,
-        },
-        body: {
-          agent: options.agent,
-          parts: [
-            {
-              type: 'text',
-              text: options.message,
-            },
-          ],
-        },
-      });
+      await this.withTimeout(
+        'Send initial prompt',
+        this.operationTimeoutMs,
+        this.client.session.prompt({
+          path: { id: sessionId },
+          query: {
+            directory: this.directory,
+          },
+          body: {
+            agent: options.agent,
+            parts: [
+              {
+                type: 'text',
+                text: options.message,
+              },
+            ],
+          },
+        })
+      );
 
       return {
         id: sessionId,
@@ -449,18 +518,19 @@ export class RuntimeClient {
     }
 
     try {
-      // Poll messages until agent completes
+      // Poll messages until agent completes or times out
       let lastMessageCount = 0;
-      let attempts = 0;
-      const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
+      const start = Date.now();
 
-      while (attempts < maxAttempts) {
-        attempts++;
-
+      while (Date.now() - start < this.streamTimeoutMs) {
         // Get current messages
-        const messagesResponse = (await this.client.session.messages({
-          path: { id: sessionId },
-        })) as { data?: PiSessionMessage[] };
+        const messagesResponse = (await this.withTimeout(
+          'Get messages',
+          this.operationTimeoutMs,
+          this.client.session.messages({
+            path: { id: sessionId },
+          })
+        )) as { data?: PiSessionMessage[] };
 
         const messages = messagesResponse.data ?? [];
 
@@ -534,17 +604,14 @@ export class RuntimeClient {
           }
         }
 
-        // In-process mode completes synchronously; skip polling delay
-        if (this.inProcessServer) {
-          break;
-        }
-
-        // Wait before polling again (remote runtime)
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Wait before polling again
+        await new Promise((resolve) => setTimeout(resolve, this.streamPollIntervalMs));
       }
 
-      if (attempts >= maxAttempts) {
-        throw new Error(`Session ${sessionId} timed out after ${maxAttempts * 2} seconds`);
+      if (Date.now() - start >= this.streamTimeoutMs) {
+        throw new Error(
+          `Session ${sessionId} timed out after ${Math.round(this.streamTimeoutMs / 1000)} seconds`
+        );
       }
     } catch (error) {
       throw mapPiRuntimeError('get messages', error);

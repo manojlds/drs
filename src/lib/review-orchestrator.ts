@@ -11,7 +11,7 @@ import type { ChangeSummary } from './change-summary.js';
 import { exitProcess } from './exit.js';
 import {
   shouldIgnoreFile,
-  getAgentNames,
+  getReviewAgentIds,
   getModelOverrides,
   getDescriberModelOverride,
   getDefaultThinkingLevel,
@@ -87,15 +87,14 @@ export function getReviewBudgetModelIds(
   agentModelOverrides: ModelOverrides,
   unifiedModelOverrides: ModelOverrides
 ): string[] {
-  const selectedAgents = getAgentNames(config);
+  const selectedAgents = getReviewAgentIds(config);
   const modelIds = selectedAgents
-    .map((agentName) => {
-      const overrideKey = `review/${agentName}`;
-      if (agentModelOverrides[overrideKey]) {
-        return agentModelOverrides[overrideKey];
+    .map((agentId) => {
+      if (agentId === 'review/unified-reviewer' && unifiedModelOverrides[agentId]) {
+        return unifiedModelOverrides[agentId];
       }
-      if (agentName === 'unified-reviewer') {
-        return unifiedModelOverrides['review/unified-reviewer'];
+      if (agentModelOverrides[agentId]) {
+        return agentModelOverrides[agentId];
       }
       return undefined;
     })
@@ -135,6 +134,10 @@ export async function connectToRuntime(
       directory: workingDir ?? process.cwd(),
       modelOverrides,
       provider: runtimeConfig.provider,
+      operationTimeoutMs: runtimeConfig.runtime?.operationTimeoutMs,
+      streamTimeoutMs: runtimeConfig.runtime?.streamTimeoutMs,
+      streamPollIntervalMs: runtimeConfig.runtime?.streamPollIntervalMs,
+      providerRetry: runtimeConfig.retry?.provider,
       config,
       debug: options?.debug,
       thinkingLevel,

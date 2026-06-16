@@ -26,7 +26,7 @@
     # DRS uses in-process Pi runtime (no remote runtime endpoint needed)
 
     # Review agents to use (optional, defaults to all)
-    # REVIEW_AGENTS: "security,quality,style,performance"
+    # REVIEW_AGENTS: "review/security,review/quality,review/style,review/performance"
 
   # Allow job to fail without blocking pipeline
   allow_failure: true
@@ -43,12 +43,12 @@ ai_review_full:
   extends: .drs_review
   stage: review
   variables:
-    REVIEW_AGENTS: "security,quality,style,performance"
+    REVIEW_AGENTS: "review/security,review/quality,review/style,review/performance"
 
 # Quick security-only review (can block pipeline if issues found)
 ai_review_security:
   extends: .drs_review
   stage: review
   variables:
-    REVIEW_AGENTS: "security"
+    REVIEW_AGENTS: "review/security"
   allow_failure: false  # Block on security issues

@@ -112,7 +112,7 @@ export async function runDescribeAgent(
   );
 
   const promptContextWindow = describeModelId
-    ? runtimeClient.getModelContextWindow?.(describeModelId)
+    ? (runtimeClient.getModelContextWindow?.(describeModelId) ?? contextWindow)
     : contextWindow;
   const promptEstimate = estimatePromptBudget(instructions, {
     tokenEstimateDivisor: config.contextCompression?.tokenEstimateDivisor,

@@ -67,6 +67,10 @@ export async function describePR(config: DRSConfig, options: DescribePROptions) 
     directory: process.cwd(),
     modelOverrides,
     provider: runtimeConfig.provider,
+    operationTimeoutMs: runtimeConfig.runtime?.operationTimeoutMs,
+    streamTimeoutMs: runtimeConfig.runtime?.streamTimeoutMs,
+    streamPollIntervalMs: runtimeConfig.runtime?.streamPollIntervalMs,
+    providerRetry: runtimeConfig.retry?.provider,
     config,
     debug: options.debug,
   });

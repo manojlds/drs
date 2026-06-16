@@ -10,7 +10,7 @@ DRS helps teams catch critical issues earlier with specialized review agents, un
 ## Why teams like DRS
 
 - 🔒 **Specialized analysis domains**: security, quality, style, performance, documentation
-- 🧠 **Flexible agent pipelines**: compose any review agents (including `unified-reviewer`) in execution order
+- 🧠 **Flexible agent pipelines**: compose any review agents (including `review/unified-reviewer`) in execution order
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Description generation**: optional PR/MR summary generation and posting
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
@@ -77,7 +77,7 @@ drs review-local
 drs review-local --staged
 
 # Use specific agents
-drs review-local --agents security,quality
+drs review-local --agents review/security,review/quality
 ```
 
 ### Most-Used Commands
@@ -91,6 +91,7 @@ drs review-local --agents security,quality
 | Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
+| Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
 
 ## Deployment Modes
 
@@ -304,7 +305,7 @@ DRS uses Pi in-process runtime only.
 
 ## Architecture
 
-DRS uses Pi runtime wiring with markdown-based agent definitions:
+DRS uses Pi runtime wiring with markdown-based agent definitions. Agents are addressed by fully qualified ids: `<namespace>/<name>`.
 
 ```
 .pi/
@@ -329,8 +330,8 @@ Create custom agents in your project:
 
 ```bash
 # Create custom security agent
-mkdir -p .drs/agents/security
-cat > .drs/agents/security/agent.md << 'EOF'
+mkdir -p .drs/agents/review/security
+cat > .drs/agents/review/security/agent.md << 'EOF'
 ---
 description: Custom security reviewer
 model: anthropic/claude-sonnet-4-5-20250929
@@ -348,8 +349,8 @@ EOF
 Add project-specific guidance to a built-in agent without replacing its prompt:
 
 ```bash
-mkdir -p .drs/agents/quality
-cat > .drs/agents/quality/context.md << 'EOF'
+mkdir -p .drs/agents/review/quality
+cat > .drs/agents/review/quality/context.md << 'EOF'
 # Quality Context
 - Flag functions over 200 lines as HIGH
 - We use TypeORM — flag raw SQL queries
@@ -368,11 +369,11 @@ Prioritize correctness, safety, and clarity.
 
 ### Create New Custom Agents
 
-Add agents that don't exist in the built-in set:
+Add review agents that don't exist in the built-in set:
 
 ```bash
-mkdir -p .drs/agents/api-reviewer
-cat > .drs/agents/api-reviewer/agent.md << 'EOF'
+mkdir -p .drs/agents/review/api-reviewer
+cat > .drs/agents/review/api-reviewer/agent.md << 'EOF'
 ---
 description: REST API contract reviewer
 tools:
@@ -383,18 +384,67 @@ Review REST API changes for backward compatibility.
 EOF
 ```
 
-Then add to config: `agents: [security, quality, api-reviewer]`
+Then add to config: `review.agents: [review/security, review/quality, review/api-reviewer]`
+
+For non-review work, create agents in any namespace and run them directly:
+
+```bash
+mkdir -p .drs/agents/task/docs-updater
+cat > .drs/agents/task/docs-updater/agent.md << 'EOF'
+---
+description: Documentation update assistant
+tools:
+  Read: true
+  Grep: true
+---
+Update documentation based on the user's request.
+EOF
+
+drs run-agent task/docs-updater --prompt "Summarize the latest API changes"
+```
+
+You can also put the run prompt and output behavior in config, then invoke only the agent id:
+
+```yaml
+agents:
+  overrides:
+    task/docs-updater:
+      run:
+        prompt: "Summarize the latest API changes"
+        output: .drs/docs-summary.json
+        json: true
+```
+
+```bash
+drs run task/docs-updater
+```
 
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
 
 ```yaml
+agents:
+  default:
+    model: zhipuai/glm-4.7
+    skills: []
+  namespaces:
+    review:
+      model: anthropic/claude-sonnet-4-5-20250929
+    task:
+      model: openai/gpt-4o
+  overrides:
+    task/docs-updater:
+      run:
+        promptFile: prompts/docs-update.md
+        output: .drs/docs-update.json
+        json: true
+
 review:
   agents:
-    - unified-reviewer
-    - security
-    - quality
+    - review/unified-reviewer
+    - review/security
+    - review/quality
   ignorePatterns:
     - "*.test.ts"
     - "*.md"
@@ -426,7 +476,7 @@ Notes:
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
 - `review.agents` explicitly enables deep-review agents; remove an entry to disable that agent.
-- Built-in review agent names are: `unified-reviewer`, `security`, `quality`, `style`, `performance`, `documentation`.
+- Built-in review agent IDs are: `review/unified-reviewer`, `review/security`, `review/quality`, `review/style`, `review/performance`, `review/documentation`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
@@ -506,9 +556,32 @@ contextCompression:
   tokenEstimateDivisor: 4
 ```
 
+### Runtime Timeouts and Provider Retry
+
+To prevent hung reviews, configure runtime-level call/stream timeouts and provider request retry limits:
+
+```yaml
+pi:
+  runtime:
+    operationTimeoutMs: 300000      # timeout for create/prompt/messages calls
+    streamTimeoutMs: 900000         # total timeout while waiting for agent completion
+    streamPollIntervalMs: 2000      # polling cadence for session messages
+  retry:
+    provider:
+      timeoutMs: 45000              # provider request timeout passed to Pi SDK
+      maxRetries: 2                 # provider request retries (Pi SDK)
+      maxRetryDelayMs: 15000        # max backoff delay between retries
+```
+
+Environment variables override runtime timeout fields:
+
+- `DRS_RUNTIME_OPERATION_TIMEOUT_MS`
+- `DRS_RUNTIME_STREAM_TIMEOUT_MS`
+- `DRS_RUNTIME_STREAM_POLL_INTERVAL_MS`
+
 ### Pi-Native Skill Discovery
 
-DRS auto-discovers review skills from these directories when `review.paths.skills` is not set:
+DRS auto-discovers skills from these directories when `agents.paths.skills` is not set:
 
 1. `.drs/skills` (project-level overrides)
 2. `.agents/skills` (legacy/shared project skills)
@@ -528,12 +601,12 @@ Example layout:
   db-indexing/SKILL.md         # Additional Pi-native skill
 ```
 
-To force a single custom skills directory, set `review.paths.skills`:
+To force a single custom skills directory, set `agents.paths.skills`:
 
 ```yaml
-review:
+agents:
   paths:
-    skills: config/review-skills
+    skills: config/agent-skills
 ```
 
 ## Review Domains
@@ -590,7 +663,9 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
 GITLAB_URL=https://gitlab.com
-REVIEW_AGENTS=security,quality,style,performance
+DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
+REVIEW_AGENTS=review/security,review/quality,review/style,review/performance
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 

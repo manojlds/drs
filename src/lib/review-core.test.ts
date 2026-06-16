@@ -14,13 +14,14 @@ import type { RuntimeClient } from '../runtime/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', () => ({
-  getAgentNames: vi.fn((config: DRSConfig) => config.review.agents || []),
-  getDefaultSkills: vi.fn(() => []),
+  getReviewAgentIds: vi.fn((config: DRSConfig) =>
+    (config.review.agents || []).map((agent: string | { name: string }) =>
+      typeof agent === 'string' ? agent : agent.name
+    )
+  ),
   getModelOverrides: vi.fn(() => ({})),
   getUnifiedModelOverride: vi.fn(() => ({})),
-  normalizeAgentConfig: vi.fn((agents: Array<string | { name: string }>) =>
-    agents.map((agent) => (typeof agent === 'string' ? { name: agent } : agent))
-  ),
+  resolveAgentSkills: vi.fn(() => []),
 }));
 
 vi.mock('./context-loader.js', () => ({
@@ -78,10 +79,25 @@ vi.mock('./comment-formatter.js', () => ({
 }));
 
 vi.mock('../runtime/agent-loader.js', () => ({
-  loadReviewAgents: vi.fn(() => [
-    { name: 'review/security', description: 'Security review' },
-    { name: 'review/quality', description: 'Code quality review' },
-    { name: 'review/unified-reviewer', description: 'Unified review' },
+  loadAgents: vi.fn(() => [
+    {
+      id: 'review/security',
+      namespace: 'review',
+      name: 'security',
+      description: 'Security review',
+    },
+    {
+      id: 'review/quality',
+      namespace: 'review',
+      name: 'quality',
+      description: 'Code quality review',
+    },
+    {
+      id: 'review/unified-reviewer',
+      namespace: 'review',
+      name: 'unified-reviewer',
+      description: 'Unified review',
+    },
   ]),
 }));
 
@@ -205,7 +221,7 @@ describe('review-core', () => {
 
       mockConfig = {
         review: {
-          agents: ['unified-reviewer'],
+          agents: ['review/unified-reviewer'],
           mode: 'unified',
         },
       } as DRSConfig;
@@ -281,7 +297,7 @@ describe('review-core', () => {
           }),
           agents: [
             expect.objectContaining({
-              agentType: 'unified-reviewer',
+              agentType: 'review/unified-reviewer',
               model: 'opencode/glm-5-free',
               turns: 1,
             }),
@@ -366,8 +382,8 @@ describe('review-core', () => {
 
       mockRuntime = {
         createSession: vi.fn(async ({ agent }) => ({ id: `session-${agent}` })),
-        streamMessages: vi.fn(async function* ({ agent }: any) {
-          const agentType = agent?.split('/')[1] || 'test';
+        streamMessages: vi.fn(async function* (sessionId: string) {
+          const agentType = sessionId.split('/')[1] || 'test';
           yield {
             id: 'msg-1',
             role: 'assistant',
@@ -392,7 +408,7 @@ describe('review-core', () => {
 
       mockConfig = {
         review: {
-          agents: ['security', 'quality'],
+          agents: ['review/security', 'review/quality'],
           mode: 'multi-agent',
         },
       } as DRSConfig;
@@ -478,7 +494,7 @@ describe('review-core', () => {
     });
 
     it('should fail fast when config includes unknown agents', async () => {
-      mockConfig.review.agents = ['security', 'unknown-agent'];
+      mockConfig.review.agents = ['review/security', 'review/unknown-agent'];
 
       await expect(
         runReviewAgents(
@@ -491,7 +507,7 @@ describe('review-core', () => {
           '/test/dir',
           false
         )
-      ).rejects.toThrow('Unknown review agent(s) configured: unknown-agent');
+      ).rejects.toThrow('Unknown review agent(s) configured: review/unknown-agent');
     });
   });
 
@@ -532,7 +548,7 @@ describe('review-core', () => {
     it('should run unified mode', async () => {
       mockConfig = {
         review: {
-          agents: ['unified-reviewer'],
+          agents: ['review/unified-reviewer'],
           mode: 'unified',
         },
       } as DRSConfig;
@@ -549,13 +565,13 @@ describe('review-core', () => {
       );
 
       expect(result.issues).toHaveLength(1);
-      expect(result.agentResults[0].agentType).toBe('unified-reviewer');
+      expect(result.agentResults[0].agentType).toBe('review/unified-reviewer');
     });
 
     it('should run multi-agent mode', async () => {
       mockConfig = {
         review: {
-          agents: ['security', 'quality'],
+          agents: ['review/security', 'review/quality'],
           mode: 'multi-agent',
         },
       } as DRSConfig;
@@ -578,7 +594,7 @@ describe('review-core', () => {
     it('should run all configured agents in order even when mode is hybrid', async () => {
       mockConfig = {
         review: {
-          agents: ['unified-reviewer', 'security', 'quality'],
+          agents: ['review/unified-reviewer', 'review/security', 'review/quality'],
           mode: 'hybrid',
           unified: {
             severityThreshold: 'HIGH',
@@ -620,9 +636,9 @@ describe('review-core', () => {
 
       expect(result.agentResults).toHaveLength(3);
       expect(result.agentResults.map((entry) => entry.agentType)).toEqual([
-        'unified-reviewer',
-        'security',
-        'quality',
+        'review/unified-reviewer',
+        'review/security',
+        'review/quality',
       ]);
       expect(result.issues.every((issue) => issue.severity === 'LOW')).toBe(true);
     });
@@ -630,7 +646,7 @@ describe('review-core', () => {
     it('should run multiple configured agents when mode is hybrid', async () => {
       mockConfig = {
         review: {
-          agents: ['unified-reviewer', 'security'],
+          agents: ['review/unified-reviewer', 'review/security'],
           mode: 'hybrid',
           unified: {
             severityThreshold: 'HIGH',
@@ -678,7 +694,7 @@ describe('review-core', () => {
     it('should default to multi-agent mode when mode is undefined', async () => {
       mockConfig = {
         review: {
-          agents: ['security', 'quality'],
+          agents: ['review/security', 'review/quality'],
         },
       } as DRSConfig;
 

@@ -46,6 +46,7 @@ jobs:
   # Auto-review for trusted contributors (repository members/collaborators)
   review-trusted:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: verify-contributor
     if: needs.verify-contributor.outputs.is-trusted == 'true'
     permissions:
@@ -94,6 +95,9 @@ jobs:
 
       - name: Review Pull Request (Trusted Contributor)
         env:
+          DRS_RUNTIME_OPERATION_TIMEOUT_MS: "300000"
+          DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
+          DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
@@ -115,6 +119,7 @@ jobs:
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: verify-contributor
     if: |
       needs.verify-contributor.outputs.is-trusted == 'false' &&
@@ -168,6 +173,9 @@ jobs:
 
       - name: Review Pull Request (External Contributor)
         env:
+          DRS_RUNTIME_OPERATION_TIMEOUT_MS: "300000"
+          DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
+          DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config.js';
 
@@ -18,11 +21,11 @@ describe('Config', () => {
   it('should override agents when explicitly provided', () => {
     const config = loadConfig(process.cwd(), {
       review: {
-        agents: ['security'],
+        agents: ['review/security'],
       } as any,
     });
 
-    expect(config.review.agents).toEqual(['security']);
+    expect(config.review.agents).toEqual(['review/security']);
   });
 
   it('should load agents from config file when no override provided', () => {
@@ -83,5 +86,85 @@ describe('Config', () => {
       input: 1,
       output: 2,
     });
+  });
+
+  it('uses DRS_DEFAULT_MODEL as the generic default model environment alias', () => {
+    const previous = process.env.DRS_DEFAULT_MODEL;
+    process.env.DRS_DEFAULT_MODEL = 'provider/env-default-model';
+
+    try {
+      const config = loadConfig(process.cwd());
+
+      expect(config.agents.default?.model).toBe('provider/env-default-model');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DRS_DEFAULT_MODEL;
+      } else {
+        process.env.DRS_DEFAULT_MODEL = previous;
+      }
+    }
+  });
+
+  it('merges pi runtime timeout and provider retry settings', () => {
+    const config = loadConfig(process.cwd(), {
+      pi: {
+        runtime: {
+          operationTimeoutMs: 111000,
+          streamTimeoutMs: 222000,
+          streamPollIntervalMs: 1500,
+        },
+        retry: {
+          provider: {
+            timeoutMs: 45000,
+            maxRetries: 2,
+            maxRetryDelayMs: 15000,
+          },
+        },
+      },
+    } as any);
+
+    expect(config.pi.runtime).toEqual({
+      operationTimeoutMs: 111000,
+      streamTimeoutMs: 222000,
+      streamPollIntervalMs: 1500,
+    });
+
+    expect(config.pi.retry?.provider).toEqual({
+      timeoutMs: 45000,
+      maxRetries: 2,
+      maxRetryDelayMs: 15000,
+    });
+  });
+
+  it('rejects legacy review.default config with migration guidance', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-config-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['review:', '  default:', '    model: provider/legacy-model', ''].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.default -> agents.default');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects legacy review.paths config with migration guidance', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-paths-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        ['review:', '  paths:', '    agents: custom/agents', ''].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.paths -> agents.paths');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });

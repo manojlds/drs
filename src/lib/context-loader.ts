@@ -1,18 +1,19 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { DRSConfig } from './config.js';
-import { resolveReviewPaths } from '../runtime/path-config.js';
+import { requireAgentId } from './agent-id.js';
+import { resolveAgentPaths } from '../runtime/path-config.js';
 
 export interface AgentContext {
   /**
    * Source of the agent definition
-   * - 'override': Using .drs/agents/{name}/agent.md (full replacement)
+   * - 'override': Using .drs/agents/{namespace}/{name}/agent.md (full replacement)
    * - 'default': Using built-in agent
    */
   source: 'override' | 'default';
 
   /**
-   * Agent-specific context from .drs/agents/{name}/context.md
+   * Agent-specific context from .drs/agents/{namespace}/{name}/context.md
    */
   agentContext?: string;
 
@@ -39,12 +40,13 @@ export function loadGlobalContext(projectRoot: string = process.cwd()): string |
  * Load agent-specific context and check for overrides
  */
 export function loadAgentContext(
-  agentName: string,
+  agentId: string,
   projectRoot: string = process.cwd(),
   config?: DRSConfig
 ): AgentContext {
-  const { agentsPath } = resolveReviewPaths(projectRoot, config);
-  const agentDir = join(agentsPath, agentName);
+  const { namespace, name } = requireAgentId(agentId);
+  const { agentsPath } = resolveAgentPaths(projectRoot, config);
+  const agentDir = join(agentsPath, namespace, name);
 
   // Check for full agent override
   const agentDefPath = join(agentDir, 'agent.md');
@@ -74,7 +76,7 @@ export function loadAgentContext(
  * Build review prompt with global and agent-specific context
  */
 export function buildReviewPrompt(
-  agentName: string,
+  agentId: string,
   basePrompt: string,
   reviewLabel: string,
   changedFiles: string[],
@@ -83,7 +85,7 @@ export function buildReviewPrompt(
   describeSummary?: string
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
-  const agentContext = loadAgentContext(agentName, projectRoot, config);
+  const agentContext = loadAgentContext(agentId, projectRoot, config);
 
   let prompt = '';
 
@@ -118,7 +120,8 @@ export function buildReviewPrompt(
 
   // 2. Agent-specific context (if available)
   if (agentContext.agentContext) {
-    prompt += `# ${agentName.charAt(0).toUpperCase() + agentName.slice(1)} Agent Context\n\n`;
+    const agentLabel = agentId.split('/').pop() ?? agentId;
+    prompt += `# ${agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)} Agent Context\n\n`;
     prompt += `${agentContext.agentContext}\n\n`;
   }
 

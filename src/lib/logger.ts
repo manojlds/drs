@@ -12,7 +12,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogFormat = 'human' | 'json';
 
 export interface LogContext {
-  /** Agent type (e.g., 'security', 'unified-reviewer') */
+  /** Agent type (e.g., 'review/security', 'review/unified-reviewer') */
   agent?: string;
   /** Tool name (e.g., 'write_json_output', 'read') */
   tool?: string;

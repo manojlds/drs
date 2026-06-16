@@ -13,6 +13,7 @@ import { postCommentsFromJson } from './post-comments.js';
 import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
+import { runAgent } from './run-agent.js';
 import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -55,10 +56,56 @@ program
   .version(version);
 
 program
+  .command('run-agent <agentId>')
+  .alias('run')
+  .description('Run any configured agent by fully qualified ID')
+  .option('-p, --prompt <text>', 'Prompt text to send to the agent')
+  .option('-f, --file <path>', 'Read prompt text from a file')
+  .option('--stdin', 'Read prompt text from standard input')
+  .option('--model <model>', 'Model override for this run')
+  .option('-o, --output <path>', 'Write agent response to a file')
+  .option('--json', 'Output result as JSON to console')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
+  .action(async (agentId, options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'error',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
+      const config = loadConfig(process.cwd());
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+
+      await runAgent(config, agentId, {
+        prompt: options.prompt,
+        file: options.file,
+        stdin: options.stdin,
+        model: options.model,
+        outputPath: options.output,
+        jsonOutput: options.json,
+        debug: options.debug || false,
+        thinkingLevel,
+        workingDir: process.cwd(),
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
   .command('review-local')
   .description('Review local git diff before pushing')
   .option('--staged', 'Review staged changes only (git diff --cached)')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('-o, --output <path>', 'Write review results to JSON file')
   .option('--json', 'Output results as JSON to console')
@@ -108,7 +155,7 @@ program
   .description('Review a GitLab merge request')
   .requiredOption('--mr <iid>', 'Merge request IID (number)')
   .requiredOption('--project <id>', 'Project ID or path (e.g., "my-org/my-repo" or "123")')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the MR (requires GITLAB_TOKEN)')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -194,7 +241,7 @@ program
   .requiredOption('--pr <number>', 'Pull request number')
   .requiredOption('--owner <owner>', 'Repository owner (e.g., "octocat")')
   .requiredOption('--repo <repo>', 'Repository name (e.g., "hello-world")')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR (requires GITHUB_TOKEN)')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -270,7 +317,7 @@ program
 program
   .command('review-url <url>')
   .description('Review a GitHub pull request or GitLab merge request by URL')
-  .option('--agents <agents>', 'Comma-separated list of review agents')
+  .option('--agents <agents>', 'Comma-separated list of review agent IDs')
   .option('--unified-model <model>', 'Model override for review/unified-reviewer')
   .option('--post-comments', 'Post review comments to the PR/MR')
   .option('--fix-in-cursor', 'Add Fix in Cursor deeplinks to posted review comments')
@@ -480,14 +527,14 @@ program
 
 program
   .command('list-agents')
-  .description('List available review agents')
+  .description('List available agents')
   .action(async () => {
     try {
       const { listAgents } = await import('../runtime/agent-loader.js');
       const config = loadConfig(process.cwd());
       const agents = listAgents(process.cwd(), config);
 
-      console.log(chalk.bold('\n📋 Available Review Agents:\n'));
+      console.log(chalk.bold('\n📋 Available Agents:\n'));
 
       for (const agent of agents) {
         console.log(chalk.cyan(`  • ${agent}`));
@@ -517,7 +564,9 @@ program
 const isHelpOrVersion = process.argv.some((arg) =>
   ['--version', '-V', '--help', '-h', 'help'].includes(arg)
 );
-if (process.argv.length > 2 && !isHelpOrVersion) {
+const isJsonOutput = process.argv.includes('--json');
+const isRunAgentCommand = process.argv[2] === 'run-agent' || process.argv[2] === 'run';
+if (process.argv.length > 2 && !isHelpOrVersion && !isJsonOutput && !isRunAgentCommand) {
   printBanner();
 }
 

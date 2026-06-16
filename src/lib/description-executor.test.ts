@@ -65,8 +65,14 @@ describe('description-executor', () => {
     platformClient = {} as unknown as PlatformClient;
 
     config = {
+      agents: {
+        default: {
+          model: 'provider/default-8k',
+          skills: [],
+        },
+      },
       review: {
-        agents: ['security'],
+        agents: ['review/security'],
         ignorePatterns: [],
         mode: 'multi-agent',
       },
@@ -160,9 +166,10 @@ describe('description-executor', () => {
   it('uses only describe model IDs when sizing compression budget', async () => {
     const configWithExplicitDescribeModel = {
       ...config,
-      review: {
-        ...config.review,
+      agents: {
+        ...config.agents,
         default: {
+          ...config.agents.default,
           model: 'provider/default-8k',
         },
       },

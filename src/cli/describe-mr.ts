@@ -63,6 +63,10 @@ export async function describeMR(config: DRSConfig, options: DescribeMROptions) 
     directory: process.cwd(),
     modelOverrides,
     provider: runtimeConfig.provider,
+    operationTimeoutMs: runtimeConfig.runtime?.operationTimeoutMs,
+    streamTimeoutMs: runtimeConfig.runtime?.streamTimeoutMs,
+    streamPollIntervalMs: runtimeConfig.runtime?.streamPollIntervalMs,
+    providerRetry: runtimeConfig.retry?.provider,
     config,
     debug: options.debug,
   });

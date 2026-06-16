@@ -58,14 +58,16 @@ const simulatedCliDiff = [
 
 const integrationConfig = {
   pi: {},
-  gitlab: { url: '', token: '' },
-  github: { token: '' },
-  review: {
-    agents: ['security'],
+  agents: {
     default: {
       model: 'anthropic/claude-sonnet-4-5-20250929',
       skills: [],
     },
+  },
+  gitlab: { url: '', token: '' },
+  github: { token: '' },
+  review: {
+    agents: ['review/security'],
     ignorePatterns: ['*.test.ts'],
     mode: 'multi-agent',
     describe: {
@@ -236,13 +238,16 @@ describe('review-local integration (simulated diffs)', () => {
 
     const configWithCliSkill = {
       ...integrationConfig,
-      review: {
-        ...integrationConfig.review,
-        agents: ['quality'],
+      agents: {
+        ...integrationConfig.agents,
         default: {
-          ...integrationConfig.review.default,
+          ...integrationConfig.agents.default,
           skills: ['cli-testing'],
         },
+      },
+      review: {
+        ...integrationConfig.review,
+        agents: ['review/quality'],
       },
     } as unknown as DRSConfig;
 
@@ -311,7 +316,7 @@ describe('review-local integration (simulated diffs)', () => {
     await reviewLocal(integrationConfig, { staged: false, jsonOutput: false, debug: false });
 
     expect(buildPromptSpy).toHaveBeenCalledWith(
-      'security',
+      'review/security',
       expect.any(String),
       expect.any(String),
       expect.any(Array),
@@ -334,10 +339,12 @@ describe('review-local integration (simulated diffs)', () => {
 
     // Mock agent-loader to include a brand new custom agent
     const agentLoader = await import('../runtime/agent-loader.js');
-    const loadAgentsSpy = vi.spyOn(agentLoader, 'loadReviewAgents').mockReturnValue([
+    const loadAgentsSpy = vi.spyOn(agentLoader, 'loadAgents').mockReturnValue([
       {
-        name: 'review/api-reviewer',
-        path: '/project/.drs/agents/api-reviewer/agent.md',
+        id: 'review/api-reviewer',
+        namespace: 'review',
+        name: 'api-reviewer',
+        path: '/project/.drs/agents/review/api-reviewer/agent.md',
         description: 'API contract reviewer',
         prompt: 'Review REST API contracts and OpenAPI compliance.',
         model: 'anthropic/claude-sonnet-4-5-20250929',
@@ -386,7 +393,7 @@ describe('review-local integration (simulated diffs)', () => {
       ...integrationConfig,
       review: {
         ...integrationConfig.review,
-        agents: ['api-reviewer'],
+        agents: ['review/api-reviewer'],
       },
     } as unknown as DRSConfig;
 

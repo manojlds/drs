@@ -97,13 +97,16 @@ pi:
 `;
   }
 
-  yaml += `review:
-  # Default model for all agents
+  yaml += `agents:
+  # Default model and skills for all agents
   default:
     model: ${config.defaultModel}
+    skills: []
+
+review:
 
   # Review agents (execution order)
-  # Include unified-reviewer here when you want a one-pass broad review.
+  # Use fully qualified agent ids. Include review/unified-reviewer when you want a one-pass broad review.
   agents:
 `;
 
@@ -202,11 +205,11 @@ Project-wide context applied to ALL agents. Use this for:
 - Trust boundaries
 - General review guidelines
 
-## 2. Agent-Specific Context (.drs/agents/{name}/context.md)
+## 2. Agent-Specific Context (.drs/agents/{namespace}/{name}/context.md)
 
 **Additive** - Enhances the default agent with project-specific rules.
 
-Example: \`.drs/agents/security/context.md\`
+Example: \`.drs/agents/review/security/context.md\`
 \`\`\`markdown
 # Security Agent Context
 
@@ -219,11 +222,11 @@ Example: \`.drs/agents/security/context.md\`
 - XSS in user-facing endpoints
 \`\`\`
 
-## 3. Full Agent Override (.drs/agents/{name}/agent.md)
+## 3. Full Agent Override (.drs/agents/{namespace}/{name}/agent.md)
 
 **Replacement** - Completely replaces the default agent.
 
-Example: \`.drs/agents/security/agent.md\`
+Example: \`.drs/agents/review/security/agent.md\`
 \`\`\`markdown
 ---
 description: Custom security reviewer
@@ -240,15 +243,15 @@ You are a security expert specialized in [your domain].
 ## Custom Agents
 
 Create a new folder for custom agents:
-\`.drs/agents/rails-reviewer/agent.md\`
+\`.drs/agents/review/rails-reviewer/agent.md\`
 
 Then add to \`.drs/drs.config.yaml\`:
 \`\`\`yaml
 review:
   agents:
-    - security
-    - quality
-    - rails-reviewer  # Your custom agent
+    - review/security
+    - review/quality
+    - review/rails-reviewer  # Your custom agent
 \`\`\`
 
 ## Learn More
@@ -349,17 +352,26 @@ export async function initProject(projectPath: string): Promise<void> {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     console.log(chalk.bold('\n━━━ Review Agents ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
 
-    const availableAgents = ['security', 'quality', 'style', 'performance'];
+    const availableAgents = [
+      'review/unified-reviewer',
+      'review/security',
+      'review/quality',
+      'review/style',
+      'review/performance',
+      'review/documentation',
+    ];
 
     console.log(chalk.gray('Available agents:'));
-    console.log(chalk.gray('  • security     - Security vulnerabilities & best practices'));
-    console.log(chalk.gray('  • quality      - Code quality & maintainability'));
-    console.log(chalk.gray('  • style        - Code style & consistency'));
-    console.log(chalk.gray('  • performance  - Performance issues & optimizations\n'));
+    console.log(chalk.gray('  • review/unified-reviewer - Broad one-pass review'));
+    console.log(chalk.gray('  • review/security     - Security vulnerabilities & best practices'));
+    console.log(chalk.gray('  • review/quality      - Code quality & maintainability'));
+    console.log(chalk.gray('  • review/style        - Code style & consistency'));
+    console.log(chalk.gray('  • review/performance  - Performance issues & optimizations'));
+    console.log(chalk.gray('  • review/documentation - Documentation gaps & accuracy\n'));
 
     const agentsInput = await prompt.ask(
       'Agents to enable (comma-separated)',
-      'security,quality,style,performance'
+      'review/security,review/quality,review/style,review/performance'
     );
 
     initConfig.agents = agentsInput
@@ -372,7 +384,9 @@ export async function initProject(projectPath: string): Promise<void> {
     if (invalidAgents.length > 0) {
       console.log(chalk.yellow(`\n⚠ Custom agents detected: ${invalidAgents.join(', ')}`));
       console.log(
-        chalk.gray("  You'll need to create agent definitions in .drs/agents/{name}/agent.md")
+        chalk.gray(
+          '  You will need to create agent definitions in .drs/agents/{namespace}/{name}/agent.md'
+        )
       );
     }
 
@@ -433,9 +447,10 @@ export async function initProject(projectPath: string): Promise<void> {
         mkdirSync(agentDir, { recursive: true });
 
         const agentContextPath = join(agentDir, 'context.md');
+        const agentLabel = agentName.split('/').pop() ?? agentName;
         const contextContent = AGENT_CONTEXT_TEMPLATE.replace(
           '{AGENT}',
-          agentName.charAt(0).toUpperCase() + agentName.slice(1)
+          agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)
         );
         writeFileSync(agentContextPath, contextContent, 'utf-8');
       }

@@ -47,6 +47,10 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
     constructor() {
       mocks.modelRegistryInstances.push({ registerProvider: this.registerProvider });
     }
+
+    static create() {
+      return new ModelRegistry();
+    }
   }
 
   return {
@@ -58,14 +62,14 @@ vi.mock('@mariozechner/pi-coding-agent', () => {
     SessionManager: {
       inMemory: vi.fn(() => ({ type: 'memory' })),
     },
+    SettingsManager: {
+      inMemory: vi.fn((settings?: Record<string, unknown>) => ({
+        type: 'settings-memory',
+        settings,
+      })),
+    },
     createAgentSession: mocks.createAgentSession,
-    createReadTool: vi.fn(() => ({ name: 'read' })),
-    createBashTool: vi.fn(() => ({ name: 'bash' })),
-    createEditTool: vi.fn(() => ({ name: 'edit' })),
-    createWriteTool: vi.fn(() => ({ name: 'write' })),
-    createGrepTool: vi.fn(() => ({ name: 'grep' })),
-    createFindTool: vi.fn(() => ({ name: 'find' })),
-    createLsTool: vi.fn(() => ({ name: 'ls' })),
+    getAgentDir: vi.fn(() => '/tmp/.pi/agent'),
   };
 });
 
@@ -383,9 +387,9 @@ describe('pi/sdk', () => {
     expect(mocks.createAgentSession).toHaveBeenCalledTimes(1);
 
     const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
-      tools: Array<{ name: string }>;
+      tools: string[];
     };
-    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+    const toolNames = sessionArgs.tools;
 
     // Per-agent override: Edit=true (overrides global false), Bash=false (overrides global true)
     expect(toolNames).toContain('read'); // global: true, no override
@@ -430,9 +434,9 @@ describe('pi/sdk', () => {
     });
 
     const sessionArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
-      tools: Array<{ name: string }>;
+      tools: string[];
     };
-    const toolNames = sessionArgs.tools.map((t: { name: string }) => t.name);
+    const toolNames = sessionArgs.tools;
 
     // Only globally enabled tools
     expect(toolNames).toContain('read');
@@ -524,6 +528,52 @@ describe('pi/sdk', () => {
       'Missing skill definitions for review/security: sql-injection'
     );
     expect(String(errorMessage)).toContain('Checked skill search paths:');
+
+    runtime.server.close();
+  });
+
+  it('passes provider retry settings to Pi SettingsManager when configured', async () => {
+    const runtime = await createPiInProcessServer({
+      config: {
+        retry: {
+          provider: {
+            timeoutMs: 45000,
+            maxRetries: 2,
+            maxRetryDelayMs: 15000,
+          },
+        },
+      },
+    });
+
+    const created = await runtime.client.session.create({
+      query: { directory: '/tmp/drs' },
+    });
+
+    await runtime.client.session.prompt({
+      path: { id: created.data?.id ?? '' },
+      query: { directory: '/tmp/drs' },
+      body: {
+        agent: 'review/security',
+        parts: [{ type: 'text', text: 'Review' }],
+      },
+    });
+
+    const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+      settingsManager?: {
+        settings?: Record<string, unknown>;
+      };
+    };
+
+    expect(createArgs.settingsManager).toBeDefined();
+    expect(createArgs.settingsManager?.settings).toEqual({
+      retry: {
+        provider: {
+          timeoutMs: 45000,
+          maxRetries: 2,
+          maxRetryDelayMs: 15000,
+        },
+      },
+    });
 
     runtime.server.close();
   });

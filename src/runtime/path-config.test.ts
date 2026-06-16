@@ -3,11 +3,11 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DRSConfig } from '../lib/config.js';
-import { resolveReviewPaths } from './path-config.js';
+import { resolveAgentPaths } from './path-config.js';
 
 function createConfig(paths: { agents?: unknown; skills?: unknown }): DRSConfig {
   return {
-    review: {
+    agents: {
       paths: {
         agents: paths.agents as string | undefined,
         skills: paths.skills as string | undefined,
@@ -16,7 +16,7 @@ function createConfig(paths: { agents?: unknown; skills?: unknown }): DRSConfig 
   } as unknown as DRSConfig;
 }
 
-describe('resolveReviewPaths', () => {
+describe('resolveAgentPaths', () => {
   const tempDirs: string[] = [];
 
   function createTempDir(prefix: string): string {
@@ -34,8 +34,8 @@ describe('resolveReviewPaths', () => {
   it('resolves default paths from project root deterministically', () => {
     const projectRoot = createTempDir('drs-path-default-');
 
-    const canonical = resolveReviewPaths(projectRoot);
-    const nonCanonical = resolveReviewPaths(join(projectRoot, 'nested', '..'));
+    const canonical = resolveAgentPaths(projectRoot);
+    const nonCanonical = resolveAgentPaths(join(projectRoot, 'nested', '..'));
 
     expect(canonical.agentsPath).toBe(resolve(projectRoot, '.drs/agents'));
     expect(canonical.skillsPath).toBe(resolve(projectRoot, '.drs/skills'));
@@ -49,7 +49,7 @@ describe('resolveReviewPaths', () => {
     mkdirSync(join(projectRoot, '.agents', 'skills'), { recursive: true });
     mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
 
-    const result = resolveReviewPaths(projectRoot);
+    const result = resolveAgentPaths(projectRoot);
 
     expect(result.skillSearchPaths).toEqual([
       resolve(projectRoot, '.drs/skills'),
@@ -63,7 +63,7 @@ describe('resolveReviewPaths', () => {
     const projectRoot = createTempDir('drs-path-agents-skills-');
     mkdirSync(join(projectRoot, '.agents', 'skills'), { recursive: true });
 
-    const result = resolveReviewPaths(projectRoot);
+    const result = resolveAgentPaths(projectRoot);
 
     expect(result.skillSearchPaths).toEqual([resolve(projectRoot, '.agents/skills')]);
     expect(result.skillsPath).toBe(resolve(projectRoot, '.agents/skills'));
@@ -73,7 +73,7 @@ describe('resolveReviewPaths', () => {
     const projectRoot = createTempDir('drs-path-pi-skills-');
     mkdirSync(join(projectRoot, '.pi', 'skills'), { recursive: true });
 
-    const result = resolveReviewPaths(projectRoot);
+    const result = resolveAgentPaths(projectRoot);
 
     expect(result.skillSearchPaths).toEqual([resolve(projectRoot, '.pi/skills')]);
     expect(result.skillsPath).toBe(resolve(projectRoot, '.pi/skills'));
@@ -84,7 +84,7 @@ describe('resolveReviewPaths', () => {
     mkdirSync(join(projectRoot, 'config', 'agents'), { recursive: true });
     mkdirSync(join(projectRoot, 'config', 'skills'), { recursive: true });
 
-    const result = resolveReviewPaths(
+    const result = resolveAgentPaths(
       projectRoot,
       createConfig({
         agents: 'config/agents',
@@ -105,7 +105,7 @@ describe('resolveReviewPaths', () => {
     mkdirSync(agentsPath, { recursive: true });
     mkdirSync(skillsPath, { recursive: true });
 
-    const result = resolveReviewPaths(
+    const result = resolveAgentPaths(
       projectRoot,
       createConfig({
         agents: agentsPath,
@@ -122,7 +122,7 @@ describe('resolveReviewPaths', () => {
     const projectRoot = createTempDir('drs-path-escape-');
 
     expect(() =>
-      resolveReviewPaths(projectRoot, createConfig({ agents: '../shared-agents' }))
+      resolveAgentPaths(projectRoot, createConfig({ agents: '../shared-agents' }))
     ).toThrow('resolves outside repository root');
   });
 
@@ -130,7 +130,7 @@ describe('resolveReviewPaths', () => {
     const projectRoot = createTempDir('drs-path-missing-');
 
     expect(() =>
-      resolveReviewPaths(projectRoot, createConfig({ skills: 'missing/skills' }))
+      resolveAgentPaths(projectRoot, createConfig({ skills: 'missing/skills' }))
     ).toThrow('directory does not exist');
   });
 
@@ -139,7 +139,7 @@ describe('resolveReviewPaths', () => {
     const filePath = join(projectRoot, 'agents-file.md');
     writeFileSync(filePath, '# not a directory\n');
 
-    expect(() => resolveReviewPaths(projectRoot, createConfig({ agents: filePath }))).toThrow(
+    expect(() => resolveAgentPaths(projectRoot, createConfig({ agents: filePath }))).toThrow(
       'not a directory'
     );
   });
@@ -148,7 +148,7 @@ describe('resolveReviewPaths', () => {
     const projectRoot = createTempDir('drs-path-invalid-type-');
 
     expect(() =>
-      resolveReviewPaths(
+      resolveAgentPaths(
         projectRoot,
         createConfig({
           skills: 123,

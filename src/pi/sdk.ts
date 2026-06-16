@@ -4,15 +4,10 @@ import { Type } from '@sinclair/typebox';
 import {
   AuthStorage,
   createAgentSession,
-  createBashTool,
-  createEditTool,
-  createFindTool,
-  createGrepTool,
-  createLsTool,
-  createReadTool,
-  createWriteTool,
   DefaultResourceLoader,
+  getAgentDir,
   ModelRegistry,
+  SettingsManager,
   SessionManager,
   type AgentSession,
   type ToolDefinition,
@@ -81,6 +76,13 @@ interface PiRuntimeConfig {
   skillSearchPaths?: string[];
   agentSkills?: Record<string, string[]>;
   thinkingLevel?: string;
+  retry?: {
+    provider?: {
+      timeoutMs?: number;
+      maxRetries?: number;
+      maxRetryDelayMs?: number;
+    };
+  };
 }
 
 interface SessionRecord {
@@ -90,15 +92,6 @@ interface SessionRecord {
   session?: AgentSession;
   error?: unknown;
 }
-
-type PiBuiltInTool =
-  | ReturnType<typeof createReadTool>
-  | ReturnType<typeof createBashTool>
-  | ReturnType<typeof createEditTool>
-  | ReturnType<typeof createWriteTool>
-  | ReturnType<typeof createGrepTool>
-  | ReturnType<typeof createFindTool>
-  | ReturnType<typeof createLsTool>;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -277,6 +270,14 @@ function asStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function asPositiveInt(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const rounded = Math.round(value);
+  return rounded > 0 ? rounded : undefined;
+}
+
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
   const normalized: Record<string, string[]> = {};
 
@@ -408,10 +409,11 @@ class PiSessionRuntime {
       skillSearchPaths: asStringArray(config.skillSearchPaths),
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
       thinkingLevel: asString(config.thinkingLevel),
+      retry: asRecord(config.retry) as PiRuntimeConfig['retry'],
     };
 
     this.authStorage = AuthStorage.create();
-    this.modelRegistry = new ModelRegistry(this.authStorage);
+    this.modelRegistry = ModelRegistry.create(this.authStorage);
     this.registerCustomProviders();
 
     this.sessionApi = {
@@ -570,31 +572,31 @@ class PiSessionRuntime {
     return typeof value === 'boolean' ? value : defaultValue;
   }
 
-  private resolveTools(cwd: string, agentTools?: Record<string, boolean>): PiBuiltInTool[] {
-    const tools: PiBuiltInTool[] = [];
+  private resolveTools(_cwd: string, agentTools?: Record<string, boolean>): string[] {
+    const tools: string[] = [];
 
     if (this.isToolEnabled('Read', true, agentTools)) {
-      tools.push(createReadTool(cwd));
+      tools.push('read');
     }
     if (this.isToolEnabled('Bash', true, agentTools)) {
-      tools.push(createBashTool(cwd));
+      tools.push('bash');
     }
     if (this.isToolEnabled('Edit', false, agentTools)) {
-      tools.push(createEditTool(cwd));
+      tools.push('edit');
     }
     if (this.isToolEnabled('Write', false, agentTools)) {
-      tools.push(createWriteTool(cwd));
+      tools.push('write');
     }
     if (this.isToolEnabled('Grep', true, agentTools)) {
-      tools.push(createGrepTool(cwd));
+      tools.push('grep');
     }
     if (this.isToolEnabled('Glob', true, agentTools)) {
-      tools.push(createFindTool(cwd));
-      tools.push(createLsTool(cwd));
+      tools.push('find');
+      tools.push('ls');
     }
 
     if (tools.length === 0) {
-      tools.push(createReadTool(cwd), createBashTool(cwd));
+      tools.push('read', 'bash');
     }
 
     return tools;
@@ -663,6 +665,7 @@ class PiSessionRuntime {
 
     const resourceLoader = new DefaultResourceLoader({
       cwd,
+      agentDir: getAgentDir(),
       noSkills: true,
       additionalSkillPaths: skillSearchPaths,
       skillsOverride:
@@ -692,6 +695,23 @@ class PiSessionRuntime {
       }
     }
 
+    const providerRetry = this.runtimeConfig.retry?.provider;
+    const providerTimeoutMs = asPositiveInt(providerRetry?.timeoutMs);
+    const providerMaxRetries = asPositiveInt(providerRetry?.maxRetries);
+    const providerMaxRetryDelayMs = asPositiveInt(providerRetry?.maxRetryDelayMs);
+    const settingsManager =
+      (providerTimeoutMs ?? providerMaxRetries ?? providerMaxRetryDelayMs)
+        ? SettingsManager.inMemory({
+            retry: {
+              provider: {
+                ...(providerTimeoutMs ? { timeoutMs: providerTimeoutMs } : {}),
+                ...(providerMaxRetries ? { maxRetries: providerMaxRetries } : {}),
+                ...(providerMaxRetryDelayMs ? { maxRetryDelayMs: providerMaxRetryDelayMs } : {}),
+              },
+            },
+          })
+        : undefined;
+
     const { session } = await createAgentSession({
       cwd,
       authStorage: this.authStorage,
@@ -699,6 +719,7 @@ class PiSessionRuntime {
       model: this.resolveModel(settings.model),
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
+      settingsManager,
       tools: this.resolveTools(cwd, settings.tools),
       customTools: this.resolveCustomTools(cwd),
       thinkingLevel: this.runtimeConfig.thinkingLevel as

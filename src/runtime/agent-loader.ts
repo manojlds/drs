@@ -1,11 +1,14 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import * as yaml from 'yaml';
+import { getAgentIdValidationError, parseAgentId } from '../lib/agent-id.js';
 import type { DRSConfig } from '../lib/config.js';
 import { getBuiltInAgentPaths } from './built-in-paths.js';
-import { resolveReviewPaths } from './path-config.js';
+import { resolveAgentPaths } from './path-config.js';
 
 export interface AgentDefinition {
+  id: string;
+  namespace: string;
   name: string;
   path: string;
   description: string;
@@ -13,36 +16,53 @@ export interface AgentDefinition {
   color?: string;
   model?: string;
   tools?: Record<string, boolean>;
+  /** Skills declared in agent frontmatter and merged with config-level skills at runtime. */
+  skills?: string[];
   hidden?: boolean;
 }
 
+class InvalidProjectAgentPathError extends Error {}
+
+/** Parse a frontmatter value into a trimmed, non-empty string array. */
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const parsed = value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 /**
- * Load review agents from a project directory
+ * Load agents from a project directory.
  *
  * Priority order:
- * 1. Project .drs/agents/<name>/agent.md (DRS-specific overrides/custom)
+ * 1. Project .drs/agents/<namespace>/<name>/agent.md (DRS-specific overrides/custom)
  * 2. Built-in agents shipped with DRS (.pi/agents)
  */
-export function loadReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
+export function loadAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
   const discovered = new Set<string>();
-  const { agentsPath } = resolveReviewPaths(projectPath, config);
+  const { agentsPath } = resolveAgentPaths(projectPath, config);
 
-  const overrideAgents = discoverOverrideAgents(agentsPath, agentsPath);
+  const overrideAgents = discoverProjectAgents(agentsPath, agentsPath);
   for (const agent of overrideAgents) {
-    if (!discovered.has(agent.name)) {
+    if (!discovered.has(agent.id)) {
       agents.push(agent);
-      discovered.add(agent.name);
+      discovered.add(agent.id);
     }
   }
 
   for (const builtInPath of getBuiltInAgentPaths()) {
     const builtInAgents = discoverAgents(builtInPath, builtInPath);
     for (const agent of builtInAgents) {
-      if (!discovered.has(agent.name)) {
+      if (!discovered.has(agent.id)) {
         agents.push(agent);
-        discovered.add(agent.name);
+        discovered.add(agent.id);
       }
     }
   }
@@ -94,7 +114,8 @@ function discoverAgents(basePath: string, currentPath: string): AgentDefinition[
 function parseAgentFile(
   filePath: string,
   basePath: string,
-  nameOverride?: string
+  nameOverride?: string,
+  failOnInvalidAgentId = false
 ): AgentDefinition | null {
   try {
     const content = readFileSync(filePath, 'utf-8');
@@ -110,39 +131,55 @@ function parseAgentFile(
     const frontmatter = yaml.parse(frontmatterMatch[1]) ?? {};
 
     // Generate agent name from relative path
-    const agentName =
+    const agentId =
       nameOverride ?? relative(basePath, filePath).replace(/\.md$/, '').replace(/\\/g, '/');
+    const parsedAgentId = parseAgentId(agentId);
+    if (!parsedAgentId) {
+      const guidance = !agentId.includes('/')
+        ? ` Move it to .drs/agents/review/${agentId}/agent.md for a review agent.`
+        : '';
+      const error = new InvalidProjectAgentPathError(
+        `${getAgentIdValidationError(agentId)} Project agents must be stored as .drs/agents/<namespace>/<name>/agent.md.${guidance} File: ${filePath}`
+      );
+      throw error;
+    }
 
     const prompt = content.slice(frontmatterMatch[0].length).trim();
 
     return {
-      name: agentName,
+      id: agentId,
+      namespace: parsedAgentId.namespace,
+      name: parsedAgentId.name,
       path: filePath,
       description: frontmatter.description || '',
       prompt,
       color: frontmatter.color,
       model: frontmatter.model,
       tools: frontmatter.tools,
+      skills: asStringArray(frontmatter.skills),
       hidden: frontmatter.hidden || false,
     };
   } catch (error) {
+    if (failOnInvalidAgentId && error instanceof InvalidProjectAgentPathError) {
+      throw error;
+    }
+
     console.error(`Error parsing agent file ${filePath}:`, error);
     return null;
   }
 }
 
 /**
- * Discover override agents from .drs/agents/<name>/agent.md
+ * Discover project agents from .drs/agents/<namespace>/<name>/agent.md
  */
-function discoverOverrideAgents(basePath: string, currentPath: string): AgentDefinition[] {
+function discoverProjectAgents(basePath: string, currentPath: string): AgentDefinition[] {
   const files = traverseDirectory(basePath, currentPath, (entry) => entry === 'agent.md');
 
   return files
     .map((fullPath) => {
       const relativePath = relative(basePath, fullPath).replace(/\\/g, '/');
-      const stripped = relativePath.replace(/\/agent\.md$/, '');
-      const agentName = stripped.startsWith('review/') ? stripped : `review/${stripped}`;
-      return parseAgentFile(fullPath, basePath, agentName);
+      const agentId = relativePath.replace(/\/agent\.md$/, '');
+      return parseAgentFile(fullPath, basePath, agentId, true);
     })
     .filter((agent): agent is AgentDefinition => Boolean(agent));
 }
@@ -152,25 +189,29 @@ function discoverOverrideAgents(basePath: string, currentPath: string): AgentDef
  */
 export function getAgent(
   projectPath: string,
-  agentName: string,
+  agentId: string,
   config?: DRSConfig
 ): AgentDefinition | null {
-  const agents = loadReviewAgents(projectPath, config);
-  return agents.find((a) => a.name === agentName) ?? null;
+  const agents = loadAgents(projectPath, config);
+  return agents.find((a) => a.id === agentId) ?? null;
 }
 
 /**
- * Get all review agents (security, quality, style, performance, documentation)
+ * Get all agents in a namespace.
  */
-export function getReviewAgents(projectPath: string, config?: DRSConfig): AgentDefinition[] {
-  const agents = loadReviewAgents(projectPath, config);
-  return agents.filter((a) => a.name.startsWith('review/'));
+export function getAgentsByNamespace(
+  projectPath: string,
+  namespace: string,
+  config?: DRSConfig
+): AgentDefinition[] {
+  const agents = loadAgents(projectPath, config);
+  return agents.filter((a) => a.namespace === namespace);
 }
 
 /**
  * List all available agents
  */
 export function listAgents(projectPath: string, config?: DRSConfig): string[] {
-  const agents = loadReviewAgents(projectPath, config);
-  return agents.map((a) => a.name);
+  const agents = loadAgents(projectPath, config);
+  return agents.map((a) => a.id);
 }

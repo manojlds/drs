@@ -28,7 +28,7 @@ function createRuntime(
 
 const mocks = vi.hoisted(() => ({
   createPiInProcessServer: vi.fn(),
-  loadReviewAgents: vi.fn(() => []),
+  loadAgents: vi.fn(() => []),
 }));
 
 vi.mock('../pi/sdk.js', () => ({
@@ -36,7 +36,7 @@ vi.mock('../pi/sdk.js', () => ({
 }));
 
 vi.mock('./agent-loader.js', () => ({
-  loadReviewAgents: mocks.loadReviewAgents,
+  loadAgents: mocks.loadAgents,
 }));
 
 describe('RuntimeClient', () => {
@@ -46,7 +46,7 @@ describe('RuntimeClient', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     mocks.createPiInProcessServer.mockResolvedValue(createRuntime());
-    mocks.loadReviewAgents.mockReturnValue([]);
+    mocks.loadAgents.mockReturnValue([]);
   });
 
   describe('constructor', () => {
@@ -84,8 +84,10 @@ describe('RuntimeClient', () => {
 
   describe('initialize', () => {
     it('wires Pi runtime agent prompts and model overrides', async () => {
-      mocks.loadReviewAgents.mockReturnValue([
+      mocks.loadAgents.mockReturnValue([
         {
+          id: 'review/security',
+          namespace: 'review',
           name: 'review/security',
           path: '/tmp/security.md',
           description: 'Security specialist',
@@ -93,6 +95,8 @@ describe('RuntimeClient', () => {
           tools: { Read: true },
         },
         {
+          id: 'review/quality',
+          namespace: 'review',
           name: 'review/quality',
           path: '/tmp/quality.md',
           description: 'Quality specialist',
@@ -104,7 +108,9 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['security', 'quality'],
+            agents: ['review/security', 'review/quality'],
+          },
+          agents: {
             default: {
               skills: [],
             },
@@ -139,18 +145,30 @@ describe('RuntimeClient', () => {
       const projectRoot = process.cwd();
 
       const config = {
-        review: {
-          agents: [
-            {
-              name: 'security',
-              skills: ['security-audit'],
-            },
-          ],
+        agents: {
           default: {
             skills: ['baseline-review'],
           },
         },
+        review: {
+          agents: [
+            {
+              name: 'review/security',
+              skills: ['security-audit'],
+            },
+          ],
+        },
       } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'review/security',
+          namespace: 'review',
+          name: 'security',
+          path: '/tmp/security.md',
+          description: 'Security agent',
+        },
+      ] as any);
 
       const client = await createRuntimeClientInstance({
         directory: projectRoot,
@@ -171,16 +189,27 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
-    it('includes unified reviewer in skill configuration when unified mode is enabled', async () => {
+    it('includes unified reviewer in skill configuration when configured', async () => {
       const config = {
-        review: {
-          mode: 'unified',
-          agents: ['security'],
+        agents: {
           default: {
             skills: ['cli-testing'],
           },
         },
+        review: {
+          agents: ['review/unified-reviewer'],
+        },
       } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'review/unified-reviewer',
+          namespace: 'review',
+          name: 'unified-reviewer',
+          path: '/tmp/unified-reviewer.md',
+          description: 'Unified agent',
+        },
+      ] as any);
 
       const client = await createRuntimeClientInstance({
         directory: process.cwd(),
@@ -200,9 +229,132 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
-    it('passes per-agent tool overrides to Pi runtime config', async () => {
-      mocks.loadReviewAgents.mockReturnValue([
+    it('applies generic default skills to non-review agents', async () => {
+      const config = {
+        agents: {
+          default: {
+            skills: ['generic-skill'],
+          },
+        },
+        review: {
+          agents: ['review/security'],
+        },
+      } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
         {
+          id: 'review/security',
+          namespace: 'review',
+          name: 'security',
+          path: '/tmp/security.md',
+          description: 'Security agent',
+        },
+        {
+          id: 'describe/pr-describer',
+          namespace: 'describe',
+          name: 'pr-describer',
+          path: '/tmp/pr-describer.md',
+          description: 'Description agent',
+        },
+      ] as any);
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agentSkills: expect.objectContaining({
+              'describe/pr-describer': ['generic-skill'],
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
+    it('applies generic model defaults, namespaces, and overrides to all loaded agents', async () => {
+      const config = {
+        agents: {
+          default: {
+            model: 'provider/default-model',
+            skills: [],
+          },
+          namespaces: {
+            task: {
+              model: 'provider/task-model',
+            },
+          },
+          overrides: {
+            'task/specialist': {
+              model: 'provider/specialist-override',
+            },
+          },
+        },
+        review: {
+          agents: [],
+        },
+      } as any;
+
+      mocks.loadAgents.mockReturnValueOnce([
+        {
+          id: 'task/docs-updater',
+          namespace: 'task',
+          name: 'docs-updater',
+          path: '/tmp/docs-updater.md',
+          description: 'Docs updater',
+        },
+        {
+          id: 'task/specialist',
+          namespace: 'task',
+          name: 'specialist',
+          path: '/tmp/specialist.md',
+          description: 'Specialist',
+          model: 'provider/frontmatter-model',
+        },
+        {
+          id: 'ops/deploy',
+          namespace: 'ops',
+          name: 'deploy',
+          path: '/tmp/deploy.md',
+          description: 'Deploy helper',
+        },
+      ] as any);
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        config,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            agent: expect.objectContaining({
+              'task/docs-updater': expect.objectContaining({
+                model: 'provider/task-model',
+              }),
+              'task/specialist': expect.objectContaining({
+                model: 'provider/specialist-override',
+              }),
+              'ops/deploy': expect.objectContaining({
+                model: 'provider/default-model',
+              }),
+            }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
+    it('passes per-agent tool overrides to Pi runtime config', async () => {
+      mocks.loadAgents.mockReturnValue([
+        {
+          id: 'review/security',
+          namespace: 'review',
           name: 'review/security',
           path: '/tmp/security.md',
           description: 'Security agent',
@@ -210,6 +362,8 @@ describe('RuntimeClient', () => {
           tools: { Read: true, Bash: false, Edit: true },
         },
         {
+          id: 'review/quality',
+          namespace: 'review',
           name: 'review/quality',
           path: '/tmp/quality.md',
           description: 'Quality agent',
@@ -222,7 +376,9 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['security', 'quality'],
+            agents: ['review/security', 'review/quality'],
+          },
+          agents: {
             default: { skills: [] },
           },
         } as any,
@@ -287,6 +443,33 @@ describe('RuntimeClient', () => {
                 ],
               }),
             }),
+          }),
+        })
+      );
+
+      await client.shutdown();
+    });
+
+    it('passes configured provider retry settings to Pi runtime config', async () => {
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        providerRetry: {
+          timeoutMs: 45000,
+          maxRetries: 2,
+          maxRetryDelayMs: 15000,
+        },
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            retry: {
+              provider: {
+                timeoutMs: 45000,
+                maxRetries: 2,
+                maxRetryDelayMs: 15000,
+              },
+            },
           }),
         })
       );
@@ -369,6 +552,26 @@ describe('RuntimeClient', () => {
         })
       ).rejects.toThrow('Verify local Pi runtime setup and model provider connectivity');
     });
+
+    it('fails fast when session creation hangs', async () => {
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          create: vi.fn(() => new Promise(() => {})),
+        })
+      );
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        operationTimeoutMs: 25,
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).rejects.toThrow('Create session timed out');
+    });
   });
 
   describe('lifecycle and helper methods', () => {
@@ -410,6 +613,8 @@ describe('RuntimeClient', () => {
         config: {
           review: {
             agents: [],
+          },
+          agents: {
             default: {
               skills: [],
             },
@@ -434,6 +639,94 @@ describe('RuntimeClient', () => {
       expect(collected[0].usage?.cost).toBeCloseTo(0.0028, 10);
 
       await client.shutdown();
+    });
+
+    it('fails fast when message polling exceeds stream timeout', async () => {
+      const runtimeMessages = [
+        {
+          info: {
+            id: 'msg-1',
+            role: 'assistant',
+          },
+          parts: [{ text: 'still running' }],
+        },
+      ];
+
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          messages: vi.fn(async () => ({ data: runtimeMessages })),
+        })
+      );
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        streamTimeoutMs: 30,
+        streamPollIntervalMs: 10,
+      });
+
+      const collect = async () => {
+        const collected = [];
+        for await (const message of client.streamMessages('session-123')) {
+          collected.push(message);
+        }
+        return collected;
+      };
+
+      await expect(collect()).rejects.toThrow('Session session-123 timed out');
+
+      await client.shutdown();
+    });
+
+    it('prefers env timeout overrides over constructor values', async () => {
+      const previousOpTimeout = process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS;
+      const previousStreamTimeout = process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS;
+      const previousPollInterval = process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS;
+
+      process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS = '10';
+      process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS = '30';
+      process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS = '10';
+
+      try {
+        mocks.createPiInProcessServer.mockResolvedValueOnce(
+          createRuntime({
+            create: vi.fn(() => new Promise(() => {})),
+          })
+        );
+
+        const client = await createRuntimeClientInstance({
+          directory: process.cwd(),
+          operationTimeoutMs: 1000,
+          streamTimeoutMs: 1000,
+          streamPollIntervalMs: 1000,
+        });
+
+        await expect(
+          client.createSession({
+            agent: 'review/security',
+            message: 'Review this code',
+          })
+        ).rejects.toThrow('Create session timed out');
+
+        await client.shutdown();
+      } finally {
+        if (previousOpTimeout === undefined) {
+          delete process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS;
+        } else {
+          process.env.DRS_RUNTIME_OPERATION_TIMEOUT_MS = previousOpTimeout;
+        }
+
+        if (previousStreamTimeout === undefined) {
+          delete process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS;
+        } else {
+          process.env.DRS_RUNTIME_STREAM_TIMEOUT_MS = previousStreamTimeout;
+        }
+
+        if (previousPollInterval === undefined) {
+          delete process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS;
+        } else {
+          process.env.DRS_RUNTIME_STREAM_POLL_INTERVAL_MS = previousPollInterval;
+        }
+      }
     });
 
     it('closeSession throws if not initialized', async () => {
