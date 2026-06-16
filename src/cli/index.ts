@@ -14,6 +14,7 @@ import { showChanges } from './show-changes.js';
 import { describePR } from './describe-pr.js';
 import { describeMR } from './describe-mr.js';
 import { runAgent } from './run-agent.js';
+import { runWorkflow } from './workflow.js';
 import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -46,6 +47,25 @@ function printBanner() {
   );
   console.log(chalk.bold.cyan(`  ╰${'─'.repeat(bannerWidth)}╯`));
   console.log('');
+}
+
+function collectOption(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+function parseKeyValueOptions(
+  values: string[] | undefined,
+  optionName: string
+): Record<string, string> {
+  const parsed: Record<string, string> = {};
+  for (const value of values ?? []) {
+    const separatorIndex = value.indexOf('=');
+    if (separatorIndex <= 0) {
+      throw new Error(`${optionName} must use key=value format.`);
+    }
+    parsed[value.slice(0, separatorIndex)] = value.slice(separatorIndex + 1);
+  }
+  return parsed;
 }
 
 const program = new Command();
@@ -100,6 +120,51 @@ program
       process.exit(1);
     }
   });
+
+const workflowCommand = new Command('workflow').description('Run configured workflows');
+
+workflowCommand
+  .command('run <name>')
+  .description('Run a configured workflow by name')
+  .option('-i, --input <key=value>', 'Set workflow input value', collectOption, [])
+  .option('--input-file <key=path>', 'Read workflow input value from a file', collectOption, [])
+  .option('-o, --output <path>', 'Write workflow result JSON to a file')
+  .option('--json', 'Output workflow result as JSON to console')
+  .option('--debug', 'Print Pi runtime configuration for debugging')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .option(
+    '--reasoning-effort <level>',
+    'Reasoning effort level: off, minimal, low, medium, high, xhigh'
+  )
+  .option('--ultrathink', 'Enable maximum reasoning effort (alias for --reasoning-effort high)')
+  .action(async (name, options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'error',
+        format: (options.logFormat as LogFormat) || 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
+      const config = loadConfig(process.cwd());
+      const thinkingLevel = options.ultrathink ? 'high' : options.reasoningEffort;
+
+      await runWorkflow(config, name, {
+        inputs: parseKeyValueOptions(options.input, '--input'),
+        inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),
+        outputPath: options.output,
+        jsonOutput: options.json,
+        debug: options.debug || false,
+        thinkingLevel,
+        workingDir: process.cwd(),
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program.addCommand(workflowCommand);
 
 program
   .command('review-local')

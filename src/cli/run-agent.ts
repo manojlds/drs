@@ -24,6 +24,9 @@ export interface RunAgentOptions {
   debug?: boolean;
   thinkingLevel?: string;
   workingDir?: string;
+  quiet?: boolean;
+  allowImplicitStdin?: boolean;
+  ignoreConfiguredOutput?: boolean;
 }
 
 export interface AgentRunResult {
@@ -64,7 +67,9 @@ async function readPrompt(options: RunAgentOptions, workingDir: string): Promise
     return readFile(promptPath, 'utf-8');
   }
 
-  const shouldReadStdin = options.stdin === true || process.stdin.isTTY !== true;
+  const shouldReadStdin =
+    options.stdin === true ||
+    (options.allowImplicitStdin !== false && process.stdin.isTTY !== true);
   if (shouldReadStdin) {
     return readStdin();
   }
@@ -94,8 +99,12 @@ export async function runAgent(
     ...options,
     prompt: options.prompt ?? configuredRun.prompt,
     file: options.file ?? configuredRun.promptFile,
-    outputPath: options.outputPath ?? configuredRun.output,
-    jsonOutput: options.jsonOutput ?? configuredRun.json ?? false,
+    outputPath: options.ignoreConfiguredOutput
+      ? options.outputPath
+      : (options.outputPath ?? configuredRun.output),
+    jsonOutput: options.ignoreConfiguredOutput
+      ? (options.jsonOutput ?? false)
+      : (options.jsonOutput ?? configuredRun.json ?? false),
     thinkingLevel: options.thinkingLevel ?? resolveAgentThinkingLevel(config, agentId),
   };
 
@@ -124,7 +133,7 @@ export async function runAgent(
   const logger = getLogger();
 
   try {
-    if (!effectiveOptions.jsonOutput) {
+    if (!effectiveOptions.jsonOutput && !effectiveOptions.quiet) {
       console.log(chalk.gray(`Running ${agentId}...\n`));
     }
 
@@ -162,12 +171,14 @@ export async function runAgent(
     if (effectiveOptions.outputPath) {
       const outputPath = resolveWithinWorkingDir(workingDir, effectiveOptions.outputPath, 'write');
       await writeFile(outputPath, output, 'utf-8');
-      if (!effectiveOptions.jsonOutput) {
+      if (!effectiveOptions.jsonOutput && !effectiveOptions.quiet) {
         console.log(chalk.green(`\n✓ Agent output saved to ${effectiveOptions.outputPath}`));
       }
     }
 
-    if (effectiveOptions.jsonOutput) {
+    if (effectiveOptions.quiet) {
+      // Workflow execution handles its own output.
+    } else if (effectiveOptions.jsonOutput) {
       console.log(formatAgentRunJson(result));
     } else if (response.trim()) {
       console.log(response);

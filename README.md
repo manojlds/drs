@@ -86,12 +86,16 @@ drs review-local --agents review/security,review/quality
 |---|---|
 | Review local unstaged changes | `drs review-local` |
 | Review local staged changes | `drs review-local --staged` |
+| Review local unstaged changes via workflow | `drs workflow run local-review` |
 | Review GitHub PR | `drs review-pr --owner <owner> --repo <repo> --pr <number>` |
 | Review GitLab MR | `drs review-mr --project <group/repo> --mr <number>` |
+| Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Review by PR/MR URL (auto-detect platform) | `drs review-url <https://.../pull/... or .../-/merge_requests/...>` |
 | Generate PR description | `drs describe-pr --owner <owner> --repo <repo> --pr <number>` |
 | Generate MR description | `drs describe-mr --project <group/repo> --mr <number>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
+| Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 
 ## Deployment Modes
 
@@ -419,6 +423,38 @@ agents:
 drs run task/docs-updater
 ```
 
+### Configure Workflows
+
+Workflows compose agents and built-in actions into a dependency graph. They are useful when one agent produces an artifact that another agent or action consumes.
+
+```yaml
+workflows:
+  release-notes:
+    inputs:
+      diff:
+        file: .drs/diff.md
+    nodes:
+      summarize:
+        agent: task/change-summarizer
+        input: |
+          Summarize these changes:
+
+          {{inputs.diff}}
+        output: summary
+      write-summary:
+        action: write
+        needs: [summarize]
+        input: "{{artifacts.summary}}"
+        writes: RELEASE_NOTES.md
+```
+
+```bash
+drs workflow run release-notes
+drs workflow run release-notes --input-file diff=changes.md --json
+```
+
+See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the full workflow configuration reference.
+
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
@@ -713,6 +749,7 @@ Apache-2.0
 - [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup
 - [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
 - [Custom Agents & Skills Guide](docs/CUSTOM_AGENTS.md) - Custom agents, context, skills, and per-agent tools
+- [Workflows Guide](docs/WORKFLOWS.md) - Compose agents and actions into dependency graphs
 - [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
 - [Pi Documentation](https://github.com/badlogic/pi-mono)
 
