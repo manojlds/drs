@@ -1,0 +1,22 @@
+name: gitlab-mr-describe-post
+description: Generate and post a GitLab merge request description
+inputs:
+  project: ""
+  mr: ""
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+    output: change
+
+  describe:
+    action: describe
+    needs:
+      - change
+    with:
+      source: change
+      post: true
+    output: description

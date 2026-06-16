@@ -11,7 +11,7 @@
     - merge_requests
   script:
     - npm install -g @diff-review-system/drs
-    - drs review-mr --mr $CI_MERGE_REQUEST_IID --project $CI_PROJECT_ID --post-comments
+    - drs workflow run gitlab-mr-review-post --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID
   variables:
     # GitLab Token (use CI_JOB_TOKEN for automatic auth)
     GITLAB_TOKEN: "${CI_JOB_TOKEN}"
@@ -25,8 +25,8 @@
 
     # DRS uses in-process Pi runtime (no remote runtime endpoint needed)
 
-    # Review agents to use (optional, defaults to all)
-    # REVIEW_AGENTS: "review/security,review/quality,review/style,review/performance"
+    # Review agents to use (optional, defaults to review/unified-reviewer)
+    # REVIEW_AGENTS: "review/unified-reviewer,review/my-project-reviewer"
 
   # Allow job to fail without blocking pipeline
   allow_failure: true
@@ -38,17 +38,13 @@
   #   when: always
   #   expire_in: 1 week
 
-# Full review with all agents (runs in review stage)
+# Full review (runs in review stage)
 ai_review_full:
   extends: .drs_review
   stage: review
-  variables:
-    REVIEW_AGENTS: "review/security,review/quality,review/style,review/performance"
 
-# Quick security-only review (can block pipeline if issues found)
-ai_review_security:
+# Strict review (can block pipeline if issues found)
+ai_review_strict:
   extends: .drs_review
   stage: review
-  variables:
-    REVIEW_AGENTS: "review/security"
-  allow_failure: false  # Block on security issues
+  allow_failure: false  # Block on critical/high issues

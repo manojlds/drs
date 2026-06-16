@@ -17,8 +17,8 @@ and behavior changes that are not reflected in docs/tests.
 - Confirm command handlers in `src/cli/*.ts` honor declared flags:
   - option names in commander wiring must map to runtime option fields.
   - staged/unstaged behavior, exit codes, and error paths should match help text.
-- Check operational consistency for review commands:
-  - `review-local`, `review-pr`, and `review-mr` should keep similar semantics where expected.
+- Check operational consistency for workflow entrypoints:
+  - packaged review workflows (`local-review`, `github-pr-review`, `gitlab-mr-review`) should remain consistent.
   - JSON output mode should remain script-friendly and deterministic.
 - Validate docs/test coverage for CLI behavior changes:
   - update README snippets when visible CLI behavior changes.

@@ -41,6 +41,7 @@ export interface WorkflowNodeConfig {
     | 'git-commit'
     | 'change-source'
     | 'review'
+    | 'describe'
     | 'post-comment'
     | 'post-review-comments';
   /** Action-specific options. */
@@ -251,7 +252,6 @@ export interface DRSConfig {
     };
     describe?: {
       enabled?: boolean;
-      postDescription?: boolean;
     };
     cursorFixLinks?: {
       enabled?: boolean;
@@ -260,7 +260,6 @@ export interface DRSConfig {
     };
     skipRepoCheck?: boolean;
     skipBranchCheck?: boolean;
-    postErrorComment?: boolean;
   };
 
   // Describe behavior (PR/MR description generation)
@@ -317,12 +316,10 @@ const DEFAULT_CONFIG: DRSConfig = {
     ],
     describe: {
       enabled: false,
-      postDescription: false,
     },
     cursorFixLinks: {
       enabled: false,
     },
-    postErrorComment: false,
   },
   contextCompression: {
     enabled: true,
@@ -426,6 +423,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (existsSync(drsConfigPath)) {
     const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, drsConfigPath);
+    rejectRemovedReviewPostingConfigKeys(fileConfig, drsConfigPath);
     rejectInlineWorkflowConfig(fileConfig, drsConfigPath);
     config = mergeConfig(config, fileConfig);
   }
@@ -435,6 +433,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (existsSync(gitlabReviewPath)) {
     const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8')) ?? {};
     rejectLegacyAgentConfigKeys(fileConfig, gitlabReviewPath);
+    rejectRemovedReviewPostingConfigKeys(fileConfig, gitlabReviewPath);
     rejectInlineWorkflowConfig(fileConfig, gitlabReviewPath);
     config = mergeConfig(config, fileConfig);
   }
@@ -491,10 +490,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (process.env.REVIEW_SKIP_BRANCH_CHECK === 'true') {
     config.review.skipBranchCheck = true;
   }
-  if (process.env.REVIEW_POST_ERROR_COMMENT === 'true') {
-    config.review.postErrorComment = true;
-  }
-
   // Validate required fields
   if (!getDefaultModel(config)) {
     throw new Error(
@@ -563,6 +558,34 @@ function rejectInlineWorkflowConfig(fileConfig: Partial<DRSConfig>, sourcePath: 
   }
 
   throw new Error(`Config file ${sourcePath} cannot define top-level workflows.`);
+}
+
+function rejectRemovedReviewPostingConfigKeys(
+  fileConfig: Partial<DRSConfig>,
+  sourcePath: string
+): void {
+  if (!isRecord(fileConfig) || !isRecord(fileConfig.review)) {
+    return;
+  }
+
+  const removedKeys: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(fileConfig.review, 'postErrorComment')) {
+    removedKeys.push('review.postErrorComment');
+  }
+
+  if (
+    isRecord(fileConfig.review.describe) &&
+    Object.prototype.hasOwnProperty.call(fileConfig.review.describe, 'postDescription')
+  ) {
+    removedKeys.push('review.describe.postDescription');
+  }
+
+  if (removedKeys.length > 0) {
+    throw new Error(
+      `Config file ${sourcePath} uses removed DRS 4.0 review posting keys: ${removedKeys.join(', ')}. ` +
+        'Run posting explicitly with workflows, or use github-pr-describe-post/gitlab-mr-describe-post when updating PR/MR descriptions.'
+    );
+  }
 }
 
 /**

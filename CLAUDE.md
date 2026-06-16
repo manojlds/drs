@@ -13,7 +13,7 @@
 - Vitest for tests
 
 ### Important Paths
-- `src/cli/` — CLI commands (`review-local`, `review-mr`, `review-pr`)
+- `src/cli/` — CLI commands (`workflow run`, `post-comments`, `show-changes`, `run-agent`)
 - `src/lib/` — core review orchestration/utilities
 - `src/runtime/` — runtime client + agent loading
 - `src/pi/` — Pi SDK adapter
@@ -38,9 +38,9 @@ npm run type-check
 
 ### Local Run
 ```bash
-npm run dev -- review-local
-npm run dev -- review-mr --project org/repo --mr 123
-npm run dev -- review-pr --owner user --repo repo --pr 456
+npm run dev -- workflow run local-review
+npm run dev -- workflow run gitlab-mr-review --input project=org/repo --input mr=123
+npm run dev -- workflow run github-pr-review --input owner=user --input repo=repo --input pr=456
 ```
 
 ### Mandatory Quality Gate (after every code change)

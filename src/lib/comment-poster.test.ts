@@ -365,6 +365,7 @@ describe('comment-poster', () => {
         expect.any(String),
         mockChangeSummary,
         undefined,
+        undefined,
         undefined
       );
     });
@@ -402,7 +403,42 @@ describe('comment-poster', () => {
         expect.any(String),
         undefined,
         usage,
+        undefined,
         undefined
+      );
+    });
+
+    it('should pass review metadata into formatted comment', async () => {
+      const reviewMetadata = {
+        headSha: 'abcdef1234567890',
+        sourceBranch: 'feature/review-metadata',
+        targetBranch: 'main',
+      };
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        mockIssues,
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        reviewMetadata
+      );
+
+      const { formatSummaryComment } = await import('./comment-formatter.js');
+      expect(formatSummaryComment).toHaveBeenCalledWith(
+        mockSummary,
+        mockIssues,
+        expect.any(String),
+        undefined,
+        undefined,
+        undefined,
+        reviewMetadata
       );
     });
 
@@ -439,7 +475,8 @@ describe('comment-poster', () => {
         expect.any(String),
         undefined,
         undefined,
-        cursorFixLinks
+        cursorFixLinks,
+        undefined
       );
       expect(formatIssueComment).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'SQL injection vulnerability' }),

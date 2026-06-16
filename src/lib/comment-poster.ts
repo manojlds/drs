@@ -7,7 +7,12 @@
 
 import chalk from 'chalk';
 import type { calculateSummary } from './comment-formatter.js';
-import { formatSummaryComment, formatIssueComment, type ReviewIssue } from './comment-formatter.js';
+import {
+  formatSummaryComment,
+  formatIssueComment,
+  type ReviewIssue,
+  type ReviewMetadata,
+} from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
@@ -41,7 +46,8 @@ export async function postReviewComments(
   platformData: unknown,
   lineValidator?: LineValidator,
   createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition,
-  cursorFixLinks?: CursorFixLinkOptions
+  cursorFixLinks?: CursorFixLinkOptions,
+  reviewMetadata?: ReviewMetadata
 ): Promise<void> {
   console.log(chalk.gray('Fetching existing comments...\n'));
 
@@ -69,7 +75,8 @@ export async function postReviewComments(
     BOT_COMMENT_ID,
     changeSummary,
     reviewUsage,
-    cursorFixLinks
+    cursorFixLinks,
+    reviewMetadata
   );
 
   if (existingSummary) {

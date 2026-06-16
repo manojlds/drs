@@ -498,7 +498,7 @@ export async function initProject(projectPath: string): Promise<void> {
     console.log(`  1. Set API key: ${chalk.cyan(apiKeyHint)}`);
     console.log(`  2. Edit project context: ${chalk.cyan('.drs/context.md')}`);
     console.log(
-      `  3. Run a review: ${chalk.cyan('drs review-pr --pr <number> --owner <owner> --repo <repo>')}`
+      `  3. Run a review: ${chalk.cyan('drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>')}`
     );
     console.log('');
 

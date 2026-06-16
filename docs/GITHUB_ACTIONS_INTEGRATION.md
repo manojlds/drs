@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 20
       - run: npm install -g @diff-review-system/drs
-      - run: drs review-pr --owner "${{ github.repository_owner }}" --repo "${{ github.event.repository.name }}" --pr "${{ github.event.pull_request.number }}" --post-comments
+      - run: drs workflow run github-pr-review-post --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

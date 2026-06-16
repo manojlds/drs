@@ -109,6 +109,29 @@ describe('Config', () => {
         project: '',
         mr: '',
       });
+      expect(config.workflows?.['github-pr-describe-post']).toMatchObject({
+        description: 'Generate and post a GitHub pull request description',
+        nodes: {
+          describe: {
+            action: 'describe',
+            with: {
+              post: true,
+            },
+          },
+        },
+      });
+      expect(config.workflows?.['gitlab-mr-describe']?.inputs).toEqual({
+        project: '',
+        mr: '',
+      });
+      expect(config.workflows?.['github-pr-post-comment']).toMatchObject({
+        description: 'Post or update a GitHub pull request comment',
+        nodes: {
+          comment: {
+            action: 'post-comment',
+          },
+        },
+      });
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }
@@ -316,6 +339,30 @@ describe('Config', () => {
       );
 
       expect(() => loadConfig(projectRoot)).toThrow('review.paths -> agents.paths');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects removed implicit review posting config keys', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-removed-posting-config-'));
+
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        [
+          'review:',
+          '  postErrorComment: true',
+          '  describe:',
+          '    enabled: true',
+          '    postDescription: true',
+          '',
+        ].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('review.postErrorComment');
+      expect(() => loadConfig(projectRoot)).toThrow('review.describe.postDescription');
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }

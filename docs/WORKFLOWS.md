@@ -104,7 +104,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `post-comment`, and `post-review-comments` |
+| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `describe`, `post-comment`, and `post-review-comments` |
 
 Common node fields:
 
@@ -184,6 +184,21 @@ nodes:
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
 
+### `describe`
+
+Generates a PR/MR description from a platform `change-source` artifact. Set `with.post: true` to update the PR/MR description on the platform.
+
+```yaml
+nodes:
+  describe:
+    action: describe
+    needs: [change]
+    with:
+      source: change
+      post: true
+    output: description
+```
+
 ### `post-comment`
 
 Posts a general PR/MR comment. Use `with.marker` to update an existing DRS-managed comment instead of creating duplicates.
@@ -213,9 +228,11 @@ nodes:
       marker: release-notes
 ```
 
+Packaged workflows: `github-pr-post-comment`, `gitlab-mr-post-comment`.
+
 ### `post-review-comments`
 
-Posts DRS review results to GitHub or GitLab using the same summary marker and issue fingerprints as `review-pr --post-comments` and `review-mr --post-comments`.
+Posts DRS review results to GitHub or GitLab using the same summary marker and issue fingerprints as the packaged `*-review-post` workflows.
 
 ```yaml
 nodes:
@@ -306,7 +323,7 @@ Non-string values are inserted as pretty JSON.
 
 ## Built-In Review Workflows
 
-DRS ships with local review workflows equivalent to the local diff source loading used by `drs review-local`:
+DRS ships with built-in review workflows for local diffs, GitHub PRs, and GitLab MRs:
 
 ```bash
 drs workflow run local-review

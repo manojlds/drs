@@ -68,8 +68,8 @@ agents:
 ### CLI flags
 
 ```bash
-drs review-pr --owner octocat --repo hello-world --pr 456 --reasoning-effort high
-drs review-mr --project my-org/my-repo --mr 123 --ultrathink  # alias for --reasoning-effort high
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --reasoning-effort high
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --ultrathink  # alias for --reasoning-effort high
 ```
 
 ### Environment variable
