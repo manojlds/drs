@@ -21,6 +21,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine version and npm tag from git tag
+        id: release
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # GITHUB_REF_NAME is the pushed tag, e.g. v4.0.0-rc.3
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          if echo "$VERSION" | grep -qE '(alpha|beta|rc|pre)'; then
+            NPM_TAG="next"
+          else
+            NPM_TAG="latest"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION with npm tag $NPM_TAG"
+
+      - name: Update package.json version from tag
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.version = '${{ steps.release.outputs.version }}';
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -39,16 +68,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Determine npm tag
-        id: npm-tag
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if echo "$VERSION" | grep -qE '(alpha|beta|rc|pre)'; then
-            echo "tag=next" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
+        run: npm publish --provenance --access public --tag ${{ steps.release.outputs.tag }}
         # Uses OIDC trusted publishing - no NODE_AUTH_TOKEN needed
