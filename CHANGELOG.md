@@ -2,7 +2,7 @@
 
 All notable changes to DRS are documented in this file.
 
-## Unreleased
+## 4.0.0
 
 ### Added
 
