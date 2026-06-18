@@ -34,8 +34,6 @@ nodes:
 
   review:
     action: review
-    needs:
-      - describe
     with:
       source: change
     output: review

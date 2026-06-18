@@ -1623,6 +1623,52 @@ describe('workflow runner', () => {
     expect(result.nodes.negative).toMatchObject({ type: 'skipped', status: 'skipped' });
   });
 
+  it('runs same-segment dependencies required by a condition branch target', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        conditionalDependency: {
+          nodes: {
+            choose: {
+              control: 'condition',
+              if: 'true',
+              then: 'target',
+              else: 'other',
+            },
+            prerequisite: { agent: 'task/prerequisite', input: 'prepared', output: 'prerequisite' },
+            target: {
+              agent: 'task/target',
+              needs: ['prerequisite'],
+              input: 'target {{artifacts.prerequisite}}',
+              output: 'target',
+            },
+            follower: {
+              agent: 'task/follower',
+              needs: ['target'],
+              input: 'follower {{artifacts.target}}',
+              output: 'follower',
+            },
+            other: { agent: 'task/other', input: 'other', output: 'other' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'conditionalDependency', {
+      workingDir: process.cwd(),
+    });
+
+    expect(result.nodes.prerequisite).toMatchObject({ type: 'agent' });
+    expect(result.nodes.target).toMatchObject({ type: 'agent' });
+    expect(result.nodes.follower).toMatchObject({ type: 'agent' });
+    expect(result.nodes.other).toMatchObject({ status: 'skipped' });
+    expect(result.artifacts.target).toBe('target prepared');
+    expect(result.artifacts.follower).toBe('follower target prepared');
+  });
+
   it('loops through review and fix nodes until the condition exits', async () => {
     const reviewOutputs = ['issues', 'clean'];
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
@@ -1699,6 +1745,30 @@ describe('workflow runner', () => {
 
     expect(result.nodes.done).toMatchObject({ type: 'control', decision: 'end' });
     expect(result.output).toBe('task/summarizer: summary');
+  });
+
+  it('stops workflow execution when a control end node runs', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        earlyEnd: {
+          nodes: {
+            start: { agent: 'task/start', input: 'start', output: 'start' },
+            done: { control: 'end', needs: ['start'] },
+            after: { agent: 'task/after', input: 'after' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'earlyEnd', { workingDir: process.cwd() });
+
+    expect(result.nodes.done).toMatchObject({ type: 'control', decision: 'end' });
+    expect(result.nodes.after).toBeUndefined();
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/start']);
   });
 
   it('rejects unknown template references', async () => {

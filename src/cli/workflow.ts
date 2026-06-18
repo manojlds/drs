@@ -1906,19 +1906,36 @@ function computeActiveWorkflowNodes(
   nodeIds: string[],
   rootNodeId: string
 ): Set<string> {
-  const active = new Set<string>([rootNodeId]);
+  const segmentNodeIds = new Set(nodeIds);
+  const downstream = new Set<string>([rootNodeId]);
   let changed = true;
   while (changed) {
     changed = false;
     for (const nodeId of nodeIds) {
-      if (active.has(nodeId)) continue;
+      if (downstream.has(nodeId)) continue;
       const needs = getNodeNeeds(workflowNodes[nodeId] ?? {});
-      if (needs.some((dependency) => active.has(dependency))) {
-        active.add(nodeId);
+      if (needs.some((dependency) => downstream.has(dependency))) {
+        downstream.add(nodeId);
         changed = true;
       }
     }
   }
+
+  const active = new Set(downstream);
+  const includeDependencies = (nodeId: string) => {
+    const node = workflowNodes[nodeId];
+    if (!node) return;
+    for (const dependency of getNodeNeeds(node)) {
+      if (!segmentNodeIds.has(dependency) || active.has(dependency)) continue;
+      active.add(dependency);
+      includeDependencies(dependency);
+    }
+  };
+
+  for (const nodeId of downstream) {
+    includeDependencies(nodeId);
+  }
+
   return active;
 }
 
@@ -2032,7 +2049,7 @@ function runControlWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   context: WorkflowTemplateContext
-): { result: WorkflowNodeResult; nextNodeId?: string } {
+): { result: WorkflowNodeResult; nextNodeId?: string; ended?: boolean } {
   if (node.control === 'condition') {
     if (!node.if) {
       throw new Error(`Workflow condition node "${nodeId}" must define if.`);
@@ -2148,6 +2165,7 @@ function runControlWorkflowNode(
 
   if (node.control === 'end') {
     return {
+      ended: true,
       result: {
         id: nodeId,
         type: 'control',
@@ -2199,8 +2217,12 @@ async function runControlWorkflow(
     if (!options.jsonOutput) {
       console.log(chalk.gray(`Running node ${segment.nodeId}...`));
     }
-    const { result, nextNodeId } = runControlWorkflowNode(segment.nodeId, node, context);
+    const { result, nextNodeId, ended } = runControlWorkflowNode(segment.nodeId, node, context);
     recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
+
+    if (ended) {
+      return;
+    }
 
     if (!nextNodeId) {
       segmentIndex += 1;
