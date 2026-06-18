@@ -111,6 +111,7 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-review']?.inputs).toEqual({
         project: '',
         mr: '',
+        describe: 'false',
         post: 'false',
         codeQuality: 'false',
         codeQualityReport: 'gl-code-quality-report.json',

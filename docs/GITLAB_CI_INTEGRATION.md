@@ -15,7 +15,7 @@ ai_review:
   image: node:20-alpine
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input post=true
+    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input describe=true --input post=true
   variables:
     GITLAB_TOKEN: "$CI_JOB_TOKEN"
     GITLAB_URL: "$CI_SERVER_URL"

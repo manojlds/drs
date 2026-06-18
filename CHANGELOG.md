@@ -7,7 +7,7 @@ All notable changes to DRS are documented in this file.
 ### Added
 
 - Introduce workflow-first CLI: `drs workflow run <name>` runs packaged or project-defined DAG workflows, and `drs run-agent` (alias `drs run`) executes any configured agent by id.
-- Add packaged review workflows: `local-review`, `github-pr-review`, and `gitlab-mr-review`, with inputs for staged review, posting comments, and GitLab Code Quality output.
+- Add packaged review workflows: `local-review`, `github-pr-review`, and `gitlab-mr-review`, with inputs for staged review, posting descriptions, posting comments, and GitLab Code Quality output.
 - Add packaged review context workflows: `github-pr-show-changes` and `gitlab-mr-show-changes`.
 - Add `drs workflow list` to show available workflows with packaged/project source and override status.
 - Add packaged description workflows: `github-pr-describe` and `gitlab-mr-describe`, with `post=true` for updating PR/MR descriptions.

@@ -108,10 +108,10 @@ drs workflow run local-update-agents-md
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Show GitHub PR review context | `drs workflow run github-pr-show-changes --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Show GitLab MR review context | `drs workflow run gitlab-mr-show-changes --input project=<group/repo> --input mr=<number>` |
-| Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number> --input post=true` |
-| Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input post=true` |
+| Describe, review, and comment on GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number> --input describe=true --input post=true` |
+| Describe, review, and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true` |
 | Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input codeQuality=true` |
-| Review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input post=true --input codeQuality=true` |
+| Describe/review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true --input codeQuality=true` |
 | Generate PR description | `drs workflow run github-pr-describe --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Generate MR description | `drs workflow run gitlab-mr-describe --input project=<group/repo> --input mr=<number>` |
 | Post or update a PR comment | `drs workflow run github-pr-post-comment --input owner=<owner> --input repo=<repo> --input pr=<number> --input body="..." --input marker=<id>` |
@@ -132,10 +132,10 @@ Review code locally before pushing:
 drs workflow run local-review
 
 # Review specific GitLab MR
-drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input post=true
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input describe=true --input post=true
 
 # Review specific GitHub PR
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 
 # Review local staged changes
 drs workflow run local-review --input staged=true
@@ -229,7 +229,8 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 - **Non-intrusive**: Doesn't create discussion threads
 
 **When to Use:**
-- Use `post=true` for critical issues requiring discussion
+- Use `describe=true` to update the PR/MR description before review
+- Use `post=true` for review issues requiring discussion
 - Use **code quality reports** (`--code-quality-report`) for comprehensive static analysis
 - Use **both together** for maximum visibility
 
@@ -237,7 +238,7 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 
 ```bash
 # Use workflow-based MR review with comments
-drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input post=true
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input describe=true --input post=true
 
 # For code quality artifacts, enable codeQuality
 drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input codeQuality=true
@@ -254,7 +255,7 @@ code_review:
   before_script:
     - npm install -g @diff-review-system/drs
   script:
-    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_PATH --input mr=$CI_MERGE_REQUEST_IID --input post=true
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_PATH --input mr=$CI_MERGE_REQUEST_IID --input describe=true --input post=true
   only:
     - merge_requests
 ```

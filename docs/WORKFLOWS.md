@@ -25,13 +25,13 @@ drs workflow run local-changelog-review
 
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true
 drs workflow run gitlab-mr-show-changes --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input codeQuality=true
-drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true --input codeQuality=true
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true --input codeQuality=true
 ```
 
 ## List Workflows
@@ -409,9 +409,9 @@ DRS ships with built-in review workflows for local diffs, GitHub PRs, and GitLab
 drs workflow run local-review
 drs workflow run local-review --input staged=true
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true
 ```
 
 They are packaged as `.pi/workflows/*.yaml` files with this shape:
@@ -441,6 +441,8 @@ inputs:
   owner: ""
   repo: ""
   pr: ""
+  describe: "false"
+  post: "false"
 nodes:
   change:
     action: change-source
@@ -450,15 +452,26 @@ nodes:
       repo: "{{inputs.repo}}"
       pr: "{{inputs.pr}}"
     output: change
+  should-describe:
+    control: condition
+    needs: [change]
+    if: "{{inputs.describe}} == true"
+    then: describe
+    else: review
+  describe:
+    action: describe
+    with:
+      source: change
+      post: true
   review:
     action: review
-    needs: [change]
+    needs: [describe]
     with:
       source: change
     output: review
 ```
 
-`gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
+`gitlab-mr-review` follows the same shape with `project` and `mr` inputs, plus `codeQuality` for GitLab Code Quality output.
 
 ## Built-In Maintenance Workflows
 

@@ -11,7 +11,7 @@
     - merge_requests
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input post=true
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input describe=true --input post=true
     # For GitLab Code Quality artifacts, use:
     # - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input codeQuality=true
   variables:

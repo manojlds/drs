@@ -1,9 +1,10 @@
 name: github-pr-review
-description: Review a GitHub pull request, optionally posting DRS comments
+description: Review a GitHub pull request, optionally posting a description and DRS comments
 inputs:
   owner: ""
   repo: ""
   pr: ""
+  describe: "false"
   post: "false"
 output: review
 nodes:
@@ -16,10 +17,25 @@ nodes:
       pr: "{{inputs.pr}}"
     output: change
 
+  should-describe:
+    control: condition
+    needs:
+      - change
+    if: "{{inputs.describe}} == true"
+    then: describe
+    else: review
+
+  describe:
+    action: describe
+    with:
+      source: change
+      post: true
+    output: description
+
   review:
     action: review
     needs:
-      - change
+      - describe
     with:
       source: change
     output: review

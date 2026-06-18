@@ -82,6 +82,7 @@ export async function runCIReview(): Promise<void> {
       inputs: {
         project: env.projectId,
         mr: String(env.mrIid),
+        describe: 'true',
         post: 'true',
       },
       workingDir: projectDir,
