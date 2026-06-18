@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@mariozechner/pi-coding-agent', () => {
+vi.mock('@earendil-works/pi-coding-agent', () => {
   class DefaultResourceLoader {
     options: Record<string, unknown>;
     reload = vi.fn(async () => undefined);

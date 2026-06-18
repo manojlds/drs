@@ -10,7 +10,7 @@
 
 ### Stack
 - Node.js + TypeScript
-- Pi SDK (`@mariozechner/pi-coding-agent`) running **in-process**
+- Pi SDK (`@earendil-works/pi-coding-agent`) running **in-process**
 - Vitest for tests
 
 ### Important Paths

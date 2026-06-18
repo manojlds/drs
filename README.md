@@ -29,7 +29,7 @@ DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review i
 
 ### 1. Prerequisites
 
-- Node.js 20+
+- Node.js 22.19+
 - API key for your chosen model provider (Anthropic/OpenAI/ZhipuAI/etc.)
 
 ### 2. Install DRS
@@ -737,7 +737,7 @@ npm run dev -- workflow list
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.19+
 - API key for your selected provider (Anthropic/OpenAI/ZhipuAI/etc.)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)

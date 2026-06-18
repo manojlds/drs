@@ -51,8 +51,8 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.6",
     "@gitbeaker/node": "^35.8.1",
-    "@mariozechner/pi-coding-agent": "^0.73.1",
     "@octokit/rest": "^21.0.0",
     "@sinclair/typebox": "^0.34.49",
     "ajv": "^8.20.0",
@@ -75,6 +75,6 @@
     "vitest": "^4.1.9"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   }
 }

@@ -11,7 +11,7 @@ import {
   SessionManager,
   type AgentSession,
   type ToolDefinition,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
 
 export interface PiSessionPart {
