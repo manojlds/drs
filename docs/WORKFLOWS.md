@@ -39,9 +39,13 @@ drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --in
 ```bash
 drs workflow list
 drs workflow list --json
+drs workflow show github-pr-review
+drs workflow show github-pr-review --json
 ```
 
 This shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one.
+
+Use `drs workflow show <name>` or `drs workflow get <name>` to inspect one workflow's description, inputs, output artifact, and nodes before running it.
 
 ## Workflow Files
 

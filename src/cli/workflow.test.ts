@@ -4,7 +4,7 @@ import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, type DRSConfig } from '../lib/config.js';
 import { exitProcess } from '../lib/exit.js';
-import { runWorkflow, listWorkflows } from './workflow.js';
+import { runWorkflow, listWorkflows, showWorkflow } from './workflow.js';
 
 const mocks = vi.hoisted(() => {
   const githubAdapter = {
@@ -1774,5 +1774,65 @@ describe('workflow runner', () => {
       overridden: true,
       description: 'Project override',
     });
+  });
+
+  it('shows workflow details including inputs, output, and node routes', () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        inspect: {
+          description: 'Inspect this workflow',
+          inputs: {
+            enabled: 'true',
+            body: { file: 'prompt.md' },
+          },
+          output: 'result',
+          nodes: {
+            start: { action: 'write', input: 'hello', writes: 'out.txt', output: 'result' },
+            gate: {
+              needs: ['start'],
+              control: 'condition',
+              if: '${{ inputs.enabled }}',
+              then: 'done',
+              else: 'stop',
+            },
+            done: { needs: ['gate'], agent: 'task/review', input: '${{ artifacts.result }}' },
+            stop: { needs: ['gate'], control: 'end' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const detail = showWorkflow(config, 'inspect', { workingDir: process.cwd() });
+
+    expect(detail).toMatchObject({
+      name: 'inspect',
+      source: 'packaged',
+      overridden: false,
+      description: 'Inspect this workflow',
+      output: 'result',
+      inputs: {
+        enabled: 'true',
+        body: { file: 'prompt.md' },
+      },
+    });
+    expect(detail.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate',
+          kind: 'control',
+          needs: ['start'],
+          control: 'condition',
+          if: '${{ inputs.enabled }}',
+          routes: { then: 'done', else: 'stop' },
+        }),
+      ])
+    );
+  });
+
+  it('throws for unknown workflow details', () => {
+    expect(() => showWorkflow(baseConfig, 'missing', { workingDir: process.cwd() })).toThrow(
+      'Unknown workflow "missing".'
+    );
   });
 });

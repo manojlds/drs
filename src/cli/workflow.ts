@@ -2392,6 +2392,39 @@ export interface WorkflowListOptions {
   workingDir?: string;
 }
 
+export interface WorkflowNodeDetail {
+  id: string;
+  kind: 'agent' | 'agents' | 'action' | 'control';
+  needs: string[];
+  agent?: string;
+  agentsFrom?: string;
+  action?: string;
+  control?: string;
+  if?: string;
+  condition?: string;
+  input?: string;
+  with?: Record<string, string | number | boolean | undefined>;
+  output?: string;
+  writes?: string;
+  json?: boolean;
+  routes?: Record<string, string | Record<string, string> | undefined>;
+}
+
+export interface WorkflowDetail {
+  name: string;
+  source: WorkflowSource;
+  overridden: boolean;
+  description?: string;
+  inputs: Record<string, WorkflowInputConfig>;
+  output?: string;
+  nodes: WorkflowNodeDetail[];
+}
+
+export interface WorkflowShowOptions {
+  json?: boolean;
+  workingDir?: string;
+}
+
 /**
  * List available workflows and their source origin.
  *
@@ -2441,4 +2474,133 @@ export function listWorkflows(
   }
 
   return entries;
+}
+
+function getWorkflowNodeRoutes(node: WorkflowNodeConfig): WorkflowNodeDetail['routes'] {
+  if (node.control === 'condition') {
+    return { then: node.then, else: node.else };
+  }
+  if (node.control === 'loop') {
+    return { target: node.target, exit: node.exit };
+  }
+  if (node.control === 'switch') {
+    return { cases: node.cases, default: node.default };
+  }
+  return undefined;
+}
+
+function formatWorkflowInput(input: WorkflowInputConfig): string {
+  if (typeof input === 'string') {
+    return JSON.stringify(input);
+  }
+  if (input.file !== undefined) {
+    return `file:${input.file}`;
+  }
+  return JSON.stringify(input.value ?? '');
+}
+
+function buildWorkflowDetail(
+  name: string,
+  workflow: WorkflowConfig,
+  workingDir: string
+): WorkflowDetail {
+  const sourceInfo = loadWorkflowSourceInfo(workingDir);
+  const info = sourceInfo[name] ?? {
+    source: 'packaged' as WorkflowSource,
+    overridesPackaged: false,
+  };
+  const workflowNodes = getWorkflowNodes(name, workflow);
+  getWorkflowExecutionOrder(workflowNodes);
+
+  return {
+    name,
+    source: info.source,
+    overridden: info.overridesPackaged,
+    description: workflow.description,
+    inputs: workflow.inputs ?? {},
+    output: workflow.output,
+    nodes: Object.entries(workflowNodes).map(([nodeId, node]) => ({
+      id: nodeId,
+      kind: getNodeKind(node),
+      needs: getNodeNeeds(node),
+      agent: node.agent,
+      agentsFrom: node.agentsFrom,
+      action: node.action,
+      control: node.control,
+      if: node.if,
+      condition: node.condition,
+      input: node.input,
+      with: node.with,
+      output: node.output,
+      writes: node.writes,
+      json: node.json,
+      routes: getWorkflowNodeRoutes(node),
+    })),
+  };
+}
+
+export function showWorkflow(
+  config: DRSConfig,
+  workflowName: string,
+  options: WorkflowShowOptions = {}
+): WorkflowDetail {
+  const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    throw new Error(`Unknown workflow "${workflowName}".`);
+  }
+
+  const detail = buildWorkflowDetail(workflowName, workflow, options.workingDir ?? process.cwd());
+
+  if (options.json) {
+    console.log(JSON.stringify(detail, null, 2));
+    return detail;
+  }
+
+  const sourceLabel = detail.source === 'packaged' ? chalk.gray('packaged') : chalk.cyan('project');
+  const overridden = detail.overridden ? ` ${chalk.yellow('(overrides packaged)')}` : '';
+
+  console.log(chalk.bold(`\nWorkflow: ${detail.name}\n`));
+  console.log(`  Source: ${sourceLabel}${overridden}`);
+  if (detail.description) {
+    console.log(`  Description: ${detail.description}`);
+  }
+  if (detail.output) {
+    console.log(`  Output: ${detail.output}`);
+  }
+
+  console.log(chalk.bold('\nInputs:'));
+  const inputEntries = Object.entries(detail.inputs);
+  if (inputEntries.length === 0) {
+    console.log(chalk.gray('  (none)'));
+  } else {
+    for (const [key, input] of inputEntries) {
+      console.log(`  ${key}: ${formatWorkflowInput(input)}`);
+    }
+  }
+
+  console.log(chalk.bold('\nNodes:'));
+  for (const node of detail.nodes) {
+    console.log(`  ${node.id} (${node.kind})`);
+    if (node.needs.length > 0) {
+      console.log(`    needs: ${node.needs.join(', ')}`);
+    }
+    if (node.agent) console.log(`    agent: ${node.agent}`);
+    if (node.agentsFrom) console.log(`    agentsFrom: ${node.agentsFrom}`);
+    if (node.action) console.log(`    action: ${node.action}`);
+    if (node.control) console.log(`    control: ${node.control}`);
+    if (node.if) console.log(`    if: ${node.if}`);
+    if (node.condition) console.log(`    condition: ${node.condition}`);
+    if (node.output) console.log(`    output: ${node.output}`);
+    if (node.writes) console.log(`    writes: ${node.writes}`);
+    if (node.input) console.log(`    input: ${node.input.split('\n')[0]}`);
+    if (node.with && Object.keys(node.with).length > 0) {
+      console.log(`    with: ${JSON.stringify(node.with)}`);
+    }
+    if (node.routes && Object.keys(node.routes).length > 0) {
+      console.log(`    routes: ${JSON.stringify(node.routes)}`);
+    }
+  }
+  console.log('');
+
+  return detail;
 }

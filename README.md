@@ -120,6 +120,7 @@ drs workflow run local-update-agents-md
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 | Run the default project workflow | `drs workflow run` |
 | List available workflows | `drs workflow list` |
+| Show workflow inputs and steps | `drs workflow show github-pr-review` |
 
 ## Deployment Modes
 
