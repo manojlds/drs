@@ -17,7 +17,7 @@ import {
   getUnifiedModelOverride,
   type DRSConfig,
 } from './config.js';
-import type { ReviewIssue } from './comment-formatter.js';
+import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   connectToRuntime,
@@ -53,6 +53,24 @@ import { removeErrorComment } from './error-comment-poster.js';
 // Re-export functions for backward compatibility
 export { enforceRepoBranchMatch } from './repository-validator.js';
 export { postReviewComments } from './comment-poster.js';
+
+function filterIssuesToChangedLines(
+  issues: ReviewIssue[],
+  lineValidator: LineValidator | undefined
+): { issues: ReviewIssue[]; filteredCount: number } {
+  if (!lineValidator) {
+    return { issues, filteredCount: 0 };
+  }
+
+  const filtered = issues.filter(
+    (issue) => issue.line !== undefined && lineValidator.isValidLine(issue.file, issue.line)
+  );
+
+  return {
+    issues: filtered,
+    filteredCount: issues.length - filtered.length,
+  };
+}
 
 export interface UnifiedReviewOptions {
   /** Platform client (GitHub or GitLab adapter) */
@@ -236,7 +254,7 @@ export async function executeUnifiedReview(
       baseInstructions = `${baseInstructions}\n\nBase branch resolved to: ${baseBranchResolution.resolvedBaseBranch} (${baseBranchResolution.source})`;
     }
     // Run agents using shared core logic
-    const result = await runReviewPipeline(
+    const rawResult = await runReviewPipeline(
       runtimeClient,
       config,
       baseInstructions,
@@ -246,6 +264,20 @@ export async function executeUnifiedReview(
       options.workingDir ?? process.cwd(),
       options.debug ?? false
     );
+    const changedLineFilter = filterIssuesToChangedLines(rawResult.issues, options.lineValidator);
+    const result = {
+      ...rawResult,
+      issues: changedLineFilter.issues,
+      summary: calculateSummary(filteredFiles.length, changedLineFilter.issues),
+    };
+
+    if (changedLineFilter.filteredCount > 0) {
+      console.log(
+        chalk.gray(
+          `Filtered ${changedLineFilter.filteredCount} issue(s) not mapped to changed diff lines.\n`
+        )
+      );
+    }
 
     // Display summary
     displayReviewSummary(result);
