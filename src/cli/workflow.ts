@@ -294,7 +294,11 @@ function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): s
   validateWorkflowNodeKinds(nodes);
   validateWorkflowControlTargets(nodes);
 
-  return order;
+  const standaloneEndNodes = order.filter(
+    (nodeId) => nodes[nodeId]?.control === 'end' && getNodeNeeds(nodes[nodeId] ?? {}).length === 0
+  );
+  const nonStandaloneEndNodes = order.filter((nodeId) => !standaloneEndNodes.includes(nodeId));
+  return [...nonStandaloneEndNodes, ...standaloneEndNodes];
 }
 
 function getWorkflowNodes(

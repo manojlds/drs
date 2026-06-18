@@ -1857,6 +1857,29 @@ describe('workflow runner', () => {
     expect(result.output).toBe('summary');
   });
 
+  it('runs control end nodes after non-end nodes regardless of declaration order', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        endFirst: {
+          nodes: {
+            done: { control: 'end' },
+            start: { agent: 'task/start', input: 'start', output: 'start' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'endFirst', { workingDir: process.cwd() });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/start']);
+    expect(result.nodes.done).toMatchObject({ type: 'control', decision: 'end' });
+    expect(result.artifacts.start).toBe('start');
+  });
+
   it('stops workflow execution when a control end node runs', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);

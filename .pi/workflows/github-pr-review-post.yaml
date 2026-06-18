@@ -4,8 +4,6 @@ inputs:
   owner: ""
   repo: ""
   pr: ""
-  describe: "true"
-  post: "true"
 output: review
 nodes:
   change:
