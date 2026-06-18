@@ -1,9 +1,11 @@
 name: github-pr-describe
-description: Generate a GitHub pull request description
+description: Generate a GitHub pull request description, optionally posting it
 inputs:
   owner: ""
   repo: ""
   pr: ""
+  post: "false"
+output: description
 nodes:
   change:
     action: change-source
@@ -20,4 +22,5 @@ nodes:
       - change
     with:
       source: change
+      post: "{{inputs.post}}"
     output: description

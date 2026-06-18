@@ -95,7 +95,10 @@ describe('Config', () => {
       const config = loadConfig(projectRoot);
 
       expect(config.workflows?.['local-review']).toMatchObject({
-        description: 'Review local unstaged git diff',
+        description: 'Review local git diff',
+        inputs: {
+          staged: 'false',
+        },
         nodes: {
           change: {
             action: 'change-source',
@@ -108,14 +111,23 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-review']?.inputs).toEqual({
         project: '',
         mr: '',
+        post: 'false',
+        codeQuality: 'false',
+        codeQualityReport: 'gl-code-quality-report.json',
       });
-      expect(config.workflows?.['github-pr-describe-post']).toMatchObject({
-        description: 'Generate and post a GitHub pull request description',
+      expect(config.workflows?.['github-pr-describe']).toMatchObject({
+        description: 'Generate a GitHub pull request description, optionally posting it',
+        inputs: {
+          owner: '',
+          repo: '',
+          pr: '',
+          post: 'false',
+        },
         nodes: {
           describe: {
             action: 'describe',
             with: {
-              post: true,
+              post: '{{inputs.post}}',
             },
           },
         },
@@ -123,6 +135,7 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-describe']?.inputs).toEqual({
         project: '',
         mr: '',
+        post: 'false',
       });
       expect(config.workflows?.['github-pr-post-comment']).toMatchObject({
         description: 'Post or update a GitHub pull request comment',

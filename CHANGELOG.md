@@ -7,11 +7,10 @@ All notable changes to DRS are documented in this file.
 ### Added
 
 - Introduce workflow-first CLI: `drs workflow run <name>` runs packaged or project-defined DAG workflows, and `drs run-agent` (alias `drs run`) executes any configured agent by id.
-- Add packaged review workflows: `local-review`, `local-staged-review`, `github-pr-review`, `github-pr-review-post`, `gitlab-mr-review`, and `gitlab-mr-review-post`.
-- Add packaged GitLab Code Quality workflows: `gitlab-mr-review-code-quality` and `gitlab-mr-review-post-code-quality`.
+- Add packaged review workflows: `local-review`, `github-pr-review`, and `gitlab-mr-review`, with inputs for staged review, posting comments, and GitLab Code Quality output.
 - Add packaged review context workflows: `github-pr-show-changes` and `gitlab-mr-show-changes`.
 - Add `drs workflow list` to show available workflows with packaged/project source and override status.
-- Add packaged description workflows: `github-pr-describe`, `github-pr-describe-post`, `gitlab-mr-describe`, and `gitlab-mr-describe-post`.
+- Add packaged description workflows: `github-pr-describe` and `gitlab-mr-describe`, with `post=true` for updating PR/MR descriptions.
 - Add packaged maintenance workflows: `local-changelog-update`, `tag-changelog-update`, `local-fix-review-issues`, `local-update-agents-md`, and project-local `local-changelog-review`.
 - Add built-in maintenance agents: `task/changelog-updater`, `task/review-issue-fixer`, and `task/agents-md-updater`.
 - Add workflow actions: `change-source`, `review`, `review-context`, `describe`, `code-quality-report`, `post-comment`, `post-review-comments`, `write`, `git-diff`, `git-add`, and `git-commit`.

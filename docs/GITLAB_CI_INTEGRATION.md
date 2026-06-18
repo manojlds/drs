@@ -15,7 +15,7 @@ ai_review:
   image: node:20-alpine
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review-post --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID"
+    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input post=true
   variables:
     GITLAB_TOKEN: "$CI_JOB_TOKEN"
     GITLAB_URL: "$CI_SERVER_URL"
@@ -31,7 +31,7 @@ DRS uses Pi in-process runtime only. No external runtime endpoint variables are 
 
 ## Optional Code Quality Report
 
-Use the packaged code-quality workflow when you want GitLab Code Quality artifacts:
+Enable Code Quality output when you want GitLab Code Quality artifacts:
 
 ```yaml
 ai_review_code_quality:
@@ -39,7 +39,7 @@ ai_review_code_quality:
   image: node:20-alpine
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review-code-quality --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID"
+    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input codeQuality=true
   artifacts:
     reports:
       codequality: gl-code-quality-report.json

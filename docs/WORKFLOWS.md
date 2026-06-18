@@ -12,7 +12,7 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 
 # Built-in local review workflows
 drs workflow run local-review
-drs workflow run local-staged-review --json -o .drs/local-review.json
+drs workflow run local-review --input staged=true --json -o .drs/local-review.json
 
 # Built-in local maintenance workflows
 drs workflow run local-changelog-update
@@ -25,13 +25,13 @@ drs workflow run local-changelog-review
 
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
 drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true
 drs workflow run gitlab-mr-show-changes --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-code-quality --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input codeQuality=true
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true --input codeQuality=true
 ```
 
 ## List Workflows
@@ -238,7 +238,7 @@ Packaged workflows: `github-pr-show-changes`, `gitlab-mr-show-changes`.
 
 ### `code-quality-report`
 
-Writes a GitLab Code Quality report from a `review` artifact. Use the packaged `gitlab-mr-review-code-quality` or `gitlab-mr-review-post-code-quality` workflows when you want GitLab CI artifacts.
+Writes a GitLab Code Quality report from a `review` artifact. Use the packaged `gitlab-mr-review` workflow with `codeQuality=true` when you want GitLab CI artifacts.
 
 ```yaml
 nodes:
@@ -407,11 +407,11 @@ DRS ships with built-in review workflows for local diffs, GitHub PRs, and GitLab
 
 ```bash
 drs workflow run local-review
-drs workflow run local-staged-review
+drs workflow run local-review --input staged=true
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input post=true
 ```
 
 They are packaged as `.pi/workflows/*.yaml` files with this shape:

@@ -1,8 +1,10 @@
 name: gitlab-mr-describe
-description: Generate a GitLab merge request description
+description: Generate a GitLab merge request description, optionally posting it
 inputs:
   project: ""
   mr: ""
+  post: "false"
+output: description
 nodes:
   change:
     action: change-source
@@ -18,4 +20,5 @@ nodes:
       - change
     with:
       source: change
+      post: "{{inputs.post}}"
     output: description
