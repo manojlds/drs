@@ -466,7 +466,15 @@ describe('pi/sdk', () => {
       await execFileAsync('git', ['commit', '-m', 'initial'], { cwd: workdir });
       await writeFile(join(workdir, 'app.ts'), 'export const value = 2;\n');
 
-      const runtime = await createPiInProcessServer({ config: {} });
+      const runtime = await createPiInProcessServer({
+        config: {
+          agent: {
+            'review/unified-reviewer': {
+              tools: { Bash: false, git_diff: true },
+            },
+          },
+        },
+      });
       const created = await runtime.client.session.create({ query: { directory: workdir } });
 
       await runtime.client.session.prompt({
@@ -490,6 +498,9 @@ describe('pi/sdk', () => {
       const gitDiff = createArgs.customTools?.find((tool) => tool.name === 'git_diff');
 
       expect(gitDiff).toBeDefined();
+      expect((createArgs as { tools?: string[] }).tools).toContain('write_json_output');
+      expect((createArgs as { tools?: string[] }).tools).toContain('git_diff');
+      expect((createArgs as { tools?: string[] }).tools).not.toContain('bash');
 
       const result = await gitDiff?.execute('tool-1', { file: 'app.ts' });
       expect(result?.details?.file).toBe('app.ts');

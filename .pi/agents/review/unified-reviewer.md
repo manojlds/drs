@@ -4,6 +4,7 @@ color: "#6B46C1"
 hidden: false
 tools:
   Read: true
+  Bash: false
   Glob: true
   Grep: true
   git_diff: true

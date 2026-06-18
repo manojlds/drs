@@ -661,10 +661,13 @@ class PiSessionRuntime {
     return this.runtimeConfig.agentSkills?.[agentName] ?? [];
   }
 
-  private resolveCustomTools(workingDir: string): ToolDefinition[] {
+  private resolveCustomTools(
+    workingDir: string,
+    agentTools?: Record<string, boolean>
+  ): ToolDefinition[] {
     const customTools: ToolDefinition[] = [];
 
-    if (this.isToolEnabled('write_json_output', true)) {
+    if (this.isToolEnabled('write_json_output', true, agentTools)) {
       customTools.push({
         name: 'write_json_output',
         label: 'write_json_output',
@@ -700,7 +703,7 @@ class PiSessionRuntime {
       });
     }
 
-    if (this.isToolEnabled('git_diff', true)) {
+    if (this.isToolEnabled('git_diff', false, agentTools)) {
       customTools.push({
         name: 'git_diff',
         label: 'git_diff',
@@ -812,6 +815,12 @@ class PiSessionRuntime {
           })
         : undefined;
 
+    const customTools = this.resolveCustomTools(cwd, settings.tools);
+    const tools = [
+      ...this.resolveTools(cwd, settings.tools),
+      ...customTools.map((tool) => tool.name),
+    ];
+
     const { session } = await createAgentSession({
       cwd,
       authStorage: this.authStorage,
@@ -820,8 +829,8 @@ class PiSessionRuntime {
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
       settingsManager,
-      tools: this.resolveTools(cwd, settings.tools),
-      customTools: this.resolveCustomTools(cwd),
+      tools,
+      customTools,
       thinkingLevel: this.runtimeConfig.thinkingLevel as
         | 'off'
         | 'minimal'
