@@ -66,8 +66,8 @@ const mocks = vi.hoisted(() => {
       summary: {
         filesReviewed: source.files.length,
         issuesFound: 0,
-        bySeverity: {} as Record<string, number>,
-        byCategory: {} as Record<string, number>,
+        bySeverity: {},
+        byCategory: {},
       },
       filesReviewed: source.files.length,
     })),
@@ -216,7 +216,13 @@ describe('workflow runner', () => {
     });
     mocks.enforceRepoBranchMatch.mockResolvedValue(undefined);
     mocks.createGitHubClient.mockReturnValue({ platform: 'github' });
-    mocks.GitHubPlatformAdapter.mockReturnValue(mocks.githubAdapter);
+    mocks.GitHubPlatformAdapter.mockImplementation(
+      class {
+        constructor() {
+          return mocks.githubAdapter;
+        }
+      } as unknown as () => typeof mocks.githubAdapter
+    );
     mocks.githubAdapter.getPullRequest.mockResolvedValue({
       number: 7,
       title: 'GitHub PR',
@@ -242,7 +248,13 @@ describe('workflow runner', () => {
     mocks.githubAdapter.createBulkInlineComments.mockResolvedValue(undefined);
     mocks.githubAdapter.addLabels.mockResolvedValue(undefined);
     mocks.createGitLabClient.mockReturnValue({ platform: 'gitlab' });
-    mocks.GitLabPlatformAdapter.mockReturnValue(mocks.gitlabAdapter);
+    mocks.GitLabPlatformAdapter.mockImplementation(
+      class {
+        constructor() {
+          return mocks.gitlabAdapter;
+        }
+      } as unknown as () => typeof mocks.gitlabAdapter
+    );
     mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
       number: 8,
       title: 'GitLab MR',
@@ -1744,7 +1756,7 @@ describe('workflow runner', () => {
     const result = await runWorkflow(config, 'outputWithEnd');
 
     expect(result.nodes.done).toMatchObject({ type: 'control', decision: 'end' });
-    expect(result.output).toBe('task/summarizer: summary');
+    expect(result.output).toBe('summary');
   });
 
   it('stops workflow execution when a control end node runs', async () => {

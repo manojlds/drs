@@ -80,7 +80,7 @@ describe('Config', () => {
           },
         },
       },
-    } as any);
+    });
 
     expect(config.pricing?.models?.['opencode/glm-5-free']).toEqual({
       input: 1,
@@ -359,7 +359,7 @@ describe('Config', () => {
           },
         },
       },
-    } as any);
+    });
 
     expect(config.pi.runtime).toEqual({
       operationTimeoutMs: 111000,

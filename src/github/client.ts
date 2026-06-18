@@ -55,7 +55,7 @@ export class GitHubClient {
 
     return response.data.map((file) => ({
       filename: file.filename,
-      status: file.status as PRChange['status'],
+      status: file.status,
       additions: file.additions,
       deletions: file.deletions,
       changes: file.changes,

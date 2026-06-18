@@ -75,7 +75,7 @@ describe('RuntimeClient', () => {
               },
             ],
           },
-        } as any,
+        },
       });
 
       expect(client).toBeInstanceOf(RuntimeClient);
@@ -422,7 +422,7 @@ describe('RuntimeClient', () => {
               },
             ],
           },
-        } as any,
+        },
       });
 
       expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
@@ -789,7 +789,7 @@ describe('RuntimeClient', () => {
                 },
               ],
             },
-          } as any,
+          },
         });
 
         expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
@@ -840,7 +840,7 @@ describe('RuntimeClient', () => {
                 },
               ],
             },
-          } as any,
+          },
         });
 
         expect(mocks.createPiInProcessServer).toHaveBeenCalledWith(
@@ -900,7 +900,7 @@ describe('RuntimeClient', () => {
                 },
               ],
             },
-          } as any,
+          },
         });
 
         // Logger outputs warning via console.log (human format)

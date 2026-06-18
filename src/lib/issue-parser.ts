@@ -46,7 +46,7 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
             }
           }
         }
-      } catch (e) {
+      } catch {
         // Continue to next match
       }
     }
@@ -66,7 +66,7 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
             }
           }
         }
-      } catch (e) {
+      } catch {
         // Not valid JSON, try to find JSON objects with better bracket matching
         const jsonObjects = extractJsonObjects(content);
         for (const jsonStr of jsonObjects) {
@@ -82,7 +82,7 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
                 }
               }
             }
-          } catch (e) {
+          } catch {
             // Continue to next object
           }
         }

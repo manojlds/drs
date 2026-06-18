@@ -228,7 +228,7 @@ describe('review-orchestrator', () => {
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: { agents: [], ignorePatterns: [] },
-      } as DRSConfig;
+      };
 
       const client = await connectToRuntime(config, '/test/dir');
 
@@ -249,7 +249,7 @@ describe('review-orchestrator', () => {
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: { agents: [], ignorePatterns: [] },
-      } as DRSConfig;
+      };
 
       await expect(connectToRuntime(config)).rejects.toThrow('Connection failed');
       expect(console.error).toHaveBeenCalledWith(
@@ -274,7 +274,7 @@ describe('review-orchestrator', () => {
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: { agents: [], ignorePatterns: [] },
-      } as DRSConfig;
+      };
 
       await connectToRuntime(config, '/test/dir', { debug: true });
 
@@ -303,7 +303,7 @@ describe('review-orchestrator', () => {
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: { agents: [], ignorePatterns: [] },
-      } as DRSConfig;
+      };
 
       await connectToRuntime(config);
 
@@ -332,7 +332,7 @@ describe('review-orchestrator', () => {
         contextCompression: {
           enabled: false,
         },
-      } as DRSConfig;
+      };
     });
 
     it('should execute review successfully with files', async () => {
@@ -555,7 +555,7 @@ describe('review-orchestrator', () => {
             agents: ['review/unified-reviewer'],
             mode: 'unified',
           },
-        } as DRSConfig,
+        },
         source
       );
 
@@ -585,7 +585,7 @@ describe('review-orchestrator', () => {
             agents: ['review/security'],
             mode: 'multi-agent',
           },
-        } as DRSConfig,
+        },
         source
       );
 

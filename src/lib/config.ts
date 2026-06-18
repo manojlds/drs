@@ -716,15 +716,12 @@ function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
   };
 
   const mergedRuntimeTimeouts = {
-    ...((legacyRuntime.runtime as Record<string, unknown> | undefined) ?? {}),
-    ...((piRuntime.runtime as Record<string, unknown> | undefined) ?? {}),
+    ...(legacyRuntime.runtime ?? {}),
+    ...(piRuntime.runtime ?? {}),
   };
 
-  const legacyProviderRetry = (legacyRuntime.retry as Record<string, unknown> | undefined)
-    ?.provider as Record<string, unknown> | undefined;
-  const piProviderRetry = (piRuntime.retry as Record<string, unknown> | undefined)?.provider as
-    | Record<string, unknown>
-    | undefined;
+  const legacyProviderRetry = legacyRuntime.retry?.provider;
+  const piProviderRetry = piRuntime.retry?.provider;
   const mergedProviderRetry = {
     ...(legacyProviderRetry ?? {}),
     ...(piProviderRetry ?? {}),
@@ -732,16 +729,11 @@ function normalizeRuntimeConfig(config: DRSConfig): DRSConfig {
 
   const normalizedRuntime: RuntimeConfig = {
     provider: Object.keys(mergedProvider).length > 0 ? mergedProvider : undefined,
-    runtime:
-      Object.keys(mergedRuntimeTimeouts).length > 0
-        ? (mergedRuntimeTimeouts as RuntimeConfig['runtime'])
-        : undefined,
+    runtime: Object.keys(mergedRuntimeTimeouts).length > 0 ? mergedRuntimeTimeouts : undefined,
     retry:
       Object.keys(mergedProviderRetry).length > 0
         ? {
-            provider: mergedProviderRetry as NonNullable<
-              NonNullable<RuntimeConfig['retry']>['provider']
-            >,
+            provider: mergedProviderRetry,
           }
         : undefined,
   };

@@ -2464,7 +2464,7 @@ export function listWorkflows(
   const entries = Object.entries(workflows)
     .map(([name, workflow]) => {
       const info = sourceInfo[name] ?? {
-        source: 'packaged' as WorkflowSource,
+        source: 'packaged',
         overridesPackaged: false,
       };
       return {
@@ -2528,7 +2528,7 @@ function buildWorkflowDetail(
 ): WorkflowDetail {
   const sourceInfo = loadWorkflowSourceInfo(workingDir);
   const info = sourceInfo[name] ?? {
-    source: 'packaged' as WorkflowSource,
+    source: 'packaged',
     overridesPackaged: false,
   };
   const workflowNodes = getWorkflowNodes(name, workflow);

@@ -16,7 +16,7 @@ import {
 import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
-import { createPiInProcessServer, type PiClient, type PiSessionMessage } from '../pi/sdk.js';
+import { createPiInProcessServer, type PiClient } from '../pi/sdk.js';
 
 export interface RuntimeClientConfig {
   directory?: string;
@@ -459,7 +459,7 @@ export class RuntimeClient {
 
     try {
       // Step 1: Create empty session
-      const createResponse = (await this.withTimeout(
+      const createResponse = await this.withTimeout(
         'Create session',
         this.operationTimeoutMs,
         this.client.session.create({
@@ -467,7 +467,7 @@ export class RuntimeClient {
             directory: this.directory,
           },
         })
-      )) as { data?: { id?: string } };
+      );
 
       const sessionId = createResponse.data?.id;
       if (!sessionId) {
@@ -524,13 +524,13 @@ export class RuntimeClient {
 
       while (Date.now() - start < this.streamTimeoutMs) {
         // Get current messages
-        const messagesResponse = (await this.withTimeout(
+        const messagesResponse = await this.withTimeout(
           'Get messages',
           this.operationTimeoutMs,
           this.client.session.messages({
             path: { id: sessionId },
           })
-        )) as { data?: PiSessionMessage[] };
+        );
 
         const messages = messagesResponse.data ?? [];
 
