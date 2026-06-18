@@ -146,12 +146,13 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
 **Analysis approach:**
 1. First, use Grep or Read to quickly understand the project's existing patterns relevant to the changed files (e.g., existing validation, error handling, auth patterns, naming conventions).
 2. Then analyze the diff content above against those established patterns.
+3. If the prompt says a diff was omitted or summarized, call git_diff for that file before making file-specific claims.
 
 **Review rules:**
-3. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
-4. Only flag deviations or new risks introduced by the changes.
-5. Populate summary counts based on the issues you report (use 0 when none).
-6. Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
+4. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
+5. Only flag deviations or new risks introduced by the changes.
+6. Populate summary counts based on the issues you report (use 0 when none).
+7. Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
   }
 
   // No diff content available - instruct agent to read files directly
@@ -203,8 +204,8 @@ Output requirements:
 }
 
 **Instructions:**
-1. The diffs for these files were omitted due to size constraints. Use the Read tool to examine the changed files listed above.
-2. Focus your review on newly added or modified code patterns.
+1. The diffs for these files were omitted due to size constraints. Use git_diff to inspect the file diffs, then use Read/Grep for surrounding context as needed.
+2. Focus your review on newly added or modified code patterns from the git_diff output.
 3. **IMPORTANT: Only report issues on lines that were actually changed or added.** Do not report issues on existing code that was not modified.
 4. Analyze the changed code for issues in your specialty area
 5. Populate summary counts based on the issues you report (use 0 when none).

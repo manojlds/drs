@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
+import { execFile } from 'child_process';
 import { isAbsolute, join, resolve } from 'path';
+import { promisify } from 'util';
 import { Type } from '@sinclair/typebox';
 import {
   AuthStorage,
@@ -13,6 +15,10 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
+
+const execFileAsync = promisify(execFile);
+const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
+const HARD_GIT_DIFF_MAX_BYTES = 500_000;
 
 export interface PiSessionPart {
   text?: string;
@@ -276,6 +282,48 @@ function asPositiveInt(value: unknown): number | undefined {
   }
   const rounded = Math.round(value);
   return rounded > 0 ? rounded : undefined;
+}
+
+function normalizeGitDiffPath(file: string): string {
+  const trimmed = file.trim();
+  if (!trimmed) {
+    throw new Error('git_diff requires a non-empty file path');
+  }
+  if (trimmed.includes('\0')) {
+    throw new Error('git_diff file path must not contain NUL bytes');
+  }
+  if (isAbsolute(trimmed)) {
+    throw new Error('git_diff only accepts repository-relative file paths');
+  }
+  if (trimmed.split(/[\\/]+/).includes('..')) {
+    throw new Error('git_diff file path must stay inside the repository');
+  }
+
+  const resolved = resolve('/', trimmed);
+  const relativePath = resolved.slice(1);
+  if (!relativePath || relativePath === '..' || relativePath.startsWith('../')) {
+    throw new Error('git_diff file path must stay inside the repository');
+  }
+
+  return relativePath;
+}
+
+function normalizeGitRev(value: string | undefined, label: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.startsWith('-') || trimmed.includes('\0') || /\s/.test(trimmed)) {
+    throw new Error(`git_diff ${label} revision is not allowed`);
+  }
+  return trimmed;
+}
+
+function normalizeGitDiffMaxBytes(maxBytes: number | undefined): number {
+  if (!maxBytes || !Number.isFinite(maxBytes)) {
+    return DEFAULT_GIT_DIFF_MAX_BYTES;
+  }
+  return Math.max(1, Math.min(Math.floor(maxBytes), HARD_GIT_DIFF_MAX_BYTES));
 }
 
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
@@ -647,6 +695,61 @@ class PiSessionRuntime {
           return {
             content: [{ type: 'text', text: JSON.stringify(pointer) }],
             details: pointer,
+          };
+        },
+      });
+    }
+
+    if (this.isToolEnabled('git_diff', true)) {
+      customTools.push({
+        name: 'git_diff',
+        label: 'git_diff',
+        description: 'Read a unified git diff for one repository-relative file path.',
+        parameters: Type.Object({
+          file: Type.String({ minLength: 1 }),
+          base: Type.Optional(Type.String()),
+          head: Type.Optional(Type.String()),
+          maxBytes: Type.Optional(Type.Number({ minimum: 1, maximum: HARD_GIT_DIFF_MAX_BYTES })),
+        }),
+        execute: async (
+          _toolCallId,
+          params: {
+            file: string;
+            base?: string;
+            head?: string;
+            maxBytes?: number;
+          }
+        ) => {
+          const file = normalizeGitDiffPath(params.file);
+          const base = normalizeGitRev(params.base, 'base');
+          const head = normalizeGitRev(params.head, 'head');
+          const maxBytes = normalizeGitDiffMaxBytes(params.maxBytes);
+          const range = base && head ? [`${base}...${head}`] : base ? [base] : [];
+
+          const { stdout } = await execFileAsync(
+            'git',
+            ['diff', '--no-ext-diff', ...range, '--', file],
+            {
+              cwd: workingDir,
+              encoding: 'utf8',
+              maxBuffer: HARD_GIT_DIFF_MAX_BYTES + 16_384,
+            }
+          );
+
+          const truncated = stdout.length > maxBytes;
+          const diff = truncated ? stdout.slice(0, maxBytes) : stdout;
+          const details = {
+            file,
+            base,
+            head,
+            truncated,
+            bytes: Buffer.byteLength(diff, 'utf8'),
+            diff,
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(details) }],
+            details,
           };
         },
       });
