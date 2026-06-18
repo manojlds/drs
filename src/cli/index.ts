@@ -88,7 +88,7 @@ program
     try {
       configureLogger({
         level: options.debug ? 'debug' : 'error',
-        format: (options.logFormat as LogFormat) || 'human',
+        format: (options.logFormat as LogFormat) ?? 'human',
         timestamps: options.logFormat === 'json',
       });
 
@@ -102,7 +102,7 @@ program
         model: options.model,
         outputPath: options.output,
         jsonOutput: options.json,
-        debug: options.debug || false,
+        debug: options.debug ?? false,
         thinkingLevel,
         workingDir: process.cwd(),
       });
@@ -133,7 +133,7 @@ workflowCommand
     try {
       configureLogger({
         level: options.debug ? 'debug' : 'error',
-        format: (options.logFormat as LogFormat) || 'human',
+        format: (options.logFormat as LogFormat) ?? 'human',
         timestamps: options.logFormat === 'json',
       });
 
@@ -149,7 +149,7 @@ workflowCommand
         inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),
         outputPath: options.output,
         jsonOutput: options.json,
-        debug: options.debug || false,
+        debug: options.debug ?? false,
         thinkingLevel,
         workingDir: process.cwd(),
       });
@@ -168,7 +168,7 @@ workflowCommand
     try {
       const config = loadConfig(process.cwd());
       listWorkflows(config, {
-        json: options.json || false,
+        json: options.json ?? false,
         workingDir: process.cwd(),
       });
       process.exit(0);
@@ -187,7 +187,7 @@ workflowCommand
     try {
       const config = loadConfig(process.cwd());
       showWorkflow(config, name, {
-        json: options.json || false,
+        json: options.json ?? false,
         workingDir: process.cwd(),
       });
       process.exit(0);

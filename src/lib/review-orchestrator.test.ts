@@ -76,7 +76,7 @@ vi.mock('./review-core.js', () => ({
         category: 'QUALITY',
         severity: 'MEDIUM',
         title: 'Test issue',
-        file: files[0] || 'src/app.ts',
+        file: files[0] ?? 'src/app.ts',
         line: 10,
         problem: 'Test problem',
         solution: 'Test solution',

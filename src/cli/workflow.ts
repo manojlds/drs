@@ -17,7 +17,7 @@ import {
 } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from '../lib/diff-parser.js';
-import { parseValidLinesFromPatch } from '../lib/diff-lines.js';
+import { parseDiffLineInfo } from '../lib/diff-lines.js';
 import {
   connectToRuntime,
   executeReview,
@@ -976,11 +976,10 @@ async function resolveGitRangeRefs(
   git: ReturnType<typeof simpleGit>
 ): Promise<{ fromRef: string; toRef: string }> {
   const configuredToRef = getStringActionOption(node, 'to', context)?.trim();
-  const toRef = configuredToRef ? configuredToRef : await resolveGitRangeToRef(git);
+  const toRef = configuredToRef ?? (await resolveGitRangeToRef(git));
   const configuredFromRef = getStringActionOption(node, 'from', context)?.trim();
-  const fromRef = configuredFromRef
-    ? configuredFromRef
-    : await resolvePreviousGitRangeTag(nodeId, node, git, toRef, context);
+  const fromRef =
+    configuredFromRef ?? (await resolvePreviousGitRangeTag(nodeId, node, git, toRef, context));
 
   if (!fromRef) {
     throw new Error(
@@ -1287,20 +1286,25 @@ function createWorkflowLineValidator(
     : [];
   const patchSources = fileChanges.length > 0 ? fileChanges : (source.filesWithDiffs ?? []);
   const validLinesMap = new Map<string, Set<number>>();
+  const changedLinesMap = new Map<string, Set<number>>();
   for (const file of patchSources) {
     if ('status' in file && file.status === 'removed') {
       continue;
     }
     const patch = file.patch;
     if (patch) {
-      validLinesMap.set(file.filename, parseValidLinesFromPatch(patch));
+      const lineInfo = parseDiffLineInfo(patch);
+      validLinesMap.set(file.filename, lineInfo.commentableLines);
+      changedLinesMap.set(file.filename, lineInfo.addedLines);
     }
   }
 
   return {
     isValidLine(file: string, line: number): boolean {
-      const validLines = validLinesMap.get(file);
-      return validLines !== undefined && validLines.has(line);
+      return validLinesMap.get(file)?.has(line) ?? false;
+    },
+    isChangedLine(file: string, line: number): boolean {
+      return changedLinesMap.get(file)?.has(line) ?? false;
     },
   };
 }

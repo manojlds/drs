@@ -52,6 +52,7 @@ describe('context compression', () => {
     expect(omittedFile!.deletions).toBe(0);
     expect(omittedFile!.isNew).toBe(false);
     expect(omittedFile!.estimatedTokens).toBeGreaterThan(0);
+    expect(omittedFile!.addedLineRanges).toEqual(['1-3']);
   });
 
   it('marks small diffs as full inline context', () => {
@@ -88,6 +89,28 @@ describe('context compression', () => {
     expect(result.files.every((file) => file.patch === undefined)).toBe(true);
     expect(summary).toContain('large diff summarized only');
     expect(summary).toContain('Use the git_diff tool');
+  });
+
+  it('uses configurable summary threshold multiplier', () => {
+    const files = [{ filename: 'src/a.ts', patch: `@@ -1,0 +1,1 @@\n+${'a'.repeat(200)}` }];
+
+    const partial = compressFilesWithDiffs(files, {
+      maxTokens: 100,
+      softBufferTokens: 10,
+      hardBufferTokens: 10,
+      summaryThresholdMultiplier: 10,
+      tokenEstimateDivisor: 1,
+    });
+    const summary = compressFilesWithDiffs(files, {
+      maxTokens: 100,
+      softBufferTokens: 10,
+      hardBufferTokens: 10,
+      summaryThresholdMultiplier: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    expect(partial.mode).not.toBe('summary');
+    expect(summary.mode).toBe('summary');
   });
 });
 
@@ -398,6 +421,7 @@ describe('omitted file annotations', () => {
     const summary = formatCompressionSummary(result);
     expect(summary).toContain('new file');
     expect(summary).toContain('+50');
+    expect(summary).toContain('added lines 1-50');
   });
 
   it('includes token estimate and line counts in summary format', () => {

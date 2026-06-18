@@ -62,9 +62,14 @@ function filterIssuesToChangedLines(
     return { issues, filteredCount: 0 };
   }
 
-  const filtered = issues.filter(
-    (issue) => issue.line !== undefined && lineValidator.isValidLine(issue.file, issue.line)
-  );
+  const filtered = issues.filter((issue) => {
+    if (issue.line === undefined) {
+      return false;
+    }
+    return lineValidator.isChangedLine
+      ? lineValidator.isChangedLine(issue.file, issue.line)
+      : lineValidator.isValidLine(issue.file, issue.line);
+  });
 
   return {
     issues: filtered,
@@ -303,6 +308,17 @@ export async function executeUnifiedReview(
           headSha: pr.headSha,
           sourceBranch: pr.sourceBranch,
           targetBranch: pr.targetBranch,
+          diffContext: {
+            mode: compression.mode,
+            changedFiles: compression.stats.changedFiles,
+            filesWithDiffs: compression.stats.filesWithDiffs,
+            inlineFiles: compression.stats.inlineFiles,
+            omittedFiles:
+              compression.omitted.deletionsOnly.length +
+              compression.omitted.dueToBudget.length +
+              compression.omitted.generated.length,
+            estimatedTokens: compression.stats.estimatedTokens,
+          },
         }
       );
     }

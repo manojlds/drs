@@ -306,6 +306,7 @@ export interface DRSConfig {
     softBufferTokens?: number;
     hardBufferTokens?: number;
     tokenEstimateDivisor?: number;
+    summaryThresholdMultiplier?: number;
   };
 
   // Optional per-model pricing overrides in USD per 1M tokens.
@@ -358,6 +359,7 @@ const DEFAULT_CONFIG: DRSConfig = {
     softBufferTokens: 1500,
     hardBufferTokens: 1000,
     tokenEstimateDivisor: 4,
+    summaryThresholdMultiplier: 3,
   },
   describe: {
     includeProjectContext: true,

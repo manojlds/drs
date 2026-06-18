@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   addUsageSummary,
   aggregateAgentUsage,
+  applySkillCall,
+  applyToolCall,
   applyUsageMessage,
   createAgentUsageSummary,
   createEmptyUsageSummary,
@@ -87,6 +89,18 @@ describe('review-usage', () => {
     expect(next.model).toBe('opencode/glm-5-free');
     expect(next.usage.totalTokens).toBe(60);
     expect(next.usage.cost).toBe(0.002);
+  });
+
+  it('tracks tool calls and unique skills per agent', () => {
+    const base = createAgentUsageSummary('review/unified-reviewer');
+    const withTools = applyToolCall(applyToolCall(base, 'git_diff'), 'git_diff');
+    const withSkills = applySkillCall(
+      applySkillCall(applySkillCall(withTools, 'auth-patterns'), 'sql-injection'),
+      'auth-patterns'
+    );
+
+    expect(withSkills.toolCalls).toEqual({ git_diff: 2 });
+    expect(withSkills.skills).toEqual(['auth-patterns', 'sql-injection']);
   });
 
   it('formats provider/model identifiers', () => {

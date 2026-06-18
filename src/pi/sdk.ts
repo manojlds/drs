@@ -283,6 +283,20 @@ function asPositiveInt(value: unknown): number | undefined {
   return rounded > 0 ? rounded : undefined;
 }
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'Unknown error';
+  }
+}
+
 function normalizeGitDiffPath(file: string): string {
   const trimmed = file.trim();
   if (!trimmed) {
@@ -345,7 +359,7 @@ function runGitDiff(
   maxBytes: number
 ): Promise<{ stdout: string; truncated: boolean }> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['diff', '--no-ext-diff', ...args], {
+    const child = spawn('git', ['diff', '--no-ext-diff', '-M', ...args], {
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -376,6 +390,90 @@ function runGitDiff(
       });
     });
   });
+}
+
+function runGitNameStatus(workingDir: string, args: string[]): Promise<string> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('git', ['diff', '--name-status', '-M', ...args], {
+      cwd: workingDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      appendCappedChunk(stdoutChunks, chunk, GIT_DIFF_STDERR_MAX_BYTES);
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      appendCappedChunk(stderrChunks, chunk, GIT_DIFF_STDERR_MAX_BYTES);
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        reject(new Error(stderr || `git diff --name-status exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+      resolvePromise(Buffer.concat(stdoutChunks).toString('utf8'));
+    });
+  });
+}
+
+function extractGitDiffMetadata(diff: string): {
+  binary: boolean;
+  deleted: boolean;
+  renamed: boolean;
+  oldPath?: string;
+  newPath?: string;
+  empty: boolean;
+} {
+  const lines = diff.split('\n');
+  const oldPath = lines
+    .find((line) => line.startsWith('rename from '))
+    ?.slice('rename from '.length);
+  const newPath = lines.find((line) => line.startsWith('rename to '))?.slice('rename to '.length);
+
+  return {
+    binary: lines.some(
+      (line) => line.startsWith('Binary files ') || line.startsWith('GIT binary patch')
+    ),
+    deleted: lines.some((line) => line.startsWith('deleted file mode')),
+    renamed: oldPath !== undefined || newPath !== undefined,
+    oldPath,
+    newPath,
+    empty: diff.trim().length === 0,
+  };
+}
+
+function mergeGitNameStatusMetadata(
+  metadata: ReturnType<typeof extractGitDiffMetadata>,
+  nameStatus: string,
+  file: string
+): ReturnType<typeof extractGitDiffMetadata> {
+  for (const line of nameStatus.split('\n')) {
+    const parts = line.split('\t');
+    const status = parts[0];
+    if (!status) continue;
+    if (status.startsWith('R') && parts[2] === file) {
+      return {
+        ...metadata,
+        renamed: true,
+        oldPath: parts[1],
+        newPath: parts[2],
+      };
+    }
+    if (status === 'D' && parts[1] === file) {
+      return {
+        ...metadata,
+        deleted: true,
+      };
+    }
+  }
+
+  return metadata;
 }
 
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
@@ -781,17 +879,36 @@ class PiSessionRuntime {
           const maxBytes = normalizeGitDiffMaxBytes(params.maxBytes);
           const range = base && head ? [`${base}...${head}`] : base ? [base] : [];
 
-          const { stdout: diff, truncated } = await runGitDiff(
-            workingDir,
-            [...range, '--', file],
-            maxBytes
-          );
+          let diff = '';
+          let truncated = false;
+          let error: string | undefined;
+          try {
+            const result = await runGitDiff(workingDir, [...range, '--', file], maxBytes);
+            diff = result.stdout;
+            truncated = result.truncated;
+          } catch (caught) {
+            error = caught instanceof Error ? caught.message : String(caught);
+          }
+
+          let metadata = extractGitDiffMetadata(diff);
+          if (error === undefined && range.length > 0) {
+            try {
+              const nameStatus = await runGitNameStatus(workingDir, range);
+              metadata = mergeGitNameStatusMetadata(metadata, nameStatus, file);
+            } catch {
+              // Diff text remains authoritative; name-status only enriches metadata.
+            }
+          }
+
           const details = {
             file,
             base,
             head,
+            ok: error === undefined,
+            error,
             truncated,
             bytes: Buffer.byteLength(diff, 'utf8'),
+            metadata,
             diff,
           };
 
@@ -965,7 +1082,7 @@ class PiSessionRuntime {
           id: `${record.id}-error`,
           role: 'assistant',
           time: { completed: Date.now() },
-          error: record.error instanceof Error ? record.error.message : String(record.error),
+          error: formatUnknownError(record.error),
         },
         parts: [{ text: '' }],
       });

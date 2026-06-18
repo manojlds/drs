@@ -37,7 +37,7 @@ vi.mock('./issue-parser.js', () => ({
       if (parsed.issues && Array.isArray(parsed.issues)) {
         return parsed.issues.map((issue: any) => ({
           ...issue,
-          agent: issue.agent || agentName || 'test',
+          agent: issue.agent ?? agentName ?? 'test',
         }));
       }
       return [];
