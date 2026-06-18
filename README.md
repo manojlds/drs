@@ -728,8 +728,11 @@ npm run build
 # Run tests
 npm test
 
-# Development mode
-npm run dev
+# Run the CLI from TypeScript once
+npm run dev:cli -- workflow list
+
+# Watch-mode CLI entrypoint
+npm run dev -- workflow list
 ```
 
 ## Requirements

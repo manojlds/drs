@@ -11,6 +11,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "dev": "tsx watch src/cli/index.ts",
+    "dev:cli": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run",
     "test:e2e": "DRS_E2E_LIVE=1 vitest run src/cli/review-local.live.e2e.test.ts",
