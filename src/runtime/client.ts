@@ -477,7 +477,7 @@ export class RuntimeClient {
       // Step 2: Send initial message to start the agent
       await this.withTimeout(
         'Send initial prompt',
-        this.operationTimeoutMs,
+        this.streamTimeoutMs,
         this.client.session.prompt({
           path: { id: sessionId },
           query: {

@@ -572,6 +572,29 @@ describe('RuntimeClient', () => {
         })
       ).rejects.toThrow('Create session timed out');
     });
+
+    it('uses stream timeout for in-process initial prompts', async () => {
+      mocks.createPiInProcessServer.mockResolvedValueOnce(
+        createRuntime({
+          prompt: vi.fn(() => new Promise((resolve) => setTimeout(resolve, 35))),
+        })
+      );
+
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        operationTimeoutMs: 10,
+        streamTimeoutMs: 100,
+      });
+
+      await expect(
+        client.createSession({
+          agent: 'review/security',
+          message: 'Review this code',
+        })
+      ).resolves.toMatchObject({ id: 'session-123', agent: 'review/security' });
+
+      await client.shutdown();
+    });
   });
 
   describe('lifecycle and helper methods', () => {
