@@ -1736,6 +1736,49 @@ describe('workflow runner', () => {
     expect(reviewedOnly.nodes.review).toMatchObject({ type: 'agent' });
   });
 
+  it('matches boolean-like condition input values consistently', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        booleanInput: {
+          inputs: { enabled: 'false' },
+          nodes: {
+            choose: {
+              control: 'condition',
+              if: '{{inputs.enabled}} == true',
+              then: 'enabled',
+              else: 'disabled',
+            },
+            enabled: { agent: 'task/enabled', input: 'enabled' },
+            disabled: { agent: 'task/disabled', input: 'disabled' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'booleanInput', {
+      inputs: { enabled: 'yes' },
+      workingDir: process.cwd(),
+    });
+    await runWorkflow(config, 'booleanInput', {
+      inputs: { enabled: '1' },
+      workingDir: process.cwd(),
+    });
+    await runWorkflow(config, 'booleanInput', {
+      inputs: { enabled: 'no' },
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/enabled',
+      'task/enabled',
+      'task/disabled',
+    ]);
+  });
+
   it('loops through review and fix nodes until the condition exits', async () => {
     const reviewOutputs = ['issues', 'clean'];
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {

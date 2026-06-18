@@ -118,6 +118,19 @@ describe('Config', () => {
       });
       expect(config.workflows?.['github-pr-review']?.nodes['continue-review']?.if).toBe('true');
       expect(config.workflows?.['gitlab-mr-review']?.nodes['continue-review']?.if).toBe('true');
+      expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
+      expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
+      expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
+        'review',
+      ]);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.describe?.needs).toEqual(['change']);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.needs).toEqual(['change']);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes['post-comments']?.needs).toEqual([
+        'review',
+      ]);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes['code-quality']?.needs).toEqual([
+        'review',
+      ]);
       expect(config.workflows?.['github-pr-describe']).toMatchObject({
         description: 'Generate a GitHub pull request description, optionally posting it',
         inputs: {

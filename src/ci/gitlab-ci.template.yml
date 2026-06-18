@@ -6,7 +6,7 @@
 
 # Base template for Pi-based DRS reviews
 .drs_review:
-  image: node:20-alpine
+  image: node:22.19.0-alpine
   only:
     - merge_requests
   script:

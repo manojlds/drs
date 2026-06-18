@@ -1822,16 +1822,39 @@ function isWorkflowTruthy(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string')
-    return value.trim().length > 0 && value !== 'false' && value !== '0';
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized.length > 0 && normalized !== 'false' && normalized !== '0' && normalized !== 'no'
+    );
+  }
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value).length > 0;
   return true;
 }
 
+function normalizeWorkflowBooleanLike(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return undefined;
+}
+
 function compareWorkflowValues(left: unknown, operator: string, right: unknown): boolean {
   if (operator === '==' || operator === '!=') {
-    const matches = String(left) === String(right);
+    const leftBoolean = normalizeWorkflowBooleanLike(left);
+    const rightBoolean = normalizeWorkflowBooleanLike(right);
+    const matches =
+      leftBoolean !== undefined || rightBoolean !== undefined
+        ? leftBoolean === rightBoolean
+        : String(left) === String(right);
     return operator === '==' ? matches : !matches;
   }
 

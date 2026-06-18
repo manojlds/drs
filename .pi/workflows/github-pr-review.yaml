@@ -27,6 +27,8 @@ nodes:
 
   describe:
     action: describe
+    needs:
+      - change
     with:
       source: change
       post: true
@@ -42,6 +44,8 @@ nodes:
 
   review:
     action: review
+    needs:
+      - change
     with:
       source: change
     output: review
@@ -56,6 +60,8 @@ nodes:
 
   post-comments:
     action: post-review-comments
+    needs:
+      - review
     with:
       source: change
       review: review
