@@ -75,6 +75,7 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}${outputSchema}
 Instructions:
 1. Focus on new or modified code (lines starting with + in diffs).
 2. Summarize intent and impact. Avoid code review feedback.
-3. Use the Read tool for additional context if needed.
-4. Follow the output requirements and schema above exactly.`;
+3. If diff content is omitted or summarized, use git_diff for the relevant files before describing their specific changes.
+4. Use the Read tool for additional context if needed.
+5. Follow the output requirements and schema above exactly.`;
 }

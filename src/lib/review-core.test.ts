@@ -141,9 +141,9 @@ describe('review-core', () => {
       expect(instructions).toContain('src/app.ts');
       expect(instructions).toContain('src/utils.ts');
       expect(instructions).toContain('omitted due to size constraints');
-      expect(instructions).toContain('Use the Read tool');
+      expect(instructions).toContain('Use git_diff');
+      expect(instructions).toContain('Read/Grep for surrounding context');
       expect(instructions).not.toContain('Bash tool');
-      expect(instructions).not.toContain('git diff');
       expect(instructions).not.toContain('Diff Content');
     });
 
@@ -181,7 +181,7 @@ describe('review-core', () => {
       const instructions = buildBaseInstructions('PR #123', files);
 
       expect(instructions).toContain('omitted due to size constraints');
-      expect(instructions).toContain('Use the Read tool');
+      expect(instructions).toContain('Use git_diff');
     });
   });
 

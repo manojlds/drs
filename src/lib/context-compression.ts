@@ -23,7 +23,14 @@ export interface OmittedFileInfo {
 }
 
 export interface ContextCompressionResult {
+  mode: 'full' | 'partial' | 'summary';
   files: FileWithDiff[];
+  stats: {
+    changedFiles: number;
+    filesWithDiffs: number;
+    inlineFiles: number;
+    estimatedTokens: number;
+  };
   omitted: {
     deletionsOnly: string[];
     dueToBudget: OmittedFileInfo[];
@@ -164,7 +171,14 @@ export function compressFilesWithDiffs(
   const resolvedOptions = normalizeOptions(options);
   if (!resolvedOptions.enabled) {
     return {
+      mode: 'full',
       files,
+      stats: {
+        changedFiles: files.length,
+        filesWithDiffs: files.filter((file) => file.patch).length,
+        inlineFiles: files.filter((file) => file.patch).length,
+        estimatedTokens: 0,
+      },
       omitted: {
         deletionsOnly: [],
         dueToBudget: [],
@@ -192,7 +206,14 @@ export function compressFilesWithDiffs(
 
   if (filesWithDiffs.length === 0) {
     return {
+      mode: 'full',
       files,
+      stats: {
+        changedFiles: files.length,
+        filesWithDiffs: 0,
+        inlineFiles: 0,
+        estimatedTokens: 0,
+      },
       omitted: {
         deletionsOnly,
         dueToBudget: [],
@@ -214,12 +235,43 @@ export function compressFilesWithDiffs(
   const softLimit = resolvedOptions.maxTokens - resolvedOptions.softBufferTokens;
   const hardLimit = resolvedOptions.maxTokens - resolvedOptions.hardBufferTokens;
 
+  if (totalTokens > hardLimit * 3) {
+    const omitted = entries.map((entry) => ({
+      filename: entry.file.filename,
+      ...computePatchStats(entry.file.patch ?? ''),
+      estimatedTokens: entry.tokens,
+    }));
+
+    return {
+      mode: 'summary',
+      files: files.map((file) => (file.patch ? { filename: file.filename } : file)),
+      stats: {
+        changedFiles: files.length,
+        filesWithDiffs: filesWithDiffs.length,
+        inlineFiles: 0,
+        estimatedTokens: totalTokens,
+      },
+      omitted: {
+        deletionsOnly,
+        dueToBudget: omitted,
+        generated: [],
+      },
+    };
+  }
+
   if (totalTokens <= softLimit) {
     const patchLookup = new Map(filesWithDiffs.map((file) => [file.filename, file.patch]));
     return {
+      mode: 'full',
       files: files.map((file) =>
         file.patch ? { filename: file.filename, patch: patchLookup.get(file.filename) } : file
       ),
+      stats: {
+        changedFiles: files.length,
+        filesWithDiffs: filesWithDiffs.length,
+        inlineFiles: filesWithDiffs.length,
+        estimatedTokens: totalTokens,
+      },
       omitted: {
         deletionsOnly,
         dueToBudget: [],
@@ -269,7 +321,14 @@ export function compressFilesWithDiffs(
   });
 
   return {
+    mode: 'partial',
     files: keptFiles,
+    stats: {
+      changedFiles: files.length,
+      filesWithDiffs: filesWithDiffs.length,
+      inlineFiles: kept.length,
+      estimatedTokens: totalTokens,
+    },
     omitted: {
       deletionsOnly,
       dueToBudget: budgetOmitted,
@@ -329,6 +388,24 @@ export function prepareDiffsForAgent(
 export function formatCompressionSummary(result: ContextCompressionResult): string {
   const sections: string[] = [];
 
+  if (result.mode === 'summary') {
+    sections.push(
+      [
+        '- Adaptive diff context: large diff summarized only; no file patches are inline.',
+        `- Changed files: ${result.stats.changedFiles}; files with diffs: ${result.stats.filesWithDiffs}; estimated diff tokens: ~${result.stats.estimatedTokens}.`,
+        '- Use the git_diff tool for each file you need to inspect before making file-specific claims.',
+      ].join('\n')
+    );
+  } else if (result.mode === 'partial') {
+    sections.push(
+      [
+        '- Adaptive diff context: partial inline diff; some patches were omitted to stay within the token budget.',
+        `- Inline patches: ${result.stats.inlineFiles}/${result.stats.filesWithDiffs}; estimated total diff tokens: ~${result.stats.estimatedTokens}.`,
+        '- Use the git_diff tool for omitted files before reviewing or describing their specific changes.',
+      ].join('\n')
+    );
+  }
+
   if (result.omitted.generated.length > 0) {
     sections.push(
       `- Auto-excluded generated files (machine-generated, not reviewed):\n${result.omitted.generated
@@ -349,7 +426,7 @@ export function formatCompressionSummary(result: ContextCompressionResult): stri
     // Sort by additions descending so agents see highest-value files first
     const sorted = [...result.omitted.dueToBudget].sort((a, b) => b.additions - a.additions);
     sections.push(
-      `- Omitted due to token budget (use Read/Grep tools to inspect, listed by review priority):\n${sorted
+      `- Omitted due to token budget (use git_diff first, then Read/Grep for surrounding context; listed by review priority):\n${sorted
         .map((info) => {
           const parts = [`+${info.additions}`, `-${info.deletions}`];
           if (info.isNew) parts.push('new file');

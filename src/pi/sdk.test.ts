@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFile } from 'child_process';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { promisify } from 'util';
 import { createPiInProcessServer } from './sdk.js';
+
+const execFileAsync = promisify(execFile);
 
 const mocks = vi.hoisted(() => {
   const prompt = vi.fn(async () => undefined);
@@ -446,6 +453,76 @@ describe('pi/sdk', () => {
     expect(toolNames).not.toContain('grep');
 
     runtime.server.close();
+  });
+
+  it('registers a scoped git_diff custom tool', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-git-diff-'));
+    try {
+      await execFileAsync('git', ['init'], { cwd: workdir });
+      await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: workdir });
+      await execFileAsync('git', ['config', 'user.name', 'Test User'], { cwd: workdir });
+      await writeFile(join(workdir, 'app.ts'), 'export const value = 1;\n');
+      await execFileAsync('git', ['add', 'app.ts'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'initial'], { cwd: workdir });
+      await writeFile(join(workdir, 'app.ts'), 'export const value = 2;\n');
+
+      const runtime = await createPiInProcessServer({
+        config: {
+          agent: {
+            'review/unified-reviewer': {
+              tools: { Bash: false, git_diff: true },
+            },
+          },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: {
+          agent: 'review/unified-reviewer',
+          parts: [{ type: 'text', text: 'Review' }],
+        },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+        customTools?: Array<{
+          name: string;
+          execute: (
+            toolCallId: string,
+            params: Record<string, unknown>
+          ) => Promise<{ details?: Record<string, unknown> }>;
+        }>;
+      };
+      const gitDiff = createArgs.customTools?.find((tool) => tool.name === 'git_diff');
+
+      expect(gitDiff).toBeDefined();
+      expect((createArgs as { tools?: string[] }).tools).toContain('write_json_output');
+      expect((createArgs as { tools?: string[] }).tools).toContain('git_diff');
+      expect((createArgs as { tools?: string[] }).tools).not.toContain('bash');
+
+      const result = await gitDiff?.execute('tool-1', { file: 'app.ts' });
+      expect(result?.details?.file).toBe('app.ts');
+      expect(String(result?.details?.diff)).toContain('-export const value = 1;');
+      expect(String(result?.details?.diff)).toContain('+export const value = 2;');
+
+      const truncated = await gitDiff?.execute('tool-2', { file: 'app.ts', maxBytes: 80 });
+      expect(truncated?.details?.truncated).toBe(true);
+
+      await writeFile(join(workdir, 'app.ts'), `${'x'.repeat(650_000)}\n`);
+      const largeResult = await gitDiff?.execute('tool-large', { file: 'app.ts' });
+      expect(largeResult?.details?.truncated).toBe(true);
+      expect(largeResult?.details?.bytes).toBeLessThanOrEqual(120_000);
+
+      await expect(gitDiff?.execute('tool-3', { file: '../app.ts' })).rejects.toThrow(
+        'must stay inside the repository'
+      );
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
   });
 
   it('per-agent skills are filtered via skillsOverride', async () => {

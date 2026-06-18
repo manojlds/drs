@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { spawn } from 'child_process';
 import { isAbsolute, join, resolve } from 'path';
 import { Type } from '@sinclair/typebox';
 import {
@@ -13,6 +14,10 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
+
+const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
+const HARD_GIT_DIFF_MAX_BYTES = 500_000;
+const GIT_DIFF_STDERR_MAX_BYTES = 16_384;
 
 export interface PiSessionPart {
   text?: string;
@@ -276,6 +281,101 @@ function asPositiveInt(value: unknown): number | undefined {
   }
   const rounded = Math.round(value);
   return rounded > 0 ? rounded : undefined;
+}
+
+function normalizeGitDiffPath(file: string): string {
+  const trimmed = file.trim();
+  if (!trimmed) {
+    throw new Error('git_diff requires a non-empty file path');
+  }
+  if (trimmed.includes('\0')) {
+    throw new Error('git_diff file path must not contain NUL bytes');
+  }
+  if (isAbsolute(trimmed)) {
+    throw new Error('git_diff only accepts repository-relative file paths');
+  }
+  if (trimmed.split(/[\\/]+/).includes('..')) {
+    throw new Error('git_diff file path must stay inside the repository');
+  }
+
+  const resolved = resolve('/', trimmed);
+  const relativePath = resolved.slice(1);
+  if (!relativePath || relativePath === '..' || relativePath.startsWith('../')) {
+    throw new Error('git_diff file path must stay inside the repository');
+  }
+
+  return relativePath;
+}
+
+function normalizeGitRev(value: string | undefined, label: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.startsWith('-') || trimmed.includes('\0') || /\s/.test(trimmed)) {
+    throw new Error(`git_diff ${label} revision is not allowed`);
+  }
+  return trimmed;
+}
+
+function normalizeGitDiffMaxBytes(maxBytes: number | undefined): number {
+  if (!maxBytes || !Number.isFinite(maxBytes)) {
+    return DEFAULT_GIT_DIFF_MAX_BYTES;
+  }
+  return Math.max(1, Math.min(Math.floor(maxBytes), HARD_GIT_DIFF_MAX_BYTES));
+}
+
+function appendCappedChunk(chunks: Buffer[], chunk: Buffer, maxBytes: number): boolean {
+  const currentBytes = chunks.reduce((sum, existing) => sum + existing.length, 0);
+  const remaining = maxBytes - currentBytes;
+  if (remaining <= 0) {
+    return chunk.length > 0;
+  }
+  if (chunk.length <= remaining) {
+    chunks.push(chunk);
+    return false;
+  }
+  chunks.push(chunk.subarray(0, remaining));
+  return true;
+}
+
+function runGitDiff(
+  workingDir: string,
+  args: string[],
+  maxBytes: number
+): Promise<{ stdout: string; truncated: boolean }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('git', ['diff', '--no-ext-diff', ...args], {
+      cwd: workingDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let truncated = false;
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      truncated = appendCappedChunk(stdoutChunks, chunk, maxBytes) || truncated;
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      appendCappedChunk(stderrChunks, chunk, GIT_DIFF_STDERR_MAX_BYTES);
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        reject(new Error(stderr || `git diff exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+
+      resolvePromise({
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        truncated,
+      });
+    });
+  });
 }
 
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
@@ -613,10 +713,13 @@ class PiSessionRuntime {
     return this.runtimeConfig.agentSkills?.[agentName] ?? [];
   }
 
-  private resolveCustomTools(workingDir: string): ToolDefinition[] {
+  private resolveCustomTools(
+    workingDir: string,
+    agentTools?: Record<string, boolean>
+  ): ToolDefinition[] {
     const customTools: ToolDefinition[] = [];
 
-    if (this.isToolEnabled('write_json_output', true)) {
+    if (this.isToolEnabled('write_json_output', true, agentTools)) {
       customTools.push({
         name: 'write_json_output',
         label: 'write_json_output',
@@ -647,6 +750,54 @@ class PiSessionRuntime {
           return {
             content: [{ type: 'text', text: JSON.stringify(pointer) }],
             details: pointer,
+          };
+        },
+      });
+    }
+
+    if (this.isToolEnabled('git_diff', false, agentTools)) {
+      customTools.push({
+        name: 'git_diff',
+        label: 'git_diff',
+        description: 'Read a unified git diff for one repository-relative file path.',
+        parameters: Type.Object({
+          file: Type.String({ minLength: 1 }),
+          base: Type.Optional(Type.String()),
+          head: Type.Optional(Type.String()),
+          maxBytes: Type.Optional(Type.Number({ minimum: 1, maximum: HARD_GIT_DIFF_MAX_BYTES })),
+        }),
+        execute: async (
+          _toolCallId,
+          params: {
+            file: string;
+            base?: string;
+            head?: string;
+            maxBytes?: number;
+          }
+        ) => {
+          const file = normalizeGitDiffPath(params.file);
+          const base = normalizeGitRev(params.base, 'base');
+          const head = normalizeGitRev(params.head, 'head');
+          const maxBytes = normalizeGitDiffMaxBytes(params.maxBytes);
+          const range = base && head ? [`${base}...${head}`] : base ? [base] : [];
+
+          const { stdout: diff, truncated } = await runGitDiff(
+            workingDir,
+            [...range, '--', file],
+            maxBytes
+          );
+          const details = {
+            file,
+            base,
+            head,
+            truncated,
+            bytes: Buffer.byteLength(diff, 'utf8'),
+            diff,
+          };
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(details) }],
+            details,
           };
         },
       });
@@ -709,6 +860,12 @@ class PiSessionRuntime {
           })
         : undefined;
 
+    const customTools = this.resolveCustomTools(cwd, settings.tools);
+    const tools = [
+      ...this.resolveTools(cwd, settings.tools),
+      ...customTools.map((tool) => tool.name),
+    ];
+
     const { session } = await createAgentSession({
       cwd,
       authStorage: this.authStorage,
@@ -717,8 +874,8 @@ class PiSessionRuntime {
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
       settingsManager,
-      tools: this.resolveTools(cwd, settings.tools),
-      customTools: this.resolveCustomTools(cwd),
+      tools,
+      customTools,
       thinkingLevel: this.runtimeConfig.thinkingLevel as
         | 'off'
         | 'minimal'

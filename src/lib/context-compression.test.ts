@@ -53,6 +53,42 @@ describe('context compression', () => {
     expect(omittedFile!.isNew).toBe(false);
     expect(omittedFile!.estimatedTokens).toBeGreaterThan(0);
   });
+
+  it('marks small diffs as full inline context', () => {
+    const result = compressFilesWithDiffs(
+      [{ filename: 'src/small.ts', patch: '@@ -1,0 +1,1 @@\n+ok' }],
+      {
+        maxTokens: 1000,
+        softBufferTokens: 10,
+        hardBufferTokens: 5,
+        tokenEstimateDivisor: 1,
+      }
+    );
+
+    expect(result.mode).toBe('full');
+    expect(result.stats.inlineFiles).toBe(1);
+    expect(formatCompressionSummary(result)).toBe('');
+  });
+
+  it('summarizes very large diffs without inline patches', () => {
+    const files = [
+      { filename: 'src/a.ts', patch: `@@ -1,0 +1,1 @@\n+${'a'.repeat(200)}` },
+      { filename: 'src/b.ts', patch: `@@ -1,0 +1,1 @@\n+${'b'.repeat(200)}` },
+    ];
+
+    const result = compressFilesWithDiffs(files, {
+      maxTokens: 100,
+      softBufferTokens: 10,
+      hardBufferTokens: 10,
+      tokenEstimateDivisor: 1,
+    });
+    const summary = formatCompressionSummary(result);
+
+    expect(result.mode).toBe('summary');
+    expect(result.files.every((file) => file.patch === undefined)).toBe(true);
+    expect(summary).toContain('large diff summarized only');
+    expect(summary).toContain('Use the git_diff tool');
+  });
 });
 
 describe('filterGeneratedFiles', () => {
