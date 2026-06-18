@@ -1,7 +1,6 @@
 import { randomUUID } from 'crypto';
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
 import { isAbsolute, join, resolve } from 'path';
-import { promisify } from 'util';
 import { Type } from '@sinclair/typebox';
 import {
   AuthStorage,
@@ -16,9 +15,9 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
 const HARD_GIT_DIFF_MAX_BYTES = 500_000;
+const GIT_DIFF_STDERR_MAX_BYTES = 16_384;
 
 export interface PiSessionPart {
   text?: string;
@@ -324,6 +323,59 @@ function normalizeGitDiffMaxBytes(maxBytes: number | undefined): number {
     return DEFAULT_GIT_DIFF_MAX_BYTES;
   }
   return Math.max(1, Math.min(Math.floor(maxBytes), HARD_GIT_DIFF_MAX_BYTES));
+}
+
+function appendCappedChunk(chunks: Buffer[], chunk: Buffer, maxBytes: number): boolean {
+  const currentBytes = chunks.reduce((sum, existing) => sum + existing.length, 0);
+  const remaining = maxBytes - currentBytes;
+  if (remaining <= 0) {
+    return chunk.length > 0;
+  }
+  if (chunk.length <= remaining) {
+    chunks.push(chunk);
+    return false;
+  }
+  chunks.push(chunk.subarray(0, remaining));
+  return true;
+}
+
+function runGitDiff(
+  workingDir: string,
+  args: string[],
+  maxBytes: number
+): Promise<{ stdout: string; truncated: boolean }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('git', ['diff', '--no-ext-diff', ...args], {
+      cwd: workingDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let truncated = false;
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      truncated = appendCappedChunk(stdoutChunks, chunk, maxBytes) || truncated;
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      appendCappedChunk(stderrChunks, chunk, GIT_DIFF_STDERR_MAX_BYTES);
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        reject(new Error(stderr || `git diff exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+
+      resolvePromise({
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        truncated,
+      });
+    });
+  });
 }
 
 function normalizeAgentSkills(value: Record<string, unknown>): Record<string, string[]> {
@@ -729,18 +781,11 @@ class PiSessionRuntime {
           const maxBytes = normalizeGitDiffMaxBytes(params.maxBytes);
           const range = base && head ? [`${base}...${head}`] : base ? [base] : [];
 
-          const { stdout } = await execFileAsync(
-            'git',
-            ['diff', '--no-ext-diff', ...range, '--', file],
-            {
-              cwd: workingDir,
-              encoding: 'utf8',
-              maxBuffer: HARD_GIT_DIFF_MAX_BYTES + 16_384,
-            }
+          const { stdout: diff, truncated } = await runGitDiff(
+            workingDir,
+            [...range, '--', file],
+            maxBytes
           );
-
-          const truncated = stdout.length > maxBytes;
-          const diff = truncated ? stdout.slice(0, maxBytes) : stdout;
           const details = {
             file,
             base,

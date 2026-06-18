@@ -510,6 +510,11 @@ describe('pi/sdk', () => {
       const truncated = await gitDiff?.execute('tool-2', { file: 'app.ts', maxBytes: 80 });
       expect(truncated?.details?.truncated).toBe(true);
 
+      await writeFile(join(workdir, 'app.ts'), `${'x'.repeat(650_000)}\n`);
+      const largeResult = await gitDiff?.execute('tool-large', { file: 'app.ts' });
+      expect(largeResult?.details?.truncated).toBe(true);
+      expect(largeResult?.details?.bytes).toBeLessThanOrEqual(120_000);
+
       await expect(gitDiff?.execute('tool-3', { file: '../app.ts' })).rejects.toThrow(
         'must stay inside the repository'
       );
