@@ -1681,6 +1681,61 @@ describe('workflow runner', () => {
     expect(result.artifacts.follower).toBe('follower target prepared');
   });
 
+  it('continues from an optional condition branch into a later DAG segment', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        optionalDescribe: {
+          inputs: { describe: 'true' },
+          nodes: {
+            shouldDescribe: {
+              control: 'condition',
+              if: '{{inputs.describe}} == true',
+              then: 'describe',
+              else: 'review',
+            },
+            describe: { agent: 'task/describe', input: 'describe', output: 'description' },
+            continueReview: {
+              control: 'condition',
+              needs: ['describe'],
+              if: 'true',
+              then: 'review',
+              else: 'review',
+            },
+            review: { agent: 'task/review', input: 'review', output: 'review' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const described = await runWorkflow(config, 'optionalDescribe', {
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/describe',
+      'task/review',
+    ]);
+    expect(described.nodes.describe).toMatchObject({ type: 'agent' });
+    expect(described.nodes.continueReview).toMatchObject({ type: 'control', target: 'review' });
+    expect(described.nodes.review).toMatchObject({ type: 'agent' });
+
+    mocks.runAgent.mockClear();
+
+    const reviewedOnly = await runWorkflow(config, 'optionalDescribe', {
+      inputs: { describe: 'false' },
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/review']);
+    expect(reviewedOnly.nodes.describe).toBeUndefined();
+    expect(reviewedOnly.nodes.continueReview).toBeUndefined();
+    expect(reviewedOnly.nodes.review).toMatchObject({ type: 'agent' });
+  });
+
   it('loops through review and fix nodes until the condition exits', async () => {
     const reviewOutputs = ['issues', 'clean'];
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {

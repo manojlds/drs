@@ -32,6 +32,14 @@ nodes:
       post: true
     output: description
 
+  continue-review:
+    control: condition
+    needs:
+      - describe
+    if: true
+    then: review
+    else: review
+
   review:
     action: review
     with:
