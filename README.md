@@ -29,7 +29,7 @@ DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review i
 
 ### 1. Prerequisites
 
-- Node.js 20+
+- Node.js 22.19+
 - API key for your chosen model provider (Anthropic/OpenAI/ZhipuAI/etc.)
 
 ### 2. Install DRS
@@ -75,7 +75,7 @@ DRS CLI now loads `.env` automatically from your current working directory.
 drs workflow run local-review
 
 # Review staged changes
-drs workflow run local-staged-review
+drs workflow run local-review --input staged=true
 
 # Update CHANGELOG.md from local changes
 drs workflow run local-changelog-update
@@ -98,7 +98,7 @@ drs workflow run local-update-agents-md
 | Goal | Command |
 |---|---|
 | Review local unstaged changes | `drs workflow run local-review` |
-| Review local staged changes | `drs workflow run local-staged-review` |
+| Review local staged changes | `drs workflow run local-review --input staged=true` |
 | Update changelog from local changes | `drs workflow run local-changelog-update` |
 | Update changelog from tag range | `drs workflow run tag-changelog-update` |
 | Fix issues from saved review output | `drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json` |
@@ -108,10 +108,10 @@ drs workflow run local-update-agents-md
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Show GitHub PR review context | `drs workflow run github-pr-show-changes --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Show GitLab MR review context | `drs workflow run gitlab-mr-show-changes --input project=<group/repo> --input mr=<number>` |
-| Review and comment on GitHub PR via workflow | `drs workflow run github-pr-review-post --input owner=<owner> --input repo=<repo> --input pr=<number>` |
-| Review and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review-post --input project=<group/repo> --input mr=<number>` |
-| Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review-code-quality --input project=<group/repo> --input mr=<number>` |
-| Review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review-post-code-quality --input project=<group/repo> --input mr=<number>` |
+| Describe, review, and comment on GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number> --input describe=true --input post=true` |
+| Describe, review, and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true` |
+| Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input codeQuality=true` |
+| Describe/review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true --input codeQuality=true` |
 | Generate PR description | `drs workflow run github-pr-describe --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Generate MR description | `drs workflow run gitlab-mr-describe --input project=<group/repo> --input mr=<number>` |
 | Post or update a PR comment | `drs workflow run github-pr-post-comment --input owner=<owner> --input repo=<repo> --input pr=<number> --input body="..." --input marker=<id>` |
@@ -120,6 +120,7 @@ drs workflow run local-update-agents-md
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 | Run the default project workflow | `drs workflow run` |
 | List available workflows | `drs workflow list` |
+| Show workflow inputs and steps | `drs workflow show github-pr-review` |
 
 ## Deployment Modes
 
@@ -132,13 +133,13 @@ Review code locally before pushing:
 drs workflow run local-review
 
 # Review specific GitLab MR
-drs workflow run gitlab-mr-review-post --input project=my-org/my-repo --input mr=123
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input describe=true --input post=true
 
 # Review specific GitHub PR
-drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 
 # Review local staged changes
-drs workflow run local-staged-review
+drs workflow run local-review --input staged=true
 
 # Override model/agent behavior through config, then run workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
@@ -154,9 +155,9 @@ drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello
 
 # Generate PR/MR descriptions on demand
 drs workflow run github-pr-describe --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-describe-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-describe --input owner=octocat --input repo=hello-world --input pr=456 --input post=true
 drs workflow run gitlab-mr-describe --input project=my-org/my-repo --input mr=123
-drs workflow run gitlab-mr-describe-post --input project=my-org/my-repo --input mr=123
+drs workflow run gitlab-mr-describe --input project=my-org/my-repo --input mr=123 --input post=true
 
 # Post or update a single marked PR/MR comment
 drs workflow run github-pr-post-comment --input owner=octocat --input repo=hello-world --input pr=456 --input body="Release notes are ready." --input marker=release-notes
@@ -229,7 +230,8 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 - **Non-intrusive**: Doesn't create discussion threads
 
 **When to Use:**
-- Use review-post workflows for critical issues requiring discussion
+- Use `describe=true` to update the PR/MR description before review
+- Use `post=true` for review issues requiring discussion
 - Use **code quality reports** (`--code-quality-report`) for comprehensive static analysis
 - Use **both together** for maximum visibility
 
@@ -237,10 +239,10 @@ DRS can generate GitLab-compatible code quality reports that integrate seamlessl
 
 ```bash
 # Use workflow-based MR review with comments
-drs workflow run gitlab-mr-review-post --input project=my-org/my-repo --input mr=123
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input describe=true --input post=true
 
-# For code quality artifacts, run a packaged code-quality workflow
-drs workflow run gitlab-mr-review-code-quality --input project=my-org/my-repo --input mr=123
+# For code quality artifacts, enable codeQuality
+drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 --input codeQuality=true
 ```
 
 ### GitLab CI Integration
@@ -254,7 +256,7 @@ code_review:
   before_script:
     - npm install -g @diff-review-system/drs
   script:
-    - drs workflow run gitlab-mr-review-post --input project=$CI_PROJECT_PATH --input mr=$CI_MERGE_REQUEST_IID
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_PATH --input mr=$CI_MERGE_REQUEST_IID --input describe=true --input post=true
   only:
     - merge_requests
 ```
@@ -726,13 +728,16 @@ npm run build
 # Run tests
 npm test
 
-# Development mode
-npm run dev
+# Run the CLI from TypeScript once
+npm run dev:cli -- workflow list
+
+# Watch-mode CLI entrypoint
+npm run dev -- workflow list
 ```
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.19+
 - API key for your selected provider (Anthropic/OpenAI/ZhipuAI/etc.)
 - GitLab access token (for GitLab MR reviews)
 - GitHub access token (for GitHub PR reviews)

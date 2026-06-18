@@ -12,7 +12,7 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 
 # Built-in local review workflows
 drs workflow run local-review
-drs workflow run local-staged-review --json -o .drs/local-review.json
+drs workflow run local-review --input staged=true --json -o .drs/local-review.json
 
 # Built-in local maintenance workflows
 drs workflow run local-changelog-update
@@ -25,13 +25,13 @@ drs workflow run local-changelog-review
 
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true
 drs workflow run gitlab-mr-show-changes --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-code-quality --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input codeQuality=true
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true --input codeQuality=true
 ```
 
 ## List Workflows
@@ -39,9 +39,13 @@ drs workflow run gitlab-mr-review-post-code-quality --input project=group/repo -
 ```bash
 drs workflow list
 drs workflow list --json
+drs workflow show github-pr-review
+drs workflow show github-pr-review --json
 ```
 
 This shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one.
+
+Use `drs workflow show <name>` or `drs workflow get <name>` to inspect one workflow's description, inputs, output artifact, and nodes before running it.
 
 ## Workflow Files
 
@@ -238,7 +242,7 @@ Packaged workflows: `github-pr-show-changes`, `gitlab-mr-show-changes`.
 
 ### `code-quality-report`
 
-Writes a GitLab Code Quality report from a `review` artifact. Use the packaged `gitlab-mr-review-code-quality` or `gitlab-mr-review-post-code-quality` workflows when you want GitLab CI artifacts.
+Writes a GitLab Code Quality report from a `review` artifact. Use the packaged `gitlab-mr-review` workflow with `codeQuality=true` when you want GitLab CI artifacts.
 
 ```yaml
 nodes:
@@ -407,11 +411,11 @@ DRS ships with built-in review workflows for local diffs, GitHub PRs, and GitLab
 
 ```bash
 drs workflow run local-review
-drs workflow run local-staged-review
+drs workflow run local-review --input staged=true
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
-drs workflow run github-pr-review-post --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
-drs workflow run gitlab-mr-review-post --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true
 ```
 
 They are packaged as `.pi/workflows/*.yaml` files with this shape:
@@ -441,6 +445,8 @@ inputs:
   owner: ""
   repo: ""
   pr: ""
+  describe: "false"
+  post: "false"
 nodes:
   change:
     action: change-source
@@ -450,15 +456,26 @@ nodes:
       repo: "{{inputs.repo}}"
       pr: "{{inputs.pr}}"
     output: change
+  should-describe:
+    control: condition
+    needs: [change]
+    if: "{{inputs.describe}} == true"
+    then: describe
+    else: review
+  describe:
+    action: describe
+    with:
+      source: change
+      post: true
   review:
     action: review
-    needs: [change]
+    needs: [describe]
     with:
       source: change
     output: review
 ```
 
-`gitlab-mr-review` follows the same shape with `project` and `mr` inputs.
+`gitlab-mr-review` follows the same shape with `project` and `mr` inputs, plus `codeQuality` for GitLab Code Quality output.
 
 ## Built-In Maintenance Workflows
 
@@ -507,7 +524,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.19.0'
 
       - run: npm ci
       - run: npm run build

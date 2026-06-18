@@ -45,7 +45,7 @@ describe('agent model and skill configuration', () => {
         ignorePatterns: [],
       },
       ...overrides,
-    } as DRSConfig;
+    };
   }
 
   it('applies agents.default.model to fully qualified review agents', () => {

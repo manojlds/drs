@@ -8,9 +8,9 @@
 
 export type ExitHandler = (code: number) => never;
 
-let currentHandler: ExitHandler = ((code: number) => {
+let currentHandler: ExitHandler = (code: number) => {
   process.exit(code);
-}) as ExitHandler;
+};
 
 /**
  * Exit the process (or trigger the installed handler in tests).
@@ -51,7 +51,7 @@ export class ExitError extends Error {
  * Returns a restore function.
  */
 export function installTestExitHandler(): () => void {
-  return setExitHandler(((code: number) => {
+  return setExitHandler((code: number) => {
     throw new ExitError(code);
-  }) as ExitHandler);
+  });
 }

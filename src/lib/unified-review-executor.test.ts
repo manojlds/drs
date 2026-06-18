@@ -272,7 +272,7 @@ describe('unified-review-executor', () => {
             ...mockConfig.review,
             mode: 'unified',
           },
-        } as DRSConfig,
+        },
         options
       );
 
@@ -310,7 +310,7 @@ describe('unified-review-executor', () => {
             ...mockConfig.review,
             mode: 'multi-agent',
           },
-        } as DRSConfig,
+        },
         options
       );
 

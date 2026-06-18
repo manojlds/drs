@@ -10,7 +10,7 @@
 
 ### Stack
 - Node.js + TypeScript
-- Pi SDK (`@mariozechner/pi-coding-agent`) running **in-process**
+- Pi SDK (`@earendil-works/pi-coding-agent`) running **in-process**
 - Vitest for tests
 
 ### Important Paths
@@ -41,9 +41,9 @@ npm run type-check
 
 ### Local Run
 ```bash
-npm run dev -- workflow run local-review
-npm run dev -- workflow run gitlab-mr-review --input project=org/repo --input mr=123
-npm run dev -- workflow run github-pr-review --input owner=user --input repo=repo --input pr=456
+npm run dev:cli -- workflow run local-review
+npm run dev:cli -- workflow run gitlab-mr-review --input project=org/repo --input mr=123
+npm run dev:cli -- workflow run github-pr-review --input owner=user --input repo=repo --input pr=456
 ```
 
 ### Mandatory Quality Gate (after every code change)

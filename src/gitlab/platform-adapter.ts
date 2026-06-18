@@ -142,7 +142,7 @@ export class GitLabPlatformAdapter implements PlatformClient {
         newPath: position.path,
         newLine: position.line,
       });
-    } catch (error) {
+    } catch {
       // If line-specific comment fails, post as general comment
       console.warn(
         chalk.yellow(`  ⚠ Could not post line comment for ${position.path}:${position.line}`)

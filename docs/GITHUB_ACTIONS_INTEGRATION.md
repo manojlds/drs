@@ -23,9 +23,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.19.0'
       - run: npm install -g @diff-review-system/drs
-      - run: drs workflow run github-pr-review-post --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}"
+      - run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input describe=true --input post=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

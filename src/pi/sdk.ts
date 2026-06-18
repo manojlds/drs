@@ -11,7 +11,7 @@ import {
   SessionManager,
   type AgentSession,
   type ToolDefinition,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
 
 export interface PiSessionPart {
@@ -409,7 +409,7 @@ class PiSessionRuntime {
       skillSearchPaths: asStringArray(config.skillSearchPaths),
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
       thinkingLevel: asString(config.thinkingLevel),
-      retry: asRecord(config.retry) as PiRuntimeConfig['retry'],
+      retry: asRecord(config.retry),
     };
 
     this.authStorage = AuthStorage.create();
@@ -512,10 +512,7 @@ class PiSessionRuntime {
         providerInput.models = modelEntries;
       }
 
-      this.modelRegistry.registerProvider(
-        providerName,
-        providerInput as Parameters<ModelRegistry['registerProvider']>[1]
-      );
+      this.modelRegistry.registerProvider(providerName, providerInput);
     }
   }
 

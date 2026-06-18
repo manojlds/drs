@@ -78,10 +78,12 @@ export async function runCIReview(): Promise<void> {
 
   // Run review
   try {
-    await runWorkflow(config, 'gitlab-mr-review-post', {
+    await runWorkflow(config, 'gitlab-mr-review', {
       inputs: {
         project: env.projectId,
         mr: String(env.mrIid),
+        describe: 'true',
+        post: 'true',
       },
       workingDir: projectDir,
     });
