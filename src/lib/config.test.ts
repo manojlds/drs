@@ -116,6 +116,8 @@ describe('Config', () => {
         codeQuality: 'false',
         codeQualityReport: 'gl-code-quality-report.json',
       });
+      expect(config.workflows?.['github-pr-review']?.nodes['continue-review']?.if).toBe('true');
+      expect(config.workflows?.['gitlab-mr-review']?.nodes['continue-review']?.if).toBe('true');
       expect(config.workflows?.['github-pr-describe']).toMatchObject({
         description: 'Generate a GitHub pull request description, optionally posting it',
         inputs: {

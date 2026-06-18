@@ -36,7 +36,7 @@ nodes:
     control: condition
     needs:
       - describe
-    if: true
+    if: "true"
     then: review
     else: review
 
