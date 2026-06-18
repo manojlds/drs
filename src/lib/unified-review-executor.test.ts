@@ -412,6 +412,90 @@ describe('unified-review-executor', () => {
       expect(postReviewComments).toHaveBeenCalled();
     });
 
+    it('filters review results to changed lines before display and posting', async () => {
+      const { runReviewPipeline, displayReviewSummary } = await import('./review-core.js');
+      const { postReviewComments } = await import('./comment-poster.js');
+
+      vi.mocked(runReviewPipeline).mockResolvedValueOnce({
+        summary: {
+          issuesFound: 3,
+          filesReviewed: 1,
+          bySeverity: { CRITICAL: 1, HIGH: 1, MEDIUM: 1, LOW: 0 },
+          byCategory: { SECURITY: 1, QUALITY: 1, STYLE: 1, PERFORMANCE: 0, DOCUMENTATION: 0 },
+        },
+        issues: [
+          {
+            severity: 'HIGH',
+            category: 'QUALITY',
+            title: 'Changed line issue',
+            problem: 'On changed line',
+            solution: 'Fix changed line',
+            file: 'src/test.ts',
+            line: 10,
+            agent: 'quality',
+          },
+          {
+            severity: 'CRITICAL',
+            category: 'SECURITY',
+            title: 'Unchanged line issue',
+            problem: 'On unchanged line',
+            solution: 'Fix unchanged line',
+            file: 'src/test.ts',
+            line: 99,
+            agent: 'security',
+          },
+          {
+            severity: 'MEDIUM',
+            category: 'STYLE',
+            title: 'No line issue',
+            problem: 'No line',
+            solution: 'Add a line',
+            file: 'src/test.ts',
+            agent: 'style',
+          },
+        ],
+        changeSummary: undefined,
+        filesReviewed: 1,
+        agentResults: [],
+      });
+
+      const options: UnifiedReviewOptions = {
+        platformClient: mockPlatformClient,
+        projectId: 'owner/repo',
+        prNumber: 123,
+        postComments: true,
+        lineValidator: {
+          isValidLine: (file, line) => file === 'src/test.ts' && line === 10,
+        },
+      };
+
+      await executeUnifiedReview(mockConfig, options);
+
+      expect(displayReviewSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issues: [expect.objectContaining({ title: 'Changed line issue' })],
+          summary: expect.objectContaining({
+            issuesFound: 1,
+            bySeverity: expect.objectContaining({ CRITICAL: 0, HIGH: 1, MEDIUM: 0 }),
+          }),
+        })
+      );
+      expect(postReviewComments).toHaveBeenCalledWith(
+        expect.anything(),
+        'owner/repo',
+        123,
+        expect.objectContaining({ issuesFound: 1 }),
+        [expect.objectContaining({ title: 'Changed line issue' })],
+        undefined,
+        undefined,
+        {},
+        options.lineValidator,
+        undefined,
+        undefined,
+        expect.anything()
+      );
+    });
+
     it('should not post comments when postComments is false', async () => {
       const { postReviewComments } = await import('./comment-poster.js');
 
@@ -491,7 +575,18 @@ describe('unified-review-executor', () => {
           bySeverity: { CRITICAL: 1, HIGH: 0, MEDIUM: 0, LOW: 0 },
           byCategory: { SECURITY: 1, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
         },
-        issues: [],
+        issues: [
+          {
+            severity: 'CRITICAL',
+            category: 'SECURITY',
+            title: 'Critical issue',
+            problem: 'Critical problem',
+            solution: 'Fix critical problem',
+            file: 'src/test.ts',
+            line: 10,
+            agent: 'security',
+          },
+        ],
         changeSummary: undefined,
         filesReviewed: 1,
         agentResults: [],
