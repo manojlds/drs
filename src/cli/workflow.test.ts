@@ -1581,6 +1581,126 @@ describe('workflow runner', () => {
     );
   });
 
+  it('routes condition control nodes and skips inactive branch nodes', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        conditional: {
+          nodes: {
+            count: { agent: 'task/count', input: '2', output: 'count' },
+            choose: {
+              control: 'condition',
+              needs: ['count'],
+              if: '{{artifacts.count}} > 0',
+              then: 'positive',
+              else: 'negative',
+            },
+            positive: { agent: 'task/positive', input: 'positive {{artifacts.count}}' },
+            negative: { agent: 'task/negative', input: 'negative' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'conditional');
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(2);
+    expect(mocks.runAgent).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      'task/positive',
+      expect.objectContaining({ prompt: 'positive 2' })
+    );
+    expect(result.nodes.choose).toMatchObject({
+      type: 'control',
+      decision: 'then',
+      target: 'positive',
+    });
+    expect(result.nodes.negative).toMatchObject({ type: 'skipped', status: 'skipped' });
+  });
+
+  it('loops through review and fix nodes until the condition exits', async () => {
+    const reviewOutputs = ['issues', 'clean'];
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      if (agent === 'task/review') {
+        return createMockAgentResult(agent, reviewOutputs.shift() ?? 'clean');
+      }
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        reviewFix: {
+          nodes: {
+            review: { agent: 'task/review', input: 'review', output: 'review' },
+            shouldFix: {
+              control: 'condition',
+              needs: ['review'],
+              if: '{{artifacts.review}} != clean',
+              then: 'fix',
+              else: 'done',
+            },
+            fix: { agent: 'task/fix', input: 'fix {{artifacts.review}}' },
+            repeat: {
+              control: 'loop',
+              needs: ['fix'],
+              condition: '{{artifacts.review}} != clean',
+              target: 'review',
+              exit: 'done',
+              maxIterations: 3,
+            },
+            done: { agent: 'task/done', input: 'done {{artifacts.review}}' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'reviewFix');
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review',
+      'task/fix',
+      'task/review',
+      'task/done',
+    ]);
+    expect(mocks.runAgent).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'task/done',
+      expect.objectContaining({ prompt: 'done clean' })
+    );
+    expect(result.loop.repeat).toMatchObject({
+      iteration: 1,
+      maxIterations: 3,
+      lastDecision: 'loop',
+    });
+    expect(result.artifacts.review).toBe('clean');
+  });
+
+  it('uses explicit workflow output when a control end node is last', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        outputWithEnd: {
+          output: 'summary',
+          nodes: {
+            summarize: { agent: 'task/summarizer', input: 'summary', output: 'summary' },
+            done: { control: 'end', needs: ['summarize'] },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'outputWithEnd');
+
+    expect(result.nodes.done).toMatchObject({ type: 'control', decision: 'end' });
+    expect(result.output).toBe('task/summarizer: summary');
+  });
+
   it('rejects unknown template references', async () => {
     const config = {
       ...baseConfig,

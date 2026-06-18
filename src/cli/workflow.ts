@@ -66,14 +66,24 @@ export interface WorkflowRunOptions {
 
 export interface WorkflowNodeResult {
   id: string;
-  type: 'agent' | 'agents' | 'action';
+  type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
+  status?: 'success' | 'skipped';
   agent?: string;
   agents?: string[];
   action?: string;
+  control?: string;
+  decision?: string;
+  target?: string;
   response?: string;
   responses?: AgentRunResult[];
   output?: unknown;
   writes?: string;
+}
+
+export interface WorkflowLoopState {
+  iteration: number;
+  maxIterations: number;
+  lastDecision?: 'loop' | 'exit';
 }
 
 export interface WorkflowRunResult {
@@ -82,6 +92,7 @@ export interface WorkflowRunResult {
   inputs: Record<string, string>;
   nodes: Record<string, WorkflowNodeResult>;
   artifacts: Record<string, unknown>;
+  loop: Record<string, WorkflowLoopState>;
   output?: unknown;
 }
 
@@ -89,6 +100,7 @@ interface WorkflowTemplateContext {
   inputs: Record<string, string>;
   nodes: Record<string, WorkflowNodeResult>;
   artifacts: Record<string, unknown>;
+  loop: Record<string, WorkflowLoopState>;
 }
 
 interface WorkflowExecutionContext {
@@ -213,6 +225,37 @@ function getNodeNeeds(node: WorkflowNodeConfig): string[] {
   return node.needs;
 }
 
+function getControlTargets(node: WorkflowNodeConfig): string[] {
+  const targets: string[] = [];
+  if (node.then) targets.push(node.then);
+  if (node.else) targets.push(node.else);
+  if (node.target) targets.push(node.target);
+  if (node.exit) targets.push(node.exit);
+  if (node.default) targets.push(node.default);
+  if (node.cases) targets.push(...Object.values(node.cases));
+  return targets;
+}
+
+function validateWorkflowControlTargets(nodes: Record<string, WorkflowNodeConfig>): void {
+  for (const [nodeId, node] of Object.entries(nodes)) {
+    for (const target of getControlTargets(node)) {
+      if (!nodes[target]) {
+        throw new Error(`Workflow node "${nodeId}" targets unknown node "${target}".`);
+      }
+    }
+  }
+}
+
+function validateWorkflowNodeKinds(nodes: Record<string, WorkflowNodeConfig>): void {
+  for (const node of Object.values(nodes)) {
+    getNodeKind(node);
+  }
+}
+
+function hasWorkflowControlNodes(nodes: Record<string, WorkflowNodeConfig>): boolean {
+  return Object.values(nodes).some((node) => node.control !== undefined);
+}
+
 function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): string[] {
   const nodeIds = Object.keys(nodes);
   const visiting = new Set<string>();
@@ -247,6 +290,9 @@ function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): s
   for (const nodeId of nodeIds) {
     visit(nodeId);
   }
+
+  validateWorkflowNodeKinds(nodes);
+  validateWorkflowControlTargets(nodes);
 
   return order;
 }
@@ -386,17 +432,20 @@ function resolveAgentsFrom(config: DRSConfig, agentsFrom: string): string[] {
   );
 }
 
-function getNodeKind(node: WorkflowNodeConfig): 'agent' | 'agents' | 'action' {
-  const configuredKinds = [node.agent, node.agentsFrom, node.action].filter(
+function getNodeKind(node: WorkflowNodeConfig): 'agent' | 'agents' | 'action' | 'control' {
+  const configuredKinds = [node.agent, node.agentsFrom, node.action, node.control].filter(
     (value) => value !== undefined
   ).length;
 
   if (configuredKinds !== 1) {
-    throw new Error('Workflow node must define exactly one of agent, agentsFrom, or action.');
+    throw new Error(
+      'Workflow node must define exactly one of agent, agentsFrom, action, or control.'
+    );
   }
 
   if (node.agent !== undefined) return 'agent';
   if (node.agentsFrom !== undefined) return 'agents';
+  if (node.control !== undefined) return 'control';
   return 'action';
 }
 
@@ -651,9 +700,17 @@ async function runWriteWorkflowNode(
   };
 }
 
-function getBooleanActionOption(node: WorkflowNodeConfig, key: string): boolean {
+function getBooleanActionOption(
+  node: WorkflowNodeConfig,
+  key: string,
+  context?: WorkflowTemplateContext
+): boolean {
   const value = node.with?.[key];
-  return value === true || value === 'true';
+  if (typeof value === 'string' && context) {
+    const rendered = renderTemplate(value, context).trim().toLowerCase();
+    return rendered === 'true' || rendered === '1' || rendered === 'yes';
+  }
+  return value === true || value === 'true' || value === 1;
 }
 
 function getStringActionOption(
@@ -753,7 +810,7 @@ async function runGitDiffWorkflowNode(
     throw new Error(`Workflow git-diff node "${nodeId}" must run from a git repository.`);
   }
 
-  const staged = getBooleanActionOption(node, 'staged');
+  const staged = getBooleanActionOption(node, 'staged', context);
   const diff = staged ? await git.diff(['--cached']) : await git.diff();
   const writes = renderNodeWritesPath(nodeId, node, context);
   if (writes) {
@@ -828,7 +885,8 @@ async function runGitCommitWorkflowNode(
 async function loadLocalChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
-  workingDir: string
+  workingDir: string,
+  context: WorkflowTemplateContext
 ): Promise<ReviewSource> {
   const git = simpleGit({ baseDir: workingDir });
   const isRepo = await git.checkIsRepo();
@@ -836,7 +894,7 @@ async function loadLocalChangeSource(
     throw new Error(`Workflow change-source node "${nodeId}" must run from a git repository.`);
   }
 
-  const staged = getBooleanActionOption(node, 'staged');
+  const staged = getBooleanActionOption(node, 'staged', context);
   const diffText = staged ? await git.diff(['--cached']) : await git.diff();
   const diffs = parseDiff(diffText);
   const changedFiles = getChangedFiles(diffs);
@@ -886,9 +944,10 @@ async function resolvePreviousGitRangeTag(
   nodeId: string,
   node: WorkflowNodeConfig,
   git: ReturnType<typeof simpleGit>,
-  toRef: string
+  toRef: string,
+  context: WorkflowTemplateContext
 ): Promise<string> {
-  const includePrerelease = getBooleanActionOption(node, 'includePrereleaseFrom');
+  const includePrerelease = getBooleanActionOption(node, 'includePrereleaseFrom', context);
   const tagOutput = await git.raw(['tag', '--merged', toRef, '--sort=-v:refname']);
   const tags = tagOutput
     .split('\n')
@@ -917,7 +976,7 @@ async function resolveGitRangeRefs(
   const configuredFromRef = getStringActionOption(node, 'from', context)?.trim();
   const fromRef = configuredFromRef
     ? configuredFromRef
-    : await resolvePreviousGitRangeTag(nodeId, node, git, toRef);
+    : await resolvePreviousGitRangeTag(nodeId, node, git, toRef, context);
 
   if (!fromRef) {
     throw new Error(
@@ -1049,7 +1108,7 @@ async function runChangeSourceWorkflowNode(
   const type = getStringActionOption(node, 'type', context) ?? 'local';
   let source: ReviewSource;
   if (type === 'local') {
-    source = await loadLocalChangeSource(nodeId, node, workingDir);
+    source = await loadLocalChangeSource(nodeId, node, workingDir, context);
   } else if (type === 'git-range') {
     source = await loadGitRangeChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'github-pr') {
@@ -1430,7 +1489,8 @@ async function runDescribeWorkflowNode(
   }
 
   const shouldPostDescription =
-    getBooleanActionOption(node, 'post') || getBooleanActionOption(node, 'postDescription');
+    getBooleanActionOption(node, 'post', context) ||
+    getBooleanActionOption(node, 'postDescription', context);
   const runtimeClient = await connectToRuntime(config, source.workingDir ?? workingDir, {
     debug: options.debug,
     modelOverrides: getDescriberModelOverride(config),
@@ -1571,7 +1631,7 @@ async function runPostReviewCommentsWorkflowNode(
     : undefined;
   const shouldRemoveErrorComment =
     !hasActionOption(node, 'removeErrorComment') ||
-    getBooleanActionOption(node, 'removeErrorComment');
+    getBooleanActionOption(node, 'removeErrorComment', context);
   await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, async () => {
     if (shouldRemoveErrorComment) {
       await removeErrorComment(target.platformClient, target.projectId, target.prNumber);
@@ -1734,72 +1794,195 @@ function recordNodeArtifact(
   }
 }
 
-function formatWorkflowJson(result: WorkflowRunResult): string {
-  return JSON.stringify(result, null, 2);
+type WorkflowSegment =
+  | { type: 'dag'; nodeIds: string[]; activeNodeIds?: Set<string> }
+  | { type: 'control'; nodeId: string };
+
+function parseWorkflowExpressionValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  if (trimmed === 'null') return null;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return trimmed;
+  }
 }
 
-async function runSingleWorkflowNode(
-  config: DRSConfig,
+function isWorkflowTruthy(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string')
+    return value.trim().length > 0 && value !== 'false' && value !== '0';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function compareWorkflowValues(left: unknown, operator: string, right: unknown): boolean {
+  if (operator === '==' || operator === '!=') {
+    const matches = String(left) === String(right);
+    return operator === '==' ? matches : !matches;
+  }
+
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) {
+    throw new Error(`Workflow expression operator "${operator}" requires numeric values.`);
+  }
+
+  if (operator === '>') return leftNumber > rightNumber;
+  if (operator === '>=') return leftNumber >= rightNumber;
+  if (operator === '<') return leftNumber < rightNumber;
+  if (operator === '<=') return leftNumber <= rightNumber;
+  throw new Error(`Unsupported workflow expression operator "${operator}".`);
+}
+
+function evaluateWorkflowExpression(expression: string, context: WorkflowTemplateContext): boolean {
+  const rendered = renderTemplate(expression, context).trim();
+  const match = rendered.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+  if (!match) {
+    return isWorkflowTruthy(parseWorkflowExpressionValue(rendered));
+  }
+
+  return compareWorkflowValues(
+    parseWorkflowExpressionValue(match[1] ?? ''),
+    match[2] ?? '',
+    parseWorkflowExpressionValue(match[3] ?? '')
+  );
+}
+
+function splitWorkflowSegments(
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  executionOrder: string[]
+): WorkflowSegment[] {
+  const segments: WorkflowSegment[] = [];
+  let currentDag: string[] = [];
+
+  for (const nodeId of executionOrder) {
+    const node = workflowNodes[nodeId];
+    if (!node) {
+      throw new Error(`Workflow references unknown node "${nodeId}".`);
+    }
+
+    if (node.control !== undefined) {
+      if (currentDag.length > 0) {
+        segments.push({ type: 'dag', nodeIds: currentDag });
+        currentDag = [];
+      }
+      segments.push({ type: 'control', nodeId });
+    } else {
+      currentDag.push(nodeId);
+    }
+  }
+
+  if (currentDag.length > 0) {
+    segments.push({ type: 'dag', nodeIds: currentDag });
+  }
+
+  return segments;
+}
+
+function findWorkflowSegmentIndex(segments: WorkflowSegment[], targetNodeId: string): number {
+  return segments.findIndex((segment) =>
+    segment.type === 'control'
+      ? segment.nodeId === targetNodeId
+      : segment.nodeIds.includes(targetNodeId)
+  );
+}
+
+function computeActiveWorkflowNodes(
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  nodeIds: string[],
+  rootNodeId: string
+): Set<string> {
+  const active = new Set<string>([rootNodeId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const nodeId of nodeIds) {
+      if (active.has(nodeId)) continue;
+      const needs = getNodeNeeds(workflowNodes[nodeId] ?? {});
+      if (needs.some((dependency) => active.has(dependency))) {
+        active.add(nodeId);
+        changed = true;
+      }
+    }
+  }
+  return active;
+}
+
+function createSkippedWorkflowNodeResult(nodeId: string): WorkflowNodeResult {
+  return {
+    id: nodeId,
+    type: 'skipped',
+    status: 'skipped',
+    response: '',
+    output: undefined,
+  };
+}
+
+function recordWorkflowNodeResult(
   nodeId: string,
   node: WorkflowNodeConfig,
+  result: WorkflowNodeResult,
+  nodes: Record<string, WorkflowNodeResult>,
+  artifacts: Record<string, unknown>
+): void {
+  nodes[nodeId] = result;
+  if (result.status !== 'skipped') {
+    recordNodeArtifact(nodeId, node, result, artifacts);
+  }
+}
+
+async function runWorkflowDagSegment(
+  config: DRSConfig,
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  nodeIds: string[],
+  activeNodeIds: Set<string> | undefined,
   options: WorkflowRunOptions,
   workingDir: string,
   context: WorkflowTemplateContext,
   executionContext: WorkflowExecutionContext
-): Promise<WorkflowNodeResult> {
-  const kind = getNodeKind(node);
+): Promise<void> {
+  const completed = new Set<string>();
+  const segmentNodeIds = new Set(nodeIds);
 
-  if (kind === 'agent') {
-    return runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
-  }
-  if (kind === 'agents') {
-    return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
-  }
-  return runActionWorkflowNode(
-    config,
-    nodeId,
-    node,
-    options,
-    workingDir,
-    context,
-    executionContext
-  );
-}
-
-export async function runWorkflow(
-  config: DRSConfig,
-  workflowName: string,
-  options: WorkflowRunOptions = {}
-): Promise<WorkflowRunResult> {
-  const workflow = config.workflows?.[workflowName];
-  if (!workflow) {
-    throw new Error(`Unknown workflow "${workflowName}".`);
-  }
-  const workflowNodes = getWorkflowNodes(workflowName, workflow);
-
-  const workingDir = options.workingDir ?? process.cwd();
-  const inputs = await resolveWorkflowInputs(workflow, options, workingDir);
-  const nodes: Record<string, WorkflowNodeResult> = {};
-  const artifacts: Record<string, unknown> = {};
-  const context: WorkflowTemplateContext = { inputs, nodes, artifacts };
-  const executionContext: WorkflowExecutionContext = {
-    gitClients: new Map(),
-    platformClients: {},
-    locks: {
-      exit: createWorkflowLock(),
-      console: createWorkflowLock(),
-    },
-  };
-  const executionOrder = getWorkflowExecutionOrder(workflowNodes);
-  const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
-
-  if (!options.jsonOutput) {
-    console.log(chalk.gray(`Running workflow ${workflowName}...\n`));
+  if (activeNodeIds) {
+    for (const nodeId of nodeIds) {
+      if (!activeNodeIds.has(nodeId)) {
+        completed.add(nodeId);
+        context.nodes[nodeId] = createSkippedWorkflowNodeResult(nodeId);
+      }
+    }
   }
 
-  for (const wave of executionWaves) {
+  while (completed.size < nodeIds.length) {
+    const runnable = nodeIds.filter((nodeId) => {
+      if (completed.has(nodeId)) return false;
+      const node = workflowNodes[nodeId];
+      if (!node) return false;
+      return getNodeNeeds(node).every(
+        (dependency) => completed.has(dependency) || !segmentNodeIds.has(dependency)
+      );
+    });
+
+    if (runnable.length === 0) {
+      throw new Error('Workflow control runner could not make progress in a DAG segment.');
+    }
+
     const settled = await Promise.allSettled(
-      wave.map(async (nodeId) => {
+      runnable.map(async (nodeId) => {
         const node = workflowNodes[nodeId];
         if (!node) {
           throw new Error(`Workflow references unknown node "${nodeId}".`);
@@ -1839,20 +2022,345 @@ export async function runWorkflow(
           result: WorkflowNodeResult;
         }>
       ).value;
-      nodes[nodeId] = result;
-      recordNodeArtifact(nodeId, node, result, artifacts);
+      completed.add(nodeId);
+      recordWorkflowNodeResult(nodeId, node, result, context.nodes, context.artifacts);
+    }
+  }
+}
+
+function runControlWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): { result: WorkflowNodeResult; nextNodeId?: string } {
+  if (node.control === 'condition') {
+    if (!node.if) {
+      throw new Error(`Workflow condition node "${nodeId}" must define if.`);
+    }
+    const matched = evaluateWorkflowExpression(node.if, context);
+    const nextNodeId = matched ? node.then : node.else;
+    if (!nextNodeId) {
+      throw new Error(
+        `Workflow condition node "${nodeId}" must define ${matched ? 'then' : 'else'}.`
+      );
+    }
+    return {
+      nextNodeId,
+      result: {
+        id: nodeId,
+        type: 'control',
+        status: 'success',
+        control: node.control,
+        decision: matched ? 'then' : 'else',
+        target: nextNodeId,
+        response: String(matched),
+        output: { matched, target: nextNodeId },
+      },
+    };
+  }
+
+  if (node.control === 'loop') {
+    const expression = node.condition ?? node.if;
+    if (!expression) {
+      throw new Error(`Workflow loop node "${nodeId}" must define condition or if.`);
+    }
+    if (!node.target || !node.exit) {
+      throw new Error(`Workflow loop node "${nodeId}" must define target and exit.`);
+    }
+    const configuredMaxIterations = node.maxIterations;
+    if (
+      !Number.isInteger(configuredMaxIterations) ||
+      configuredMaxIterations === undefined ||
+      configuredMaxIterations <= 0
+    ) {
+      throw new Error(`Workflow loop node "${nodeId}" must define a positive maxIterations.`);
+    }
+    const maxIterations = configuredMaxIterations;
+
+    const shouldLoop = evaluateWorkflowExpression(expression, context);
+    const current = context.loop[nodeId] ?? { iteration: 0, maxIterations };
+    let nextNodeId = node.exit;
+    let decision: 'loop' | 'exit' = 'exit';
+
+    if (shouldLoop) {
+      if (current.iteration >= maxIterations) {
+        if (node.onMaxIterations === 'exit') {
+          nextNodeId = node.exit;
+        } else {
+          throw new Error(
+            `Workflow loop node "${nodeId}" reached maxIterations (${maxIterations}).`
+          );
+        }
+      } else {
+        decision = 'loop';
+        nextNodeId = node.target;
+        current.iteration += 1;
+      }
+    }
+
+    current.maxIterations = maxIterations;
+    current.lastDecision = decision;
+    context.loop[nodeId] = current;
+
+    return {
+      nextNodeId,
+      result: {
+        id: nodeId,
+        type: 'control',
+        status: 'success',
+        control: node.control,
+        decision,
+        target: nextNodeId,
+        response: decision,
+        output: {
+          matched: shouldLoop,
+          target: nextNodeId,
+          iteration: current.iteration,
+          maxIterations,
+        },
+      },
+    };
+  }
+
+  if (node.control === 'switch') {
+    if (!node.value || !node.cases) {
+      throw new Error(`Workflow switch node "${nodeId}" must define value and cases.`);
+    }
+    const value = renderTemplate(node.value, context).trim();
+    const nextNodeId = node.cases[value] ?? node.default;
+    if (!nextNodeId) {
+      throw new Error(`Workflow switch node "${nodeId}" has no case for "${value}" or default.`);
+    }
+    return {
+      nextNodeId,
+      result: {
+        id: nodeId,
+        type: 'control',
+        status: 'success',
+        control: node.control,
+        decision: value,
+        target: nextNodeId,
+        response: value,
+        output: { value, target: nextNodeId },
+      },
+    };
+  }
+
+  if (node.control === 'end') {
+    return {
+      result: {
+        id: nodeId,
+        type: 'control',
+        status: 'success',
+        control: node.control,
+        decision: 'end',
+        response: 'end',
+        output: { ended: true },
+      },
+    };
+  }
+
+  throw new Error(`Unsupported workflow control "${node.control}" in node "${nodeId}".`);
+}
+
+async function runControlWorkflow(
+  config: DRSConfig,
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  executionOrder: string[],
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<void> {
+  const segments = splitWorkflowSegments(workflowNodes, executionOrder);
+  let segmentIndex = 0;
+
+  while (segmentIndex < segments.length) {
+    const segment = segments[segmentIndex];
+    if (segment.type === 'dag') {
+      await runWorkflowDagSegment(
+        config,
+        workflowNodes,
+        segment.nodeIds,
+        segment.activeNodeIds,
+        options,
+        workingDir,
+        context,
+        executionContext
+      );
+      segmentIndex += 1;
+      continue;
+    }
+
+    const node = workflowNodes[segment.nodeId];
+    if (!node) {
+      throw new Error(`Workflow references unknown node "${segment.nodeId}".`);
+    }
+    if (!options.jsonOutput) {
+      console.log(chalk.gray(`Running node ${segment.nodeId}...`));
+    }
+    const { result, nextNodeId } = runControlWorkflowNode(segment.nodeId, node, context);
+    recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
+
+    if (!nextNodeId) {
+      segmentIndex += 1;
+      continue;
+    }
+
+    const targetIndex = findWorkflowSegmentIndex(segments, nextNodeId);
+    if (targetIndex < 0) {
+      throw new Error(
+        `Workflow control node "${segment.nodeId}" targets unknown node "${nextNodeId}".`
+      );
+    }
+    const targetSegment = segments[targetIndex];
+    if (targetSegment.type === 'dag') {
+      targetSegment.activeNodeIds = computeActiveWorkflowNodes(
+        workflowNodes,
+        targetSegment.nodeIds,
+        nextNodeId
+      );
+    }
+    segmentIndex = targetIndex;
+  }
+}
+
+function formatWorkflowJson(result: WorkflowRunResult): string {
+  return JSON.stringify(result, null, 2);
+}
+
+async function runSingleWorkflowNode(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const kind = getNodeKind(node);
+
+  if (kind === 'agent') {
+    return runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
+  }
+  if (kind === 'agents') {
+    return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
+  }
+  if (kind === 'control') {
+    throw new Error(`Workflow control node "${nodeId}" cannot run in the static DAG executor.`);
+  }
+  return runActionWorkflowNode(
+    config,
+    nodeId,
+    node,
+    options,
+    workingDir,
+    context,
+    executionContext
+  );
+}
+
+export async function runWorkflow(
+  config: DRSConfig,
+  workflowName: string,
+  options: WorkflowRunOptions = {}
+): Promise<WorkflowRunResult> {
+  const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    throw new Error(`Unknown workflow "${workflowName}".`);
+  }
+  const workflowNodes = getWorkflowNodes(workflowName, workflow);
+
+  const workingDir = options.workingDir ?? process.cwd();
+  const inputs = await resolveWorkflowInputs(workflow, options, workingDir);
+  const nodes: Record<string, WorkflowNodeResult> = {};
+  const artifacts: Record<string, unknown> = {};
+  const loop: Record<string, WorkflowLoopState> = {};
+  const context: WorkflowTemplateContext = { inputs, nodes, artifacts, loop };
+  const executionContext: WorkflowExecutionContext = {
+    gitClients: new Map(),
+    platformClients: {},
+    locks: {
+      exit: createWorkflowLock(),
+      console: createWorkflowLock(),
+    },
+  };
+  const executionOrder = getWorkflowExecutionOrder(workflowNodes);
+  const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
+
+  if (!options.jsonOutput) {
+    console.log(chalk.gray(`Running workflow ${workflowName}...\n`));
+  }
+
+  if (hasWorkflowControlNodes(workflowNodes)) {
+    await runControlWorkflow(
+      config,
+      workflowNodes,
+      executionOrder,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
+  } else {
+    for (const wave of executionWaves) {
+      const settled = await Promise.allSettled(
+        wave.map(async (nodeId) => {
+          const node = workflowNodes[nodeId];
+          if (!node) {
+            throw new Error(`Workflow references unknown node "${nodeId}".`);
+          }
+
+          if (!options.jsonOutput) {
+            console.log(chalk.gray(`Running node ${nodeId}...`));
+          }
+
+          const result = await runSingleWorkflowNode(
+            config,
+            nodeId,
+            node,
+            options,
+            workingDir,
+            context,
+            executionContext
+          );
+          return { nodeId, node, result };
+        })
+      );
+
+      const firstRejection = settled.find(
+        (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected'
+      );
+      if (firstRejection) {
+        throw firstRejection.reason instanceof Error
+          ? firstRejection.reason
+          : new Error(String(firstRejection.reason));
+      }
+
+      for (const outcome of settled) {
+        const { nodeId, node, result } = (
+          outcome as PromiseFulfilledResult<{
+            nodeId: string;
+            node: WorkflowNodeConfig;
+            result: WorkflowNodeResult;
+          }>
+        ).value;
+        nodes[nodeId] = result;
+        recordNodeArtifact(nodeId, node, result, artifacts);
+      }
     }
   }
 
   const lastNodeId = executionOrder[executionOrder.length - 1];
   const lastNode = workflowNodes[lastNodeId];
-  const outputKey = lastNode.output ?? lastNodeId;
+  const outputKey = workflow.output ?? lastNode.output ?? lastNodeId;
   const result: WorkflowRunResult = {
     timestamp: new Date().toISOString(),
     workflow: workflowName,
     inputs,
     nodes,
     artifacts,
+    loop,
     output: artifacts[outputKey],
   };
 

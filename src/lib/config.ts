@@ -33,6 +33,8 @@ export interface WorkflowNodeConfig {
   agent?: string;
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
+  /** Built-in workflow control node. */
+  control?: 'condition' | 'loop' | 'switch' | 'end';
   /** Built-in workflow action. */
   action?:
     | 'write'
@@ -50,6 +52,28 @@ export interface WorkflowNodeConfig {
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
   needs?: string[];
+  /** Expression evaluated by condition/loop control nodes. */
+  if?: string;
+  /** Alias for if on loop nodes. */
+  condition?: string;
+  /** Target node when a condition is true. */
+  then?: string;
+  /** Target node when a condition is false. */
+  else?: string;
+  /** Target node when a loop continues. */
+  target?: string;
+  /** Target node when a loop exits. */
+  exit?: string;
+  /** Maximum loop iterations before failing or exiting. */
+  maxIterations?: number;
+  /** Behavior when maxIterations is reached. Defaults to fail. */
+  onMaxIterations?: 'fail' | 'exit';
+  /** Value expression for switch control nodes. */
+  value?: string;
+  /** Switch case target map. */
+  cases?: Record<string, string>;
+  /** Default target for switch control nodes. */
+  default?: string;
   /** Prompt/content template. Supports {{inputs.key}}, {{nodes.id.response}}, and {{artifacts.key}}. */
   input?: string;
   /** Artifact name to expose this node's primary output as. */
@@ -63,6 +87,8 @@ export interface WorkflowNodeConfig {
 export interface WorkflowConfig {
   description?: string;
   inputs?: Record<string, WorkflowInputConfig>;
+  /** Artifact key to expose as the workflow output. Defaults to the last node output. */
+  output?: string;
   nodes: Record<string, WorkflowNodeConfig>;
 }
 
@@ -646,7 +672,7 @@ function rejectRemovedReviewPostingConfigKeys(
   if (removedKeys.length > 0) {
     throw new Error(
       `Config file ${sourcePath} uses removed DRS 4.0 review posting keys: ${removedKeys.join(', ')}. ` +
-        'Run posting explicitly with workflows, or use github-pr-describe-post/gitlab-mr-describe-post when updating PR/MR descriptions.'
+        'Run posting explicitly with workflows, or use github-pr-describe/gitlab-mr-describe with post=true when updating PR/MR descriptions.'
     );
   }
 }
