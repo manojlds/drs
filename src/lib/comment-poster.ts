@@ -18,6 +18,7 @@ import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   BOT_COMMENT_ID,
   createIssueFingerprint,
+  extractIssueFingerprints,
   findExistingSummaryComment,
   prepareIssuesForPosting,
   type PlatformComment,
@@ -65,6 +66,14 @@ export async function postReviewComments(
 
   const existingSummary = findExistingSummaryComment(
     existingComments.map((c) => ({ id: c.id, body: c.body }))
+  );
+
+  await removeStaleInlineIssueComments(
+    platformClient,
+    projectId,
+    prNumber,
+    existingInlineComments.map((c) => ({ id: c.id, body: c.body })),
+    issues
   );
 
   // Post or update summary comment
@@ -123,6 +132,52 @@ export async function postReviewComments(
   await platformClient.addLabels(projectId, prNumber, ['ai-reviewed']);
 
   console.log(chalk.green('✓ Review posted\n'));
+}
+
+async function removeStaleInlineIssueComments(
+  platformClient: PlatformClient,
+  projectId: string,
+  prNumber: number,
+  existingInlineComments: PlatformComment[],
+  issues: ReviewIssue[]
+): Promise<void> {
+  const currentFingerprints = new Set(
+    issues
+      .filter((issue) => issue.severity === 'CRITICAL' || issue.severity === 'HIGH')
+      .map((issue) => createIssueFingerprint(issue))
+  );
+
+  let removed = 0;
+  for (const comment of existingInlineComments) {
+    const fingerprints = extractIssueFingerprints(comment.body);
+    if (fingerprints.size === 0) {
+      continue;
+    }
+
+    const stillCurrent = [...fingerprints].some((fingerprint) =>
+      currentFingerprints.has(fingerprint)
+    );
+    if (stillCurrent) {
+      continue;
+    }
+
+    try {
+      await platformClient.deleteComment(projectId, prNumber, comment.id);
+      removed += 1;
+    } catch (error) {
+      console.warn(
+        chalk.yellow(
+          `Could not remove stale DRS inline comment ${comment.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
+      );
+    }
+  }
+
+  if (removed > 0) {
+    console.log(chalk.gray(`Removed ${removed} stale DRS inline comment(s)\n`));
+  }
 }
 
 /**

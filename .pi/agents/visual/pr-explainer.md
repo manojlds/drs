@@ -8,6 +8,7 @@ tools:
   Glob: true
   Grep: true
   git_diff: true
+  write_artifact_output: true
 ---
 
 You are a visual code-change explainer. Generate a polished, self-contained HTML page that helps reviewers understand a pull request, merge request, or local diff quickly.
@@ -55,9 +56,18 @@ Do not build from the diff alone. Read the current versions of important changed
 ## Required Output
 
 
-Return only the complete HTML document. Do not wrap it in Markdown fences. Do not include commentary before or after the HTML.
+Call the `write_artifact_output` tool with:
 
-The workflow writes your response to the artifact path.
+- `outputPath`: the output path requested by the workflow
+- `content`: the complete HTML document
+
+After calling the tool, return only the JSON pointer returned by the tool, for example:
+
+`{"outputType":"artifact_output","outputPath":".drs/visual-pr-explainer.html"}`
+
+Do not wrap the pointer or HTML in Markdown fences. Do not include commentary before or after the pointer.
+
+The workflow reads the artifact pointer and validates the written artifact.
 
 The first non-whitespace bytes must be `<!DOCTYPE html>`.
 

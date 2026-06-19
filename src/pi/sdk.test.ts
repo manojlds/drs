@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'child_process';
-import { mkdtemp, rm, unlink, writeFile } from 'fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
@@ -499,6 +499,7 @@ describe('pi/sdk', () => {
 
       expect(gitDiff).toBeDefined();
       expect((createArgs as { tools?: string[] }).tools).toContain('write_json_output');
+      expect((createArgs as { tools?: string[] }).tools).not.toContain('write_artifact_output');
       expect((createArgs as { tools?: string[] }).tools).toContain('git_diff');
       expect((createArgs as { tools?: string[] }).tools).not.toContain('bash');
 
@@ -562,6 +563,65 @@ describe('pi/sdk', () => {
 
       await expect(gitDiff?.execute('tool-3', { file: '../app.ts' })).rejects.toThrow(
         'must stay inside the repository'
+      );
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it('registers write_artifact_output and writes validated HTML artifacts', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-artifact-tool-'));
+    try {
+      const runtime = await createPiInProcessServer({
+        config: {
+          agent: {
+            'visual/pr-explainer': {
+              tools: { Bash: false, write_artifact_output: true },
+            },
+          },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: {
+          agent: 'visual/pr-explainer',
+          parts: [{ type: 'text', text: 'Generate visual' }],
+        },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+        customTools?: Array<{
+          name: string;
+          execute: (
+            toolCallId: string,
+            params: Record<string, unknown>
+          ) => Promise<{ details?: Record<string, unknown> }>;
+        }>;
+        tools?: string[];
+      };
+      const artifactTool = createArgs.customTools?.find(
+        (tool) => tool.name === 'write_artifact_output'
+      );
+
+      expect(artifactTool).toBeDefined();
+      expect(createArgs.tools).toContain('write_artifact_output');
+
+      const result = await artifactTool?.execute('tool-artifact', {
+        outputPath: '.drs/visual.html',
+        content: 'thinking\n<!DOCTYPE html><html><body>Visual</body></html>\ndone',
+      });
+
+      expect(result?.details).toEqual({
+        outputType: 'artifact_output',
+        outputPath: '.drs/visual.html',
+      });
+      await expect(readFile(join(workdir, '.drs/visual.html'), 'utf-8')).resolves.toBe(
+        '<!DOCTYPE html><html><body>Visual</body></html>'
       );
 
       runtime.server.close();

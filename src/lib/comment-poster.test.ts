@@ -18,6 +18,15 @@ vi.mock('./comment-formatter.js', () => ({
 vi.mock('./comment-manager.js', () => ({
   BOT_COMMENT_ID: '<!-- DRS-REVIEW-BOT -->',
   createIssueFingerprint: vi.fn((issue: any) => `fp-${issue.file}-${issue.line}`),
+  extractIssueFingerprints: vi.fn((body: string) => {
+    const fingerprints = new Set<string>();
+    const regex = /<!-- issue-fp: (.*?) -->/g;
+    let match;
+    while ((match = regex.exec(body)) !== null) {
+      fingerprints.add(match[1]);
+    }
+    return fingerprints;
+  }),
   findExistingSummaryComment: vi.fn((comments: any[]) => {
     return comments.find((c: any) => c.body.includes('<!-- DRS-REVIEW-BOT -->'));
   }),
@@ -46,6 +55,7 @@ describe('comment-poster', () => {
       getInlineComments: vi.fn().mockResolvedValue([]),
       createComment: vi.fn().mockResolvedValue({ id: '1' }),
       updateComment: vi.fn().mockResolvedValue({ id: '1' }),
+      deleteComment: vi.fn().mockResolvedValue(undefined),
       createBulkInlineComments: vi.fn().mockResolvedValue([]),
       addLabels: vi.fn().mockResolvedValue(undefined),
     } as unknown as PlatformClient;
@@ -330,6 +340,35 @@ describe('comment-poster', () => {
 
       expect(mockPlatformClient.getComments).toHaveBeenCalledWith('owner/repo', 123);
       expect(mockPlatformClient.getInlineComments).toHaveBeenCalledWith('owner/repo', 123);
+    });
+
+    it('should delete stale DRS inline comments before posting new comments', async () => {
+      mockPlatformClient.getInlineComments = vi.fn().mockResolvedValue([
+        { id: 'current', body: '<!-- issue-fp: fp-src/api.ts-42 --> current issue' },
+        { id: 'stale', body: '<!-- issue-fp: fp-src/old.ts-99 --> stale issue' },
+        { id: 'human', body: 'regular reviewer comment' },
+      ]);
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        mockIssues,
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined
+      );
+
+      expect(mockPlatformClient.deleteComment).toHaveBeenCalledWith('owner/repo', 123, 'stale');
+      expect(mockPlatformClient.deleteComment).not.toHaveBeenCalledWith(
+        'owner/repo',
+        123,
+        'current'
+      );
+      expect(mockPlatformClient.deleteComment).not.toHaveBeenCalledWith('owner/repo', 123, 'human');
     });
 
     it('should include change summary in formatted comment', async () => {

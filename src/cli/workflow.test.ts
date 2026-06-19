@@ -471,6 +471,59 @@ describe('workflow runner', () => {
     expect(result.output).toBe(artifact);
   });
 
+  it('uses artifact output pointers for HTML workflow writes', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-pointer-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.drs', 'custom-visual.html'),
+      '<!DOCTYPE html><html><body><h1>Pointer visual</h1></body></html>'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult(
+        'visual/pr-explainer',
+        '{"outputType":"artifact_output","outputPath":".drs/custom-visual.html"}'
+      )
+    );
+
+    const result = await runWorkflow(config, 'local-visual-explain', {
+      inputs: { outputPath: '.drs/custom-visual.html' },
+      workingDir: projectRoot,
+    });
+
+    const artifact = readFileSync(join(projectRoot, '.drs', 'custom-visual.html'), 'utf-8');
+    expect(artifact).toContain('Pointer visual');
+    expect(result.output).toBe(artifact);
+  });
+
+  it('uses an existing valid HTML artifact when agent response is malformed', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-existing-artifact-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.drs', 'custom-visual.html'),
+      '<!DOCTYPE html><html><body><h1>Tool-written visual</h1></body></html>'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult('visual/pr-explainer', '<!DOCTYPE html><html><body>partial')
+    );
+
+    const result = await runWorkflow(config, 'local-visual-explain', {
+      inputs: { outputPath: '.drs/custom-visual.html' },
+      workingDir: projectRoot,
+    });
+
+    const artifact = readFileSync(join(projectRoot, '.drs', 'custom-visual.html'), 'utf-8');
+    expect(artifact).toContain('Tool-written visual');
+    expect(result.output).toBe(artifact);
+  });
+
   it('fails clearly when an HTML workflow write has no doctype', async () => {
     const projectRoot = createTempDir('drs-workflow-visual-invalid-');
     const config = loadConfig(projectRoot);
@@ -486,7 +539,7 @@ describe('workflow runner', () => {
         inputs: { outputPath: '.drs/custom-visual.html' },
         workingDir: projectRoot,
       })
-    ).rejects.toThrow('produced HTML output without <!DOCTYPE html>');
+    ).rejects.toThrow('produced invalid HTML output');
   });
 
   it('lets CLI-style inputs override configured inputs', async () => {

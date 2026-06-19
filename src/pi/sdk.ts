@@ -14,6 +14,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
+import { writeArtifactOutput } from '../lib/html-artifact.js';
 
 const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
 const HARD_GIT_DIFF_MAX_BYTES = 500_000;
@@ -842,6 +843,30 @@ class PiSessionRuntime {
             payload: params.payload,
             pretty: params.pretty,
             indent: params.indent,
+            workingDir,
+          });
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(pointer) }],
+            details: pointer,
+          };
+        },
+      });
+    }
+
+    if (this.isToolEnabled('write_artifact_output', false, agentTools)) {
+      customTools.push({
+        name: 'write_artifact_output',
+        label: 'write_artifact_output',
+        description: 'Validate and write a self-contained HTML artifact for DRS agents.',
+        parameters: Type.Object({
+          outputPath: Type.String({ minLength: 1 }),
+          content: Type.String({ minLength: 1 }),
+        }),
+        execute: async (_toolCallId, params: { outputPath: string; content: string }) => {
+          const pointer = await writeArtifactOutput({
+            outputPath: params.outputPath,
+            content: params.content,
             workingDir,
           });
 
