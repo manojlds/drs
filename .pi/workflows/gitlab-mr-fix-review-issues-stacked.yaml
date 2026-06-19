@@ -103,6 +103,7 @@ nodes:
     action: git-commit
     with:
       message: "fix: address DRS review issues for MR !{{inputs.mr}}"
+      paths: "."
     output: commit
 
   push:
