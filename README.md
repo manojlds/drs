@@ -108,8 +108,12 @@ drs workflow run local-update-agents-md
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |
 | Show GitHub PR review context | `drs workflow run github-pr-show-changes --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Show GitLab MR review context | `drs workflow run gitlab-mr-show-changes --input project=<group/repo> --input mr=<number>` |
+| Generate visual PR explainer artifact | `drs workflow run github-pr-visual-explain --input owner=<owner> --input repo=<repo> --input pr=<number>` |
+| Generate visual MR explainer artifact | `drs workflow run gitlab-mr-visual-explain --input project=<group/repo> --input mr=<number>` |
+| Generate visual local diff explainer | `drs workflow run local-visual-explain` |
 | Describe, review, and comment on GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number> --input describe=true --input post=true` |
 | Describe, review, and comment on GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true` |
+| Describe, review, comment, and generate visual PR explainer | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number> --input describe=true --input post=true --input visual=true` |
 | Review GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input codeQuality=true` |
 | Describe/review/comment GitLab MR and write Code Quality report | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number> --input describe=true --input post=true --input codeQuality=true` |
 | Generate PR description | `drs workflow run github-pr-describe --input owner=<owner> --input repo=<repo> --input pr=<number>` |
@@ -138,6 +142,9 @@ drs workflow run gitlab-mr-review --input project=my-org/my-repo --input mr=123 
 # Review specific GitHub PR
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 
+# Review and generate a visual explainer artifact
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true --input visual=true
+
 # Review local staged changes
 drs workflow run local-review --input staged=true
 
@@ -152,6 +159,11 @@ drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello
 
 # Show diff context for a single file
 drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456 --input file=src/app.ts
+
+# Generate self-contained HTML visual explainers
+drs workflow run local-visual-explain
+drs workflow run github-pr-visual-explain --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run gitlab-mr-visual-explain --input project=my-org/my-repo --input mr=123
 
 # Generate PR/MR descriptions on demand
 drs workflow run github-pr-describe --input owner=octocat --input repo=hello-world --input pr=456
@@ -215,6 +227,51 @@ DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-revi
 - Cost protection mechanisms
 - Maintainer workflow
 - Attack prevention strategies
+
+### Visual PR Explainer Artifacts
+
+DRS includes visual explainer workflows that generate a self-contained HTML page for reviewers:
+
+- `github-pr-visual-explain` writes `.drs/visual-pr-explainer.html` by default.
+- `gitlab-mr-visual-explain` writes `.drs/visual-mr-explainer.html` by default.
+- `local-visual-explain` writes `.drs/visual-local-explainer.html` by default.
+
+The main review workflows also support visual artifacts:
+
+```bash
+drs workflow run github-pr-review \
+  --input owner=octocat \
+  --input repo=hello-world \
+  --input pr=456 \
+  --input describe=true \
+  --input post=true \
+  --input visual=true
+```
+
+The built-in `visual/pr-explainer` agent includes DRS-specific HTML generation guidance out of the box. Override `.drs/agents/visual/pr-explainer/agent.md` or configure `agents.overrides.visual/pr-explainer` to tune the output for your project. If you install an external `visual-explainer` skill, add it through `agents.overrides.visual/pr-explainer.skills` so the agent loads those richer templates and design rules.
+
+To publish the generated page from GitHub Actions, upload it as an artifact:
+
+```yaml
+- name: Generate visual explainer
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    OPENCODE_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
+  run: |
+    node dist/cli/index.js workflow run github-pr-review \
+      --input owner="${{ github.event.repository.owner.login }}" \
+      --input repo="${{ github.event.repository.name }}" \
+      --input pr="${{ github.event.pull_request.number }}" \
+      --input describe=true \
+      --input post=true \
+      --input visual=true \
+      --input visualOutputPath=".drs/visual-pr-explainer.html"
+
+- uses: actions/upload-artifact@v4
+  with:
+    name: visual-pr-explainer
+    path: .drs/visual-pr-explainer.html
+```
 
 ## GitLab Code Quality Reports
 

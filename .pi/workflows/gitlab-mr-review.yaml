@@ -1,10 +1,12 @@
 name: gitlab-mr-review
-description: Review a GitLab merge request, optionally posting a description, DRS comments, and Code Quality
+description: Review a GitLab merge request, optionally posting a description, DRS comments, Code Quality, and a visual HTML explainer
 inputs:
   project: ""
   mr: ""
   describe: "false"
   post: "false"
+  visual: "false"
+  visualOutputPath: ".drs/visual-mr-explainer.html"
   codeQuality: "false"
   codeQualityReport: gl-code-quality-report.json
 output: review
@@ -34,7 +36,7 @@ nodes:
       post: true
     output: description
 
-  continue-review:
+  continue-visual:
     control: condition
     needs:
       - describe
@@ -49,6 +51,43 @@ nodes:
     with:
       source: change
     output: review
+
+  should-visual:
+    control: condition
+    needs:
+      - review
+    if: "{{inputs.visual}} == true"
+    then: visual
+    else: should-post
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - change
+      - review
+    input: |
+      Generate a visual MR explainer HTML artifact.
+
+      Output path: {{inputs.visualOutputPath}}
+      Slide mode: false
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+
+      DRS review result:
+      {{artifacts.review}}
+    writes: "{{inputs.visualOutputPath}}"
+    output: visualExplainer
+
+  continue-review:
+    control: condition
+    needs:
+      - visual
+    if: "true"
+    then: should-post
+    else: should-post
 
   should-post:
     control: condition

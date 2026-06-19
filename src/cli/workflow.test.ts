@@ -209,6 +209,24 @@ describe('workflow runner', () => {
     ]);
     mocks.runtimeClient.shutdown.mockResolvedValue(undefined);
     mocks.connectToRuntime.mockResolvedValue(mocks.runtimeClient);
+    mocks.runAgent.mockImplementation(
+      async (_config, agent: string, options: { prompt?: string }) => ({
+        timestamp: '2026-06-16T00:00:00.000Z',
+        agent,
+        response: `${agent}: ${options.prompt ?? 'configured prompt'}`,
+        usage: {
+          agent,
+          success: true,
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 2,
+          cost: 0,
+          messages: 1,
+        },
+      })
+    );
     mocks.runDescribeIfEnabled.mockResolvedValue({
       type: 'feature',
       title: 'Generated description',
@@ -395,6 +413,80 @@ describe('workflow runner', () => {
     expect(readFileSync(join(projectRoot, 'summary.txt'), 'utf-8')).toBe(
       'task/summarizer: Summarize'
     );
+  });
+
+  it('runs packaged local visual explainer workflow and writes HTML artifact', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult(
+        'visual/pr-explainer',
+        '<!DOCTYPE html><html><body><h1>Visual explainer</h1></body></html>'
+      )
+    );
+
+    const result = await runWorkflow(config, 'local-visual-explain', {
+      inputs: { outputPath: '.drs/custom-visual.html' },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      config,
+      'visual/pr-explainer',
+      expect.objectContaining({
+        prompt: expect.stringContaining('Generate a visual local-diff explainer HTML artifact.'),
+      })
+    );
+    expect(mocks.runAgent.mock.calls[0]?.[2].prompt).toContain('src/app.ts');
+    expect(readFileSync(join(projectRoot, '.drs', 'custom-visual.html'), 'utf-8')).toContain(
+      '<!DOCTYPE html>'
+    );
+    expect(result.output).toContain('<!DOCTYPE html>');
+    expect(result.nodes.visual?.writes).toBe('.drs/custom-visual.html');
+  });
+
+  it('extracts the HTML document when visual agent output includes surrounding text', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-extract-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult(
+        'visual/pr-explainer',
+        'Thinking before writing.\n<!DOCTYPE html><html><body><h1>Visual explainer</h1></body></html>\nDone.'
+      )
+    );
+
+    const result = await runWorkflow(config, 'local-visual-explain', {
+      inputs: { outputPath: '.drs/custom-visual.html' },
+      workingDir: projectRoot,
+    });
+
+    const artifact = readFileSync(join(projectRoot, '.drs', 'custom-visual.html'), 'utf-8');
+    expect(artifact).toBe('<!DOCTYPE html><html><body><h1>Visual explainer</h1></body></html>');
+    expect(result.output).toBe(artifact);
+  });
+
+  it('fails clearly when an HTML workflow write has no doctype', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-invalid-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult('visual/pr-explainer', '<html><body>Missing doctype</body></html>')
+    );
+
+    await expect(
+      runWorkflow(config, 'local-visual-explain', {
+        inputs: { outputPath: '.drs/custom-visual.html' },
+        workingDir: projectRoot,
+      })
+    ).rejects.toThrow('produced HTML output without <!DOCTYPE html>');
   });
 
   it('lets CLI-style inputs override configured inputs', async () => {
@@ -1095,6 +1187,70 @@ describe('workflow runner', () => {
         }),
       })
     );
+  });
+
+  it('runs packaged GitHub PR review visual explainer when enabled', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-visual-');
+    const config = loadConfig(projectRoot);
+    mocks.executeReview.mockResolvedValue({
+      issues: [
+        {
+          category: 'QUALITY',
+          severity: 'HIGH',
+          title: 'Example finding',
+          file: 'src/github.ts',
+          line: 1,
+          problem: 'Example problem',
+          solution: 'Example solution',
+          references: [],
+          agent: 'unified',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { HIGH: 1 },
+        byCategory: { QUALITY: 1 },
+      },
+      filesReviewed: 1,
+    });
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult(
+        'visual/pr-explainer',
+        '<!DOCTYPE html><html><body><h1>PR visual</h1></body></html>'
+      )
+    );
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs: {
+        owner: 'octocat',
+        repo: 'hello-world',
+        pr: '7',
+        visual: 'true',
+        visualOutputPath: '.drs/pr-visual.html',
+      },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      config,
+      'visual/pr-explainer',
+      expect.objectContaining({
+        prompt: expect.stringContaining('Generate a visual PR explainer HTML artifact.'),
+      })
+    );
+    const visualPrompt = mocks.runAgent.mock.calls[0]?.[2].prompt ?? '';
+    expect(visualPrompt).toContain('DRS review result:');
+    expect(visualPrompt).toContain('Example finding');
+    expect(visualPrompt).toContain('"issuesFound": 1');
+    expect(readFileSync(join(projectRoot, '.drs', 'pr-visual.html'), 'utf-8')).toContain(
+      '<!DOCTYPE html>'
+    );
+    expect(mocks.executeReview).toHaveBeenCalled();
+    expect(mocks.executeReview.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.runAgent.mock.invocationCallOrder[0] ?? 0
+    );
+    expect(result.nodes.visual?.writes).toBe('.drs/pr-visual.html');
   });
 
   it('shows GitHub PR review context with embedded diff content', async () => {
@@ -1838,6 +1994,9 @@ describe('workflow runner', () => {
   });
 
   it('uses explicit workflow output when a control end node is last', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
     const config = {
       ...baseConfig,
       workflows: {

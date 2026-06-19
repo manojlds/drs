@@ -1,0 +1,31 @@
+name: local-visual-explain
+description: Generate a visual HTML explainer artifact for a local git diff
+inputs:
+  staged: "false"
+  outputPath: ".drs/visual-local-explainer.html"
+  slides: "false"
+output: visualExplainer
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: "{{inputs.staged}}"
+    output: change
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - change
+    input: |
+      Generate a visual local-diff explainer HTML artifact.
+
+      Output path: {{inputs.outputPath}}
+      Slide mode: {{inputs.slides}}
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+    writes: "{{inputs.outputPath}}"
+    output: visualExplainer

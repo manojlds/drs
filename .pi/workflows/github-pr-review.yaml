@@ -1,11 +1,13 @@
 name: github-pr-review
-description: Review a GitHub pull request, optionally posting a description and DRS comments
+description: Review a GitHub pull request, optionally posting a description, DRS comments, and a visual HTML explainer
 inputs:
   owner: ""
   repo: ""
   pr: ""
   describe: "false"
   post: "false"
+  visual: "false"
+  visualOutputPath: ".drs/visual-pr-explainer.html"
 output: review
 nodes:
   change:
@@ -34,7 +36,7 @@ nodes:
       post: true
     output: description
 
-  continue-review:
+  continue-visual:
     control: condition
     needs:
       - describe
@@ -49,6 +51,43 @@ nodes:
     with:
       source: change
     output: review
+
+  should-visual:
+    control: condition
+    needs:
+      - review
+    if: "{{inputs.visual}} == true"
+    then: visual
+    else: should-post
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - change
+      - review
+    input: |
+      Generate a visual PR explainer HTML artifact.
+
+      Output path: {{inputs.visualOutputPath}}
+      Slide mode: false
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+
+      DRS review result:
+      {{artifacts.review}}
+    writes: "{{inputs.visualOutputPath}}"
+    output: visualExplainer
+
+  continue-review:
+    control: condition
+    needs:
+      - visual
+    if: "true"
+    then: should-post
+    else: should-post
 
   should-post:
     control: condition

@@ -1,0 +1,33 @@
+name: gitlab-mr-visual-explain
+description: Generate a visual HTML explainer artifact for a GitLab merge request
+inputs:
+  project: ""
+  mr: ""
+  outputPath: ".drs/visual-mr-explainer.html"
+  slides: "false"
+output: visualExplainer
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+    output: change
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - change
+    input: |
+      Generate a visual MR explainer HTML artifact.
+
+      Output path: {{inputs.outputPath}}
+      Slide mode: {{inputs.slides}}
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+    writes: "{{inputs.outputPath}}"
+    output: visualExplainer
