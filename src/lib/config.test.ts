@@ -113,11 +113,37 @@ describe('Config', () => {
         mr: '',
         describe: 'false',
         post: 'false',
+        visual: 'false',
+        visualOutputPath: '.drs/visual-mr-explainer.html',
         codeQuality: 'false',
         codeQualityReport: 'gl-code-quality-report.json',
       });
       expect(config.workflows?.['github-pr-review']?.nodes['continue-review']?.if).toBe('true');
       expect(config.workflows?.['gitlab-mr-review']?.nodes['continue-review']?.if).toBe('true');
+      expect(config.workflows?.['github-pr-review']?.inputs).toMatchObject({
+        visual: 'false',
+        visualOutputPath: '.drs/visual-pr-explainer.html',
+      });
+      expect(config.workflows?.['github-pr-review']?.nodes.visual).toMatchObject({
+        agent: 'visual/pr-explainer',
+        writes: '{{inputs.visualOutputPath}}',
+      });
+      expect(config.workflows?.['github-pr-visual-explain']).toMatchObject({
+        description: 'Generate a visual HTML explainer artifact for a GitHub pull request',
+        inputs: {
+          owner: '',
+          repo: '',
+          pr: '',
+          outputPath: '.drs/visual-pr-explainer.html',
+          slides: 'false',
+        },
+        nodes: {
+          visual: {
+            agent: 'visual/pr-explainer',
+            writes: '{{inputs.outputPath}}',
+          },
+        },
+      });
       expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([

@@ -122,6 +122,17 @@ describe('agent-loader path resolution', () => {
     expect(unifiedAgent?.path).toMatch(/\.pi[\\/]agents[\\/]review[\\/]unified-reviewer\.md$/);
   });
 
+  it('loads packaged visual explainer agent', () => {
+    const agents = loadAgents(process.cwd());
+    const visualAgent = agents.find((agent) => agent.id === 'visual/pr-explainer');
+
+    expect(visualAgent?.namespace).toBe('visual');
+    expect(visualAgent?.prompt).toContain('self-contained HTML page');
+    expect(visualAgent?.skills).toBeUndefined();
+    expect(visualAgent?.tools?.Bash).toBe(false);
+    expect(visualAgent?.tools?.git_diff).toBe(true);
+  });
+
   it('throws actionable error when configured agent path is invalid', () => {
     const projectRoot = createTempDir('drs-agent-loader-invalid-');
 
