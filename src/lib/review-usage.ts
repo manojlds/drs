@@ -12,6 +12,8 @@ export interface AgentUsageSummary {
   model?: string;
   success?: boolean;
   turns: number;
+  toolCalls?: Record<string, number>;
+  skills?: string[];
   usage: UsageSummary;
 }
 
@@ -69,7 +71,43 @@ export function createAgentUsageSummary(agentType: string): AgentUsageSummary {
   return {
     agentType,
     turns: 0,
+    toolCalls: {},
+    skills: [],
     usage: createEmptyUsageSummary(),
+  };
+}
+
+export function applySkillCall(
+  agentUsage: AgentUsageSummary,
+  skillName: string | undefined
+): AgentUsageSummary {
+  if (!skillName) {
+    return agentUsage;
+  }
+
+  const skills = new Set(agentUsage.skills ?? []);
+  skills.add(skillName);
+
+  return {
+    ...agentUsage,
+    skills: [...skills].sort(),
+  };
+}
+
+export function applyToolCall(
+  agentUsage: AgentUsageSummary,
+  toolName: string | undefined
+): AgentUsageSummary {
+  if (!toolName) {
+    return agentUsage;
+  }
+
+  return {
+    ...agentUsage,
+    toolCalls: {
+      ...(agentUsage.toolCalls ?? {}),
+      [toolName]: (agentUsage.toolCalls?.[toolName] ?? 0) + 1,
+    },
   };
 }
 

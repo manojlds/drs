@@ -23,6 +23,8 @@ import { loadAgents, type AgentDefinition } from '../runtime/agent-loader.js';
 import { getLogger } from './logger.js';
 import {
   aggregateAgentUsage,
+  applySkillCall,
+  applyToolCall,
   applyUsageMessage,
   createAgentUsageSummary,
   type AgentUsageSummary,
@@ -422,6 +424,7 @@ export async function runUnifiedReviewAgent(
 
     for await (const message of runtime.streamMessages(session.id)) {
       if (message.role === 'tool') {
+        agentUsage = applyToolCall(agentUsage, message.toolName);
         // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
         const skillFromLegacy =
           message.toolName === 'skill'
@@ -431,6 +434,7 @@ export async function runUnifiedReviewAgent(
         const skillName = skillFromLegacy ?? skillFromRead;
 
         if (skillName) {
+          agentUsage = applySkillCall(agentUsage, skillName);
           logger.skillLoaded(skillName, agentType);
           sawSkillToolCall = true;
         } else {
@@ -586,6 +590,7 @@ async function executeSingleAgent(
     // Collect results from this agent
     for await (const message of runtime.streamMessages(session.id)) {
       if (message.role === 'tool') {
+        agentUsage = applyToolCall(agentUsage, message.toolName);
         // Detect skill loading: legacy 'skill' tool or Pi-native read of SKILL.md
         const skillFromLegacy =
           message.toolName === 'skill'
@@ -595,6 +600,7 @@ async function executeSingleAgent(
         const skillName = skillFromLegacy ?? skillFromRead;
 
         if (skillName) {
+          agentUsage = applySkillCall(agentUsage, skillName);
           logger.skillLoaded(skillName, agentType);
           sawSkillToolCall = true;
         } else {

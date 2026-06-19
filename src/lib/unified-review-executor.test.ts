@@ -101,7 +101,21 @@ vi.mock('./json-output.js', () => ({
 }));
 
 vi.mock('./context-compression.js', () => ({
-  prepareDiffsForAgent: vi.fn((files: any[]) => ({ files, generated: [] })),
+  prepareDiffsForAgent: vi.fn((files: any[]) => ({
+    mode: 'full',
+    files,
+    stats: {
+      changedFiles: files.length,
+      filesWithDiffs: files.filter((file) => file.patch).length,
+      inlineFiles: files.filter((file) => file.patch).length,
+      estimatedTokens: 0,
+    },
+    omitted: {
+      deletionsOnly: [],
+      dueToBudget: [],
+      generated: [],
+    },
+  })),
   formatCompressionSummary: vi.fn(() => ''),
   resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),
 }));
@@ -466,6 +480,7 @@ describe('unified-review-executor', () => {
         postComments: true,
         lineValidator: {
           isValidLine: (file, line) => file === 'src/test.ts' && line === 10,
+          isChangedLine: (file, line) => file === 'src/test.ts' && line === 10,
         },
       };
 

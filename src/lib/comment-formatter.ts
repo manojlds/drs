@@ -29,6 +29,14 @@ export interface ReviewMetadata {
   headSha?: string;
   sourceBranch?: string;
   targetBranch?: string;
+  diffContext?: {
+    mode: string;
+    changedFiles: number;
+    filesWithDiffs: number;
+    inlineFiles: number;
+    omittedFiles: number;
+    estimatedTokens: number;
+  };
 }
 
 const SEVERITY_EMOJI: Record<IssueSeverity, string> = {
@@ -48,7 +56,10 @@ const CATEGORY_EMOJI: Record<IssueCategory, string> = {
 
 function cleanMetadataValue(value?: string): string | undefined {
   const cleaned = value?.trim().replace(/[\r\n]+/g, ' ');
-  return cleaned ? cleaned : undefined;
+  if (!cleaned) {
+    return undefined;
+  }
+  return cleaned;
 }
 
 function formatShortSha(sha: string): string {
@@ -85,6 +96,13 @@ function formatReviewMetadataSection(metadata: ReviewMetadata): string {
     );
   }
 
+  if (metadata.diffContext) {
+    const context = metadata.diffContext;
+    lines.push(
+      `- **Diff Context**: ${context.mode}; inline ${context.inlineFiles}/${context.filesWithDiffs}; omitted ${context.omittedFiles}; ~${formatCount(context.estimatedTokens)} tokens`
+    );
+  }
+
   if (lines.length === 0) {
     return '';
   }
@@ -112,11 +130,12 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
 
   if (usage.agents.length > 0) {
     markdown += `### By Agent\n\n`;
-    markdown += `| Agent | Model | Turns | Input | Output | Cache Read | Cache Write | Total Tokens | Cost | Status |\n`;
-    markdown += `| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n`;
+    markdown += `| Agent | Model | Turns | Skills | git_diff Calls | Input | Output | Cache Read | Cache Write | Total Tokens | Cost | Status |\n`;
+    markdown += `| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n`;
 
     for (const agent of usage.agents) {
-      markdown += `| ${agent.agentType} | ${agent.model ?? 'n/a'} | ${formatCount(agent.turns)} | ${formatCount(agent.usage.input)} | ${formatCount(agent.usage.output)} | ${formatCount(agent.usage.cacheRead)} | ${formatCount(agent.usage.cacheWrite)} | ${formatCount(agent.usage.totalTokens)} | ${formatCost(agent.usage.cost)} | ${agent.success === false ? 'failed' : 'ok'} |\n`;
+      const skills = agent.skills && agent.skills.length > 0 ? agent.skills.join(', ') : 'none';
+      markdown += `| ${agent.agentType} | ${agent.model ?? 'n/a'} | ${formatCount(agent.turns)} | ${skills} | ${formatCount(agent.toolCalls?.git_diff ?? 0)} | ${formatCount(agent.usage.input)} | ${formatCount(agent.usage.output)} | ${formatCount(agent.usage.cacheRead)} | ${formatCount(agent.usage.cacheWrite)} | ${formatCount(agent.usage.totalTokens)} | ${formatCost(agent.usage.cost)} | ${agent.success === false ? 'failed' : 'ok'} |\n`;
     }
 
     markdown += `\n`;

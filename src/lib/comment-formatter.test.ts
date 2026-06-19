@@ -449,6 +449,8 @@ describe('comment-formatter', () => {
             agentType: 'unified-reviewer',
             model: 'opencode/glm-5-free',
             turns: 4,
+            skills: ['auth-patterns', 'sql-injection'],
+            toolCalls: { git_diff: 3 },
             success: true,
             usage: {
               input: 1234,
@@ -467,8 +469,9 @@ describe('comment-formatter', () => {
       expect(formatted).toContain('💰 Model Usage');
       expect(formatted).toContain('<details>');
       expect(formatted).toContain('View token and cost breakdown');
-      expect(formatted).toContain('| Agent | Model | Turns | Input | Output | Cache Read |');
+      expect(formatted).toContain('| Agent | Model | Turns | Skills | git_diff Calls |');
       expect(formatted).toContain('unified-reviewer');
+      expect(formatted).toContain('auth-patterns, sql-injection');
       expect(formatted).toContain('opencode/glm-5-free');
       expect(formatted).toContain('$0.0423');
       expect(formatted).toContain('</details>');

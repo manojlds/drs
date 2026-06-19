@@ -153,6 +153,11 @@ export interface LineValidator {
    * Check if a line number is valid for commenting
    */
   isValidLine(file: string, line: number): boolean;
+  /**
+   * Check if a line number was newly added or modified by the diff.
+   * Falls back to isValidLine when a caller only needs platform commentability.
+   */
+  isChangedLine?(file: string, line: number): boolean;
 }
 
 /**

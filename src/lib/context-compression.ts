@@ -1,4 +1,5 @@
 import type { FileWithDiff } from './review-core.js';
+import { parseAddedLinesFromPatch } from './diff-lines.js';
 
 export interface ContextCompressionOptions {
   enabled?: boolean;
@@ -7,6 +8,7 @@ export interface ContextCompressionOptions {
   softBufferTokens?: number;
   hardBufferTokens?: number;
   tokenEstimateDivisor?: number;
+  summaryThresholdMultiplier?: number;
 }
 
 /** Metadata about a file omitted due to token budget */
@@ -20,6 +22,8 @@ export interface OmittedFileInfo {
   isNew: boolean;
   /** Estimated token count of the diff entry */
   estimatedTokens: number;
+  /** Added new-file line ranges, used to validate review findings. */
+  addedLineRanges: string[];
 }
 
 export interface ContextCompressionResult {
@@ -45,6 +49,7 @@ const DEFAULT_COMPRESSION_OPTIONS: Required<ContextCompressionOptions> = {
   softBufferTokens: 1500,
   hardBufferTokens: 1000,
   tokenEstimateDivisor: 4,
+  summaryThresholdMultiplier: 3,
 };
 
 function normalizeOptions(
@@ -64,6 +69,43 @@ function estimateTokens(text: string, divisor: number): number {
 
 function buildDiffEntry(file: FileWithDiff): string {
   return `### ${file.filename}\n\n\`\`\`diff\n${file.patch}\n\`\`\``;
+}
+
+function formatLineRanges(lines: Set<number>): string[] {
+  const sorted = [...lines].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start: number | undefined;
+  let previous: number | undefined;
+
+  for (const line of sorted) {
+    if (start === undefined || previous === undefined) {
+      start = line;
+      previous = line;
+      continue;
+    }
+    if (line === previous + 1) {
+      previous = line;
+      continue;
+    }
+    ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+    start = line;
+    previous = line;
+  }
+
+  if (start !== undefined && previous !== undefined) {
+    ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+  }
+
+  return ranges;
+}
+
+function buildOmittedFileInfo(file: FileWithDiff, estimatedTokens: number): OmittedFileInfo {
+  return {
+    filename: file.filename,
+    ...computePatchStats(file.patch ?? ''),
+    estimatedTokens,
+    addedLineRanges: formatLineRanges(parseAddedLinesFromPatch(file.patch ?? '')),
+  };
 }
 
 /** Count additions, deletions, and detect new-file status from a unified diff patch */
@@ -235,12 +277,10 @@ export function compressFilesWithDiffs(
   const softLimit = resolvedOptions.maxTokens - resolvedOptions.softBufferTokens;
   const hardLimit = resolvedOptions.maxTokens - resolvedOptions.hardBufferTokens;
 
-  if (totalTokens > hardLimit * 3) {
-    const omitted = entries.map((entry) => ({
-      filename: entry.file.filename,
-      ...computePatchStats(entry.file.patch ?? ''),
-      estimatedTokens: entry.tokens,
-    }));
+  const summaryThreshold = hardLimit * resolvedOptions.summaryThresholdMultiplier;
+
+  if (totalTokens > summaryThreshold) {
+    const omitted = entries.map((entry) => buildOmittedFileInfo(entry.file, entry.tokens));
 
     return {
       mode: 'summary',
@@ -290,22 +330,12 @@ export function compressFilesWithDiffs(
 
   for (const entry of sorted) {
     if (currentTokens > hardLimit) {
-      const stats = computePatchStats(entry.file.patch ?? '');
-      budgetOmitted.push({
-        filename: entry.file.filename,
-        ...stats,
-        estimatedTokens: entry.tokens,
-      });
+      budgetOmitted.push(buildOmittedFileInfo(entry.file, entry.tokens));
       continue;
     }
 
     if (currentTokens + entry.tokens > softLimit) {
-      const stats = computePatchStats(entry.file.patch ?? '');
-      budgetOmitted.push({
-        filename: entry.file.filename,
-        ...stats,
-        estimatedTokens: entry.tokens,
-      });
+      budgetOmitted.push(buildOmittedFileInfo(entry.file, entry.tokens));
       continue;
     }
 
@@ -430,6 +460,9 @@ export function formatCompressionSummary(result: ContextCompressionResult): stri
         .map((info) => {
           const parts = [`+${info.additions}`, `-${info.deletions}`];
           if (info.isNew) parts.push('new file');
+          if (info.addedLineRanges.length > 0) {
+            parts.push(`added lines ${info.addedLineRanges.join(', ')}`);
+          }
           parts.push(`~${info.estimatedTokens} tokens`);
           return `  - ${info.filename} (${parts.join(', ')})`;
         })

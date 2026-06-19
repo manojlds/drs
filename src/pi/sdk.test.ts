@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'child_process';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, unlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
@@ -504,9 +504,54 @@ describe('pi/sdk', () => {
 
       const result = await gitDiff?.execute('tool-1', { file: 'app.ts' });
       expect(result?.details?.file).toBe('app.ts');
+      expect(result?.details?.ok).toBe(true);
       expect(String(result?.details?.diff)).toContain('-export const value = 1;');
       expect(String(result?.details?.diff)).toContain('+export const value = 2;');
+      expect(result?.details?.metadata).toEqual(
+        expect.objectContaining({ binary: false, deleted: false, renamed: false, empty: false })
+      );
 
+      const missingRef = await gitDiff?.execute('tool-missing-ref', {
+        file: 'app.ts',
+        base: 'missing-ref',
+      });
+      expect(missingRef?.details?.ok).toBe(false);
+      expect(String(missingRef?.details?.error)).toContain('missing-ref');
+
+      await writeFile(join(workdir, 'deleted.ts'), 'remove me\n');
+      await execFileAsync('git', ['add', 'deleted.ts'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'add deleted file'], { cwd: workdir });
+      await unlink(join(workdir, 'deleted.ts'));
+      const deleted = await gitDiff?.execute('tool-deleted', { file: 'deleted.ts' });
+      expect(deleted?.details?.metadata).toEqual(expect.objectContaining({ deleted: true }));
+      await execFileAsync('git', ['add', '-A'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'delete file'], { cwd: workdir });
+
+      await writeFile(join(workdir, 'renamed-old.ts'), 'rename me\n');
+      await execFileAsync('git', ['add', 'renamed-old.ts'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'add renamed file'], { cwd: workdir });
+      const renameBase = (
+        await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: workdir })
+      ).stdout.trim();
+      await execFileAsync('git', ['mv', 'renamed-old.ts', 'renamed-new.ts'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'rename file'], { cwd: workdir });
+      const renameHead = (
+        await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: workdir })
+      ).stdout.trim();
+      const renamed = await gitDiff?.execute('tool-renamed', {
+        file: 'renamed-new.ts',
+        base: renameBase,
+        head: renameHead,
+      });
+      expect(renamed?.details?.metadata).toEqual(
+        expect.objectContaining({
+          renamed: true,
+          oldPath: 'renamed-old.ts',
+          newPath: 'renamed-new.ts',
+        })
+      );
+
+      await writeFile(join(workdir, 'app.ts'), `${'y'.repeat(1_000)}\n`);
       const truncated = await gitDiff?.execute('tool-2', { file: 'app.ts', maxBytes: 80 });
       expect(truncated?.details?.truncated).toBe(true);
 

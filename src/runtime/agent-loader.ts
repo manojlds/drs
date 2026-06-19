@@ -151,13 +151,13 @@ function parseAgentFile(
       namespace: parsedAgentId.namespace,
       name: parsedAgentId.name,
       path: filePath,
-      description: frontmatter.description || '',
+      description: frontmatter.description ?? '',
       prompt,
       color: frontmatter.color,
       model: frontmatter.model,
       tools: frontmatter.tools,
       skills: asStringArray(frontmatter.skills),
-      hidden: frontmatter.hidden || false,
+      hidden: frontmatter.hidden ?? false,
     };
   } catch (error) {
     if (failOnInvalidAgentId && error instanceof InvalidProjectAgentPathError) {
