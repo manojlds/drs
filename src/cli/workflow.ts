@@ -520,6 +520,15 @@ async function formatWorkflowNodeWriteContent(
     validateHtmlArtifact(html);
     return html;
   } catch (error) {
+    try {
+      return await readArtifactOutputPointer(workingDir, {
+        outputType: 'artifact_output',
+        outputPath: writes,
+      });
+    } catch {
+      // If the agent did not write a valid artifact itself, surface the response validation error.
+    }
+
     throw new Error(
       `Workflow node "${nodeId}" produced invalid HTML output: ${
         error instanceof Error ? error.message : String(error)
