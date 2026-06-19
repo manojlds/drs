@@ -403,7 +403,7 @@ function runGitNameStatus(workingDir: string, args: string[]): Promise<string> {
     const stderrChunks: Buffer[] = [];
 
     child.stdout.on('data', (chunk: Buffer) => {
-      appendCappedChunk(stdoutChunks, chunk, GIT_DIFF_STDERR_MAX_BYTES);
+      stdoutChunks.push(chunk);
     });
 
     child.stderr.on('data', (chunk: Buffer) => {

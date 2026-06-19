@@ -593,6 +593,7 @@ contextCompression:
   softBufferTokens: 1500
   hardBufferTokens: 1000
   tokenEstimateDivisor: 4
+  summaryThresholdMultiplier: 3 # use summary-only context above hard limit * multiplier
 ```
 
 ### Runtime Timeouts and Provider Retry
