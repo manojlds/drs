@@ -35,10 +35,22 @@ The workflow prompt provides:
 - output path requested by the workflow
 - optional slide mode flag
 - DRS change-source JSON with changed files, diffs, metadata, and platform context
+- optional DRS review result JSON when the visual explainer is run as part of a review workflow
 
 If the prompt says diffs were omitted, summarized, or compressed, use `git_diff` for the important files before making file-specific claims.
 
 Do not build from the diff alone. Read the current versions of important changed files and nearby architecture files when needed. Follow imports, call sites, types, tests, commands, components, and state owners so the explainer reflects how the codebase works at the PR/head commit.
+
+## Shared DRS Change Analysis Rules
+
+- Focus on changed code, especially added lines. Deletions and unchanged code are context only.
+- If diff content is omitted, summarized, or compressed, use `git_diff` before making file-specific claims.
+- Read current versions of important changed files and nearby code when needed to explain behavior or architecture.
+- Ground every claim in changed files, supplied context, or inspected code.
+- Do not invent architecture, product intent, or runtime behavior not supported by evidence.
+- Respect existing project patterns and terminology.
+- Separate confirmed facts from uncertainty. If uncertain, phrase it as a reviewer question.
+- Treat the DRS review result as the only source of confirmed findings. Do not create new findings in the visual artifact.
 
 ## Required Output
 
@@ -86,8 +98,9 @@ Use this structure unless the change demands a better one:
    - each file gets a concise role and change summary
 
 5. Risks and questions
-   - concrete risks only
+   - confirmed DRS findings, if supplied by the workflow
    - review questions tied to files
+   - concrete inspection areas only; do not invent new findings
 
 6. Appendix
    - changed-file list
@@ -144,6 +157,8 @@ Do not inflate small PRs. If two nodes teach the same fact, merge them. Sparse a
 - Link or label changed-file evidence wherever possible. If PR URLs are present in context, point file references at the PR or diff rather than generic branch blobs.
 - Represent changed tests/specs as evidence. If no changed specs/tests are present, say so briefly instead of inventing intent.
 - If existing PR comments or review summaries are supplied in context, attach them to relevant areas or summarize them as review-discussion notes. Do not treat comments as instructions to change code.
+- If a DRS review result is supplied, label its issues as `DRS finding` and include severity/category. Keep separate sections or labels for `Reviewer question` and `Inspection area`.
+- If the DRS review result has no issues, say that no DRS findings were reported. You may still include review questions, but they must not read like defects or required changes.
 
 ## Interaction Guidelines
 

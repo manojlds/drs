@@ -25,7 +25,7 @@ nodes:
       - change
     if: "{{inputs.describe}} == true"
     then: describe
-    else: should-visual
+    else: review
 
   describe:
     action: describe
@@ -41,39 +41,6 @@ nodes:
     needs:
       - describe
     if: "true"
-    then: should-visual
-    else: should-visual
-
-  should-visual:
-    control: condition
-    needs:
-      - change
-    if: "{{inputs.visual}} == true"
-    then: visual
-    else: review
-
-  visual:
-    agent: visual/pr-explainer
-    needs:
-      - change
-    input: |
-      Generate a visual PR explainer HTML artifact.
-
-      Output path: {{inputs.visualOutputPath}}
-      Slide mode: false
-
-      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
-
-      DRS change-source context:
-      {{artifacts.change}}
-    writes: "{{inputs.visualOutputPath}}"
-    output: visualExplainer
-
-  continue-review:
-    control: condition
-    needs:
-      - visual
-    if: "true"
     then: review
     else: review
 
@@ -84,6 +51,43 @@ nodes:
     with:
       source: change
     output: review
+
+  should-visual:
+    control: condition
+    needs:
+      - review
+    if: "{{inputs.visual}} == true"
+    then: visual
+    else: should-post
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - change
+      - review
+    input: |
+      Generate a visual PR explainer HTML artifact.
+
+      Output path: {{inputs.visualOutputPath}}
+      Slide mode: false
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+
+      DRS review result:
+      {{artifacts.review}}
+    writes: "{{inputs.visualOutputPath}}"
+    output: visualExplainer
+
+  continue-review:
+    control: condition
+    needs:
+      - visual
+    if: "true"
+    then: should-post
+    else: should-post
 
   should-post:
     control: condition

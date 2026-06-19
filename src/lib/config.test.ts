@@ -126,6 +126,7 @@ describe('Config', () => {
       });
       expect(config.workflows?.['github-pr-review']?.nodes.visual).toMatchObject({
         agent: 'visual/pr-explainer',
+        needs: ['change', 'review'],
         writes: '{{inputs.visualOutputPath}}',
       });
       expect(config.workflows?.['github-pr-visual-explain']).toMatchObject({
@@ -146,11 +147,21 @@ describe('Config', () => {
       });
       expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
+      expect(config.workflows?.['github-pr-review']?.nodes['should-visual']?.needs).toEqual([
+        'review',
+      ]);
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
       ]);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.needs).toEqual(['change']);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.needs).toEqual([
+        'change',
+        'review',
+      ]);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes['should-visual']?.needs).toEqual([
+        'review',
+      ]);
       expect(config.workflows?.['gitlab-mr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
       ]);
