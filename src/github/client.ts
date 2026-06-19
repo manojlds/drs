@@ -237,6 +237,18 @@ export class GitHubClient {
     });
   }
 
+  async deletePRReviewComment(
+    owner: string,
+    repo: string,
+    commentId: number
+  ): Promise<RestEndpointMethodTypes['pulls']['deleteReviewComment']['response']> {
+    return await this.octokit.pulls.deleteReviewComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
+  }
+
   async createPullRequest(
     owner: string,
     repo: string,

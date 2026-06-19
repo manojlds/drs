@@ -94,7 +94,14 @@ export class GitHubPlatformAdapter implements PlatformClient {
     commentId: number | string
   ): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
-    await this.client.deleteComment(owner, repo, Number(commentId));
+    try {
+      await this.client.deleteComment(owner, repo, Number(commentId));
+    } catch (error) {
+      if (!this.isNotFoundError(error)) {
+        throw error;
+      }
+      await this.client.deletePRReviewComment(owner, repo, Number(commentId));
+    }
   }
 
   async createInlineComment(
@@ -222,5 +229,14 @@ export class GitHubPlatformAdapter implements PlatformClient {
       throw new Error(`Invalid GitHub project ID format: ${projectId}. Expected "owner/repo"`);
     }
     return [parts[0], parts[1]];
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      (error as { status?: unknown }).status === 404
+    );
   }
 }
