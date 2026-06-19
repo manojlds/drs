@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => {
     deleteComment: vi.fn(),
     createBulkInlineComments: vi.fn(),
     addLabels: vi.fn(),
+    hasLabel: vi.fn(),
+    createChangeRequest: vi.fn(),
   };
   const gitlabAdapter = {
     getPullRequest: vi.fn(),
@@ -28,6 +30,8 @@ const mocks = vi.hoisted(() => {
     deleteComment: vi.fn(),
     createBulkInlineComments: vi.fn(),
     addLabels: vi.fn(),
+    hasLabel: vi.fn(),
+    createChangeRequest: vi.fn(),
   };
 
   return {
@@ -265,6 +269,13 @@ describe('workflow runner', () => {
     mocks.githubAdapter.deleteComment.mockResolvedValue(undefined);
     mocks.githubAdapter.createBulkInlineComments.mockResolvedValue(undefined);
     mocks.githubAdapter.addLabels.mockResolvedValue(undefined);
+    mocks.githubAdapter.hasLabel.mockResolvedValue(false);
+    mocks.githubAdapter.createChangeRequest.mockResolvedValue({
+      number: 99,
+      url: 'https://github.com/octocat/hello-world/pull/99',
+      sourceBranch: 'drs-guidance/pr-7',
+      targetBranch: 'feature',
+    });
     mocks.createGitLabClient.mockReturnValue({ platform: 'gitlab' });
     mocks.GitLabPlatformAdapter.mockImplementation(
       class {
@@ -297,6 +308,13 @@ describe('workflow runner', () => {
     mocks.gitlabAdapter.deleteComment.mockResolvedValue(undefined);
     mocks.gitlabAdapter.createBulkInlineComments.mockResolvedValue(undefined);
     mocks.gitlabAdapter.addLabels.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.hasLabel.mockResolvedValue(false);
+    mocks.gitlabAdapter.createChangeRequest.mockResolvedValue({
+      number: 77,
+      url: 'https://gitlab.com/group/repo/-/merge_requests/77',
+      sourceBranch: 'drs-guidance/mr-8',
+      targetBranch: 'feature',
+    });
     mocks.executeReview.mockImplementation(
       async (_config: unknown, source: { files: string[] }) => ({
         issues: [],
@@ -828,6 +846,167 @@ describe('workflow runner', () => {
       message: 'docs: update changelog',
       paths: ['CHANGELOG.md'],
     });
+  });
+
+  it('branches, detects a diff, pushes, and creates a change request', async () => {
+    const projectRoot = createTempDir('drs-workflow-change-request-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        stack: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            branch: {
+              action: 'git-branch',
+              needs: ['change'],
+              with: { name: 'drs-guidance/pr-7', force: true },
+            },
+            diff: {
+              action: 'has-diff',
+              needs: ['branch'],
+              with: { paths: 'AGENTS.md,CLAUDE.md' },
+              output: 'diff',
+            },
+            push: {
+              action: 'git-push',
+              needs: ['diff'],
+              with: { branch: 'drs-guidance/pr-7' },
+            },
+            create: {
+              action: 'create-change-request',
+              needs: ['push'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                sourceBranch: 'drs-guidance/pr-7',
+                targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}',
+                title: 'docs: update agent guidance',
+              },
+              output: 'changeRequest',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'stack', { workingDir: projectRoot });
+
+    expect(mocks.git.raw).toHaveBeenCalledWith(['checkout', '-B', 'drs-guidance/pr-7']);
+    expect(mocks.git.diff).toHaveBeenCalledWith(['--', 'AGENTS.md', 'CLAUDE.md']);
+    expect(mocks.git.raw).toHaveBeenCalledWith([
+      'push',
+      '-u',
+      'origin',
+      'drs-guidance/pr-7:drs-guidance/pr-7',
+    ]);
+    expect(mocks.githubAdapter.createChangeRequest).toHaveBeenCalledWith('octocat/hello-world', {
+      sourceBranch: 'drs-guidance/pr-7',
+      targetBranch: 'feature',
+      title: 'docs: update agent guidance',
+      body: undefined,
+      draft: false,
+    });
+    expect(result.artifacts.diff).toMatchObject({
+      changed: true,
+      files: ['AGENTS.md', 'CLAUDE.md'],
+    });
+    expect(result.artifacts.changeRequest).toMatchObject({ number: 99 });
+  });
+
+  it('prevents stacking on reserved DRS source branches by default', async () => {
+    const projectRoot = createTempDir('drs-workflow-stack-guard-');
+    mocks.githubAdapter.getPullRequest.mockResolvedValue({
+      number: 7,
+      title: 'Stacked PR',
+      author: 'octocat',
+      sourceBranch: 'drs-fix/pr-7',
+      targetBranch: 'feature',
+      headSha: 'abc123',
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        guarded: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            guard: {
+              action: 'stack-guard',
+              needs: ['change'],
+              output: 'guard',
+            },
+            shouldStack: {
+              control: 'condition',
+              needs: ['guard'],
+              if: '{{artifacts.guard.allowed}} == true',
+              then: 'branch',
+              else: 'done',
+            },
+            branch: {
+              action: 'git-branch',
+              with: { name: 'drs-fix/pr-7' },
+            },
+            done: { control: 'end' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'guarded', { workingDir: projectRoot });
+
+    expect(result.artifacts.guard).toMatchObject({ allowed: false, sourceBranch: 'drs-fix/pr-7' });
+    expect(mocks.git.raw).not.toHaveBeenCalledWith(['checkout', '-b', 'drs-fix/pr-7']);
+  });
+
+  it('matches review issues at or above a configured severity threshold', async () => {
+    const projectRoot = createTempDir('drs-workflow-review-threshold-');
+    mocks.executeReview.mockResolvedValue({
+      issues: [
+        { severity: 'LOW', category: 'STYLE', file: 'a.ts', line: 1, message: 'low' },
+        { severity: 'HIGH', category: 'BUG', file: 'b.ts', line: 2, message: 'high' },
+        { severity: 'CRITICAL', category: 'SECURITY', file: 'c.ts', line: 3, message: 'critical' },
+      ],
+      summary: { filesReviewed: 1, issuesFound: 3, bySeverity: {}, byCategory: {} },
+      filesReviewed: 1,
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        threshold: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            threshold: {
+              action: 'review-threshold',
+              needs: ['review'],
+              with: { severity: 'high', minIssues: 2 },
+              output: 'threshold',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'threshold', { workingDir: projectRoot });
+
+    expect(result.artifacts.threshold).toMatchObject({ matched: true, count: 2, severity: 'HIGH' });
   });
 
   it('rejects git action paths outside the working directory', async () => {

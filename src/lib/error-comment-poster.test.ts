@@ -26,6 +26,7 @@ describe('error-comment-poster', () => {
     createBulkInlineComments: vi.fn(),
     addLabels: vi.fn(),
     hasLabel: vi.fn(),
+    createChangeRequest: vi.fn(),
     ...overrides,
   });
 

@@ -1,0 +1,110 @@
+name: gitlab-mr-update-agents-md-stacked
+description: Update agent guidance for a GitLab MR and open a stacked MR when warranted
+inputs:
+  project: ""
+  mr: ""
+  paths: "AGENTS.md,CLAUDE.md,.github/copilot-instructions.md"
+  branchPrefix: "drs-guidance/mr-"
+  allowStackedSource: "false"
+  draft: "false"
+output: changeRequest
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+    output: change
+
+  guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: branch
+    else: done
+
+  branch:
+    action: git-branch
+    with:
+      name: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      force: true
+    output: branch
+
+  update-guidance:
+    agent: task/agents-md-updater
+    needs:
+      - change
+      - branch
+    input: |
+      Decide whether this GitLab MR warrants an update to repository coding-agent guidance.
+
+      Guidance paths to consider: {{inputs.paths}}
+
+      If no durable guidance update is warranted, leave files unchanged and say so.
+
+      GitLab MR change source:
+      {{artifacts.change}}
+    output: guidance
+
+  diff:
+    action: has-diff
+    needs:
+      - update-guidance
+    with:
+      paths: "{{inputs.paths}}"
+    output: guidanceDiff
+
+  should-create:
+    control: condition
+    needs:
+      - diff
+    if: "{{artifacts.guidanceDiff.changed}} == true"
+    then: commit
+    else: done
+
+  commit:
+    action: git-commit
+    with:
+      message: "docs: update agent guidance for MR !{{inputs.mr}}"
+      paths: "{{inputs.paths}}"
+    output: commit
+
+  push:
+    action: git-push
+    needs:
+      - commit
+    with:
+      branch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+    output: push
+
+  create:
+    action: create-change-request
+    needs:
+      - push
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      sourceBranch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "docs: update agent guidance for MR !{{inputs.mr}}"
+      draft: "{{inputs.draft}}"
+      body: |
+        Automated DRS guidance update stacked on MR !{{inputs.mr}}.
+
+        <!-- drs-stack-source: gitlab:{{inputs.project}}!{{inputs.mr}} -->
+        <!-- drs-stack-kind: guidance -->
+    output: changeRequest
+
+  done:
+    control: end

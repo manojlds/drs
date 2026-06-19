@@ -1,0 +1,137 @@
+name: gitlab-mr-fix-review-issues-stacked
+description: Fix high-severity GitLab MR review issues and open a stacked MR
+inputs:
+  project: ""
+  mr: ""
+  severity: "high"
+  minIssues: "1"
+  branchPrefix: "drs-fix/mr-"
+  allowStackedSource: "false"
+  draft: "false"
+output: changeRequest
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+    output: change
+
+  guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: review
+    else: done
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+    output: review
+
+  threshold:
+    action: review-threshold
+    needs:
+      - review
+    with:
+      review: review
+      severity: "{{inputs.severity}}"
+      minIssues: "{{inputs.minIssues}}"
+    output: reviewThreshold
+
+  should-fix:
+    control: condition
+    needs:
+      - threshold
+    if: "{{artifacts.reviewThreshold.matched}} == true"
+    then: branch
+    else: done
+
+  branch:
+    action: git-branch
+    with:
+      name: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      force: true
+    output: branch
+
+  fix-issues:
+    agent: task/review-issue-fixer
+    needs:
+      - branch
+      - review
+    input: |
+      Fix actionable issues from this DRS review result for GitLab MR !{{inputs.mr}}.
+
+      Only fix issues at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
+
+      Review result:
+      {{artifacts.review}}
+
+      Current MR change source:
+      {{artifacts.change}}
+    output: fixes
+
+  diff:
+    action: has-diff
+    needs:
+      - fix-issues
+    output: fixDiff
+
+  should-create:
+    control: condition
+    needs:
+      - diff
+    if: "{{artifacts.fixDiff.changed}} == true"
+    then: commit
+    else: done
+
+  commit:
+    action: git-commit
+    with:
+      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
+    output: commit
+
+  push:
+    action: git-push
+    needs:
+      - commit
+    with:
+      branch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+    output: push
+
+  create:
+    action: create-change-request
+    needs:
+      - push
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      sourceBranch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "fix: address DRS review issues for MR !{{inputs.mr}}"
+      draft: "{{inputs.draft}}"
+      body: |
+        Automated DRS fix stacked on MR !{{inputs.mr}}.
+
+        Threshold: {{inputs.severity}}, minimum issues: {{inputs.minIssues}}
+
+        <!-- drs-stack-source: gitlab:{{inputs.project}}!{{inputs.mr}} -->
+        <!-- drs-stack-kind: fix -->
+    output: changeRequest
+
+  done:
+    control: end

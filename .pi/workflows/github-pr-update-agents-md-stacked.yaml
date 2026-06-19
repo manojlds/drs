@@ -1,0 +1,113 @@
+name: github-pr-update-agents-md-stacked
+description: Update agent guidance for a GitHub PR and open a stacked PR when warranted
+inputs:
+  owner: ""
+  repo: ""
+  pr: ""
+  paths: "AGENTS.md,CLAUDE.md,.github/copilot-instructions.md"
+  branchPrefix: "drs-guidance/pr-"
+  allowStackedSource: "false"
+  draft: "false"
+output: changeRequest
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+    output: change
+
+  guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: branch
+    else: done
+
+  branch:
+    action: git-branch
+    with:
+      name: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      force: true
+    output: branch
+
+  update-guidance:
+    agent: task/agents-md-updater
+    needs:
+      - change
+      - branch
+    input: |
+      Decide whether this GitHub PR warrants an update to repository coding-agent guidance.
+
+      Guidance paths to consider: {{inputs.paths}}
+
+      If no durable guidance update is warranted, leave files unchanged and say so.
+
+      GitHub PR change source:
+      {{artifacts.change}}
+    output: guidance
+
+  diff:
+    action: has-diff
+    needs:
+      - update-guidance
+    with:
+      paths: "{{inputs.paths}}"
+    output: guidanceDiff
+
+  should-create:
+    control: condition
+    needs:
+      - diff
+    if: "{{artifacts.guidanceDiff.changed}} == true"
+    then: commit
+    else: done
+
+  commit:
+    action: git-commit
+    with:
+      message: "docs: update agent guidance for PR #{{inputs.pr}}"
+      paths: "{{inputs.paths}}"
+    output: commit
+
+  push:
+    action: git-push
+    needs:
+      - commit
+    with:
+      branch: "{{inputs.branchPrefix}}{{inputs.pr}}"
+    output: push
+
+  create:
+    action: create-change-request
+    needs:
+      - push
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      sourceBranch: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "docs: update agent guidance for PR #{{inputs.pr}}"
+      draft: "{{inputs.draft}}"
+      body: |
+        Automated DRS guidance update stacked on PR #{{inputs.pr}}.
+
+        <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
+        <!-- drs-stack-kind: guidance -->
+    output: changeRequest
+
+  done:
+    control: end
