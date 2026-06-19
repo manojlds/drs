@@ -854,7 +854,7 @@ class PiSessionRuntime {
       });
     }
 
-    if (this.isToolEnabled('write_artifact_output', true, agentTools)) {
+    if (this.isToolEnabled('write_artifact_output', false, agentTools)) {
       customTools.push({
         name: 'write_artifact_output',
         label: 'write_artifact_output',

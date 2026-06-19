@@ -499,7 +499,7 @@ describe('pi/sdk', () => {
 
       expect(gitDiff).toBeDefined();
       expect((createArgs as { tools?: string[] }).tools).toContain('write_json_output');
-      expect((createArgs as { tools?: string[] }).tools).toContain('write_artifact_output');
+      expect((createArgs as { tools?: string[] }).tools).not.toContain('write_artifact_output');
       expect((createArgs as { tools?: string[] }).tools).toContain('git_diff');
       expect((createArgs as { tools?: string[] }).tools).not.toContain('bash');
 
