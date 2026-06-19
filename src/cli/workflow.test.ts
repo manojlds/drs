@@ -448,6 +448,47 @@ describe('workflow runner', () => {
     expect(result.nodes.visual?.writes).toBe('.drs/custom-visual.html');
   });
 
+  it('extracts the HTML document when visual agent output includes surrounding text', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-extract-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult(
+        'visual/pr-explainer',
+        'Thinking before writing.\n<!DOCTYPE html><html><body><h1>Visual explainer</h1></body></html>\nDone.'
+      )
+    );
+
+    const result = await runWorkflow(config, 'local-visual-explain', {
+      inputs: { outputPath: '.drs/custom-visual.html' },
+      workingDir: projectRoot,
+    });
+
+    const artifact = readFileSync(join(projectRoot, '.drs', 'custom-visual.html'), 'utf-8');
+    expect(artifact).toBe('<!DOCTYPE html><html><body><h1>Visual explainer</h1></body></html>');
+    expect(result.output).toBe(artifact);
+  });
+
+  it('fails clearly when an HTML workflow write has no doctype', async () => {
+    const projectRoot = createTempDir('drs-workflow-visual-invalid-');
+    const config = loadConfig(projectRoot);
+    mocks.git.diff.mockResolvedValue(
+      'diff --git a/src/app.ts b/src/app.ts\n@@ -0,0 +1 @@\n+change'
+    );
+    mocks.runAgent.mockResolvedValue(
+      createMockAgentResult('visual/pr-explainer', '<html><body>Missing doctype</body></html>')
+    );
+
+    await expect(
+      runWorkflow(config, 'local-visual-explain', {
+        inputs: { outputPath: '.drs/custom-visual.html' },
+        workingDir: projectRoot,
+      })
+    ).rejects.toThrow('produced HTML output without <!DOCTYPE html>');
+  });
+
   it('lets CLI-style inputs override configured inputs', async () => {
     const projectRoot = createTempDir('drs-workflow-inputs-');
     writeFileSync(join(projectRoot, 'diff.md'), 'File diff');

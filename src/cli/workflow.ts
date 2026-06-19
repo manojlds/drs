@@ -489,6 +489,25 @@ async function writeWorkflowFile(
   await writeFile(outputPath, content, 'utf-8');
 }
 
+function formatWorkflowNodeWriteContent(nodeId: string, writes: string, content: string): string {
+  if (!/\.html?$/i.test(writes)) {
+    return content;
+  }
+
+  const doctypeMatch = /<!DOCTYPE\s+html\s*>/i.exec(content);
+  if (!doctypeMatch) {
+    throw new Error(`Workflow node "${nodeId}" produced HTML output without <!DOCTYPE html>.`);
+  }
+
+  const html = content.slice(doctypeMatch.index).trimStart();
+  const closingHtmlMatch = /<\/html\s*>/i.exec(html);
+  if (!closingHtmlMatch) {
+    return html;
+  }
+
+  return html.slice(0, closingHtmlMatch.index + closingHtmlMatch[0].length);
+}
+
 function renderNodeWritesPath(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -529,12 +548,15 @@ async function runAgentWorkflowNode(
 
   const result = await runAgent(config, agentId, createAgentOptions(prompt, options, workingDir));
   const writes = renderNodeWritesPath(nodeId, node, context);
+  const output = writes
+    ? formatWorkflowNodeWriteContent(
+        nodeId,
+        writes,
+        node.json === true ? JSON.stringify(result, null, 2) : result.response
+      )
+    : result.response;
   if (writes) {
-    await writeWorkflowFile(
-      workingDir,
-      writes,
-      node.json === true ? JSON.stringify(result, null, 2) : result.response
-    );
+    await writeWorkflowFile(workingDir, writes, output);
   }
 
   return {
@@ -542,7 +564,7 @@ async function runAgentWorkflowNode(
     type: 'agent',
     agent: agentId,
     response: result.response,
-    output: result.response,
+    output,
     writes,
   };
 }
