@@ -31,6 +31,40 @@ describe('diff-lines', () => {
     expect([...info.commentableLines]).toEqual([10, 11]);
   });
 
+  it('ignores file headers before the first hunk', () => {
+    const info = parseDiffLineInfo(
+      [
+        'diff --git a/file.ts b/file.ts',
+        '--- a/file.ts',
+        '+++ b/file.ts',
+        '@@ -0,0 +1,3 @@',
+        '+one',
+        '+two',
+        '+three',
+      ].join('\n')
+    );
+
+    expect([...info.addedLines]).toEqual([1, 2, 3]);
+    expect([...info.commentableLines]).toEqual([1, 2, 3]);
+  });
+
+  it('does not count file headers in modified files', () => {
+    const info = parseDiffLineInfo(
+      [
+        'diff --git a/file.ts b/file.ts',
+        '--- a/file.ts',
+        '+++ b/file.ts',
+        '@@ -1,2 +1,2 @@',
+        ' unchanged',
+        '-old',
+        '+new',
+      ].join('\n')
+    );
+
+    expect([...info.addedLines]).toEqual([2]);
+    expect([...info.commentableLines]).toEqual([1, 2]);
+  });
+
   it('uses the same parser for GitLab diffs', () => {
     const lines = parseValidLinesFromDiff(['@@ -0,0 +1,2 @@', '+first', '+second'].join('\n'));
 

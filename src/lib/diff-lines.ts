@@ -13,15 +13,17 @@ export function parseDiffLineInfo(patch: string): DiffLineInfo {
   const commentableLines = new Set<number>();
   const lines = patch.split('\n');
   let currentLine = 0;
+  let inHunk = false;
 
   for (const line of lines) {
     const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (hunkMatch) {
       currentLine = parseInt(hunkMatch[1], 10);
+      inHunk = true;
       continue;
     }
 
-    if (!line) continue;
+    if (!inHunk || !line) continue;
 
     const prefix = line[0];
     if (prefix === '+') {
