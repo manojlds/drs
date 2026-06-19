@@ -115,7 +115,17 @@ jobs:
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
             --input describe=true \
-            --input post=true
+            --input post=true \
+            --input visual=true \
+            --input visualOutputPath=".drs/visual-pr-explainer.html"
+
+      - name: Upload visual explainer artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-pr-explainer-trusted
+          path: .drs/visual-pr-explainer.html
+          if-no-files-found: ignore
 
   # Review for external contributors - requires environment approval OR safe-to-review label
   review-external:
@@ -194,7 +204,17 @@ jobs:
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
             --input describe=true \
-            --input post=true
+            --input post=true \
+            --input visual=true \
+            --input visualOutputPath=".drs/visual-pr-explainer.html"
+
+      - name: Upload visual explainer artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-pr-explainer-external
+          path: .drs/visual-pr-explainer.html
+          if-no-files-found: ignore
 
   # Notify when external PR is waiting for approval
   notify-external:
