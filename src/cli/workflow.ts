@@ -42,6 +42,12 @@ import type { Description } from '../lib/description-formatter.js';
 import { buildBaseInstructions, type FileWithDiff } from '../lib/review-core.js';
 import { resolveCursorFixLinkOptions } from '../lib/cursor-fix-link.js';
 import {
+  extractHtmlDocument,
+  parseArtifactOutputPointer,
+  readArtifactOutputPointer,
+  validateHtmlArtifact,
+} from '../lib/html-artifact.js';
+import {
   enforceRepoBranchMatch,
   getCanonicalDiffCommand,
   resolveBaseBranch,
@@ -489,23 +495,37 @@ async function writeWorkflowFile(
   await writeFile(outputPath, content, 'utf-8');
 }
 
-function formatWorkflowNodeWriteContent(nodeId: string, writes: string, content: string): string {
+async function formatWorkflowNodeWriteContent(
+  workingDir: string,
+  nodeId: string,
+  writes: string,
+  content: string
+): Promise<string> {
   if (!/\.html?$/i.test(writes)) {
     return content;
   }
 
-  const doctypeMatch = /<!DOCTYPE\s+html\s*>/i.exec(content);
-  if (!doctypeMatch) {
-    throw new Error(`Workflow node "${nodeId}" produced HTML output without <!DOCTYPE html>.`);
+  const pointer = parseArtifactOutputPointer(content);
+  if (pointer) {
+    if (pointer.outputPath !== writes) {
+      throw new Error(
+        `Workflow node "${nodeId}" artifact pointer wrote "${pointer.outputPath}" but workflow expected "${writes}".`
+      );
+    }
+    return readArtifactOutputPointer(workingDir, pointer);
   }
 
-  const html = content.slice(doctypeMatch.index).trimStart();
-  const closingHtmlMatch = /<\/html\s*>/i.exec(html);
-  if (!closingHtmlMatch) {
+  try {
+    const html = extractHtmlDocument(content);
+    validateHtmlArtifact(html);
     return html;
+  } catch (error) {
+    throw new Error(
+      `Workflow node "${nodeId}" produced invalid HTML output: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
-
-  return html.slice(0, closingHtmlMatch.index + closingHtmlMatch[0].length);
 }
 
 function renderNodeWritesPath(
@@ -549,7 +569,8 @@ async function runAgentWorkflowNode(
   const result = await runAgent(config, agentId, createAgentOptions(prompt, options, workingDir));
   const writes = renderNodeWritesPath(nodeId, node, context);
   const output = writes
-    ? formatWorkflowNodeWriteContent(
+    ? await formatWorkflowNodeWriteContent(
+        workingDir,
         nodeId,
         writes,
         node.json === true ? JSON.stringify(result, null, 2) : result.response
