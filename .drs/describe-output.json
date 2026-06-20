@@ -1,0 +1,80 @@
+{
+  "type": "feature",
+  "title": "Add review artifact finding mutation actions and persistence",
+  "summary": [
+    "Adds workflow actions to add and update review findings",
+    "Persists mutated review artifacts back to disk",
+    "Marks attempted fixes before checking for fix diff"
+  ],
+  "walkthrough": [
+    {
+      "file": "src/cli/workflow.ts",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Implement review artifact mutation actions",
+      "changes": [
+        "Dispatches add/update/promote/resolve review-artifact actions",
+        "Reads artifact envelope and persists mutations to disk",
+        "Parses finding state, disposition, source and issue selectors"
+      ],
+      "significance": "major"
+    },
+    {
+      "file": "src/lib/review-artifact.ts",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Add finding mutation helpers",
+      "changes": [
+        "Implements addReviewArtifactFinding with summary update",
+        "Implements updateReviewArtifactFindings with id/fingerprint/severity selector",
+        "Adds nextFindingId and selectorMatches helpers"
+      ],
+      "significance": "major"
+    },
+    {
+      "file": "src/lib/workflow-artifacts.ts",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Add in-place artifact update function",
+      "changes": [
+        "Adds updateWorkflowArtifact to overwrite saved envelope payload",
+        "Updates updatedAt and rewrites timestamped and latest files"
+      ],
+      "significance": "minor"
+    },
+    {
+      "file": ".pi/workflows/github-pr-review.yaml",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Track attempted fix state before diff",
+      "changes": [
+        "Adds mark-fix-attempted node after fix-issues",
+        "Sets fix findings state to attempted and disposition partial",
+        "Makes fix-diff depend on mark-fix-attempted"
+      ],
+      "significance": "minor"
+    },
+    {
+      "file": "src/lib/config.ts",
+      "changeType": "modified",
+      "semanticLabel": "configuration",
+      "title": "Declare new review artifact actions",
+      "changes": [
+        "Extends WorkflowNodeConfig action union with four new actions"
+      ],
+      "significance": "minor"
+    }
+  ],
+  "labels": [
+    "feature",
+    "workflow",
+    "review-artifact",
+    "persistence",
+    "github-pr-review"
+  ],
+  "recommendations": [
+    "Add unit tests for addReviewArtifactFinding and updateReviewArtifactFindings",
+    "Add workflow integration tests for the new mutation actions",
+    "Verify finding ID generation handles gaps after deletions safely"
+  ]
+}

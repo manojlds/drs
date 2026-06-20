@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "kind": "review",
+  "id": "art_20260620183315938_4vyi09",
+  "createdAt": "2026-06-20T18:33:15.938Z",
+  "updatedAt": "2026-06-20T18:37:54.517Z",
+  "scope": {
+    "platform": "github",
+    "projectId": "manojlds/drs",
+    "changeKind": "pr",
+    "changeNumber": 123
+  },
+  "payload": {
+    "schemaVersion": 1,
+    "reviewId": "rev_20260620183315937_jj5vx1",
+    "reviewedAt": "2026-06-20T18:33:15.937Z",
+    "reviewedSha": "aa805a63d1f5bf2e3685d8e09d242e90d7f176aa",
+    "baseBranch": "main",
+    "headBranch": "review-artifact-mutations",
+    "summary": {
+      "filesReviewed": 5,
+      "issuesFound": 3,
+      "bySeverity": {
+        "CRITICAL": 0,
+        "HIGH": 1,
+        "MEDIUM": 2,
+        "LOW": 0
+      },
+      "byCategory": {
+        "SECURITY": 0,
+        "QUALITY": 3,
+        "STYLE": 0,
+        "PERFORMANCE": 0,
+        "DOCUMENTATION": 0
+      }
+    },
+    "findings": [
+      {
+        "id": "F001",
+        "fingerprint": ".pi/workflows/github-pr-review.yaml:218:QUALITY:Severity selector uses exact case-sensitive match, breaking mark-fix-attempted",
+        "issue": {
+          "category": "QUALITY",
+          "severity": "HIGH",
+          "title": "Severity selector uses exact case-sensitive match, breaking mark-fix-attempted",
+          "file": ".pi/workflows/github-pr-review.yaml",
+          "line": 218,
+          "problem": "The new `mark-fix-attempted` node selects findings with `severity: \"{{inputs.fixSeverity}}\"`. `inputs.fixSeverity` is lowercase (e.g. \"high\"), but review findings store severity as uppercase (\"HIGH\", \"CRITICAL\", etc.) and `review-threshold` treats severity as a minimum rank. The `selectorMatches` helper performs an exact, case-sensitive string comparison, so this node will match zero findings and fail to record that fixes were attempted. It also leaves higher-severity findings (e.g. CRITICAL when fixSeverity=HIGH) unmarked.",
+          "solution": "Add a `minSeverity` selector that normalizes case and compares severity ranks. In `src/lib/review-artifact.ts`, add a rank helper (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1), add `minSeverity?: string` to `ReviewFindingSelector`, and update `selectorMatches` to return `severityRank(finding.issue.severity) >= severityRank(selector.minSeverity)` when `minSeverity` is set. Then change the workflow line from `severity: \"{{inputs.fixSeverity}}\"` to `minSeverity: \"{{inputs.fixSeverity}}\"`.",
+          "references": [],
+          "agent": "unified"
+        },
+        "state": "open",
+        "disposition": "confirmed",
+        "source": "agent",
+        "createdAt": "2026-06-20T18:33:15.937Z",
+        "updatedAt": "2026-06-20T18:33:15.937Z"
+      },
+      {
+        "id": "F002",
+        "fingerprint": "src/cli/workflow.ts:1512:QUALITY:Unwrapped JSON.parse in review-artifact-add-finding node",
+        "issue": {
+          "category": "QUALITY",
+          "severity": "MEDIUM",
+          "title": "Unwrapped JSON.parse in review-artifact-add-finding node",
+          "file": "src/cli/workflow.ts",
+          "line": 1512,
+          "problem": "`getReviewIssueFromNode` calls `JSON.parse(issueName)` directly when the `with.issue` value is not an artifact name. If the value is not valid JSON, a raw `SyntaxError` bubbles up instead of the intended workflow node error, making debugging harder.",
+          "solution": "Wrap the parse in a try/catch, mirroring `getArtifactPayloadFromNode`. For example:\n```ts\nlet parsed: unknown;\ntry {\n  parsed = JSON.parse(issueName);\n} catch {\n  throw new Error(`Workflow review-artifact-add-finding node \"${nodeId}\" needs a ReviewIssue.`);\n}\nconst issue = Object.prototype.hasOwnProperty.call(context.artifacts, issueName)\n  ? context.artifacts[issueName]\n  : parsed;\n```",
+          "references": [],
+          "agent": "unified"
+        },
+        "state": "open",
+        "disposition": "confirmed",
+        "source": "agent",
+        "createdAt": "2026-06-20T18:33:15.937Z",
+        "updatedAt": "2026-06-20T18:33:15.937Z"
+      },
+      {
+        "id": "F003",
+        "fingerprint": "src/cli/workflow.ts:1489:QUALITY:isReviewIssue type guard misses required agent field",
+        "issue": {
+          "category": "QUALITY",
+          "severity": "MEDIUM",
+          "title": "isReviewIssue type guard misses required agent field",
+          "file": "src/cli/workflow.ts",
+          "line": 1489,
+          "problem": "The new `isReviewIssue` type guard checks `severity`, `category`, `title`, `file`, `problem`, and `solution`, but `ReviewIssue` also requires a non-optional `agent: string`. An object without `agent` can pass the guard, be treated as a valid `ReviewIssue`, and later cause undefined-agent errors when the artifact is rendered or posted.",
+          "solution": "Add `typeof issue.agent === 'string'` to the return expression in `isReviewIssue`:\n```ts\nreturn (\n  typeof issue.severity === 'string' &&\n  typeof issue.category === 'string' &&\n  typeof issue.title === 'string' &&\n  typeof issue.file === 'string' &&\n  typeof issue.problem === 'string' &&\n  typeof issue.solution === 'string' &&\n  typeof issue.agent === 'string'\n);\n```",
+          "references": [],
+          "agent": "unified"
+        },
+        "state": "open",
+        "disposition": "confirmed",
+        "source": "agent",
+        "createdAt": "2026-06-20T18:33:15.937Z",
+        "updatedAt": "2026-06-20T18:33:15.937Z"
+      }
+    ],
+    "usage": {
+      "total": {
+        "input": 49650,
+        "output": 13239,
+        "cacheRead": 710912,
+        "cacheWrite": 0,
+        "totalTokens": 773801,
+        "cost": 0.23519678
+      },
+      "agents": [
+        {
+          "agentType": "review/unified-reviewer",
+          "turns": 22,
+          "toolCalls": {
+            "read": 16,
+            "grep": 12,
+            "write_json_output": 1
+          },
+          "skills": [],
+          "usage": {
+            "input": 49650,
+            "output": 13239,
+            "cacheRead": 710912,
+            "cacheWrite": 0,
+            "totalTokens": 773801,
+            "cost": 0.23519678
+          },
+          "model": "opencode-go/kimi-k2.7-code",
+          "success": true
+        }
+      ]
+    },
+    "metadata": {
+      "source": "GitHub PR manojlds/drs#123",
+      "project": "manojlds/drs",
+      "branch": {
+        "source": "review-artifact-mutations",
+        "target": "main"
+      }
+    }
+  },
+  "path": "/home/runner/work/drs/drs/.drs/artifacts/github/manojlds-drs/pr-123/review/art_20260620183315938_4vyi09.json",
+  "latestPath": "/home/runner/work/drs/drs/.drs/artifacts/github/manojlds-drs/pr-123/review/latest.json"
+}

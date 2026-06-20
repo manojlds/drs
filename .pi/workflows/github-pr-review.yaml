@@ -215,7 +215,7 @@ nodes:
       - fix-issues
     with:
       artifact: persistedReviewArtifact
-      severity: "{{inputs.fixSeverity}}"
+      minSeverity: "{{inputs.fixSeverity}}"
       state: attempted
       disposition: partial
     output: persistedReviewArtifact

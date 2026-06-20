@@ -59,6 +59,7 @@ export interface ReviewFindingSelector {
   ids?: string[];
   fingerprints?: string[];
   severity?: string;
+  minSeverity?: string;
 }
 
 export interface UpdateReviewFindingsOptions extends ReviewFindingSelector {
@@ -102,6 +103,17 @@ function findingId(index: number): string {
   return `F${String(index + 1).padStart(3, '0')}`;
 }
 
+const SEVERITY_RANKS: Record<string, number> = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
+function severityRank(severity: string): number {
+  return SEVERITY_RANKS[severity.toUpperCase()] ?? 0;
+}
+
 function nextFindingId(findings: ReviewFinding[]): string {
   const max = findings.reduce((currentMax, finding) => {
     const match = /^F(\d+)$/.exec(finding.id);
@@ -114,15 +126,18 @@ function selectorMatches(finding: ReviewFinding, selector: ReviewFindingSelector
   const hasIds = selector.ids !== undefined && selector.ids.length > 0;
   const hasFingerprints = selector.fingerprints !== undefined && selector.fingerprints.length > 0;
   const hasSeverity = selector.severity !== undefined && selector.severity !== '';
+  const minSeverity = selector.minSeverity;
+  const hasMinSeverity = minSeverity !== undefined && minSeverity !== '';
 
-  if (!hasIds && !hasFingerprints && !hasSeverity) {
+  if (!hasIds && !hasFingerprints && !hasSeverity && !hasMinSeverity) {
     return true;
   }
 
   return (
     (hasIds && (selector.ids?.includes(finding.id) ?? false)) ||
     (hasFingerprints && (selector.fingerprints?.includes(finding.fingerprint) ?? false)) ||
-    (hasSeverity && finding.issue.severity === selector.severity)
+    (hasSeverity && finding.issue.severity === selector.severity) ||
+    (hasMinSeverity && severityRank(finding.issue.severity) >= severityRank(minSeverity))
   );
 }
 

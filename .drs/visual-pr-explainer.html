@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRS PR Explainer #123 — feat: mutate review artifacts from workflows</title>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #111820;
+      --panel-alt: #141d26;
+      --ink: #d8dee9;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-2: #3fb950;
+      --warn: #d29922;
+      --danger: #f85149;
+      --border: #30363d;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header, section, footer {
+      padding: 2rem 1.25rem;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #131c25 0%, var(--bg) 100%);
+    }
+
+    .eyebrow {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(1.6rem, 5vw, 2.6rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: #fff;
+    }
+
+    .lead {
+      font-size: 1.1rem;
+      color: var(--ink);
+      max-width: 760px;
+      margin: 0 0 1.25rem;
+    }
+
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      font-size: 0.85rem;
+      color: var(--ink);
+    }
+
+    .pill.danger { color: var(--danger); border-color: rgba(248,81,73,0.35); }
+    .pill.warn { color: var(--warn); border-color: rgba(210,153,34,0.35); }
+    .pill.ok { color: var(--accent-2); border-color: rgba(63,185,80,0.35); }
+
+    .key-bullets {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .key-bullets li {
+      position: relative;
+      padding-left: 1.4rem;
+      color: var(--ink);
+    }
+
+    .key-bullets li::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      margin: 0 0 1rem;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      margin: 0 0 0.5rem;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .section {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .card h3 {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .card p, .card ul {
+      margin: 0.5rem 0 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .card ul {
+      padding-left: 1.1rem;
+    }
+
+    .step {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #000;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .reviewer-path {
+      counter-reset: step;
+    }
+
+    .reviewer-path .card h3::before {
+      counter-increment: step;
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #000;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-right: 0.5rem;
+    }
+
+    code, pre {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    code {
+      background: rgba(88,166,255,0.1);
+      color: var(--accent);
+      padding: 0.12rem 0.3rem;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    .mermaid {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .finding {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--danger);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .finding.sev-medium { border-left-color: var(--warn); }
+    .finding.sev-high { border-left-color: var(--danger); }
+
+    .finding-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .finding-title {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .finding-meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .file-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    .file-table th, .file-table td {
+      text-align: left;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .file-table th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .file-table td:first-child {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .delta { font-family: var(--mono); font-size: 0.8rem; }
+    .delta.plus { color: var(--accent-2); }
+    .delta.minus { color: var(--danger); }
+
+    .tour {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .tour-node {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .tour-badge {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    .tour-content h4 {
+      margin: 0 0 0.25rem;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .tour-content p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .tour-content code {
+      font-size: 0.8rem;
+    }
+
+    .perspective {
+      margin-bottom: 2rem;
+    }
+
+    .perspective-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 640px) {
+      header, section, footer { padding: 1.5rem 1rem; }
+      .tour-node { grid-template-columns: 1fr; gap: 0.5rem; }
+      .file-table td:first-child { white-space: normal; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="eyebrow">manojlds/drs — Pull Request #123</div>
+      <h1>feat: mutate review artifacts from workflows</h1>
+      <p class="lead">
+        Adds workflow actions that can add, update, promote, and resolve findings inside a persisted review artifact,
+        then write the mutated envelope back to the artifact store. The GitHub PR review workflow now records when
+        automated fix attempts run, marking matched findings as <code>attempted / partial</code> before checking for a fix diff.
+      </p>
+      <div class="meta-pills">
+        <span class="pill">6 files changed</span>
+        <span class="pill">+485 / −1</span>
+        <span class="pill">Node.js + TypeScript</span>
+        <span class="pill warn">3 DRS findings</span>
+        <span class="pill">Target: main</span>
+      </div>
+      <ul class="key-bullets">
+        <li>Four new workflow node actions: <code>review-artifact-add-finding</code>, <code>review-artifact-update-findings</code>, <code>review-artifact-promote-finding</code>, <code>review-artifact-resolve-finding</code></li>
+        <li>New pure helpers in <code>src/lib/review-artifact.ts</code> for adding a finding and bulk-updating findings by id, fingerprint, or severity</li>
+        <li>New <code>updateWorkflowArtifact</code> store operation that rewrites the same envelope file and <code>latest.json</code></li>
+        <li>GitHub PR workflow now marks fix-attempted findings between <code>fix-issues</code> and <code>fix-diff</code></li>
+        <li>Workflow runner test covers a full mutate-and-persist lifecycle</li>
+      </ul>
+    </div>
+  </header>
+
+  <section class="section">
+    <div class="container">
+      <h2>Reviewer path</h2>
+      <p style="color: var(--muted); margin-top: -0.5rem; margin-bottom: 1.25rem;">
+        Suggested order for reading the change.
+      </p>
+      <div class="card-grid reviewer-path">
+        <div class="card">
+          <h3>Start with the data model</h3>
+          <p><code>src/lib/review-artifact.ts</code> defines the new selector, add, and update functions. Confirm how ids are allocated and how selectors match before reading the runner.</p>
+        </div>
+        <div class="card">
+          <h3>Trace the workflow runner hooks</h3>
+          <p><code>src/cli/workflow.ts</code> wires the four actions into <code>runActionWorkflowNode</code> and handles parsing, validation, and persistence.</p>
+        </div>
+        <div class="card">
+          <h3>Check persistence</h3>
+          <p><code>src/lib/workflow-artifacts.ts</code> adds <code>updateWorkflowArtifact</code>. Verify it keeps the same id/scope and rewrites both the per-id file and <code>latest.json</code>.</p>
+        </div>
+        <div class="card">
+          <h3>Inspect the workflow change</h3>
+          <p><code>.pi/workflows/github-pr-review.yaml</code> now has a <code>mark-fix-attempted</code> node. Compare its selector against how severities are stored and ranked.</p>
+        </div>
+        <div class="card">
+          <h3>Read the test</h3>
+          <p><code>src/cli/workflow.test.ts</code> exercises add + update + status across a multi-node workflow and asserts the on-disk envelope is updated.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Change map</h2>
+      <div class="mermaid">
+graph LR
+  A[Workflow YAML<br/>github-pr-review.yaml] -->|fix-issues output| B(mark-fix-attempted)
+  B -->|review-artifact-update-findings| C[workflow.ts runner]
+  C -->|calls| D[review-artifact.ts]
+  C -->|persistMutatedReviewArtifact| E[workflow-artifacts.ts]
+  D -->|addReviewArtifactFinding| F[ReviewFinding]
+  D -->|updateReviewArtifactFindings| F
+  E -->|updateWorkflowArtifact| G[(.drs/artifacts/.../*.json)]
+  C -->|register new actions| H[config.ts]
+  I[workflow.test.ts] -->|validates| C
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Four perspectives</h2>
+
+      <div class="perspective">
+        <div class="perspective-label">1. System overview</div>
+        <p style="color: var(--muted);">
+          The review artifact subsystem stores the output of a DRS review as a versioned JSON envelope.
+          An envelope has metadata (id, kind, scope, timestamps) and a payload containing findings and a summary.
+          Findings are individual issues with state, disposition, source, fingerprint, and timestamps.
+          The workflow runner previously only created artifacts and reported status; this PR adds in-place mutation.
+        </p>
+        <div class="card-grid" style="margin-top: 1rem;">
+          <div class="card">
+            <h3>ReviewFinding</h3>
+            <p>id, fingerprint, issue, state, disposition, source, createdAt, updatedAt</p>
+          </div>
+          <div class="card">
+            <h3>ReviewArtifactPayload</h3>
+            <p>schemaVersion, reviewId, summary, findings, usage, metadata</p>
+          </div>
+          <div class="card">
+            <h3>WorkflowArtifactEnvelope</h3>
+            <p>schemaVersion, kind, id, scope, payload, createdAt, updatedAt</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="perspective">
+        <div class="perspective-label">2. Data flow</div>
+        <div class="tour">
+          <div class="tour-node">
+            <div class="tour-badge">1</div>
+            <div class="tour-content">
+              <h4>Review completes</h4>
+              <p><code>create-review-artifact</code> builds a payload from the review result. <code>save-artifact</code> wraps it in an envelope and writes it to <code>.drs/artifacts/...</code> as <code>{id}.json</code> and <code>latest.json</code>.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">2</div>
+            <div class="tour-content">
+              <h4>Fix agent runs</h4>
+              <p>In the GitHub workflow, the <code>fix-issues</code> agent attempts repairs for findings at or above <code>inputs.fixSeverity</code>.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">3</div>
+            <div class="tour-content">
+              <h4>Mark findings attempted</h4>
+              <p><code>mark-fix-attempted</code> calls <code>review-artifact-update-findings</code> with <code>state: attempted</code> and <code>disposition: partial</code>. The runner reads the saved envelope, mutates matched findings, and rewrites the file.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">4</div>
+            <div class="tour-content">
+              <h4>Downstream decisions</h4>
+              <p><code>fix-diff</code> checks whether the working tree changed. If so, a fix PR is created. The updated artifact now reflects that the fix was only an attempt.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="perspective">
+        <div class="perspective-label">3. Code dependency</div>
+        <div class="mermaid">
+graph TD
+  config[config.ts<br/>action union] --> runner
+  runner[workflow.ts<br/>runActionWorkflowNode] --> helpers
+  subgraph helpers [Mutation helpers]
+    reviewArtifact[review-artifact.ts]
+  end
+  runner --> store[workflow-artifacts.ts]
+  store --> disk[(Artifact store)]
+  runner --> test[workflow.test.ts]
+  yaml[github-pr-review.yaml] --> runner
+  reviewArtifact --> add[addReviewArtifactFinding]
+  reviewArtifact --> update[updateReviewArtifactFindings]
+  store --> updateStore[updateWorkflowArtifact]
+        </div>
+        <p style="color: var(--muted); margin-top: 0.75rem;">
+          <strong>Leaves:</strong> <code>src/lib/review-artifact.ts</code> and <code>src/lib/workflow-artifacts.ts</code> are pure library code with no changed dependents other than the runner.
+          <strong>Seam:</strong> the runner accepts either a raw payload or a saved envelope as the <code>artifact</code> input, so nodes can operate before or after <code>save-artifact</code>.
+        </p>
+      </div>
+
+      <div class="perspective">
+        <div class="perspective-label">4. Operator / workflow action</div>
+        <div class="tour">
+          <div class="tour-node">
+            <div class="tour-badge">1</div>
+            <div class="tour-content">
+              <h4>Define a mutation node</h4>
+              <p>Use <code>review-artifact-update-findings</code> with optional <code>ids</code>, <code>fingerprints</code>, or <code>severity</code> selectors plus <code>state</code> and/or <code>disposition</code>.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">2</div>
+            <div class="tour-content">
+              <h4>Add findings manually</h4>
+              <p><code>review-artifact-add-finding</code> takes a JSON <code>issue</code> value (or an artifact reference) and a <code>source</code>. It allocates the next <code>F###</code> id and updates the summary counts.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">3</div>
+            <div class="tour-content">
+              <h4>Convenience aliases</h4>
+              <p><code>review-artifact-promote-finding</code> sets disposition to <code>confirmed</code>; <code>review-artifact-resolve-finding</code> sets state and disposition to <code>resolved</code>. Both delegate to the same update function.</p>
+            </div>
+          </div>
+          <div class="tour-node">
+            <div class="tour-badge">4</div>
+            <div class="tour-content">
+              <h4>Persistence is automatic</h4>
+              <p>If the input artifact is a saved envelope, the runner calls <code>updateWorkflowArtifact</code> and returns the new path and <code>latestPath</code> in the node output.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>File groups</h2>
+      <table class="file-table">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Role</th>
+            <th>Change summary</th>
+            <th>Delta</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>src/lib/review-artifact.ts</code></td>
+            <td>Core mutation logic</td>
+            <td>Adds selector types, <code>selectorMatches</code>, <code>nextFindingId</code>, <code>addReviewArtifactFinding</code>, and <code>updateReviewArtifactFindings</code>.</td>
+            <td class="delta plus">+100</td>
+          </tr>
+          <tr>
+            <td><code>src/cli/workflow.ts</code></td>
+            <td>Workflow runner</td>
+            <td>Wires four new actions, parses options, validates issue shape, and persists mutated envelopes.</td>
+            <td class="delta plus">+223</td>
+          </tr>
+          <tr>
+            <td><code>src/lib/workflow-artifacts.ts</code></td>
+            <td>Artifact store</td>
+            <td>Adds <code>UpdateWorkflowArtifactOptions</code> and <code>updateWorkflowArtifact</code> that rewrites the existing envelope.</td>
+            <td class="delta plus">+26</td>
+          </tr>
+          <tr>
+            <td><code>src/cli/workflow.test.ts</code></td>
+            <td>Test coverage</td>
+            <td>New test runs a workflow that creates, saves, marks attempted, adds a finding, and checks status plus persisted JSON.</td>
+            <td class="delta plus">+120</td>
+          </tr>
+          <tr>
+            <td><code>.pi/workflows/github-pr-review.yaml</code></td>
+            <td>Product workflow</td>
+            <td>Inserts <code>mark-fix-attempted</code> between <code>fix-issues</code> and <code>fix-diff</code>.</td>
+            <td class="delta plus">+12</td>
+          </tr>
+          <tr>
+            <td><code>src/lib/config.ts</code></td>
+            <td>Node config types</td>
+            <td>Adds the four new actions to the <code>WorkflowNodeConfig</code> union.</td>
+            <td class="delta plus">+4</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Risks and questions</h2>
+      <p style="color: var(--muted); margin-top: -0.5rem; margin-bottom: 1.25rem;">
+        Confirmed DRS findings from the review are labeled. The remaining items are reviewer questions, not new findings.
+      </p>
+
+      <div class="finding sev-high">
+        <div class="finding-header">
+          <span class="finding-title">Severity selector uses exact case-sensitive match, breaking mark-fix-attempted</span>
+          <span class="pill danger">DRS finding · HIGH</span>
+        </div>
+        <div class="finding-meta"><code>.pi/workflows/github-pr-review.yaml</code> · line 218</div>
+        <p>
+          <code>inputs.fixSeverity</code> is lowercase (e.g. <code>"high"</code>) but findings store severity as uppercase (<code>"HIGH"</code>).
+          <code>selectorMatches</code> compares with exact equality, so <code>mark-fix-attempted</code> will match zero findings and higher-severity findings are also skipped.
+        </p>
+        <p><strong>Review question:</strong> Should the selector support a <code>minSeverity</code> rank comparison, or should the workflow normalize case before passing the value?</p>
+      </div>
+
+      <div class="finding sev-medium">
+        <div class="finding-header">
+          <span class="finding-title">Unwrapped JSON.parse in review-artifact-add-finding node</span>
+          <span class="pill warn">DRS finding · MEDIUM</span>
+        </div>
+        <div class="finding-meta"><code>src/cli/workflow.ts</code> · line 1512</div>
+        <p>
+          <code>getReviewIssueFromNode</code> calls <code>JSON.parse(issueName)</code> directly when <code>with.issue</code> is not an artifact reference.
+          A malformed string raises a raw <code>SyntaxError</code> instead of the workflow node error.
+        </p>
+        <p><strong>Review question:</strong> Wrap the parse in a try/catch so callers get a contextual error.</p>
+      </div>
+
+      <div class="finding sev-medium">
+        <div class="finding-header">
+          <span class="finding-title">isReviewIssue type guard misses required agent field</span>
+          <span class="pill warn">DRS finding · MEDIUM</span>
+        </div>
+        <div class="finding-meta"><code>src/cli/workflow.ts</code> · line 1489</div>
+        <p>
+          The guard checks <code>severity</code>, <code>category</code>, <code>title</code>, <code>file</code>, <code>problem</code>, and <code>solution</code>, but <code>ReviewIssue.agent</code> is also required.
+          An issue without <code>agent</code> can pass validation and later break rendering or posting.
+        </p>
+        <p><strong>Review question:</strong> Add <code>typeof issue.agent === 'string'</code> to the type guard.</p>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Additional inspection areas</h3>
+        <ul>
+          <li><strong>Idempotency:</strong> If a workflow is re-run, will <code>mark-fix-attempted</code> re-apply <code>attempted / partial</code> to already-resolved findings? The selector has no state filter.</li>
+          <li><strong>Fingerprint stability:</strong> New findings added by <code>addReviewArtifactFinding</code> use <code>createIssueFingerprint</code>; verify fingerprints do not collide with existing agent findings.</li>
+          <li><strong>Envelope vs payload:</strong> The runner output differs when an envelope is present (returns envelope with path) vs when only a payload is passed (returns payload). Workflow authors should ensure downstream nodes consume the correct shape.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Appendix</h2>
+      <h3>Changed files</h3>
+      <pre>.pi/workflows/github-pr-review.yaml
+src/cli/workflow.test.ts
+src/cli/workflow.ts
+src/lib/config.ts
+src/lib/review-artifact.ts
+src/lib/workflow-artifacts.ts</pre>
+
+      <h3 style="margin-top: 1.5rem;">Key diff snippets</h3>
+      <pre>// src/lib/config.ts — new actions added to the union
+| 'review-artifact-add-finding'
+| 'review-artifact-update-findings'
+| 'review-artifact-promote-finding'
+| 'review-artifact-resolve-finding'</pre>
+
+      <pre>// .pi/workflows/github-pr-review.yaml — mark-fix-attempted node
+mark-fix-attempted:
+  action: review-artifact-update-findings
+  needs:
+    - fix-issues
+  with:
+    artifact: persistedReviewArtifact
+    severity: "{{inputs.fixSeverity}}"
+    state: attempted
+    disposition: partial
+  output: persistedReviewArtifact
+
+fix-diff:
+  action: has-diff
+  needs:
+    - mark-fix-attempted</pre>
+
+      <pre>// src/cli/workflow.ts — runner dispatches the new actions
+if (node.action === 'review-artifact-add-finding') {
+  return runReviewArtifactAddFindingWorkflowNode(...);
+}
+if (node.action === 'review-artifact-update-findings') {
+  return runReviewArtifactUpdateFindingsWorkflowNode(...);
+}
+if (node.action === 'review-artifact-promote-finding') {
+  return runReviewArtifactUpdateFindingsWorkflowNode(..., { disposition: 'confirmed' });
+}
+if (node.action === 'review-artifact-resolve-finding') {
+  return runReviewArtifactUpdateFindingsWorkflowNode(..., { state: 'resolved', disposition: 'resolved' });
+}</pre>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      Generated by DRS visual explainer · <a href="https://github.com/manojlds/drs/pull/123">PR #123</a>
+    </div>
+  </footer>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'strict' });
+  </script>
+</body>
+</html>
