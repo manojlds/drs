@@ -123,6 +123,7 @@ jobs:
             --input post=true \
             --input visual=true \
             --input fix=true \
+            --input fixCreateChangeRequest=true \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
       - name: Upload visual explainer artifact
