@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
       checkIsRepo: vi.fn(async () => true),
       diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
       raw: vi.fn(async (_args?: string[]) => ''),
+      branch: vi.fn(async () => ({ current: 'feature' })),
       add: vi.fn(async () => ''),
       commit: vi.fn(async () => ({
         commit: 'abc1234',
@@ -197,6 +198,7 @@ describe('workflow runner', () => {
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
     mocks.git.raw.mockResolvedValue('');
+    mocks.git.branch.mockResolvedValue({ current: 'feature' });
     mocks.git.add.mockResolvedValue('');
     mocks.git.commit.mockResolvedValue({
       commit: 'abc1234',
@@ -1007,6 +1009,145 @@ describe('workflow runner', () => {
     const result = await runWorkflow(config, 'threshold', { workingDir: projectRoot });
 
     expect(result.artifacts.threshold).toMatchObject({ matched: true, count: 2, severity: 'HIGH' });
+  });
+
+  it('creates, saves, loads, and summarizes review artifacts', async () => {
+    const projectRoot = createTempDir('drs-workflow-artifact-');
+    mocks.executeReview.mockResolvedValue({
+      issues: [
+        {
+          severity: 'HIGH',
+          category: 'QUALITY',
+          title: 'Missing guard',
+          file: 'src/github.ts',
+          line: 12,
+          problem: 'A guard is missing.',
+          solution: 'Add the guard.',
+          agent: 'unified',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        artifactFlow: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            reviewArtifact: {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            save: {
+              action: 'save-artifact',
+              needs: ['reviewArtifact'],
+              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
+              output: 'saved',
+            },
+            load: {
+              action: 'load-artifact',
+              needs: ['save'],
+              with: { kind: 'review', source: 'change' },
+              output: 'loaded',
+            },
+            status: {
+              action: 'review-artifact-status',
+              needs: ['load'],
+              with: { artifact: 'loaded' },
+              output: 'status',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'artifactFlow', { workingDir: projectRoot });
+
+    expect(result.artifacts.reviewArtifact).toMatchObject({
+      schemaVersion: 1,
+      reviewedSha: 'abc123',
+      baseBranch: 'main',
+      headBranch: 'feature',
+      findings: [
+        {
+          id: 'F001',
+          fingerprint: 'src/github.ts:12:QUALITY:Missing guard',
+          state: 'open',
+          disposition: 'confirmed',
+        },
+      ],
+    });
+    expect(result.artifacts.saved).toMatchObject({
+      kind: 'review',
+      scope: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        changeKind: 'pr',
+        changeNumber: 7,
+      },
+    });
+    expect(result.artifacts.loaded).toMatchObject({ kind: 'review' });
+    expect(result.artifacts.status).toMatchObject({ totalFindings: 1, openFindings: 1 });
+    const saved = result.artifacts.saved as { path: string; latestPath: string };
+    expect(JSON.parse(readFileSync(saved.path, 'utf-8'))).toMatchObject({ kind: 'review' });
+    expect(JSON.parse(readFileSync(saved.latestPath, 'utf-8'))).toMatchObject({ kind: 'review' });
+  });
+
+  it('checks whether a workflow artifact exists', async () => {
+    const projectRoot = createTempDir('drs-workflow-artifact-exists-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        artifactExists: {
+          nodes: {
+            save: {
+              action: 'save-artifact',
+              with: {
+                kind: 'note',
+                platform: 'local',
+                projectId: 'demo',
+                subject: 'run',
+                payload: '{"ok":true}',
+              },
+              output: 'saved',
+            },
+            exists: {
+              action: 'artifact-exists',
+              needs: ['save'],
+              with: {
+                kind: 'note',
+                platform: 'local',
+                projectId: 'demo',
+                subject: 'run',
+              },
+              output: 'exists',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'artifactExists', { workingDir: projectRoot });
+
+    expect(result.artifacts.exists).toMatchObject({ exists: true, kind: 'note' });
   });
 
   it('rejects git action paths outside the working directory', async () => {

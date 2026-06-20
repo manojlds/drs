@@ -148,7 +148,7 @@ describe('Config', () => {
       expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes['should-visual']?.needs).toEqual([
-        'review',
+        'save-review-artifact',
       ]);
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
@@ -160,7 +160,7 @@ describe('Config', () => {
         'review',
       ]);
       expect(config.workflows?.['gitlab-mr-review']?.nodes['should-visual']?.needs).toEqual([
-        'review',
+        'save-review-artifact',
       ]);
       expect(config.workflows?.['gitlab-mr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
