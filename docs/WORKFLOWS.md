@@ -34,6 +34,22 @@ drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --in
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true --input codeQuality=true
 ```
 
+## Resume Failed Workflows
+
+Use `--resume` to save workflow checkpoints under `.drs/checkpoints/` and reuse completed node results on a retry:
+
+```bash
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume
+```
+
+DRS derives a checkpoint key from the workflow name and PR/MR inputs when possible. Use `--checkpoint-key` when you need an explicit key:
+
+```bash
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume --checkpoint-key pr-456-review
+```
+
+Resume refuses to load a checkpoint if the workflow inputs differ from the inputs saved in the checkpoint.
+
 ## List Workflows
 
 ```bash

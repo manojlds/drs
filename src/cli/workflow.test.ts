@@ -449,6 +449,105 @@ describe('workflow runner', () => {
     expect(JSON.parse(readFileSync(checkpointPath, 'utf-8'))).not.toHaveProperty('failure');
   });
 
+  it('rejects resume when checkpoint inputs differ from current inputs', async () => {
+    const projectRoot = createTempDir('drs-workflow-resume-inputs-');
+    mocks.githubAdapter.createChangeRequest.mockRejectedValueOnce(new Error('temporary failure'));
+    const createConfig = (mode: string) =>
+      ({
+        ...baseConfig,
+        workflows: {
+          resumable: {
+            inputs: { mode },
+            nodes: {
+              summarize: {
+                agent: 'task/summarizer',
+                input: 'Summarize {{inputs.mode}}',
+                output: 'summary',
+              },
+              create: {
+                action: 'create-change-request',
+                needs: ['summarize'],
+                with: {
+                  platform: 'github',
+                  owner: 'octocat',
+                  repo: 'hello-world',
+                  sourceBranch: 'drs-fix/pr-7',
+                  targetBranch: 'feature',
+                  title: 'fix: retry safely',
+                },
+                output: 'changeRequest',
+              },
+            },
+          },
+        },
+      }) as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(createConfig('alpha'), 'resumable', {
+        workingDir: projectRoot,
+        resume: true,
+        checkpointKey: 'input-demo',
+      })
+    ).rejects.toThrow('temporary failure');
+
+    await expect(
+      runWorkflow(createConfig('beta'), 'resumable', {
+        workingDir: projectRoot,
+        resume: true,
+        checkpointKey: 'input-demo',
+      })
+    ).rejects.toThrow('was created with different inputs');
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps GitLab nested project checkpoint keys distinct', async () => {
+    const projectRoot = createTempDir('drs-workflow-gitlab-checkpoint-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        gitlabResume: {
+          nodes: {
+            summarize: {
+              agent: 'task/summarizer',
+              input: 'Summarize {{inputs.project}}',
+              output: 'summary',
+            },
+            fail: {
+              action: 'write',
+              needs: ['summarize'],
+              input: 'content',
+              writes: '{{inputs.outputPath}}',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    for (const project of ['group/subgroup/project', 'group/subgroup-project']) {
+      await expect(
+        runWorkflow(config, 'gitlabResume', {
+          workingDir: projectRoot,
+          resume: true,
+          inputs: { project, mr: '1', sha: 'abc', outputPath: '' },
+        })
+      ).rejects.toThrow('writes resolved to an empty path');
+    }
+
+    const checkpointDir = join(projectRoot, '.drs', 'checkpoints');
+    expect(
+      readFileSync(
+        join(checkpointDir, 'gitlabResume-gitlab-group-2Fsubgroup-2Fproject-mr-1-abc.json'),
+        'utf-8'
+      )
+    ).toContain('group/subgroup/project');
+    expect(
+      readFileSync(
+        join(checkpointDir, 'gitlabResume-gitlab-group-2Fsubgroup-project-mr-1-abc.json'),
+        'utf-8'
+      )
+    ).toContain('group/subgroup-project');
+  });
+
   it('rejects writes paths that render to empty strings', async () => {
     const config = {
       ...baseConfig,

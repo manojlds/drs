@@ -177,7 +177,6 @@ interface WorkflowCheckpointContext {
 }
 
 interface WorkflowCheckpointFailure {
-  nodeId?: string;
   message: string;
   failedAt: string;
 }
@@ -464,12 +463,29 @@ function getDefaultWorkflowCheckpointKey(
   if (owner && repo && pr) {
     return [workflowName, 'github', owner, repo, `pr-${pr}`, headSha].filter(Boolean).join('-');
   }
-  const project = (inputs.project ?? inputs.projectId)?.trim();
+  const projectInput = (inputs.project ?? inputs.projectId)?.trim();
+  const project = projectInput ? encodeURIComponent(projectInput) : undefined;
   const mr = inputs.mr?.trim();
   if (project && mr) {
     return [workflowName, 'gitlab', project, `mr-${mr}`, headSha].filter(Boolean).join('-');
   }
   return [workflowName, headSha].filter(Boolean).join('-');
+}
+
+function stringifyWorkflowCheckpointInputs(inputs: Record<string, string>): string {
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(inputs).sort(([left], [right]) => left.localeCompare(right)))
+  );
+}
+
+function checkpointInputsMatch(
+  checkpointInputs: Record<string, string>,
+  currentInputs: Record<string, string>
+): boolean {
+  return (
+    stringifyWorkflowCheckpointInputs(checkpointInputs) ===
+    stringifyWorkflowCheckpointInputs(currentInputs)
+  );
 }
 
 function isResumeEnabled(options: WorkflowRunOptions, inputs: Record<string, string>): boolean {
@@ -3360,6 +3376,11 @@ export async function runWorkflow(
     if (checkpoint) {
       if (checkpoint.workflow !== workflowName || checkpoint.key !== checkpointKey) {
         throw new Error(`Workflow checkpoint "${checkpointKey}" does not match this workflow run.`);
+      }
+      if (!checkpointInputsMatch(checkpoint.inputs, inputs)) {
+        throw new Error(
+          `Workflow checkpoint "${checkpointKey}" was created with different inputs; refusing to resume.`
+        );
       }
       executionContext.restoredNodeIds = restoreWorkflowCheckpoint(checkpoint, context);
       if (!options.jsonOutput) {
