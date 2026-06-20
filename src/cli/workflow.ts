@@ -57,6 +57,19 @@ import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
 import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
+import {
+  loadWorkflowArtifact,
+  saveWorkflowArtifact,
+  workflowArtifactExists,
+  type WorkflowArtifactEnvelope,
+  type WorkflowArtifactScope,
+} from '../lib/workflow-artifacts.js';
+import {
+  createReviewArtifactPayload,
+  getReviewArtifactStatus,
+  isReviewArtifactPayload,
+  type ReviewArtifactPayload,
+} from '../lib/review-artifact.js';
 import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
 import { runAgent } from './run-agent.js';
 
@@ -692,6 +705,21 @@ async function runActionWorkflowNode(
   if (node.action === 'review-threshold') {
     return runReviewThresholdWorkflowNode(nodeId, node, context);
   }
+  if (node.action === 'save-artifact') {
+    return runSaveArtifactWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'load-artifact') {
+    return runLoadArtifactWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'artifact-exists') {
+    return runArtifactExistsWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'create-review-artifact') {
+    return runCreateReviewArtifactWorkflowNode(nodeId, node, context);
+  }
+  if (node.action === 'review-artifact-status') {
+    return runReviewArtifactStatusWorkflowNode(nodeId, node, context);
+  }
   if (
     node.action === 'create-change-request' ||
     node.action === 'create-pr' ||
@@ -1135,6 +1163,212 @@ function runReviewThresholdWorkflowNode(
     action: node.action,
     response: matched ? `${matchingIssues.length} matching issue(s)` : 'threshold not met',
     output: { matched, count: matchingIssues.length, severity, minIssues },
+  };
+}
+
+async function getCurrentBranch(workingDir: string, executionContext: WorkflowExecutionContext) {
+  const git = await requireWorkflowGitRepo('artifact-scope', workingDir, executionContext);
+  const branch = await git.branch();
+  return branch.current ?? 'unknown';
+}
+
+async function resolveArtifactScope(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowArtifactScope> {
+  const sourceArtifact = getStringActionOption(node, 'source', context);
+  const source = sourceArtifact ? context.artifacts[sourceArtifact] : undefined;
+  const reviewSource = isReviewSource(source) ? source : undefined;
+  const sourceTarget = readSourcePostTarget(reviewSource);
+  const explicitPlatform = getStringActionOption(node, 'platform', context);
+  const platform = explicitPlatform ?? sourceTarget.platform ?? 'local';
+  const projectId =
+    getStringActionOption(node, 'project', context) ??
+    getStringActionOption(node, 'projectId', context) ??
+    (hasActionOption(node, 'owner') || hasActionOption(node, 'repo')
+      ? `${requireStringActionOption(nodeId, node, 'owner', context)}/${requireStringActionOption(nodeId, node, 'repo', context)}`
+      : undefined) ??
+    sourceTarget.projectId ??
+    'local';
+
+  const explicitSubject = getStringActionOption(node, 'subject', context)?.trim();
+  if (explicitSubject) {
+    return { platform, projectId, subject: explicitSubject };
+  }
+
+  const explicitChangeKind = getStringActionOption(node, 'changeKind', context)?.trim();
+  const explicitChangeNumber =
+    getStringActionOption(node, 'changeNumber', context)?.trim() ??
+    getStringActionOption(node, 'pr', context)?.trim() ??
+    getStringActionOption(node, 'mr', context)?.trim();
+  const sourceChangeKind =
+    sourceTarget.platform === 'gitlab' ? 'mr' : sourceTarget.platform ? 'pr' : undefined;
+  const sourceChangeNumber = sourceTarget.prNumber;
+  const changeKind =
+    explicitChangeKind && explicitChangeKind.length > 0 ? explicitChangeKind : sourceChangeKind;
+  const changeNumber = explicitChangeNumber ?? sourceChangeNumber;
+  if (changeKind && changeNumber !== undefined) {
+    return { platform, projectId, changeKind, changeNumber };
+  }
+
+  const configuredBranch = getStringActionOption(node, 'branch', context)?.trim();
+  const branch =
+    configuredBranch && configuredBranch.length > 0
+      ? configuredBranch
+      : await getCurrentBranch(workingDir, executionContext);
+  return { platform, projectId, branch };
+}
+
+function getArtifactPayloadFromNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): unknown {
+  const artifactName = getStringActionOption(node, 'artifact', context);
+  if (artifactName) {
+    if (!Object.prototype.hasOwnProperty.call(context.artifacts, artifactName)) {
+      throw new Error(`Workflow node "${nodeId}" references unknown artifact "${artifactName}".`);
+    }
+    return context.artifacts[artifactName];
+  }
+
+  const payloadName = getStringActionOption(node, 'payload', context);
+  if (payloadName && Object.prototype.hasOwnProperty.call(context.artifacts, payloadName)) {
+    return context.artifacts[payloadName];
+  }
+  if (payloadName) {
+    try {
+      return JSON.parse(payloadName) as unknown;
+    } catch {
+      return payloadName;
+    }
+  }
+
+  throw new Error(`Workflow node "${nodeId}" must define with.artifact or with.payload.`);
+}
+
+async function runSaveArtifactWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const kind = requireStringActionOption(nodeId, node, 'kind', context);
+  const payload = getArtifactPayloadFromNode(nodeId, node, context);
+  const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
+  const saved = await saveWorkflowArtifact(workingDir, { kind, scope, payload });
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `saved ${kind} artifact ${saved.artifact.id}`,
+    output: { ...saved.artifact, path: saved.path, latestPath: saved.latestPath },
+  };
+}
+
+async function runLoadArtifactWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const kind = requireStringActionOption(nodeId, node, 'kind', context);
+  const rawId = getStringActionOption(node, 'id', context)?.trim();
+  const id = rawId && rawId.length > 0 ? rawId : undefined;
+  const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
+  const loaded = await loadWorkflowArtifact(workingDir, kind, scope, id);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `loaded ${kind} artifact ${loaded.artifact.id}`,
+    output: { ...loaded.artifact, path: loaded.path },
+  };
+}
+
+async function runArtifactExistsWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const kind = requireStringActionOption(nodeId, node, 'kind', context);
+  const rawId = getStringActionOption(node, 'id', context)?.trim();
+  const id = rawId && rawId.length > 0 ? rawId : undefined;
+  const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
+  const exists = await workflowArtifactExists(workingDir, kind, scope, id);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: exists ? 'artifact exists' : 'artifact missing',
+    output: { exists, kind, scope, id },
+  };
+}
+
+function runCreateReviewArtifactWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WorkflowNodeResult {
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
+  const review = context.artifacts[reviewArtifact];
+  if (!isReviewResult(review)) {
+    throw new Error(
+      `Workflow create-review-artifact node "${nodeId}" needs a ReviewResult artifact.`
+    );
+  }
+  const sourceArtifact = getStringActionOption(node, 'source', context);
+  const source = sourceArtifact ? context.artifacts[sourceArtifact] : undefined;
+  const reviewSource = isReviewSource(source) ? source : undefined;
+  const artifact = createReviewArtifactPayload(review, reviewSource);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `created review artifact ${artifact.reviewId}`,
+    output: artifact,
+  };
+}
+
+function getReviewArtifactPayloadFromValue(nodeId: string, value: unknown): ReviewArtifactPayload {
+  const envelope = value as Partial<WorkflowArtifactEnvelope>;
+  const payload =
+    envelope && typeof envelope === 'object' && 'payload' in envelope ? envelope.payload : value;
+  if (!isReviewArtifactPayload(payload)) {
+    throw new Error(
+      `Workflow review-artifact-status node "${nodeId}" needs a review artifact payload.`
+    );
+  }
+  return payload;
+}
+
+function runReviewArtifactStatusWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WorkflowNodeResult {
+  const artifactName = getStringActionOption(node, 'artifact', context) ?? 'reviewArtifact';
+  const artifactValue = context.artifacts[artifactName];
+  const artifact = getReviewArtifactPayloadFromValue(nodeId, artifactValue);
+  const status = getReviewArtifactStatus(artifact);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `${status.totalFindings} finding(s), ${status.openFindings} open`,
+    output: status,
   };
 }
 

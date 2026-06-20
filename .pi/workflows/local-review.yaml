@@ -18,3 +18,22 @@ nodes:
     with:
       source: change
     output: review
+
+  review-artifact:
+    action: create-review-artifact
+    needs:
+      - review
+    with:
+      source: change
+      review: review
+    output: reviewArtifact
+
+  save-review-artifact:
+    action: save-artifact
+    needs:
+      - review-artifact
+    with:
+      kind: review
+      source: change
+      artifact: reviewArtifact
+    output: persistedReviewArtifact
