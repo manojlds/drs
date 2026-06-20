@@ -36,11 +36,7 @@ export interface SavedWorkflowArtifact<T = unknown> {
 
 function slugSegment(value: string | number | undefined, fallback: string): string {
   const raw = value === undefined || value === '' ? fallback : String(value);
-  const slug = raw
-    .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || fallback;
+  return raw.trim() || fallback;
 }
 
 export function createWorkflowArtifactId(date: Date = new Date()): string {
