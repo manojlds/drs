@@ -11,6 +11,7 @@ inputs:
   fixSeverity: "high"
   fixMinIssues: "1"
   fixBranchPrefix: "drs-fix/pr-"
+  fixCreateChangeRequest: "false"
   allowStackedSource: "false"
   fixDraft: "false"
   visualOutputPath: ".drs/visual-pr-explainer.html"
@@ -231,6 +232,14 @@ nodes:
     needs:
       - fix-diff
     if: "{{artifacts.fixDiff.changed}} == true"
+    then: should-create-fix-change-request
+    else: done
+
+  should-create-fix-change-request:
+    control: condition
+    needs:
+      - fix-diff
+    if: "{{inputs.fixCreateChangeRequest}} == true"
     then: fix-commit
     else: done
 
