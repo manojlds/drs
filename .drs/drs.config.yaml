@@ -29,6 +29,8 @@ agents:
       model: opencode-go/kimi-k2.7-code
     visual:
       model: opencode-go/kimi-k2.7-code
+    task:
+      model: opencode-go/kimi-k2.7-code
 
 workflow:
   default: local-changelog-review
