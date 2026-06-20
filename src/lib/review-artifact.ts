@@ -55,6 +55,17 @@ export interface ReviewArtifactStatus {
   openFindings: number;
 }
 
+export interface ReviewFindingSelector {
+  ids?: string[];
+  fingerprints?: string[];
+  severity?: string;
+}
+
+export interface UpdateReviewFindingsOptions extends ReviewFindingSelector {
+  state?: ReviewFindingState;
+  disposition?: ReviewFindingDisposition;
+}
+
 function createReviewId(date: Date): string {
   const timestamp = date.toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 8);
@@ -89,6 +100,30 @@ function getSourcePullRequest(source: ReviewSource | undefined): {
 
 function findingId(index: number): string {
   return `F${String(index + 1).padStart(3, '0')}`;
+}
+
+function nextFindingId(findings: ReviewFinding[]): string {
+  const max = findings.reduce((currentMax, finding) => {
+    const match = /^F(\d+)$/.exec(finding.id);
+    return match ? Math.max(currentMax, Number.parseInt(match[1] ?? '0', 10)) : currentMax;
+  }, 0);
+  return findingId(max);
+}
+
+function selectorMatches(finding: ReviewFinding, selector: ReviewFindingSelector): boolean {
+  const hasIds = selector.ids !== undefined && selector.ids.length > 0;
+  const hasFingerprints = selector.fingerprints !== undefined && selector.fingerprints.length > 0;
+  const hasSeverity = selector.severity !== undefined && selector.severity !== '';
+
+  if (!hasIds && !hasFingerprints && !hasSeverity) {
+    return true;
+  }
+
+  return (
+    (hasIds && (selector.ids?.includes(finding.id) ?? false)) ||
+    (hasFingerprints && (selector.fingerprints?.includes(finding.fingerprint) ?? false)) ||
+    (hasSeverity && finding.issue.severity === selector.severity)
+  );
 }
 
 export function createReviewArtifactPayload(
@@ -174,5 +209,70 @@ export function getReviewArtifactStatus(artifact: ReviewArtifactPayload): Review
     byDisposition,
     bySeverity: artifact.summary.bySeverity,
     openFindings: byState.open,
+  };
+}
+
+export function addReviewArtifactFinding(
+  artifact: ReviewArtifactPayload,
+  issue: ReviewIssue,
+  source: ReviewFindingSource = 'manual',
+  date: Date = new Date()
+): ReviewArtifactPayload {
+  const now = date.toISOString();
+  const finding: ReviewFinding = {
+    id: nextFindingId(artifact.findings),
+    fingerprint: createIssueFingerprint(issue),
+    issue,
+    state: 'open',
+    disposition: 'confirmed',
+    source,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return {
+    ...artifact,
+    findings: [...artifact.findings, finding],
+    summary: {
+      ...artifact.summary,
+      issuesFound: artifact.summary.issuesFound + 1,
+      bySeverity: {
+        ...artifact.summary.bySeverity,
+        [issue.severity]: (artifact.summary.bySeverity[issue.severity] ?? 0) + 1,
+      },
+      byCategory: {
+        ...artifact.summary.byCategory,
+        [issue.category]: (artifact.summary.byCategory[issue.category] ?? 0) + 1,
+      },
+    },
+  };
+}
+
+export function updateReviewArtifactFindings(
+  artifact: ReviewArtifactPayload,
+  options: UpdateReviewFindingsOptions,
+  date: Date = new Date()
+): { artifact: ReviewArtifactPayload; updatedIds: string[] } {
+  const now = date.toISOString();
+  const updatedIds: string[] = [];
+  const findings = artifact.findings.map((finding) => {
+    if (!selectorMatches(finding, options)) {
+      return finding;
+    }
+    updatedIds.push(finding.id);
+    return {
+      ...finding,
+      state: options.state ?? finding.state,
+      disposition: options.disposition ?? finding.disposition,
+      updatedAt: now,
+    };
+  });
+
+  return {
+    artifact: {
+      ...artifact,
+      findings,
+    },
+    updatedIds,
   };
 }

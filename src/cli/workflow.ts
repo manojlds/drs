@@ -60,14 +60,20 @@ import { GitLabPlatformAdapter } from '../gitlab/platform-adapter.js';
 import {
   loadWorkflowArtifact,
   saveWorkflowArtifact,
+  updateWorkflowArtifact,
   workflowArtifactExists,
   type WorkflowArtifactEnvelope,
   type WorkflowArtifactScope,
 } from '../lib/workflow-artifacts.js';
 import {
+  addReviewArtifactFinding,
   createReviewArtifactPayload,
   getReviewArtifactStatus,
   isReviewArtifactPayload,
+  updateReviewArtifactFindings,
+  type ReviewFindingDisposition,
+  type ReviewFindingSource,
+  type ReviewFindingState,
   type ReviewArtifactPayload,
 } from '../lib/review-artifact.js';
 import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
@@ -720,6 +726,23 @@ async function runActionWorkflowNode(
   if (node.action === 'review-artifact-status') {
     return runReviewArtifactStatusWorkflowNode(nodeId, node, context);
   }
+  if (node.action === 'review-artifact-add-finding') {
+    return runReviewArtifactAddFindingWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'review-artifact-update-findings') {
+    return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'review-artifact-promote-finding') {
+    return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context, {
+      disposition: 'confirmed',
+    });
+  }
+  if (node.action === 'review-artifact-resolve-finding') {
+    return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context, {
+      state: 'resolved',
+      disposition: 'resolved',
+    });
+  }
   if (
     node.action === 'create-change-request' ||
     node.action === 'create-pr' ||
@@ -1353,6 +1376,146 @@ function getReviewArtifactPayloadFromValue(nodeId: string, value: unknown): Revi
   return payload;
 }
 
+function getReviewArtifactEnvelopeFromValue(
+  value: unknown
+): WorkflowArtifactEnvelope<ReviewArtifactPayload> | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const envelope = value as Partial<WorkflowArtifactEnvelope>;
+  if (
+    envelope.schemaVersion === 1 &&
+    envelope.kind === 'review' &&
+    typeof envelope.id === 'string' &&
+    typeof envelope.createdAt === 'string' &&
+    typeof envelope.updatedAt === 'string' &&
+    envelope.scope &&
+    typeof envelope.scope === 'object' &&
+    isReviewArtifactPayload(envelope.payload)
+  ) {
+    return envelope as WorkflowArtifactEnvelope<ReviewArtifactPayload>;
+  }
+  return undefined;
+}
+
+function getReviewArtifactInput(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): {
+  artifact: ReviewArtifactPayload;
+  envelope?: WorkflowArtifactEnvelope<ReviewArtifactPayload>;
+} {
+  const artifactName = getStringActionOption(node, 'artifact', context) ?? 'reviewArtifact';
+  const artifactValue = context.artifacts[artifactName];
+  const artifact = getReviewArtifactPayloadFromValue(nodeId, artifactValue);
+  return { artifact, envelope: getReviewArtifactEnvelopeFromValue(artifactValue) };
+}
+
+async function persistMutatedReviewArtifact(
+  workingDir: string,
+  payload: ReviewArtifactPayload,
+  envelope?: WorkflowArtifactEnvelope<ReviewArtifactPayload>
+): Promise<{ output: unknown; responseSuffix: string }> {
+  if (!envelope) {
+    return { output: payload, responseSuffix: '' };
+  }
+
+  const saved = await updateWorkflowArtifact(workingDir, { artifact: envelope, payload });
+  return {
+    output: { ...saved.artifact, path: saved.path, latestPath: saved.latestPath },
+    responseSuffix: ` and saved ${saved.artifact.id}`,
+  };
+}
+
+function parseListActionOption(
+  node: WorkflowNodeConfig,
+  key: string,
+  context: WorkflowTemplateContext
+): string[] | undefined {
+  const value = getStringActionOption(node, key, context)?.trim();
+  if (!value) {
+    return undefined;
+  }
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseReviewFindingState(
+  nodeId: string,
+  value: string | undefined
+): ReviewFindingState | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value === 'open' || value === 'attempted' || value === 'resolved') {
+    return value;
+  }
+  throw new Error(`Workflow node "${nodeId}" has invalid review finding state "${value}".`);
+}
+
+function parseReviewFindingDisposition(
+  nodeId: string,
+  value: string | undefined
+): ReviewFindingDisposition | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (
+    value === 'confirmed' ||
+    value === 'uncertain' ||
+    value === 'pre_existing' ||
+    value === 'partial' ||
+    value === 'regression' ||
+    value === 'resolved'
+  ) {
+    return value;
+  }
+  throw new Error(`Workflow node "${nodeId}" has invalid review finding disposition "${value}".`);
+}
+
+function parseReviewFindingSource(nodeId: string, value: string | undefined): ReviewFindingSource {
+  if (!value) {
+    return 'manual';
+  }
+  if (value === 'agent' || value === 'manual' || value === 'external') {
+    return value;
+  }
+  throw new Error(`Workflow node "${nodeId}" has invalid review finding source "${value}".`);
+}
+
+function isReviewIssue(value: unknown): value is ReviewIssue {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const issue = value as Partial<ReviewIssue>;
+  return (
+    typeof issue.severity === 'string' &&
+    typeof issue.category === 'string' &&
+    typeof issue.title === 'string' &&
+    typeof issue.file === 'string' &&
+    typeof issue.problem === 'string' &&
+    typeof issue.solution === 'string'
+  );
+}
+
+function getReviewIssueFromNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): ReviewIssue {
+  const issueName = requireStringActionOption(nodeId, node, 'issue', context);
+  const issue = Object.prototype.hasOwnProperty.call(context.artifacts, issueName)
+    ? context.artifacts[issueName]
+    : (JSON.parse(issueName) as unknown);
+  if (!isReviewIssue(issue)) {
+    throw new Error(`Workflow review-artifact-add-finding node "${nodeId}" needs a ReviewIssue.`);
+  }
+  return issue;
+}
+
 function runReviewArtifactStatusWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -1369,6 +1532,66 @@ function runReviewArtifactStatusWorkflowNode(
     action: node.action,
     response: `${status.totalFindings} finding(s), ${status.openFindings} open`,
     output: status,
+  };
+}
+
+async function runReviewArtifactAddFindingWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const { artifact, envelope } = getReviewArtifactInput(nodeId, node, context);
+  const issue = getReviewIssueFromNode(nodeId, node, context);
+  const source = parseReviewFindingSource(nodeId, getStringActionOption(node, 'source', context));
+  const updated = addReviewArtifactFinding(artifact, issue, source);
+  const persisted = await persistMutatedReviewArtifact(workingDir, updated, envelope);
+  const addedFinding = updated.findings[updated.findings.length - 1];
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `added review finding ${addedFinding?.id ?? 'unknown'}${persisted.responseSuffix}`,
+    output: persisted.output,
+  };
+}
+
+async function runReviewArtifactUpdateFindingsWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  defaults: { state?: ReviewFindingState; disposition?: ReviewFindingDisposition } = {}
+): Promise<WorkflowNodeResult> {
+  const { artifact, envelope } = getReviewArtifactInput(nodeId, node, context);
+  const state = parseReviewFindingState(
+    nodeId,
+    getStringActionOption(node, 'state', context) ?? defaults.state
+  );
+  const disposition = parseReviewFindingDisposition(
+    nodeId,
+    getStringActionOption(node, 'disposition', context) ?? defaults.disposition
+  );
+  if (!state && !disposition) {
+    throw new Error(`Workflow node "${nodeId}" must define with.state or with.disposition.`);
+  }
+
+  const { artifact: updated, updatedIds } = updateReviewArtifactFindings(artifact, {
+    ids: parseListActionOption(node, 'ids', context),
+    fingerprints: parseListActionOption(node, 'fingerprints', context),
+    severity: getStringActionOption(node, 'severity', context)?.trim(),
+    state,
+    disposition,
+  });
+  const persisted = await persistMutatedReviewArtifact(workingDir, updated, envelope);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `updated ${updatedIds.length} review finding(s)${persisted.responseSuffix}`,
+    output: persisted.output,
   };
 }
 
