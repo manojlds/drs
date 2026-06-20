@@ -3591,7 +3591,15 @@ export async function runWorkflow(
     options.checkpointCleanup !== false &&
     normalizeWorkflowBooleanLike(inputs.checkpointCleanup) !== false;
   if (shouldCleanupCheckpoint && executionContext.checkpoint) {
-    await cleanupWorkflowCheckpoint(executionContext.checkpoint);
+    try {
+      await cleanupWorkflowCheckpoint(executionContext.checkpoint);
+    } catch (cleanupError) {
+      console.warn(
+        chalk.yellow('Warning:'),
+        'Failed to clean up workflow checkpoint:',
+        cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      );
+    }
   }
 
   const lastNodeId = executionOrder[executionOrder.length - 1];
