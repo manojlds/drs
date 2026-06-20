@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
@@ -551,7 +551,9 @@ async function saveWorkflowCheckpoint(
     failure,
   };
   await mkdir(dirname(checkpoint.path), { recursive: true });
-  await writeFile(checkpoint.path, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  const tempPath = `${checkpoint.path}.tmp`;
+  await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await rename(tempPath, checkpoint.path);
 }
 
 function restoreWorkflowCheckpoint(
@@ -3046,13 +3048,21 @@ async function runWorkflowDagSegment(
     );
     if (firstRejection) {
       if (executionContext.checkpoint) {
-        await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-          message:
-            firstRejection.reason instanceof Error
-              ? firstRejection.reason.message
-              : String(firstRejection.reason),
-          failedAt: new Date().toISOString(),
-        });
+        try {
+          await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+            message:
+              firstRejection.reason instanceof Error
+                ? firstRejection.reason.message
+                : String(firstRejection.reason),
+            failedAt: new Date().toISOString(),
+          });
+        } catch (saveError) {
+          console.error(
+            chalk.yellow('Warning:'),
+            'Failed to persist workflow checkpoint:',
+            saveError instanceof Error ? saveError.message : String(saveError)
+          );
+        }
       }
       throw firstRejection.reason instanceof Error
         ? firstRejection.reason
@@ -3444,13 +3454,21 @@ export async function runWorkflow(
         );
         if (firstRejection) {
           if (executionContext.checkpoint) {
-            await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-              message:
-                firstRejection.reason instanceof Error
-                  ? firstRejection.reason.message
-                  : String(firstRejection.reason),
-              failedAt: new Date().toISOString(),
-            });
+            try {
+              await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+                message:
+                  firstRejection.reason instanceof Error
+                    ? firstRejection.reason.message
+                    : String(firstRejection.reason),
+                failedAt: new Date().toISOString(),
+              });
+            } catch (saveError) {
+              console.error(
+                chalk.yellow('Warning:'),
+                'Failed to persist workflow checkpoint:',
+                saveError instanceof Error ? saveError.message : String(saveError)
+              );
+            }
           }
           throw firstRejection.reason instanceof Error
             ? firstRejection.reason
@@ -3474,10 +3492,18 @@ export async function runWorkflow(
     }
   } catch (error) {
     if (executionContext.checkpoint) {
-      await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-        message: error instanceof Error ? error.message : String(error),
-        failedAt: new Date().toISOString(),
-      });
+      try {
+        await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+          message: error instanceof Error ? error.message : String(error),
+          failedAt: new Date().toISOString(),
+        });
+      } catch (saveError) {
+        console.error(
+          chalk.yellow('Warning:'),
+          'Failed to persist workflow checkpoint:',
+          saveError instanceof Error ? saveError.message : String(saveError)
+        );
+      }
     }
     throw error;
   }
