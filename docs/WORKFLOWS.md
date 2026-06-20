@@ -50,6 +50,38 @@ drs workflow run github-pr-review --input owner=octocat --input repo=hello-world
 
 Resume refuses to load a checkpoint if the workflow inputs differ from the inputs saved in the checkpoint.
 
+By default, DRS deletes the checkpoint file after a successful workflow completion. Pass `--no-checkpoint-cleanup` to keep the checkpoint file:
+
+```bash
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume --no-checkpoint-cleanup
+```
+
+### Checkpoint Schema
+
+Checkpoint files are JSON documents stored at `.drs/checkpoints/<key>.json`. They are generated runtime state and are excluded from version control via `.gitignore`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schemaVersion` | `number` | Always `1` |
+| `workflow` | `string` | Workflow name |
+| `key` | `string` | Checkpoint key |
+| `updatedAt` | `string` | ISO 8601 timestamp of last checkpoint write |
+| `inputs` | `Record<string, string>` | Workflow inputs used for this run |
+| `nodes` | `Record<string, WorkflowNodeResult>` | Node results keyed by node id |
+| `artifacts` | `Record<string, unknown>` | Workflow artifacts keyed by output name |
+| `loop` | `Record<string, WorkflowLoopState>` | Loop control state keyed by loop node id |
+| `failure` | `object \| undefined` | Present only when the workflow failed |
+
+The `failure` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nodeId` | `string \| undefined` | Node id that was running when the failure occurred |
+| `message` | `string` | Error message |
+| `failedAt` | `string` | ISO 8601 timestamp of the failure |
+
+Large artifact payloads (strings over 10,000 characters) are truncated in checkpoint files. Circular references are replaced with `[circular]`.
+
 ## List Workflows
 
 ```bash

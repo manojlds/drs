@@ -446,6 +446,34 @@ describe('workflow runner', () => {
     expect(mocks.githubAdapter.createChangeRequest).toHaveBeenCalledTimes(2);
     expect(result.artifacts.summary).toBe('task/summarizer: Summarize before retry');
     expect(result.artifacts.changeRequest).toMatchObject({ number: 99, operation: 'created' });
+    expect(() => readFileSync(checkpointPath, 'utf-8')).toThrow();
+  });
+
+  it('keeps checkpoint file when checkpoint cleanup is disabled', async () => {
+    const projectRoot = createTempDir('drs-workflow-resume-no-cleanup-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        resumable: {
+          nodes: {
+            summarize: {
+              agent: 'task/summarizer',
+              input: 'Summarize',
+              output: 'summary',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const checkpointPath = join(projectRoot, '.drs', 'checkpoints', 'keep-demo.json');
+    await runWorkflow(config, 'resumable', {
+      workingDir: projectRoot,
+      resume: true,
+      checkpointKey: 'keep-demo',
+      checkpointCleanup: false,
+    });
+
     expect(JSON.parse(readFileSync(checkpointPath, 'utf-8'))).not.toHaveProperty('failure');
   });
 

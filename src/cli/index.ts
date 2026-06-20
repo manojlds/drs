@@ -124,6 +124,7 @@ workflowCommand
   .option('--json', 'Output workflow result as JSON to console')
   .option('--resume', 'Resume from a workflow checkpoint when available')
   .option('--checkpoint-key <key>', 'Checkpoint key to use with --resume')
+  .option('--no-checkpoint-cleanup', 'Keep checkpoint file after successful workflow completion')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .option(
@@ -156,6 +157,7 @@ workflowCommand
         workingDir: process.cwd(),
         resume: options.resume ?? false,
         checkpointKey: options.checkpointKey,
+        checkpointCleanup: options.checkpointCleanup !== false,
       });
       process.exit(0);
     } catch (error) {
