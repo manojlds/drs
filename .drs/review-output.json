@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-06-20T00:00:00Z",
+  "summary": {
+    "filesReviewed": 4,
+    "issuesFound": 2,
+    "bySeverity": {
+      "CRITICAL": 0,
+      "HIGH": 1,
+      "MEDIUM": 1,
+      "LOW": 0
+    },
+    "byCategory": {
+      "SECURITY": 0,
+      "QUALITY": 2,
+      "STYLE": 0,
+      "PERFORMANCE": 0,
+      "DOCUMENTATION": 0
+    }
+  },
+  "issues": [
+    {
+      "category": "QUALITY",
+      "severity": "HIGH",
+      "title": "Checkpoint string truncation corrupts resumed workflow state",
+      "file": "src/cli/workflow.ts",
+      "line": 566,
+      "problem": "saveWorkflowCheckpoint passes context.nodes and context.artifacts through sanitizeCheckpointValue, which truncates every string longer than 10,000 characters. On resume, restoreWorkflowCheckpoint treats those sanitized results as successfully completed nodes and reuses them verbatim. Downstream nodes consume artifacts such as {{artifacts.change}} (which contains filesWithDiffs[].patch strings) and {{artifacts.review}}, so a resumed run can operate on incomplete diffs or findings and produce wrong review/fix results.",
+      "solution": "Do not truncate data that is required for workflow correctness. If checkpoint size must be capped, guard the write instead of mutating state. For example, serialize the payload first and skip the write (with a warning) when it exceeds a configured maximum:\n\n```ts\nconst payloadText = JSON.stringify(payload, null, 2);\nif (payloadText.length > CHECKPOINT_MAX_FILE_SIZE) {\n  console.warn(\n    chalk.yellow('Warning:'),\n    `Checkpoint payload too large (${payloadText.length} bytes); skipping checkpoint write.`\n  );\n  return;\n}\nawait writeFile(tempPath, `${payloadText}\\n`, 'utf-8');\n```\n\nAlternatively, keep output and artifacts intact and truncate only human-readable fields such as node.response.",
+      "references": [],
+      "agent": "unified"
+    },
+    {
+      "category": "QUALITY",
+      "severity": "MEDIUM",
+      "title": "Shared activeNodeId can record the wrong node in checkpoint failure metadata",
+      "file": "src/cli/workflow.ts",
+      "line": 3478,
+      "problem": "Both the static wave executor and the DAG-segment executor set executionContext.activeNodeId = nodeId inside Promise.allSettled callbacks that run concurrently. The failure-handling code at lines 3505 and 3544 reads this shared mutable field to populate failure.nodeId. When a wave has multiple runnable nodes, the last node to start overwrites the field, so the checkpoint can attribute the failure to a node that did not fail. The DAG-segment catch block also records no nodeId of its own and relies on the same shared state in the outer catch.",
+      "solution": "Capture the node id in the promise closure and propagate it with the rejection instead of relying on shared mutable state. For example, in the static wave executor:\n\n```ts\nconst settled = await Promise.allSettled(\n  wave.map(async (nodeId) => {\n    ...\n    try {\n      const result = await runSingleWorkflowNode(...);\n      return { nodeId, node, result };\n    } catch (error) {\n      const wrapped = error instanceof Error ? error : new Error(String(error));\n      (wrapped as Error & { nodeId?: string }).nodeId = nodeId;\n      throw wrapped;\n    }\n  })\n);\n```\n\nThen use `firstRejection.reason.nodeId` when saving the failure checkpoint. Apply the same pattern to runWorkflowDagSegment so its own catch block records the correct nodeId without depending on the outer catch.",
+      "references": [],
+      "agent": "unified"
+    }
+  ]
+}

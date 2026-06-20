@@ -1,0 +1,71 @@
+{
+  "type": "feature",
+  "title": "Add checkpoint cleanup, size guard, and failure node tracking",
+  "summary": [
+    "Adds --no-checkpoint-cleanup flag to keep checkpoint files",
+    "Sanitizes checkpoint JSON: truncates long strings, replaces circular refs",
+    "Records active node id in checkpoint failure metadata",
+    "Cleans up checkpoint files after successful workflow completion"
+  ],
+  "walkthrough": [
+    {
+      "file": "src/cli/workflow.ts",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Implement checkpoint cleanup and safe serialization",
+      "changes": [
+        "Sanitize checkpoint values to truncate long strings and circular refs",
+        "Track active node id for failure metadata",
+        "Delete checkpoint file after successful run unless disabled"
+      ],
+      "significance": "major"
+    },
+    {
+      "file": "src/cli/index.ts",
+      "changeType": "modified",
+      "semanticLabel": "feature",
+      "title": "Add --no-checkpoint-cleanup CLI option",
+      "changes": [
+        "Register --no-checkpoint-cleanup option on workflow run",
+        "Pass checkpointCleanup through to runWorkflow"
+      ],
+      "significance": "minor"
+    },
+    {
+      "file": "docs/WORKFLOWS.md",
+      "changeType": "modified",
+      "semanticLabel": "docs",
+      "title": "Document checkpoint cleanup and schema",
+      "changes": [
+        "Add --no-checkpoint-cleanup usage example",
+        "Document checkpoint JSON schema and failure object",
+        "Note truncation and gitignore for checkpoint files"
+      ],
+      "significance": "minor"
+    },
+    {
+      "file": "plan.md",
+      "changeType": "added",
+      "semanticLabel": "docs",
+      "title": "Add remaining work plan",
+      "changes": [
+        "Lists checkpoint hardening and fix verification tasks",
+        "Documents PR finalization, CI, and model reliability",
+        "Serves as roadmap for upcoming DRS work"
+      ],
+      "significance": "minor"
+    }
+  ],
+  "labels": [
+    "feature",
+    "cli",
+    "checkpoint",
+    "workflow",
+    "docs"
+  ],
+  "recommendations": [
+    "Add unit tests for sanitizeCheckpointValue and cleanup behavior",
+    "Consider exposing checkpointCleanup in workflow input schema/docs",
+    "Verify npm run check:all passes after these changes"
+  ]
+}

@@ -80,7 +80,7 @@ The `failure` object:
 | `message` | `string` | Error message |
 | `failedAt` | `string` | ISO 8601 timestamp of the failure |
 
-Large artifact payloads (strings over 10,000 characters) are truncated in checkpoint files. Circular references are replaced with `[circular]`.
+Circular references are replaced with `[circular]`. Checkpoint writes are skipped (with a warning) when the serialized payload exceeds 50 MB, so workflow state is never truncated for resume.
 
 ## List Workflows
 

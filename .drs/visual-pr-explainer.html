@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PR #125 Explainer — Harden Workflow Checkpoints</title>
+  <style>
+    :root {
+      --bg: #f7f6f2;
+      --surface: #ffffff;
+      --ink: #1c2333;
+      --ink-muted: #5b6273;
+      --accent: #1f4e79;
+      --accent-light: #e6eef6;
+      --accent-2: #c58a3a;
+      --accent-2-light: #fbf3e7;
+      --danger: #b33a3a;
+      --danger-light: #f9e8e8;
+      --success: #2e7d4a;
+      --success-light: #e8f3ec;
+      --border: #d9d6ce;
+      --code-bg: #f0efe9;
+      --radius: 6px;
+      --shadow: 0 1px 2px rgba(28,35,51,0.06), 0 4px 12px rgba(28,35,51,0.08);
+      --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161b24;
+        --surface: #1e2430;
+        --ink: #e8eaed;
+        --ink-muted: #9aa0a8;
+        --accent: #6fa8dc;
+        --accent-light: #253247;
+        --accent-2: #e0b063;
+        --accent-2-light: #332a1c;
+        --danger: #e08e8e;
+        --danger-light: #3d2222;
+        --success: #7bc092;
+        --success-light: #1e3528;
+        --border: #343b4a;
+        --code-bg: #252b38;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-body);
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header.hero {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 48px 0 36px;
+      margin-bottom: 32px;
+    }
+
+    .hero-meta {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-2);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(28px, 5vw, 42px);
+      line-height: 1.15;
+      color: var(--ink);
+    }
+
+    .hero-lead {
+      font-size: 17px;
+      color: var(--ink-muted);
+      max-width: 720px;
+      margin: 0 0 24px;
+    }
+
+    .hero-bullets {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 28px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .hero-bullets li {
+      position: relative;
+      padding-left: 22px;
+      color: var(--ink);
+    }
+
+    .hero-bullets li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--accent-2);
+      font-weight: 700;
+    }
+
+    .hero-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .stat {
+      background: var(--accent-light);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    .stat.risk-high { background: var(--danger-light); }
+    .stat.risk-high strong { color: var(--danger); }
+
+    nav.toc {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(247,246,242,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      nav.toc { background: rgba(22,27,36,0.92); }
+    }
+
+    .toc-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .toc-inner a {
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      white-space: nowrap;
+    }
+
+    .toc-inner a:hover {
+      background: var(--accent-light);
+      text-decoration: none;
+    }
+
+    .search-wrap {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-wrap input {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      font-size: 13px;
+      background: var(--surface);
+      color: var(--ink);
+      width: 200px;
+    }
+
+    .kbd {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 5px;
+      color: var(--ink-muted);
+    }
+
+    section {
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 0 0 18px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--accent);
+      display: inline-block;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 0 0 12px;
+      color: var(--ink);
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h4 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: var(--accent);
+    }
+
+    .card p, .card ul {
+      margin: 0 0 10px;
+      color: var(--ink-muted);
+      font-size: 14px;
+    }
+
+    .card ul {
+      padding-left: 18px;
+    }
+
+    .card .file-tag {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 3px 7px;
+      border-radius: 4px;
+      color: var(--ink);
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .step-number {
+      flex: 0 0 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .step-body {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .step-body h4 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .step-body p {
+      margin: 0;
+      color: var(--ink-muted);
+      font-size: 14px;
+    }
+
+    .perspective {
+      margin-bottom: 36px;
+    }
+
+    .perspective-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .perspective-header h3 {
+      margin: 0;
+    }
+
+    .perspective-tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent-2);
+      font-weight: 700;
+    }
+
+    .mermaid {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow: auto;
+    }
+
+    .finding {
+      border-left: 4px solid var(--accent-2);
+      background: var(--accent-2-light);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .finding.drs-finding {
+      border-left-color: var(--danger);
+      background: var(--danger-light);
+    }
+
+    .finding.drs-finding.medium {
+      border-left-color: var(--accent-2);
+      background: var(--accent-2-light);
+    }
+
+    .finding-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .finding-header strong {
+      font-size: 15px;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 3px 7px;
+      border-radius: 4px;
+    }
+
+    .badge-severity-high {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .badge-severity-medium {
+      background: var(--accent-2);
+      color: #1a1a1a;
+    }
+
+    .badge-category {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+
+    .finding p {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .finding .file-ref {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    code, pre {
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    code {
+      background: var(--code-bg);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      padding: 14px;
+      border-radius: var(--radius);
+      overflow: auto;
+      border: 1px solid var(--border);
+      line-height: 1.45;
+    }
+
+    .file-group {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .file-group h4 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      color: var(--accent);
+    }
+
+    .file-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .file-row:last-child {
+      border-bottom: none;
+    }
+
+    .file-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      flex: 1;
+      word-break: break-all;
+    }
+
+    .file-change {
+      font-size: 12px;
+      color: var(--ink-muted);
+      white-space: nowrap;
+    }
+
+    .diff-ins { color: var(--success); font-weight: 700; }
+    .diff-del { color: var(--danger); font-weight: 700; }
+
+    .appendix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .appendix-table th, .appendix-table td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .appendix-table th {
+      background: var(--accent-light);
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .hidden { display: none !important; }
+
+    .search-highlight {
+      background: var(--accent-2-light);
+      outline: 2px solid var(--accent-2);
+      border-radius: 2px;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 0 48px;
+      font-size: 13px;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+
+    @media (max-width: 640px) {
+      .container { padding: 0 16px; }
+      .search-wrap input { width: 130px; }
+      .step { flex-direction: column; gap: 8px; }
+      .hero-stats { gap: 8px; }
+    }
+
+    @media print {
+      nav.toc { display: none; }
+      .hero { padding: 24px 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <div class="hero-meta">GitHub PR manojlds/drs#125</div>
+      <h1>feat: harden workflow checkpoints</h1>
+      <p class="hero-lead">
+        This PR makes workflow checkpointing safer and cleaner: oversized strings are truncated,
+        circular references are stubbed, failures now record which node was active, and successful
+        runs delete the checkpoint by default. The checkpoint JSON schema is also documented for
+        operators.
+      </p>
+      <ul class="hero-bullets">
+        <li>Sanitizes checkpoint payloads before JSON serialization (10K string cap, circular refs).</li>
+        <li>Tracks the active node id so failure metadata identifies where the run broke.</li>
+        <li>Cleans up checkpoint files on success unless <code>--no-checkpoint-cleanup</code> is passed.</li>
+        <li>Documents the checkpoint schema and adds a long-range <code>plan.md</code> for remaining work.</li>
+        <li>DRS review reported 2 quality findings (1 HIGH, 1 MEDIUM) that should be addressed.</li>
+      </ul>
+      <div class="hero-stats">
+        <div class="stat"><strong>5</strong> files changed</div>
+        <div class="stat"><strong>+325 / −3</strong> lines</div>
+        <div class="stat"><strong>CLI + docs</strong> main areas</div>
+        <div class="stat risk-high"><strong>HIGH</strong> open risk (DRS finding)</div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc" data-section-id="toc">
+    <div class="container">
+      <div class="toc-inner">
+        <a href="#reviewer-path">Reviewer path</a>
+        <a href="#system-overview">System</a>
+        <a href="#data-flow">Data flow</a>
+        <a href="#code-dependency">Dependencies</a>
+        <a href="#user-action">User action</a>
+        <a href="#change-map">Change map</a>
+        <a href="#file-groups">Files</a>
+        <a href="#risks">Risks</a>
+        <a href="#appendix">Appendix</a>
+        <div class="search-wrap">
+          <input type="text" id="search-input" placeholder="Search…" aria-label="Search page">
+          <span class="kbd">/</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section id="reviewer-path" data-section-id="reviewer-path">
+      <h2>Reviewer path</h2>
+      <p style="color: var(--ink-muted); margin-top:-10px; margin-bottom:18px;">Suggested order for reading this change.</p>
+      <div class="card-grid">
+        <div class="card">
+          <h4>1. Start with the core change</h4>
+          <p><span class="file-tag">src/cli/workflow.ts</span></p>
+          <p>Read <code>sanitizeCheckpointValue</code>, <code>cleanupWorkflowCheckpoint</code>, and the new <code>activeNodeId</code> plumbing. This is where the checkpoint behavior actually changes.</p>
+        </div>
+        <div class="card">
+          <h4>2. Check the CLI wiring</h4>
+          <p><span class="file-tag">src/cli/index.ts</span></p>
+          <p>Verify the new <code>--no-checkpoint-cleanup</code> flag is declared and mapped into <code>WorkflowRunOptions</code>.</p>
+        </div>
+        <div class="card">
+          <h4>3. Review the tests</h4>
+          <p><span class="file-tag">src/cli/workflow.test.ts</span></p>
+          <p>The new test asserts the checkpoint is kept when cleanup is disabled and the existing test now asserts cleanup on success.</p>
+        </div>
+        <div class="card">
+          <h4>4. Read the docs and plan</h4>
+          <p><span class="file-tag">docs/WORKFLOWS.md</span> · <span class="file-tag">plan.md</span></p>
+          <p>Confirm the documented schema matches the TypeScript interfaces, then scan the plan to see what is intentionally deferred.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="system-overview" data-section-id="system-overview">
+      <div class="perspective">
+        <div class="perspective-header">
+          <h3>System overview</h3>
+          <span class="perspective-tag">PR-agnostic</span>
+        </div>
+        <p style="color: var(--ink-muted); margin-top:-8px; margin-bottom:18px;">
+          The workflow runner executes YAML-defined graphs of agents and actions. These notes describe the touched subsystem as it exists independent of this PR.
+        </p>
+        <div class="card-grid">
+          <div class="card">
+            <h4>Workflow graph</h4>
+            <p>Workflows are defined in YAML as <code>nodes</code> with <code>needs</code> dependencies. The runner resolves execution waves or control-flow segments and runs nodes concurrently within a wave.</p>
+          </div>
+          <div class="card">
+            <h4>Runtime context</h4>
+            <p>During execution the runner maintains <code>context.nodes</code> (results), <code>context.artifacts</code> (outputs), and <code>context.loop</code> (loop control state). Nodes reference artifacts via template strings such as <code>{{artifacts.diff}}</code>.</p>
+          </div>
+          <div class="card">
+            <h4>Checkpoint files</h4>
+            <p>When <code>--resume</code> is enabled, the runner writes a JSON checkpoint under <code>.drs/checkpoints/&lt;key&gt;.json</code> after every node. A later run can reload completed nodes instead of re-executing them.</p>
+          </div>
+          <div class="card">
+            <h4>Checkpoint safety</h4>
+            <p>Checkpoints are generated runtime state and are gitignored. A resumed run rejects the checkpoint if the workflow name, key, or inputs differ from those stored in the file.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="data-flow" data-section-id="data-flow">
+      <div class="perspective">
+        <div class="perspective-header">
+          <h3>Data flow</h3>
+          <span class="perspective-tag">How state moves</span>
+        </div>
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Node produces output</h4>
+            <p><code>runSingleWorkflowNode</code> returns a <code>WorkflowNodeResult</code>, which is stored in <code>context.nodes</code> and, for non-skipped nodes, copied into <code>context.artifacts</code> by <code>recordNodeArtifact</code>.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Checkpoint is written</h4>
+            <p><code>saveWorkflowCheckpoint</code> snapshots <code>context.nodes</code>, <code>context.artifacts</code>, and <code>context.loop</code> into JSON. After this PR, the snapshot passes through <code>sanitizeCheckpointValue</code> to cap strings and stub circular refs.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Failure path</h4>
+            <p>If a node throws, the runner catches the rejection and writes a checkpoint with a <code>failure</code> object containing <code>message</code>, <code>failedAt</code>, and now <code>nodeId</code> (see risks for accuracy concerns).</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Success path</h4>
+            <p>On a successful run, <code>cleanupWorkflowCheckpoint</code> deletes the checkpoint file unless <code>--no-checkpoint-cleanup</code> is set or the workflow input <code>checkpointCleanup</code> is <code>false</code>.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">5</div>
+          <div class="step-body">
+            <h4>Resume path</h4>
+            <p>A subsequent <code>--resume</code> run calls <code>loadWorkflowCheckpoint</code>, validates workflow/key/inputs, then <code>restoreWorkflowCheckpoint</code> copies stored <code>nodes</code> and <code>artifacts</code> back into the live context.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="code-dependency" data-section-id="code-dependency">
+      <div class="perspective">
+        <div class="perspective-header">
+          <h3>Code dependency</h3>
+          <span class="perspective-tag">Entry points & seams</span>
+        </div>
+        <div class="card-grid">
+          <div class="card">
+            <h4>Entry point</h4>
+            <p><span class="file-tag">src/cli/index.ts</span> parses <code>--no-checkpoint-cleanup</code> and passes the boolean into <code>runWorkflow</code>.</p>
+          </div>
+          <div class="card">
+            <h4>Orchestrator</h4>
+            <p><span class="file-tag">src/cli/workflow.ts</span> owns the checkpoint lifecycle: create, save, sanitize, restore, cleanup. It also owns the new <code>activeNodeId</code> field on the execution context.</p>
+          </div>
+          <div class="card">
+            <h4>Leaves</h4>
+            <p><span class="file-tag">docs/WORKFLOWS.md</span> and <span class="file-tag">plan.md</span> are documentation only; nothing depends on them.</p>
+          </div>
+          <div class="card">
+            <h4>Tests</h4>
+            <p><span class="file-tag">src/cli/workflow.test.ts</span> exercises the cleanup and keep behaviors with mocked agents and adapters.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="user-action" data-section-id="user-action">
+      <div class="perspective">
+        <div class="perspective-header">
+          <h3>User action</h3>
+          <span class="perspective-tag">Operator surface</span>
+        </div>
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Run with resume</h4>
+            <p><code>drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume</code></p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Success behavior</h4>
+            <p>The checkpoint file under <code>.drs/checkpoints/&lt;key&gt;.json</code> is deleted automatically on success.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Opt out of cleanup</h4>
+            <p>Add <code>--no-checkpoint-cleanup</code> to keep the checkpoint file for inspection after a successful run.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Inspect failures</h4>
+            <p>When a run fails, the checkpoint contains a <code>failure</code> object with <code>nodeId</code>, <code>message</code>, and <code>failedAt</code>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="change-map" data-section-id="change-map">
+      <h2>Change map</h2>
+      <p style="color: var(--ink-muted); margin-top:-10px; margin-bottom:18px;">Checkpoint lifecycle with the new sanitize, cleanup, and failure-nodeId steps.</p>
+      <div class="mermaid">
+<pre class="mermaid">
+flowchart LR
+  Start([Workflow run]) --> Init[Build execution context]
+  Init --> Resume{Resume?}
+  Resume -->|yes| Load[Load checkpoint]
+  Load --> Restore[Restore nodes/artifacts]
+  Resume -->|no| Exec[Execute nodes]
+  Restore --> Exec
+  Exec --> RunNode[Run node]
+  RunNode --> Save["saveWorkflowCheckpoint<br/>(sanitize strings + circular refs)"]
+  Save --> More{More nodes?}
+  More -->|yes| RunNode
+  More -->|no| Success{Success?}
+  Success -->|yes| Cleanup[cleanupWorkflowCheckpoint]
+  Cleanup --> Done([Done])
+  Success -->|no| FailSave["Save failure checkpoint<br/>with activeNodeId"]
+  FailSave --> Throw([Throw error])
+</pre>
+      </div>
+    </section>
+
+    <section id="file-groups" data-section-id="file-groups">
+      <h2>File groups</h2>
+
+      <div class="file-group">
+        <h4>Runtime changes</h4>
+        <div class="file-row">
+          <span class="file-name">src/cli/workflow.ts</span>
+          <span class="file-change"><span class="diff-ins">+58</span> / <span class="diff-del">−3</span></span>
+        </div>
+        <p style="font-size:14px; color: var(--ink-muted); margin:8px 0 0;">
+          Adds <code>sanitizeCheckpointValue</code> (10K string truncation + circular-ref stubbing), <code>cleanupWorkflowCheckpoint</code>, and <code>activeNodeId</code> tracking. Plumbs <code>checkpointCleanup</code> from options through to the success-path cleanup decision.
+        </p>
+      </div>
+
+      <div class="file-group">
+        <h4>CLI surface</h4>
+        <div class="file-row">
+          <span class="file-name">src/cli/index.ts</span>
+          <span class="file-change"><span class="diff-ins">+2</span> / <span class="diff-del">−0</span></span>
+        </div>
+        <p style="font-size:14px; color: var(--ink-muted); margin:8px 0 0;">
+          Adds the <code>--no-checkpoint-cleanup</code> option to <code>drs workflow run</code> and forwards it as <code>checkpointCleanup: options.checkpointCleanup !== false</code>.
+        </p>
+      </div>
+
+      <div class="file-group">
+        <h4>Tests</h4>
+        <div class="file-row">
+          <span class="file-name">src/cli/workflow.test.ts</span>
+          <span class="file-change"><span class="diff-ins">+28</span> / <span class="diff-del">−0</span></span>
+        </div>
+        <p style="font-size:14px; color: var(--ink-muted); margin:8px 0 0;">
+          Extends the existing resume test to assert the checkpoint file is deleted on success, and adds a new test that disables cleanup and verifies the checkpoint remains without a <code>failure</code> property.
+        </p>
+      </div>
+
+      <div class="file-group">
+        <h4>Documentation</h4>
+        <div class="file-row">
+          <span class="file-name">docs/WORKFLOWS.md</span>
+          <span class="file-change"><span class="diff-ins">+32</span> / <span class="diff-del">−0</span></span>
+        </div>
+        <div class="file-row">
+          <span class="file-name">plan.md</span>
+          <span class="file-change"><span class="diff-ins">+205</span> / <span class="diff-del">−0</span></span>
+        </div>
+        <p style="font-size:14px; color: var(--ink-muted); margin:8px 0 0;">
+          Documents the <code>--no-checkpoint-cleanup</code> flag and the full checkpoint JSON schema (fields, failure object, truncation note). Adds a new long-range work plan covering checkpoint retention, artifact-aware fix verification, stacked PR workflows, model reliability, and adamsreview adoption.
+        </p>
+      </div>
+    </section>
+
+    <section id="risks" data-section-id="risks">
+      <h2>Risks and questions</h2>
+
+      <div class="finding drs-finding">
+        <div class="finding-header">
+          <span class="badge badge-severity-high">HIGH</span>
+          <span class="badge badge-category">DRS finding · QUALITY</span>
+          <strong>Checkpoint string truncation corrupts resumed workflow state</strong>
+        </div>
+        <p class="file-ref">src/cli/workflow.ts · sanitizeCheckpointValue / saveWorkflowCheckpoint</p>
+        <p>
+          Strings longer than 10,000 characters are truncated before the checkpoint is written. On resume,
+          <code>restoreWorkflowCheckpoint</code> treats the sanitized values as completed node results, so downstream
+          nodes may consume incomplete diffs or review findings. Review artifacts and <code>filesWithDiffs[].patch</code>
+          can easily exceed this limit.
+        </p>
+        <p><strong>Inspection area:</strong> Should the runner skip the write when the payload is oversized rather than mutating workflow state? Are there any production workflows where 10K is a routinely exceeded artifact size?</p>
+      </div>
+
+      <div class="finding drs-finding medium">
+        <div class="finding-header">
+          <span class="badge badge-severity-medium">MEDIUM</span>
+          <span class="badge badge-category">DRS finding · QUALITY</span>
+          <strong>Shared activeNodeId can record the wrong node in failure metadata</strong>
+        </div>
+        <p class="file-ref">src/cli/workflow.ts · runWorkflow / runWorkflowDagSegment</p>
+        <p>
+          Both the static wave executor and the DAG-segment executor assign <code>executionContext.activeNodeId = nodeId</code>
+          inside concurrent <code>Promise.allSettled</code> callbacks. The failure-handling code reads this shared mutable
+          field, so when a wave has multiple runnable nodes the last node to start can overwrite the id of the node that
+          actually failed.
+        </p>
+        <p><strong>Inspection area:</strong> Capture the node id in the promise closure and propagate it with the rejection instead of relying on shared mutable state.</p>
+      </div>
+
+      <div class="finding">
+        <div class="finding-header">
+          <strong>Reviewer question: cleanup default vs. operator expectations</strong>
+        </div>
+        <p>
+          The new default deletes checkpoints on success. Operators who previously expected to inspect a successful
+          checkpoint now need <code>--no-checkpoint-cleanup</code>. Is this change documented prominently enough, and
+          should the workflow input <code>checkpointCleanup</code> be mentioned in <code>docs/WORKFLOWS.md</code>?
+        </p>
+      </div>
+
+      <div class="finding">
+        <div class="finding-header">
+          <strong>Reviewer question: plan.md as committed planning doc</strong>
+        </div>
+        <p>
+          <code>plan.md</code> is a large new file with many unchecked items and cross-references to other PRs. Does it
+          belong in the repo root or in <code>docs/</code>? How will it be kept in sync once merged?
+        </p>
+      </div>
+    </section>
+
+    <section id="appendix" data-section-id="appendix">
+      <h2>Appendix</h2>
+
+      <h3>Changed files</h3>
+      <table class="appendix-table">
+        <thead>
+          <tr><th>File</th><th>Status</th><th>Additions</th><th>Deletions</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>docs/WORKFLOWS.md</code></td><td>modified</td><td class="diff-ins">+32</td><td class="diff-del">−0</td></tr>
+          <tr><td><code>plan.md</code></td><td>added</td><td class="diff-ins">+205</td><td class="diff-del">−0</td></tr>
+          <tr><td><code>src/cli/index.ts</code></td><td>modified</td><td class="diff-ins">+2</td><td class="diff-del">−0</td></tr>
+          <tr><td><code>src/cli/workflow.test.ts</code></td><td>modified</td><td class="diff-ins">+28</td><td class="diff-del">−0</td></tr>
+          <tr><td><code>src/cli/workflow.ts</code></td><td>modified</td><td class="diff-ins">+58</td><td class="diff-del">−3</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top:28px;">Diff highlights</h3>
+
+      <h4>src/cli/workflow.ts — sanitize and cleanup</h4>
+<pre><code>const CHECKPOINT_MAX_STRING_LENGTH = 10_000;
+
+function sanitizeCheckpointValue(value: unknown, seen: WeakSet&lt;object&gt; = new WeakSet()): unknown {
+  if (typeof value === 'string') {
+    return value.length > CHECKPOINT_MAX_STRING_LENGTH
+      ? `${value.slice(0, CHECKPOINT_MAX_STRING_LENGTH)}…[truncated]`
+      : value;
+  }
+  // ... circular reference handling ...
+}
+
+async function cleanupWorkflowCheckpoint(checkpoint) {
+  if (!checkpoint) return;
+  try { await unlink(checkpoint.path); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+}</code></pre>
+
+      <h4>src/cli/workflow.ts — active node tracking</h4>
+<pre><code>executionContext.activeNodeId = nodeId;
+// ...
+await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+  nodeId: executionContext.activeNodeId,
+  message: error instanceof Error ? error.message : String(error),
+  failedAt: new Date().toISOString(),
+});</code></pre>
+
+      <h4>src/cli/index.ts — new flag</h4>
+<pre><code>.option('--no-checkpoint-cleanup', 'Keep checkpoint file after successful workflow completion')</code></pre>
+
+      <h4>src/cli/workflow.test.ts — cleanup assertions</h4>
+<pre><code>expect(() => readFileSync(checkpointPath, 'utf-8')).toThrow();
+// ...
+await runWorkflow(config, 'resumable', {
+  workingDir: projectRoot, resume: true, checkpointKey: 'keep-demo', checkpointCleanup: false
+});
+expect(JSON.parse(readFileSync(checkpointPath, 'utf-8'))).not.toHaveProperty('failure');</code></pre>
+
+      <h4>docs/WORKFLOWS.md — schema excerpt</h4>
+<pre><code>| Field | Type | Description |
+|-------|------|-------------|
+| schemaVersion | number | Always 1 |
+| workflow | string | Workflow name |
+| key | string | Checkpoint key |
+| updatedAt | string | ISO 8601 timestamp |
+| inputs | Record&lt;string, string&gt; | Workflow inputs |
+| nodes | Record&lt;string, WorkflowNodeResult&gt; | Node results |
+| artifacts | Record&lt;string, unknown&gt; | Workflow artifacts |
+| loop | Record&lt;string, WorkflowLoopState&gt; | Loop control state |
+| failure | object \| undefined | Present only on failure |</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      Generated for manojlds/drs#125 · head <code>c5360f5</code> · target <code>main</code><br>
+      DRS review: 2 issues (1 HIGH, 1 MEDIUM) across 4 files.
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: {
+      primaryColor: '#e6eef6',
+      primaryTextColor: '#1c2333',
+      primaryBorderColor: '#1f4e79',
+      lineColor: '#5b6273',
+      secondaryColor: '#fbf3e7',
+      tertiaryColor: '#f7f6f2'
+    }});
+
+    (function() {
+      const input = document.getElementById('search-input');
+      const container = document.querySelector('main');
+      let currentIndex = -1;
+      let matches = [];
+
+      function clearHighlights() {
+        document.querySelectorAll('.search-highlight').forEach(el => {
+          const parent = el.parentNode;
+          parent.replaceChild(document.createTextNode(el.textContent), el);
+          parent.normalize();
+        });
+      }
+
+      function highlight(term) {
+        clearHighlights();
+        if (!term) { matches = []; currentIndex = -1; return; }
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+        const nodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.parentElement.closest('nav')) continue;
+          if (node.textContent.toLowerCase().includes(term.toLowerCase())) nodes.push(node);
+        }
+        nodes.forEach(textNode => {
+          const span = document.createElement('span');
+          span.className = 'search-highlight';
+          const regex = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+          const parts = textNode.textContent.split(regex);
+          parts.forEach((part, i) => {
+            if (i % 2 === 1) {
+              const mark = document.createElement('span');
+              mark.className = 'search-highlight';
+              mark.textContent = part;
+              span.appendChild(mark);
+            } else {
+              span.appendChild(document.createTextNode(part));
+            }
+          });
+          textNode.parentNode.replaceChild(span, textNode);
+        });
+        matches = Array.from(document.querySelectorAll('.search-highlight'));
+        currentIndex = matches.length ? 0 : -1;
+        scrollToCurrent();
+      }
+
+      function scrollToCurrent() {
+        matches.forEach((el, i) => el.style.outline = (i === currentIndex) ? '3px solid #c58a3a' : '');
+        if (matches[currentIndex]) matches[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function nextMatch() {
+        if (!matches.length) return;
+        currentIndex = (currentIndex + 1) % matches.length;
+        scrollToCurrent();
+      }
+
+      function prevMatch() {
+        if (!matches.length) return;
+        currentIndex = (currentIndex - 1 + matches.length) % matches.length;
+        scrollToCurrent();
+      }
+
+      input.addEventListener('input', (e) => highlight(e.target.value));
+      document.addEventListener('keydown', (e) => {
+        if (e.key === '/' && document.activeElement !== input) {
+          e.preventDefault();
+          input.focus();
+        }
+        if (e.key === 'Escape') {
+          input.value = '';
+          clearHighlights();
+          input.blur();
+        }
+        if (document.activeElement === input && e.key === 'Enter') {
+          e.preventDefault();
+          nextMatch();
+        }
+        if (e.key === 'n' && e.ctrlKey) { e.preventDefault(); nextMatch(); }
+        if (e.key === 'p' && e.ctrlKey) { e.preventDefault(); prevMatch(); }
+      });
+    })();
+  </script>
+</body>
+</html>

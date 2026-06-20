@@ -534,15 +534,10 @@ async function loadWorkflowCheckpoint(path: string): Promise<WorkflowCheckpoint 
   }
 }
 
-const CHECKPOINT_MAX_STRING_LENGTH = 10_000;
+const CHECKPOINT_MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 function sanitizeCheckpointValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (typeof value === 'string') {
-    return value.length > CHECKPOINT_MAX_STRING_LENGTH
-      ? `${value.slice(0, CHECKPOINT_MAX_STRING_LENGTH)}…[truncated]`
-      : value;
-  }
-  if (value === null || typeof value !== 'object') {
+  if (typeof value === 'string' || value === null || typeof value !== 'object') {
     return value;
   }
   if (seen.has(value)) {
@@ -578,9 +573,18 @@ async function saveWorkflowCheckpoint(
     loop: context.loop,
     failure,
   };
+  const payloadText = `${JSON.stringify(payload, null, 2)}\n`;
+  const payloadBytes = Buffer.byteLength(payloadText, 'utf-8');
+  if (payloadBytes > CHECKPOINT_MAX_FILE_SIZE) {
+    console.warn(
+      chalk.yellow('Warning:'),
+      `Checkpoint payload too large (${payloadBytes} bytes); skipping checkpoint write.`
+    );
+    return;
+  }
   await mkdir(dirname(checkpoint.path), { recursive: true });
   const tempPath = `${checkpoint.path}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await writeFile(tempPath, payloadText, 'utf-8');
   await rename(tempPath, checkpoint.path);
 }
 
