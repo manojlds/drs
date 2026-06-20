@@ -34,6 +34,11 @@ export interface SavedWorkflowArtifact<T = unknown> {
   latestPath: string;
 }
 
+export interface UpdateWorkflowArtifactOptions<T = unknown> {
+  artifact: WorkflowArtifactEnvelope<T>;
+  payload: T;
+}
+
 function slugSegment(value: string | number | undefined, fallback: string): string {
   const raw = value === undefined || value === '' ? fallback : String(value);
   const slug = raw
@@ -100,6 +105,27 @@ export async function saveWorkflowArtifact<T>(
 ): Promise<SavedWorkflowArtifact<T>> {
   const artifact = createWorkflowArtifact(options);
   const directory = getWorkflowArtifactDirectory(workingDir, options.kind, options.scope);
+  const path = join(directory, `${artifact.id}.json`);
+  const latestPath = join(directory, 'latest.json');
+  const content = `${JSON.stringify(artifact, null, 2)}\n`;
+
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content, 'utf-8');
+  await writeFile(latestPath, content, 'utf-8');
+
+  return { artifact, path, latestPath };
+}
+
+export async function updateWorkflowArtifact<T>(
+  workingDir: string,
+  options: UpdateWorkflowArtifactOptions<T>
+): Promise<SavedWorkflowArtifact<T>> {
+  const artifact: WorkflowArtifactEnvelope<T> = {
+    ...options.artifact,
+    updatedAt: new Date().toISOString(),
+    payload: options.payload,
+  };
+  const directory = getWorkflowArtifactDirectory(workingDir, artifact.kind, artifact.scope);
   const path = join(directory, `${artifact.id}.json`);
   const latestPath = join(directory, 'latest.json');
   const content = `${JSON.stringify(artifact, null, 2)}\n`;

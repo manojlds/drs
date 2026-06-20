@@ -1111,6 +1111,126 @@ describe('workflow runner', () => {
     expect(JSON.parse(readFileSync(saved.latestPath, 'utf-8'))).toMatchObject({ kind: 'review' });
   });
 
+  it('mutates review artifacts and persists envelope updates', async () => {
+    const projectRoot = createTempDir('drs-workflow-artifact-mutate-');
+    mocks.executeReview.mockResolvedValue({
+      issues: [
+        {
+          severity: 'HIGH',
+          category: 'QUALITY',
+          title: 'Missing guard',
+          file: 'src/github.ts',
+          line: 12,
+          problem: 'A guard is missing.',
+          solution: 'Add the guard.',
+          agent: 'unified',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+    });
+    const addedIssue = {
+      severity: 'MEDIUM',
+      category: 'SECURITY',
+      title: 'Missing validation',
+      file: 'src/github.ts',
+      line: 18,
+      problem: 'Input is not validated.',
+      solution: 'Validate the input.',
+      agent: 'manual',
+    };
+    const config = {
+      ...baseConfig,
+      workflows: {
+        artifactMutate: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            reviewArtifact: {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            save: {
+              action: 'save-artifact',
+              needs: ['reviewArtifact'],
+              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
+              output: 'saved',
+            },
+            markAttempted: {
+              action: 'review-artifact-update-findings',
+              needs: ['save'],
+              with: {
+                artifact: 'saved',
+                severity: 'HIGH',
+                state: 'attempted',
+                disposition: 'partial',
+              },
+              output: 'marked',
+            },
+            addFinding: {
+              action: 'review-artifact-add-finding',
+              needs: ['markAttempted'],
+              with: { artifact: 'marked', issue: JSON.stringify(addedIssue), source: 'manual' },
+              output: 'added',
+            },
+            status: {
+              action: 'review-artifact-status',
+              needs: ['addFinding'],
+              with: { artifact: 'added' },
+              output: 'status',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'artifactMutate', { workingDir: projectRoot });
+
+    expect(result.artifacts.marked).toMatchObject({
+      kind: 'review',
+      payload: {
+        findings: [{ id: 'F001', state: 'attempted', disposition: 'partial' }],
+      },
+    });
+    expect(result.artifacts.added).toMatchObject({
+      kind: 'review',
+      payload: {
+        findings: [
+          { id: 'F001', state: 'attempted', disposition: 'partial' },
+          { id: 'F002', source: 'manual', state: 'open', disposition: 'confirmed' },
+        ],
+        summary: { issuesFound: 2, bySeverity: { HIGH: 1, MEDIUM: 1 } },
+      },
+    });
+    expect(result.artifacts.status).toMatchObject({
+      totalFindings: 2,
+      openFindings: 1,
+      byState: { open: 1, attempted: 1, resolved: 0 },
+      byDisposition: { confirmed: 1, partial: 1 },
+    });
+    const added = result.artifacts.added as { path: string };
+    expect(JSON.parse(readFileSync(added.path, 'utf-8'))).toMatchObject({
+      kind: 'review',
+      payload: { findings: [{ id: 'F001', state: 'attempted' }, { id: 'F002' }] },
+    });
+  });
+
   it('checks whether a workflow artifact exists', async () => {
     const projectRoot = createTempDir('drs-workflow-artifact-exists-');
     const config = {

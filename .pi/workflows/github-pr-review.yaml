@@ -209,10 +209,21 @@ nodes:
       {{artifacts.change}}
     output: fixes
 
+  mark-fix-attempted:
+    action: review-artifact-update-findings
+    needs:
+      - fix-issues
+    with:
+      artifact: persistedReviewArtifact
+      severity: "{{inputs.fixSeverity}}"
+      state: attempted
+      disposition: partial
+    output: persistedReviewArtifact
+
   fix-diff:
     action: has-diff
     needs:
-      - fix-issues
+      - mark-fix-attempted
     output: fixDiff
 
   should-create-fix-pr:
