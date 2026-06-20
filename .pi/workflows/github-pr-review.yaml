@@ -1,5 +1,5 @@
 name: github-pr-review
-description: Review a GitHub pull request, optionally posting a description, DRS comments, and a visual HTML explainer
+description: Review a GitHub pull request, optionally posting a description, DRS comments, a visual HTML explainer, and a stacked fix PR
 inputs:
   owner: ""
   repo: ""
@@ -7,6 +7,12 @@ inputs:
   describe: "false"
   post: "false"
   visual: "false"
+  fix: "false"
+  fixSeverity: "high"
+  fixMinIssues: "1"
+  fixBranchPrefix: "drs-fix/pr-"
+  allowStackedSource: "false"
+  fixDraft: "false"
   visualOutputPath: ".drs/visual-pr-explainer.html"
 output: review
 nodes:
@@ -114,7 +120,7 @@ nodes:
       - review
     if: "{{inputs.post}} == true"
     then: post-comments
-    else: done
+    else: should-fix-enabled
 
   post-comments:
     action: post-review-comments
@@ -124,6 +130,135 @@ nodes:
       source: change
       review: review
     output: postedReview
+
+  continue-fix:
+    control: condition
+    needs:
+      - post-comments
+    if: "true"
+    then: should-fix-enabled
+    else: should-fix-enabled
+
+  should-fix-enabled:
+    control: condition
+    needs:
+      - save-review-artifact
+    if: "{{inputs.fix}} == true"
+    then: stack-guard
+    else: done
+
+  stack-guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - stack-guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: fix-threshold
+    else: done
+
+  fix-threshold:
+    action: review-threshold
+    needs:
+      - review
+    with:
+      review: review
+      severity: "{{inputs.fixSeverity}}"
+      minIssues: "{{inputs.fixMinIssues}}"
+    output: reviewThreshold
+
+  should-fix:
+    control: condition
+    needs:
+      - fix-threshold
+    if: "{{artifacts.reviewThreshold.matched}} == true"
+    then: fix-branch
+    else: done
+
+  fix-branch:
+    action: git-branch
+    with:
+      name: "{{inputs.fixBranchPrefix}}{{inputs.pr}}"
+      force: true
+    output: fixBranch
+
+  fix-issues:
+    agent: task/review-issue-fixer
+    needs:
+      - fix-branch
+      - review-artifact
+    input: |
+      Fix actionable issues from this DRS review artifact for GitHub PR #{{inputs.pr}}.
+
+      Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
+
+      Review artifact:
+      {{artifacts.reviewArtifact}}
+
+      Persisted artifact envelope:
+      {{artifacts.persistedReviewArtifact}}
+
+      Current PR change source:
+      {{artifacts.change}}
+    output: fixes
+
+  fix-diff:
+    action: has-diff
+    needs:
+      - fix-issues
+    output: fixDiff
+
+  should-create-fix-pr:
+    control: condition
+    needs:
+      - fix-diff
+    if: "{{artifacts.fixDiff.changed}} == true"
+    then: fix-commit
+    else: done
+
+  fix-commit:
+    action: git-commit
+    with:
+      message: "fix: address DRS review issues for PR #{{inputs.pr}}"
+      paths: "."
+    output: fixCommit
+
+  fix-push:
+    action: git-push
+    needs:
+      - fix-commit
+    with:
+      branch: "{{inputs.fixBranchPrefix}}{{inputs.pr}}"
+    output: fixPush
+
+  create-fix-pr:
+    action: create-change-request
+    needs:
+      - fix-push
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      sourceBranch: "{{inputs.fixBranchPrefix}}{{inputs.pr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "fix: address DRS review issues for PR #{{inputs.pr}}"
+      draft: "{{inputs.fixDraft}}"
+      body: |
+        Automated DRS fix stacked on PR #{{inputs.pr}} from the main github-pr-review workflow.
+
+        Threshold: {{inputs.fixSeverity}}, minimum issues: {{inputs.fixMinIssues}}
+        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+
+        <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
+        <!-- drs-stack-kind: fix -->
+    output: changeRequest
 
   done:
     control: end
