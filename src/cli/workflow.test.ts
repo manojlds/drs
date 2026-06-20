@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     createBulkInlineComments: vi.fn(),
     addLabels: vi.fn(),
     hasLabel: vi.fn(),
+    findChangeRequest: vi.fn(),
     createChangeRequest: vi.fn(),
   };
   const gitlabAdapter = {
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     createBulkInlineComments: vi.fn(),
     addLabels: vi.fn(),
     hasLabel: vi.fn(),
+    findChangeRequest: vi.fn(),
     createChangeRequest: vi.fn(),
   };
 
@@ -272,6 +274,7 @@ describe('workflow runner', () => {
     mocks.githubAdapter.createBulkInlineComments.mockResolvedValue(undefined);
     mocks.githubAdapter.addLabels.mockResolvedValue(undefined);
     mocks.githubAdapter.hasLabel.mockResolvedValue(false);
+    mocks.githubAdapter.findChangeRequest.mockResolvedValue(undefined);
     mocks.githubAdapter.createChangeRequest.mockResolvedValue({
       number: 99,
       url: 'https://github.com/octocat/hello-world/pull/99',
@@ -311,6 +314,7 @@ describe('workflow runner', () => {
     mocks.gitlabAdapter.createBulkInlineComments.mockResolvedValue(undefined);
     mocks.gitlabAdapter.addLabels.mockResolvedValue(undefined);
     mocks.gitlabAdapter.hasLabel.mockResolvedValue(false);
+    mocks.gitlabAdapter.findChangeRequest.mockResolvedValue(undefined);
     mocks.gitlabAdapter.createChangeRequest.mockResolvedValue({
       number: 77,
       url: 'https://gitlab.com/group/repo/-/merge_requests/77',
@@ -384,6 +388,65 @@ describe('workflow runner', () => {
       'Summary:\ntask/summarizer: Summarize Diff text'
     );
     expect(result.output).toBe('Summary:\ntask/summarizer: Summarize Diff text');
+  });
+
+  it('resumes from a workflow checkpoint and skips successful nodes', async () => {
+    const projectRoot = createTempDir('drs-workflow-resume-');
+    mocks.githubAdapter.createChangeRequest.mockRejectedValueOnce(new Error('temporary failure'));
+    const config = {
+      ...baseConfig,
+      workflows: {
+        resumable: {
+          nodes: {
+            summarize: {
+              agent: 'task/summarizer',
+              input: 'Summarize before retry',
+              output: 'summary',
+            },
+            create: {
+              action: 'create-change-request',
+              needs: ['summarize'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                sourceBranch: 'drs-fix/pr-7',
+                targetBranch: 'feature',
+                title: 'fix: retry safely',
+              },
+              output: 'changeRequest',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'resumable', {
+        workingDir: projectRoot,
+        resume: true,
+        checkpointKey: 'retry-demo',
+      })
+    ).rejects.toThrow('temporary failure');
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    const checkpointPath = join(projectRoot, '.drs', 'checkpoints', 'retry-demo.json');
+    expect(JSON.parse(readFileSync(checkpointPath, 'utf-8'))).toMatchObject({
+      workflow: 'resumable',
+      nodes: { summarize: { status: 'success' } },
+      failure: { message: 'temporary failure' },
+    });
+
+    const result = await runWorkflow(config, 'resumable', {
+      workingDir: projectRoot,
+      resume: true,
+      checkpointKey: 'retry-demo',
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.githubAdapter.createChangeRequest).toHaveBeenCalledTimes(2);
+    expect(result.artifacts.summary).toBe('task/summarizer: Summarize before retry');
+    expect(result.artifacts.changeRequest).toMatchObject({ number: 99, operation: 'created' });
+    expect(JSON.parse(readFileSync(checkpointPath, 'utf-8'))).not.toHaveProperty('failure');
   });
 
   it('rejects writes paths that render to empty strings', async () => {
@@ -918,6 +981,97 @@ describe('workflow runner', () => {
       files: ['AGENTS.md', 'CLAUDE.md'],
     });
     expect(result.artifacts.changeRequest).toMatchObject({ number: 99 });
+  });
+
+  it('reuses an existing change request for the same source and target branches', async () => {
+    const projectRoot = createTempDir('drs-workflow-change-request-existing-');
+    mocks.githubAdapter.findChangeRequest.mockResolvedValue({
+      number: 101,
+      url: 'https://github.com/octocat/hello-world/pull/101',
+      sourceBranch: 'drs-fix/pr-7',
+      targetBranch: 'feature',
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        stack: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            create: {
+              action: 'create-change-request',
+              needs: ['change'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                sourceBranch: 'drs-fix/pr-7',
+                targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}',
+                title: 'fix: address DRS review issues',
+              },
+              output: 'changeRequest',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'stack', { workingDir: projectRoot });
+
+    expect(mocks.githubAdapter.findChangeRequest).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      'drs-fix/pr-7',
+      'feature'
+    );
+    expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
+    expect(result.artifacts.changeRequest).toMatchObject({ number: 101, operation: 'reused' });
+  });
+
+  it('reuses an existing change request when create fails after a previous retry side effect', async () => {
+    const projectRoot = createTempDir('drs-workflow-change-request-retry-');
+    mocks.githubAdapter.findChangeRequest.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      number: 102,
+      url: 'https://github.com/octocat/hello-world/pull/102',
+      sourceBranch: 'drs-fix/pr-7',
+      targetBranch: 'feature',
+    });
+    mocks.githubAdapter.createChangeRequest.mockRejectedValue(new Error('already exists'));
+    const config = {
+      ...baseConfig,
+      workflows: {
+        stack: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            create: {
+              action: 'create-change-request',
+              needs: ['change'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                sourceBranch: 'drs-fix/pr-7',
+                targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}',
+                title: 'fix: address DRS review issues',
+              },
+              output: 'changeRequest',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'stack', { workingDir: projectRoot });
+
+    expect(mocks.githubAdapter.createChangeRequest).toHaveBeenCalledTimes(1);
+    expect(mocks.githubAdapter.findChangeRequest).toHaveBeenCalledTimes(2);
+    expect(result.artifacts.changeRequest).toMatchObject({ number: 102, operation: 'reused' });
   });
 
   it('prevents stacking on reserved DRS source branches by default', async () => {
