@@ -138,3 +138,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .npm-cache/
+
+# DRS generated runtime state
+.drs/artifacts/
+.drs/checkpoints/
