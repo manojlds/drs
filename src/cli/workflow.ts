@@ -136,7 +136,6 @@ interface WorkflowExecutionContext {
   platformClients: Partial<Record<WorkflowPlatform, PlatformClient>>;
   checkpoint?: WorkflowCheckpointContext;
   restoredNodeIds?: Set<string>;
-  activeNodeId?: string;
   locks: {
     exit: WorkflowLock;
     console: WorkflowLock;
@@ -534,14 +533,9 @@ async function loadWorkflowCheckpoint(path: string): Promise<WorkflowCheckpoint 
   }
 }
 
-const CHECKPOINT_MAX_STRING_LENGTH = 10_000;
+const CHECKPOINT_MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 function sanitizeCheckpointValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (typeof value === 'string') {
-    return value.length > CHECKPOINT_MAX_STRING_LENGTH
-      ? `${value.slice(0, CHECKPOINT_MAX_STRING_LENGTH)}…[truncated]`
-      : value;
-  }
   if (value === null || typeof value !== 'object') {
     return value;
   }
@@ -578,10 +572,41 @@ async function saveWorkflowCheckpoint(
     loop: context.loop,
     failure,
   };
+  const payloadText = `${JSON.stringify(payload, null, 2)}\n`;
+  const payloadBytes = Buffer.byteLength(payloadText, 'utf-8');
+  if (payloadBytes > CHECKPOINT_MAX_FILE_SIZE) {
+    console.warn(
+      chalk.yellow('Warning:'),
+      `Checkpoint payload too large (${payloadBytes} bytes); skipping checkpoint write.`
+    );
+    return;
+  }
   await mkdir(dirname(checkpoint.path), { recursive: true });
   const tempPath = `${checkpoint.path}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await writeFile(tempPath, payloadText, 'utf-8');
   await rename(tempPath, checkpoint.path);
+}
+
+interface WorkflowNodeError extends Error {
+  nodeId?: string;
+}
+
+function tagWorkflowNodeError(error: unknown, nodeId: string): unknown {
+  if (error instanceof Error) {
+    const tagged = error as WorkflowNodeError;
+    tagged.nodeId = nodeId;
+    return tagged;
+  }
+  const wrapped = new Error(String(error)) as WorkflowNodeError;
+  wrapped.nodeId = nodeId;
+  return wrapped;
+}
+
+function getWorkflowNodeErrorId(reason: unknown): string | undefined {
+  if (reason instanceof Error) {
+    return (reason as WorkflowNodeError).nodeId;
+  }
+  return undefined;
 }
 
 async function cleanupWorkflowCheckpoint(
@@ -3072,18 +3097,21 @@ async function runWorkflowDagSegment(
         if (!options.jsonOutput) {
           console.log(chalk.gray(`Running node ${nodeId}...`));
         }
-        executionContext.activeNodeId = nodeId;
 
-        const result = await runSingleWorkflowNode(
-          config,
-          nodeId,
-          node,
-          options,
-          workingDir,
-          context,
-          executionContext
-        );
-        return { nodeId, node, result };
+        try {
+          const result = await runSingleWorkflowNode(
+            config,
+            nodeId,
+            node,
+            options,
+            workingDir,
+            context,
+            executionContext
+          );
+          return { nodeId, node, result };
+        } catch (error) {
+          throw tagWorkflowNodeError(error, nodeId);
+        }
       })
     );
 
@@ -3094,6 +3122,7 @@ async function runWorkflowDagSegment(
       if (executionContext.checkpoint) {
         try {
           await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+            nodeId: getWorkflowNodeErrorId(firstRejection.reason),
             message:
               firstRejection.reason instanceof Error
                 ? firstRejection.reason.message
@@ -3302,7 +3331,6 @@ async function runControlWorkflow(
     if (!options.jsonOutput) {
       console.log(chalk.gray(`Running node ${segment.nodeId}...`));
     }
-    executionContext.activeNodeId = segment.nodeId;
     const existing = context.nodes[segment.nodeId];
     const controlResult = shouldReuseRestoredWorkflowNode(
       segment.nodeId,
@@ -3475,23 +3503,26 @@ export async function runWorkflow(
             if (!options.jsonOutput) {
               console.log(chalk.gray(`Running node ${nodeId}...`));
             }
-            executionContext.activeNodeId = nodeId;
 
             const existing = nodes[nodeId];
             if (shouldReuseRestoredWorkflowNode(nodeId, existing, executionContext)) {
               return { nodeId, node, result: existing };
             }
 
-            const result = await runSingleWorkflowNode(
-              config,
-              nodeId,
-              node,
-              options,
-              workingDir,
-              context,
-              executionContext
-            );
-            return { nodeId, node, result };
+            try {
+              const result = await runSingleWorkflowNode(
+                config,
+                nodeId,
+                node,
+                options,
+                workingDir,
+                context,
+                executionContext
+              );
+              return { nodeId, node, result };
+            } catch (error) {
+              throw tagWorkflowNodeError(error, nodeId);
+            }
           })
         );
 
@@ -3502,7 +3533,7 @@ export async function runWorkflow(
           if (executionContext.checkpoint) {
             try {
               await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-                nodeId: executionContext.activeNodeId,
+                nodeId: getWorkflowNodeErrorId(firstRejection.reason),
                 message:
                   firstRejection.reason instanceof Error
                     ? firstRejection.reason.message
@@ -3541,7 +3572,7 @@ export async function runWorkflow(
     if (executionContext.checkpoint) {
       try {
         await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-          nodeId: executionContext.activeNodeId,
+          nodeId: getWorkflowNodeErrorId(error),
           message: error instanceof Error ? error.message : String(error),
           failedAt: new Date().toISOString(),
         });

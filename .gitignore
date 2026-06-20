@@ -140,5 +140,9 @@ vite.config.ts.timestamp-*
 .npm-cache/
 
 # DRS generated runtime state
-.drs/artifacts/
-.drs/checkpoints/
+.drs/*
+!.drs/agents/
+!.drs/skills/
+!.drs/workflows/
+!.drs/context.md
+!.drs/drs.config.yaml
