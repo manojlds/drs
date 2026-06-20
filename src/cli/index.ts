@@ -122,6 +122,8 @@ workflowCommand
   .option('--input-file <key=path>', 'Read workflow input value from a file', collectOption, [])
   .option('-o, --output <path>', 'Write workflow result JSON to a file')
   .option('--json', 'Output workflow result as JSON to console')
+  .option('--resume', 'Resume from a workflow checkpoint when available')
+  .option('--checkpoint-key <key>', 'Checkpoint key to use with --resume')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .option(
@@ -152,6 +154,8 @@ workflowCommand
         debug: options.debug ?? false,
         thinkingLevel,
         workingDir: process.cwd(),
+        resume: options.resume ?? false,
+        checkpointKey: options.checkpointKey,
       });
       process.exit(0);
     } catch (error) {

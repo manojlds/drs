@@ -220,6 +220,29 @@ export class GitHubPlatformAdapter implements PlatformClient {
     };
   }
 
+  async findChangeRequest(
+    projectId: string,
+    sourceBranch: string,
+    targetBranch: string
+  ): Promise<ChangeRequest | undefined> {
+    const [owner, repo] = this.parseProjectId(projectId);
+    const response = await this.client.listOpenPullRequests(owner, repo, {
+      head: `${owner}:${sourceBranch}`,
+      base: targetBranch,
+    });
+    const pr = response.data[0];
+    if (!pr) {
+      return undefined;
+    }
+
+    return {
+      number: pr.number,
+      url: pr.html_url,
+      sourceBranch: pr.head.ref,
+      targetBranch: pr.base.ref,
+    };
+  }
+
   /**
    * Parse projectId in format "owner/repo"
    */

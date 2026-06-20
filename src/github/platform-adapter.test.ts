@@ -67,4 +67,34 @@ describe('GitHubPlatformAdapter', () => {
     expect(client.deleteComment).toHaveBeenCalledWith('octocat', 'hello', 123);
     expect(client.deletePRReviewComment).toHaveBeenCalledWith('octocat', 'hello', 123);
   });
+
+  it('finds an open pull request by source and target branches', async () => {
+    const client = {
+      listOpenPullRequests: vi.fn().mockResolvedValue({
+        data: [
+          {
+            number: 42,
+            html_url: 'https://github.com/octocat/hello/pull/42',
+            head: { ref: 'drs-fix/pr-7' },
+            base: { ref: 'feature' },
+          },
+        ],
+      }),
+    };
+
+    const adapter = new GitHubPlatformAdapter(client as any);
+
+    await expect(
+      adapter.findChangeRequest('octocat/hello', 'drs-fix/pr-7', 'feature')
+    ).resolves.toEqual({
+      number: 42,
+      url: 'https://github.com/octocat/hello/pull/42',
+      sourceBranch: 'drs-fix/pr-7',
+      targetBranch: 'feature',
+    });
+    expect(client.listOpenPullRequests).toHaveBeenCalledWith('octocat', 'hello', {
+      head: 'octocat:drs-fix/pr-7',
+      base: 'feature',
+    });
+  });
 });

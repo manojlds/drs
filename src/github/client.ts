@@ -270,6 +270,20 @@ export class GitHubClient {
       draft: input.draft,
     });
   }
+
+  async listOpenPullRequests(
+    owner: string,
+    repo: string,
+    input: { head: string; base: string }
+  ): Promise<RestEndpointMethodTypes['pulls']['list']['response']> {
+    return await this.octokit.pulls.list({
+      owner,
+      repo,
+      state: 'open',
+      head: input.head,
+      base: input.base,
+    });
+  }
 }
 
 /**

@@ -214,4 +214,31 @@ export class GitLabPlatformAdapter implements PlatformClient {
       targetBranch: input.targetBranch,
     };
   }
+
+  async findChangeRequest(
+    projectId: string,
+    sourceBranch: string,
+    targetBranch: string
+  ): Promise<ChangeRequest | undefined> {
+    const mergeRequests = (await this.client.listOpenMergeRequests(projectId, {
+      sourceBranch,
+      targetBranch,
+    })) as Array<{
+      iid?: number;
+      web_url?: string;
+      source_branch?: string;
+      target_branch?: string;
+    }>;
+    const mr = mergeRequests[0];
+    if (!mr) {
+      return undefined;
+    }
+
+    return {
+      number: mr.iid ?? 0,
+      url: mr.web_url,
+      sourceBranch: mr.source_branch ?? sourceBranch,
+      targetBranch: mr.target_branch ?? targetBranch,
+    };
+  }
 }

@@ -162,6 +162,18 @@ export class GitLabClient {
       { description: input.description }
     );
   }
+
+  async listOpenMergeRequests(
+    projectId: string,
+    input: { sourceBranch: string; targetBranch: string }
+  ) {
+    return await this.client.MergeRequests.all({
+      projectId,
+      state: 'opened',
+      sourceBranch: input.sourceBranch,
+      targetBranch: input.targetBranch,
+    });
+  }
 }
 
 /**

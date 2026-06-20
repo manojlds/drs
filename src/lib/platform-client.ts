@@ -160,6 +160,15 @@ export interface PlatformClient {
   hasLabel(projectId: string, prNumber: number, label: string): Promise<boolean>;
 
   /**
+   * Find an open pull/merge request for a source/target branch pair.
+   */
+  findChangeRequest?(
+    projectId: string,
+    sourceBranch: string,
+    targetBranch: string
+  ): Promise<ChangeRequest | undefined>;
+
+  /**
    * Create a pull/merge request.
    */
   createChangeRequest(projectId: string, input: ChangeRequestInput): Promise<ChangeRequest>;
