@@ -50,7 +50,7 @@ jobs:
     needs: verify-contributor
     if: needs.verify-contributor.outputs.is-trusted == 'true'
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -75,6 +75,11 @@ jobs:
 
       - name: Build DRS
         run: npm run build
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Resolve model provider key
         env:
@@ -117,6 +122,7 @@ jobs:
             --input describe=true \
             --input post=true \
             --input visual=true \
+            --input fix=true \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
       - name: Upload visual explainer artifact
@@ -125,6 +131,14 @@ jobs:
         with:
           name: visual-pr-explainer-trusted
           path: .drs/visual-pr-explainer.html
+          if-no-files-found: ignore
+
+      - name: Upload DRS workflow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drs-workflow-artifacts-trusted
+          path: .drs/artifacts/**
           if-no-files-found: ignore
 
   # Review for external contributors - requires environment approval OR safe-to-review label
@@ -206,6 +220,7 @@ jobs:
             --input describe=true \
             --input post=true \
             --input visual=true \
+            --input fix=false \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
       - name: Upload visual explainer artifact
@@ -214,6 +229,14 @@ jobs:
         with:
           name: visual-pr-explainer-external
           path: .drs/visual-pr-explainer.html
+          if-no-files-found: ignore
+
+      - name: Upload DRS workflow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drs-workflow-artifacts-external
+          path: .drs/artifacts/**
           if-no-files-found: ignore
 
   # Notify when external PR is waiting for approval
