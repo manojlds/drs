@@ -10,6 +10,8 @@ import type {
   FileChange,
   Comment,
   InlineCommentPosition,
+  ChangeRequest,
+  ChangeRequestInput,
 } from '../lib/platform-client.js';
 import { GitLabPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
@@ -194,5 +196,22 @@ export class GitLabPlatformAdapter implements PlatformClient {
 
   async hasLabel(projectId: string, prNumber: number, label: string): Promise<boolean> {
     return await this.client.hasLabel(projectId, prNumber, label);
+  }
+
+  async createChangeRequest(projectId: string, input: ChangeRequestInput): Promise<ChangeRequest> {
+    const mr = (await this.client.createMergeRequest(projectId, {
+      sourceBranch: input.sourceBranch,
+      targetBranch: input.targetBranch,
+      title: input.title,
+      description: input.body,
+      draft: input.draft,
+    })) as { iid?: number; web_url?: string };
+
+    return {
+      number: mr.iid ?? 0,
+      url: mr.web_url,
+      sourceBranch: input.sourceBranch,
+      targetBranch: input.targetBranch,
+    };
   }
 }

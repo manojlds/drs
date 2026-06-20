@@ -143,6 +143,25 @@ export class GitLabClient {
   async getProject(projectId: string) {
     return await this.client.Projects.show(projectId);
   }
+
+  async createMergeRequest(
+    projectId: string,
+    input: {
+      sourceBranch: string;
+      targetBranch: string;
+      title: string;
+      description?: string;
+      draft?: boolean;
+    }
+  ) {
+    return await this.client.MergeRequests.create(
+      projectId,
+      input.sourceBranch,
+      input.targetBranch,
+      input.draft ? `Draft: ${input.title}` : input.title,
+      { description: input.description }
+    );
+  }
 }
 
 /**

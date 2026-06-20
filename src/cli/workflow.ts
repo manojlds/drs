@@ -674,8 +674,30 @@ async function runActionWorkflowNode(
   if (node.action === 'git-add') {
     return runGitAddWorkflowNode(nodeId, node, workingDir, context, executionContext);
   }
+  if (node.action === 'git-branch') {
+    return runGitBranchWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
   if (node.action === 'git-commit') {
     return runGitCommitWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'git-push') {
+    return runGitPushWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'has-diff') {
+    return runHasDiffWorkflowNode(nodeId, node, workingDir, context, executionContext);
+  }
+  if (node.action === 'stack-guard') {
+    return runStackGuardWorkflowNode(nodeId, node, context);
+  }
+  if (node.action === 'review-threshold') {
+    return runReviewThresholdWorkflowNode(nodeId, node, context);
+  }
+  if (
+    node.action === 'create-change-request' ||
+    node.action === 'create-pr' ||
+    node.action === 'create-mr'
+  ) {
+    return runCreateChangeRequestWorkflowNode(nodeId, node, context, executionContext);
   }
   if (node.action === 'change-source') {
     return runChangeSourceWorkflowNode(nodeId, node, workingDir, context, executionContext);
@@ -840,6 +862,19 @@ function getPathActionOption(
   return paths;
 }
 
+function getOptionalPathActionOption(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  workingDir: string
+): string[] | undefined {
+  if (!hasActionOption(node, 'paths') && !hasActionOption(node, 'path')) {
+    return undefined;
+  }
+
+  return getPathActionOption(nodeId, node, context, workingDir);
+}
+
 async function requireWorkflowGitRepo(
   nodeId: string,
   workingDir: string,
@@ -903,6 +938,33 @@ async function runGitAddWorkflowNode(
   };
 }
 
+async function runGitBranchWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const name = requireStringActionOption(nodeId, node, 'name', context);
+  const from = getStringActionOption(node, 'from', context)?.trim();
+  const force = getBooleanActionOption(node, 'force', context);
+  const args = ['checkout', force ? '-B' : '-b', name];
+  if (from) {
+    args.push(from);
+  }
+
+  await git.raw(args);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `checked out branch ${name}`,
+    output: { branch: name, from, force },
+  };
+}
+
 async function runGitCommitWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -935,6 +997,144 @@ async function runGitCommitWorkflowNode(
     action: node.action,
     response: commit.commit ? `Created commit ${commit.commit}` : 'Created git commit',
     output,
+  };
+}
+
+async function runGitPushWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const configuredRemote = getStringActionOption(node, 'remote', context)?.trim();
+  const remote = configuredRemote && configuredRemote.length > 0 ? configuredRemote : 'origin';
+  const branch = requireStringActionOption(nodeId, node, 'branch', context);
+  const configuredRemoteBranch = getStringActionOption(node, 'remoteBranch', context)?.trim();
+  const remoteBranch =
+    configuredRemoteBranch && configuredRemoteBranch.length > 0 ? configuredRemoteBranch : branch;
+  const setUpstream =
+    !hasActionOption(node, 'setUpstream') || getBooleanActionOption(node, 'setUpstream', context);
+  const force = getBooleanActionOption(node, 'force', context);
+  const args = ['push'];
+  if (setUpstream) {
+    args.push('-u');
+  }
+  if (force) {
+    args.push('--force-with-lease');
+  }
+  args.push(remote, `${branch}:${remoteBranch}`);
+
+  await git.raw(args);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `pushed ${branch} to ${remote}/${remoteBranch}`,
+    output: { remote, branch, remoteBranch, setUpstream, force },
+  };
+}
+
+async function runHasDiffWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
+  const paths = getOptionalPathActionOption(nodeId, node, context, workingDir);
+  const diff = paths ? await git.diff(['--', ...paths]) : await git.diff();
+  const files = paths ?? [];
+  const changed = diff.trim().length > 0;
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: changed ? 'changes found' : 'no changes found',
+    output: { changed, files, bytes: Buffer.byteLength(diff, 'utf8') },
+  };
+}
+
+function runStackGuardWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WorkflowNodeResult {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(`Workflow stack-guard node "${nodeId}" needs a ReviewSource artifact.`);
+  }
+
+  const pullRequest = isPullRequest(source.context.pullRequest)
+    ? source.context.pullRequest
+    : undefined;
+  const sourceBranch = pullRequest?.sourceBranch ?? '';
+  const allowStackedSource = getBooleanActionOption(node, 'allowStackedSource', context);
+  const rawPrefixes =
+    getStringActionOption(node, 'reservedPrefixes', context) ?? 'drs-fix/,drs-guidance/,drs-stack/';
+  const reservedPrefixes = rawPrefixes
+    .split(/[,\n]/)
+    .map((prefix) => prefix.trim())
+    .filter(Boolean);
+  const matchingPrefix = reservedPrefixes.find((prefix) => sourceBranch.startsWith(prefix));
+  const allowed = allowStackedSource || !matchingPrefix;
+  const reason = allowed ? 'allowed' : `source branch uses reserved DRS prefix "${matchingPrefix}"`;
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: reason,
+    output: { allowed, reason, sourceBranch, reservedPrefixes },
+  };
+}
+
+function severityRank(severity: string): number {
+  const normalized = severity.trim().toUpperCase();
+  if (normalized === 'CRITICAL') return 4;
+  if (normalized === 'HIGH') return 3;
+  if (normalized === 'MEDIUM') return 2;
+  if (normalized === 'LOW') return 1;
+  return 0;
+}
+
+function runReviewThresholdWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WorkflowNodeResult {
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
+  const reviewResult = context.artifacts[reviewArtifact];
+  if (!isReviewResult(reviewResult)) {
+    throw new Error(`Workflow review-threshold node "${nodeId}" needs a ReviewResult artifact.`);
+  }
+
+  const severity = (getStringActionOption(node, 'severity', context) ?? 'high').toUpperCase();
+  const minIssues = hasActionOption(node, 'minIssues')
+    ? requireNumberActionOption(nodeId, node, 'minIssues', context)
+    : 1;
+  const thresholdRank = severityRank(severity);
+  if (thresholdRank === 0) {
+    throw new Error(
+      `Workflow review-threshold node "${nodeId}" has unsupported severity "${severity}".`
+    );
+  }
+  const matchingIssues = reviewResult.issues.filter(
+    (issue) => severityRank(issue.severity) >= thresholdRank
+  );
+  const matched = matchingIssues.length >= minIssues;
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: matched ? `${matchingIssues.length} matching issue(s)` : 'threshold not met',
+    output: { matched, count: matchingIssues.length, severity, minIssues },
   };
 }
 
@@ -1294,6 +1494,72 @@ function resolvePostTarget(
     prNumber,
     pullRequest: sourceTarget.pullRequest,
     changedFiles: sourceTarget.changedFiles,
+  };
+}
+
+async function runCreateChangeRequestWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = isReviewSource(context.artifacts[sourceArtifact])
+    ? context.artifacts[sourceArtifact]
+    : undefined;
+  const sourceTarget = readSourcePostTarget(source);
+  const aliasPlatform =
+    node.action === 'create-pr' ? 'github' : node.action === 'create-mr' ? 'gitlab' : undefined;
+  const explicitPlatform = getStringActionOption(node, 'platform', context);
+  const platform = aliasPlatform ?? explicitPlatform ?? sourceTarget.platform;
+  if (!isWorkflowPlatform(platform)) {
+    throw new Error(
+      `Workflow change-request node "${nodeId}" must resolve with.platform to github or gitlab.`
+    );
+  }
+
+  const projectId = resolvePostProjectId(nodeId, node, context, sourceTarget);
+  const configuredSourceBranch = getStringActionOption(node, 'sourceBranch', context)?.trim();
+  const configuredHead = getStringActionOption(node, 'head', context)?.trim();
+  const sourceBranch =
+    configuredSourceBranch && configuredSourceBranch.length > 0
+      ? configuredSourceBranch
+      : configuredHead;
+  const configuredTargetBranch = getStringActionOption(node, 'targetBranch', context)?.trim();
+  const configuredBase = getStringActionOption(node, 'base', context)?.trim();
+  const targetBranch =
+    configuredTargetBranch && configuredTargetBranch.length > 0
+      ? configuredTargetBranch
+      : configuredBase;
+  if (!sourceBranch) {
+    throw new Error(`Workflow change-request node "${nodeId}" must define with.sourceBranch.`);
+  }
+  if (!targetBranch) {
+    throw new Error(`Workflow change-request node "${nodeId}" must define with.targetBranch.`);
+  }
+
+  const title = requireStringActionOption(nodeId, node, 'title', context);
+  const body = getStringActionOption(node, 'body', context);
+  const draft = getBooleanActionOption(node, 'draft', context);
+  const platformClient = getWorkflowPlatformClient(executionContext, platform);
+  const changeRequest = await platformClient.createChangeRequest(projectId, {
+    sourceBranch,
+    targetBranch,
+    title,
+    body,
+    draft,
+  });
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `created ${platform} change request #${changeRequest.number}`,
+    output: {
+      platform,
+      projectId,
+      ...changeRequest,
+    },
   };
 }
 

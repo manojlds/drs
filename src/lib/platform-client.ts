@@ -55,6 +55,21 @@ export interface Comment {
   body: string;
 }
 
+export interface ChangeRequestInput {
+  sourceBranch: string;
+  targetBranch: string;
+  title: string;
+  body?: string;
+  draft?: boolean;
+}
+
+export interface ChangeRequest {
+  number: number;
+  url?: string;
+  sourceBranch: string;
+  targetBranch: string;
+}
+
 /**
  * Position data for inline comments
  */
@@ -143,6 +158,11 @@ export interface PlatformClient {
    * Check if PR/MR has a specific label
    */
   hasLabel(projectId: string, prNumber: number, label: string): Promise<boolean>;
+
+  /**
+   * Create a pull/merge request.
+   */
+  createChangeRequest(projectId: string, input: ChangeRequestInput): Promise<ChangeRequest>;
 }
 
 /**

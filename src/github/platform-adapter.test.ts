@@ -53,4 +53,18 @@ describe('GitHubPlatformAdapter', () => {
       ]
     );
   });
+
+  it('falls back to deleting review comments for inline comments', async () => {
+    const client = {
+      deleteComment: vi.fn().mockRejectedValue({ status: 404 }),
+      deletePRReviewComment: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const adapter = new GitHubPlatformAdapter(client as any);
+
+    await adapter.deleteComment('octocat/hello', 7, 123);
+
+    expect(client.deleteComment).toHaveBeenCalledWith('octocat', 'hello', 123);
+    expect(client.deletePRReviewComment).toHaveBeenCalledWith('octocat', 'hello', 123);
+  });
 });

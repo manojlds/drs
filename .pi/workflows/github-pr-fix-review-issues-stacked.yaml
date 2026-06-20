@@ -1,0 +1,141 @@
+name: github-pr-fix-review-issues-stacked
+description: Fix high-severity GitHub PR review issues and open a stacked PR
+inputs:
+  owner: ""
+  repo: ""
+  pr: ""
+  severity: "high"
+  minIssues: "1"
+  branchPrefix: "drs-fix/pr-"
+  allowStackedSource: "false"
+  draft: "false"
+output: changeRequest
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+    output: change
+
+  guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: review
+    else: done
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+    output: review
+
+  threshold:
+    action: review-threshold
+    needs:
+      - review
+    with:
+      review: review
+      severity: "{{inputs.severity}}"
+      minIssues: "{{inputs.minIssues}}"
+    output: reviewThreshold
+
+  should-fix:
+    control: condition
+    needs:
+      - threshold
+    if: "{{artifacts.reviewThreshold.matched}} == true"
+    then: branch
+    else: done
+
+  branch:
+    action: git-branch
+    with:
+      name: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      force: true
+    output: branch
+
+  fix-issues:
+    agent: task/review-issue-fixer
+    needs:
+      - branch
+      - review
+    input: |
+      Fix actionable issues from this DRS review result for GitHub PR #{{inputs.pr}}.
+
+      Only fix issues at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
+
+      Review result:
+      {{artifacts.review}}
+
+      Current PR change source:
+      {{artifacts.change}}
+    output: fixes
+
+  diff:
+    action: has-diff
+    needs:
+      - fix-issues
+    output: fixDiff
+
+  should-create:
+    control: condition
+    needs:
+      - diff
+    if: "{{artifacts.fixDiff.changed}} == true"
+    then: commit
+    else: done
+
+  commit:
+    action: git-commit
+    with:
+      message: "fix: address DRS review issues for PR #{{inputs.pr}}"
+      paths: "."
+    output: commit
+
+  push:
+    action: git-push
+    needs:
+      - commit
+    with:
+      branch: "{{inputs.branchPrefix}}{{inputs.pr}}"
+    output: push
+
+  create:
+    action: create-change-request
+    needs:
+      - push
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      sourceBranch: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "fix: address DRS review issues for PR #{{inputs.pr}}"
+      draft: "{{inputs.draft}}"
+      body: |
+        Automated DRS fix stacked on PR #{{inputs.pr}}.
+
+        Threshold: {{inputs.severity}}, minimum issues: {{inputs.minIssues}}
+
+        <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
+        <!-- drs-stack-kind: fix -->
+    output: changeRequest
+
+  done:
+    control: end

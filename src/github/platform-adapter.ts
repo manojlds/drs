@@ -10,6 +10,8 @@ import type {
   FileChange,
   Comment,
   InlineCommentPosition,
+  ChangeRequest,
+  ChangeRequestInput,
 } from '../lib/platform-client.js';
 import { GitHubPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
@@ -92,7 +94,14 @@ export class GitHubPlatformAdapter implements PlatformClient {
     commentId: number | string
   ): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
-    await this.client.deleteComment(owner, repo, Number(commentId));
+    try {
+      await this.client.deleteComment(owner, repo, Number(commentId));
+    } catch (error) {
+      if (!this.isNotFoundError(error)) {
+        throw error;
+      }
+      await this.client.deletePRReviewComment(owner, repo, Number(commentId));
+    }
   }
 
   async createInlineComment(
@@ -193,6 +202,24 @@ export class GitHubPlatformAdapter implements PlatformClient {
     return await this.client.hasLabel(owner, repo, prNumber, label);
   }
 
+  async createChangeRequest(projectId: string, input: ChangeRequestInput): Promise<ChangeRequest> {
+    const [owner, repo] = this.parseProjectId(projectId);
+    const response = await this.client.createPullRequest(owner, repo, {
+      head: input.sourceBranch,
+      base: input.targetBranch,
+      title: input.title,
+      body: input.body,
+      draft: input.draft,
+    });
+
+    return {
+      number: response.data.number,
+      url: response.data.html_url,
+      sourceBranch: input.sourceBranch,
+      targetBranch: input.targetBranch,
+    };
+  }
+
   /**
    * Parse projectId in format "owner/repo"
    */
@@ -202,5 +229,14 @@ export class GitHubPlatformAdapter implements PlatformClient {
       throw new Error(`Invalid GitHub project ID format: ${projectId}. Expected "owner/repo"`);
     }
     return [parts[0], parts[1]];
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      (error as { status?: unknown }).status === 404
+    );
   }
 }

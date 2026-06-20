@@ -236,6 +236,40 @@ export class GitHubClient {
       comment_id: commentId,
     });
   }
+
+  async deletePRReviewComment(
+    owner: string,
+    repo: string,
+    commentId: number
+  ): Promise<RestEndpointMethodTypes['pulls']['deleteReviewComment']['response']> {
+    return await this.octokit.pulls.deleteReviewComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
+  }
+
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    input: {
+      head: string;
+      base: string;
+      title: string;
+      body?: string;
+      draft?: boolean;
+    }
+  ): Promise<RestEndpointMethodTypes['pulls']['create']['response']> {
+    return await this.octokit.pulls.create({
+      owner,
+      repo,
+      head: input.head,
+      base: input.base,
+      title: input.title,
+      body: input.body,
+      draft: input.draft,
+    });
+  }
 }
 
 /**
