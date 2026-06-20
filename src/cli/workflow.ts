@@ -2193,12 +2193,20 @@ async function runCreateChangeRequestWorkflowNode(
   const changeRequest =
     existing ??
     (await platformClient.createChangeRequest(projectId, input).catch(async (error: unknown) => {
-      const retryExisting = reuseExisting
-        ? await platformClient.findChangeRequest?.(projectId, sourceBranch, targetBranch)
-        : undefined;
-      if (retryExisting) {
-        operation = 'reused';
-        return retryExisting;
+      if (reuseExisting) {
+        try {
+          const retryExisting = await platformClient.findChangeRequest?.(
+            projectId,
+            sourceBranch,
+            targetBranch
+          );
+          if (retryExisting) {
+            operation = 'reused';
+            return retryExisting;
+          }
+        } catch {
+          // ignore retry failure; fall through to throw original error
+        }
       }
       throw error;
     }));
