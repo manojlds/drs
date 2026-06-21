@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
@@ -89,6 +89,7 @@ export interface WorkflowRunOptions {
   workingDir?: string;
   resume?: boolean;
   checkpointKey?: string;
+  checkpointCleanup?: boolean;
 }
 
 export interface WorkflowNodeResult {
@@ -177,6 +178,7 @@ interface WorkflowCheckpointContext {
 }
 
 interface WorkflowCheckpointFailure {
+  nodeId?: string;
   message: string;
   failedAt: string;
 }
@@ -531,6 +533,26 @@ async function loadWorkflowCheckpoint(path: string): Promise<WorkflowCheckpoint 
   }
 }
 
+const CHECKPOINT_MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+function sanitizeCheckpointValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (seen.has(value)) {
+    return '[circular]';
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeCheckpointValue(item, seen));
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    result[key] = sanitizeCheckpointValue(val, seen);
+  }
+  return result;
+}
+
 async function saveWorkflowCheckpoint(
   checkpoint: WorkflowCheckpointContext | undefined,
   context: WorkflowTemplateContext,
@@ -545,15 +567,61 @@ async function saveWorkflowCheckpoint(
     key: checkpoint.key,
     updatedAt: new Date().toISOString(),
     inputs: checkpoint.inputs,
-    nodes: context.nodes,
-    artifacts: context.artifacts,
+    nodes: sanitizeCheckpointValue(context.nodes) as Record<string, WorkflowNodeResult>,
+    artifacts: sanitizeCheckpointValue(context.artifacts) as Record<string, unknown>,
     loop: context.loop,
     failure,
   };
+  const payloadText = `${JSON.stringify(payload, null, 2)}\n`;
+  const payloadBytes = Buffer.byteLength(payloadText, 'utf-8');
+  if (payloadBytes > CHECKPOINT_MAX_FILE_SIZE) {
+    console.warn(
+      chalk.yellow('Warning:'),
+      `Checkpoint payload too large (${payloadBytes} bytes); skipping checkpoint write.`
+    );
+    return;
+  }
   await mkdir(dirname(checkpoint.path), { recursive: true });
   const tempPath = `${checkpoint.path}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await writeFile(tempPath, payloadText, 'utf-8');
   await rename(tempPath, checkpoint.path);
+}
+
+interface WorkflowNodeError extends Error {
+  nodeId?: string;
+}
+
+function tagWorkflowNodeError(error: unknown, nodeId: string): unknown {
+  if (error instanceof Error) {
+    const tagged = error as WorkflowNodeError;
+    tagged.nodeId = nodeId;
+    return tagged;
+  }
+  const wrapped = new Error(String(error)) as WorkflowNodeError;
+  wrapped.nodeId = nodeId;
+  return wrapped;
+}
+
+function getWorkflowNodeErrorId(reason: unknown): string | undefined {
+  if (reason instanceof Error) {
+    return (reason as WorkflowNodeError).nodeId;
+  }
+  return undefined;
+}
+
+async function cleanupWorkflowCheckpoint(
+  checkpoint: WorkflowCheckpointContext | undefined
+): Promise<void> {
+  if (!checkpoint) {
+    return;
+  }
+  try {
+    await unlink(checkpoint.path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
 }
 
 function restoreWorkflowCheckpoint(
@@ -3030,16 +3098,20 @@ async function runWorkflowDagSegment(
           console.log(chalk.gray(`Running node ${nodeId}...`));
         }
 
-        const result = await runSingleWorkflowNode(
-          config,
-          nodeId,
-          node,
-          options,
-          workingDir,
-          context,
-          executionContext
-        );
-        return { nodeId, node, result };
+        try {
+          const result = await runSingleWorkflowNode(
+            config,
+            nodeId,
+            node,
+            options,
+            workingDir,
+            context,
+            executionContext
+          );
+          return { nodeId, node, result };
+        } catch (error) {
+          throw tagWorkflowNodeError(error, nodeId);
+        }
       })
     );
 
@@ -3050,6 +3122,7 @@ async function runWorkflowDagSegment(
       if (executionContext.checkpoint) {
         try {
           await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+            nodeId: getWorkflowNodeErrorId(firstRejection.reason),
             message:
               firstRejection.reason instanceof Error
                 ? firstRejection.reason.message
@@ -3436,16 +3509,20 @@ export async function runWorkflow(
               return { nodeId, node, result: existing };
             }
 
-            const result = await runSingleWorkflowNode(
-              config,
-              nodeId,
-              node,
-              options,
-              workingDir,
-              context,
-              executionContext
-            );
-            return { nodeId, node, result };
+            try {
+              const result = await runSingleWorkflowNode(
+                config,
+                nodeId,
+                node,
+                options,
+                workingDir,
+                context,
+                executionContext
+              );
+              return { nodeId, node, result };
+            } catch (error) {
+              throw tagWorkflowNodeError(error, nodeId);
+            }
           })
         );
 
@@ -3456,6 +3533,7 @@ export async function runWorkflow(
           if (executionContext.checkpoint) {
             try {
               await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+                nodeId: getWorkflowNodeErrorId(firstRejection.reason),
                 message:
                   firstRejection.reason instanceof Error
                     ? firstRejection.reason.message
@@ -3494,6 +3572,7 @@ export async function runWorkflow(
     if (executionContext.checkpoint) {
       try {
         await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
+          nodeId: getWorkflowNodeErrorId(error),
           message: error instanceof Error ? error.message : String(error),
           failedAt: new Date().toISOString(),
         });
@@ -3506,6 +3585,21 @@ export async function runWorkflow(
       }
     }
     throw error;
+  }
+
+  const shouldCleanupCheckpoint =
+    options.checkpointCleanup !== false &&
+    normalizeWorkflowBooleanLike(inputs.checkpointCleanup) !== false;
+  if (shouldCleanupCheckpoint && executionContext.checkpoint) {
+    try {
+      await cleanupWorkflowCheckpoint(executionContext.checkpoint);
+    } catch (cleanupError) {
+      console.warn(
+        chalk.yellow('Warning:'),
+        'Failed to clean up workflow checkpoint:',
+        cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      );
+    }
   }
 
   const lastNodeId = executionOrder[executionOrder.length - 1];

@@ -280,5 +280,22 @@ nodes:
         <!-- drs-stack-kind: fix -->
     output: changeRequest
 
+  notify-fix-pr:
+    action: post-comment
+    needs:
+      - create-fix-pr
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+      marker: drs-stacked-fix-notification
+    input: |
+      🔧 DRS created a stacked fix PR: {{artifacts.changeRequest.url}}
+
+      The fix addresses {{inputs.fixSeverity}}-priority review findings from this PR's review run.
+
+      <!-- drs-stacked-fix-notification -->
+
   done:
     control: end
