@@ -34,7 +34,7 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow control node. */
-  control?: 'condition' | 'loop' | 'switch' | 'end';
+  control?: 'condition' | 'loop' | 'switch' | 'end' | 'passThrough';
   /** Built-in workflow action. */
   action?:
     | 'write'

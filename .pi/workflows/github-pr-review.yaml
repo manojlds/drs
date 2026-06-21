@@ -46,12 +46,10 @@ nodes:
     output: description
 
   continue-visual:
-    control: condition
+    control: passThrough
     needs:
       - describe
-    if: 'true'
-    then: review
-    else: review
+    target: review
 
   review:
     action: review
@@ -110,12 +108,10 @@ nodes:
     output: visualExplainer
 
   continue-review:
-    control: condition
+    control: passThrough
     needs:
       - visual
-    if: 'true'
-    then: should-post
-    else: should-post
+    target: should-post
 
   should-post:
     control: condition
@@ -135,12 +131,10 @@ nodes:
     output: postedReview
 
   continue-fix:
-    control: condition
+    control: passThrough
     needs:
       - post-comments
-    if: 'true'
-    then: should-fix-enabled
-    else: should-fix-enabled
+    target: should-fix-enabled
 
   should-fix-enabled:
     control: condition
@@ -329,12 +323,10 @@ nodes:
     output: internalFixPush
 
   done-after-internal-push:
-    control: condition
+    control: passThrough
     needs:
       - push-internal-fix
-    if: 'true'
-    then: done
-    else: done
+    target: done
 
   mark-fix-attempted:
     action: review-artifact-update-findings
@@ -442,12 +434,10 @@ nodes:
     output: fixStatus
 
   finish-stacked:
-    control: condition
+    control: passThrough
     needs:
       - post-fix-status-stacked
-    if: 'true'
-    then: done
-    else: done
+    target: done
 
   done:
     control: end
