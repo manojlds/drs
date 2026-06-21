@@ -68,16 +68,18 @@ const mocks = vi.hoisted(() => {
     connectToRuntime: vi.fn(),
     runDescribeIfEnabled: vi.fn(),
     enforceRepoBranchMatch: vi.fn(async () => undefined),
-    executeReview: vi.fn(async (_config: unknown, source: { files: string[] }) => ({
-      issues: [] as unknown[],
-      summary: {
+    executeReview: vi.fn(
+      async (_config: unknown, source: { files: string[]; staged?: boolean }) => ({
+        issues: [] as unknown[],
+        summary: {
+          filesReviewed: source.files.length,
+          issuesFound: 0,
+          bySeverity: {},
+          byCategory: {},
+        },
         filesReviewed: source.files.length,
-        issuesFound: 0,
-        bySeverity: {},
-        byCategory: {},
-      },
-      filesReviewed: source.files.length,
-    })),
+      })
+    ),
     runAgent: vi.fn(async (_config, agent: string, options: { prompt?: string }) => ({
       timestamp: '2026-06-16T00:00:00.000Z',
       agent,
@@ -185,6 +187,33 @@ describe('workflow runner', () => {
         cost: 0,
         messages: 1,
       },
+    };
+  }
+
+  function createMockReviewIssue(title: string, line = 1) {
+    return {
+      severity: 'HIGH',
+      category: 'QUALITY',
+      title,
+      file: 'src/github.ts',
+      line,
+      problem: `${title} problem`,
+      solution: `${title} solution`,
+      references: [],
+      agent: 'unified',
+    };
+  }
+
+  function createMockReviewResult(issues: ReturnType<typeof createMockReviewIssue>[]) {
+    return {
+      issues,
+      summary: {
+        filesReviewed: 1,
+        issuesFound: issues.length,
+        bySeverity: { HIGH: issues.length },
+        byCategory: { QUALITY: issues.length },
+      },
+      filesReviewed: 1,
     };
   }
 
@@ -2025,6 +2054,155 @@ describe('workflow runner', () => {
       mocks.runAgent.mock.invocationCallOrder[0] ?? 0
     );
     expect(result.nodes.visual?.writes).toBe('.drs/pr-visual.html');
+  });
+
+  it('runs packaged GitHub internal fix loop until re-review is clean', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-fix-loop-');
+    const config = loadConfig(projectRoot);
+    const originalIssue = createMockReviewIssue('Original issue');
+    const remainingIssue = createMockReviewIssue('Original issue');
+    const reviewResults = [
+      createMockReviewResult([originalIssue]),
+      createMockReviewResult([remainingIssue]),
+      createMockReviewResult([]),
+    ];
+    mocks.executeReview.mockImplementation(
+      async () => reviewResults.shift() ?? createMockReviewResult([])
+    );
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs: {
+        owner: 'octocat',
+        repo: 'hello-world',
+        pr: '7',
+        fix: 'true',
+        fixMode: 'internal',
+        fixSeverity: 'high',
+        fixMaxIterations: '3',
+      },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(2);
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review-issue-fixer',
+      'task/review-issue-fixer',
+    ]);
+    expect(result.loop['fix-loop']).toMatchObject({
+      iteration: 2,
+      maxIterations: 3,
+      lastDecision: 'exit',
+    });
+    expect(result.artifacts.fixStatus).toMatchObject({
+      resolved: 1,
+      stillOpen: 0,
+      regression: 0,
+    });
+    expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.createComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      expect.stringContaining('Resolved')
+    );
+  });
+
+  it('exits packaged GitHub internal fix loop at maxIterations and reports still-open findings', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-fix-max-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Persistent issue');
+    mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs: {
+        owner: 'octocat',
+        repo: 'hello-world',
+        pr: '7',
+        fix: 'true',
+        fixMode: 'internal',
+        fixSeverity: 'high',
+        fixMaxIterations: '2',
+      },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(2);
+    expect(result.loop['fix-loop']).toMatchObject({
+      iteration: 2,
+      maxIterations: 2,
+      lastDecision: 'exit',
+    });
+    expect(result.artifacts.fixStatus).toMatchObject({
+      resolved: 0,
+      stillOpen: 1,
+      regression: 0,
+    });
+    expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.createComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      expect.stringContaining('Still Open')
+    );
+  });
+
+  it('resumes packaged GitHub internal fix flow from checkpoint without re-running completed fixer work', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-fix-resume-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Resumable issue');
+    let failReReview = true;
+    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) => {
+      if (source.staged) {
+        if (failReReview) {
+          failReReview = false;
+          throw new Error('temporary re-review failure');
+        }
+        return createMockReviewResult([]);
+      }
+      return createMockReviewResult([issue]);
+    });
+
+    const inputs = {
+      owner: 'octocat',
+      repo: 'hello-world',
+      pr: '7',
+      fix: 'true',
+      fixMode: 'internal',
+      fixSeverity: 'high',
+      fixMaxIterations: '2',
+    };
+    const checkpointKey = 'github-fix-resume';
+    const checkpointPath = join(projectRoot, '.drs', 'checkpoints', `${checkpointKey}.json`);
+
+    await expect(
+      runWorkflow(config, 'github-pr-review', {
+        inputs,
+        workingDir: projectRoot,
+        resume: true,
+        checkpointKey,
+      })
+    ).rejects.toThrow('temporary re-review failure');
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    const checkpointText = readFileSync(checkpointPath, 'utf-8');
+    expect(checkpointText).not.toContain('[circular]');
+    expect(JSON.parse(checkpointText)).toMatchObject({
+      workflow: 'github-pr-review',
+      nodes: {
+        'fix-issues': { status: 'success' },
+        'fix-change': { status: 'success' },
+      },
+      failure: { nodeId: 're-review', message: 'temporary re-review failure' },
+    });
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs,
+      workingDir: projectRoot,
+      resume: true,
+      checkpointKey,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.executeReview.mock.calls.filter((call) => call[1]?.staged).length).toBe(2);
+    expect(result.artifacts.fixStatus).toMatchObject({ resolved: 1, stillOpen: 0 });
+    expect(() => readFileSync(checkpointPath, 'utf-8')).toThrow();
   });
 
   it('shows GitHub PR review context with embedded diff content', async () => {

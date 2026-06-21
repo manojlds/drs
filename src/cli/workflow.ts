@@ -545,12 +545,15 @@ function sanitizeCheckpointValue(value: unknown, seen: WeakSet<object> = new Wea
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeCheckpointValue(item, seen));
+    const result = value.map((item) => sanitizeCheckpointValue(item, seen));
+    seen.delete(value);
+    return result;
   }
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
     result[key] = sanitizeCheckpointValue(val, seen);
   }
+  seen.delete(value);
   return result;
 }
 
