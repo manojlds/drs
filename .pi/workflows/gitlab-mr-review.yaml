@@ -321,6 +321,41 @@ nodes:
     control: condition
     needs:
       - post-fix-status-internal
+    if: "{{artifacts.verify-fix.shouldContinue}} == false"
+    then: should-push-internal-fix
+    else: done
+
+  should-push-internal-fix:
+    control: condition
+    needs:
+      - post-fix-status-internal
+    if: "{{artifacts.verify-fix.fixFiles}} > 0"
+    then: commit-internal-fix
+    else: done
+
+  commit-internal-fix:
+    action: git-commit
+    needs:
+      - post-fix-status-internal
+    with:
+      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
+      paths: "."
+    output: internalFixCommit
+
+  push-internal-fix:
+    action: git-push
+    needs:
+      - commit-internal-fix
+    with:
+      branch: HEAD
+      remoteBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      setUpstream: false
+    output: internalFixPush
+
+  done-after-internal-push:
+    control: condition
+    needs:
+      - push-internal-fix
     if: "true"
     then: done
     else: done

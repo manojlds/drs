@@ -1906,6 +1906,7 @@ async function runReconcileReviewFindingsWorkflowNode(
       minIssues,
       shouldContinue: reconciliation.shouldContinue,
       actionableOpen: reconciliation.actionableOpen,
+      fixFiles: fixSource?.files.length ?? 0,
       resolved: reconciliation.resolved,
       partial: reconciliation.partial,
       stillOpen: reconciliation.stillOpen,
@@ -1922,6 +1923,7 @@ async function runReconcileReviewFindingsWorkflowNode(
     },
     shouldContinue: reconciliation.shouldContinue,
     actionableOpen: reconciliation.actionableOpen,
+    fixFiles: fixSource?.files.length ?? 0,
     status,
   };
 

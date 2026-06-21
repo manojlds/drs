@@ -2303,6 +2303,10 @@ describe('workflow runner', () => {
       7,
       expect.stringContaining('Resolved')
     );
+    expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
+      '.',
+    ]);
+    expect(mocks.git.raw).toHaveBeenCalledWith(['push', 'origin', 'HEAD:feature']);
   });
 
   it('exits packaged GitHub internal fix loop at maxIterations and reports still-open findings', async () => {
@@ -2342,6 +2346,10 @@ describe('workflow runner', () => {
       7,
       expect.stringContaining('Still Open')
     );
+    expect(mocks.git.commit).not.toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
+      '.',
+    ]);
+    expect(mocks.git.raw).not.toHaveBeenCalledWith(['push', 'origin', 'HEAD:feature']);
   });
 
   it('resumes packaged GitHub internal fix flow from checkpoint without re-running completed fixer work', async () => {
