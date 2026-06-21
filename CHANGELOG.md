@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- Validate every workflow node's `action` value at config load time via `loadConfig`, producing a did-you-mean error before any wave executor runs. A small Levenshtein distance picks the closest supported action for near-miss typos; the dropped `reconcile-review-findings` alias gets a specific redirect pointing at `verify-fix`; wholly unknown actions get a list of every supported action.
+
 ### Removed
 
 - **Breaking:** workflow action `reconcile-review-findings` has been removed. Since 4.0.0 it has been a silent alias of `verify-fix`; the name is now canonical and the alias is gone. Workflows still using `action: reconcile-review-findings` will fail with an explicit error pointing at `verify-fix`. See the 4.0.0 release for the original alias introduction.
