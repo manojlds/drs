@@ -3033,12 +3033,23 @@ describe('workflow runner', () => {
       async (_config, source: { files: string[]; staged?: boolean }) => {
         if (source.staged) {
           return {
-            issues: [],
+            issues: [
+              {
+                severity: 'MEDIUM',
+                category: 'QUALITY',
+                title: 'New regression in fixed file',
+                file: 'src/cli/workflow.ts',
+                line: 570,
+                problem: 'New issue introduced by the fix',
+                solution: 'Avoid introducing regressions',
+                agent: 'unified',
+              },
+            ],
             summary: {
               filesReviewed: 1,
-              issuesFound: 0,
-              bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
-              byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+              issuesFound: 1,
+              bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 0 },
+              byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
             },
             filesReviewed: 1,
           };
@@ -3068,7 +3079,11 @@ describe('workflow runner', () => {
     );
     mocks.git.diff.mockResolvedValue('diff --git a/src/cli/workflow.ts b/src/cli/workflow.ts');
     mocks.getFilesWithDiffs.mockReturnValue([
-      { filename: 'src/cli/workflow.ts', patch: '@@ -566 +566 @@\n-old\n+new' },
+      {
+        filename: 'src/cli/workflow.ts',
+        patch:
+          '@@ -100 +100 @@\n-old unrelated\n+new unrelated\n@@ -560,12 +560,13 @@\n context\n-old\n+new\n+regression',
+      },
     ]);
     mocks.githubAdapter.getComments.mockResolvedValue([]);
     mocks.githubAdapter.createComment.mockResolvedValue(undefined);
@@ -3141,9 +3156,13 @@ describe('workflow runner', () => {
     expect(commentBody).toContain('Fix Status');
     expect(commentBody).toContain('Truncation corrupts state');
     expect(commentBody).toContain('Resolved');
+    expect(commentBody).toContain('New regression in fixed file');
+    expect(commentBody).toContain('Regression');
+    expect(commentBody).toContain('@@ -560,12 +560,13 @@');
+    expect(commentBody).not.toContain('@@ -100 +100 @@');
     expect(result.artifacts.fixStatus).toMatchObject({
       resolved: 1,
-      regression: 0,
+      regression: 1,
       stillOpen: 0,
     });
   });

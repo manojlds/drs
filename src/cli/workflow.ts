@@ -2792,11 +2792,23 @@ function extractDiffSnippet(
   if (!line) {
     return lines.slice(0, 15).join('\n');
   }
-  const hunkStart = lines.findIndex((l, i) => i > 0 && l.startsWith('@@'));
-  const contextStart = hunkStart >= 0 ? hunkStart + 1 : 0;
-  const window = 5;
-  const start = Math.max(contextStart, contextStart + line - window);
-  return lines.slice(start, start + window * 2 + 5).join('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const hunkMatch = lines[i]?.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (!hunkMatch) {
+      continue;
+    }
+    const newStart = Number.parseInt(hunkMatch[1], 10);
+    const newLineCount = hunkMatch[2] ? Number.parseInt(hunkMatch[2], 10) : 1;
+    if (line < newStart || line >= newStart + newLineCount) {
+      continue;
+    }
+    let end = i + 1;
+    while (end < lines.length && !lines[end]?.startsWith('@@')) {
+      end++;
+    }
+    return lines.slice(i, end).join('\n');
+  }
+  return lines.slice(0, 15).join('\n');
 }
 
 function formatFixStatusComment(statuses: FixFindingStatus[], stackedPrUrl?: string): string {
@@ -2900,11 +2912,13 @@ async function runPostFixStatusWorkflowNode(
 
   const originalFindings = artifactPayload.findings;
   const reReviewIssues = hasReReview ? fixReviewResult.issues : [];
+  const matchedFindings = hasReReview
+    ? matchFindings(originalFindings, reReviewIssues)
+    : new Map<string, ReviewIssue>();
 
   const statuses: FixFindingStatus[] = originalFindings.map((finding) => {
     if (hasReReview) {
-      const matched = matchFindings([finding], reReviewIssues);
-      const isMatched = matched.has(finding.id);
+      const isMatched = matchedFindings.has(finding.id);
       const disposition: FixFindingStatus['disposition'] = isMatched ? 'still-open' : 'resolved';
       const diffSnippet =
         disposition === 'resolved'
@@ -2918,11 +2932,13 @@ async function runPostFixStatusWorkflowNode(
 
   if (hasReReview) {
     const originalFiles = new Set(originalFindings.map((f) => f.issue.file));
+    const matchedIssueFingerprints = new Set(
+      Array.from(matchedFindings.values()).map((issue) => createIssueFingerprint(issue))
+    );
     for (const issue of reReviewIssues) {
-      if (!originalFiles.has(issue.file)) {
+      if (originalFiles.has(issue.file)) {
         const originalFingerprint = createIssueFingerprint(issue);
-        const isExisting = originalFindings.some((f) => f.fingerprint === originalFingerprint);
-        if (!isExisting) {
+        if (!matchedIssueFingerprints.has(originalFingerprint)) {
           statuses.push({
             finding: {
               id: `R${statuses.length + 1}`,
