@@ -462,7 +462,7 @@ export function validateWorkflowActions(
 ): void {
   for (const [nodeId, node] of Object.entries(nodes)) {
     const action = node.action;
-    if (action === undefined) continue;
+    if (typeof action !== 'string') continue;
     if (SUPPORTED_ACTION_SET.has(action)) continue;
 
     let hint: string;

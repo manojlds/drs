@@ -505,7 +505,7 @@ describe('Config', () => {
     function writeWorkflowWithAction(
       projectRoot: string,
       workflowName: string,
-      action: string
+      action: string | number | boolean | null
     ): void {
       mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
       const yaml = [
@@ -555,6 +555,18 @@ describe('Config', () => {
         writeWorkflowWithAction(projectRoot, 'ok-workflow', 'verify-fix');
         const config = loadConfig(projectRoot);
         expect(config.workflows?.['ok-workflow']?.nodes.step?.action).toBe('verify-fix');
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('treats non-string action values as missing', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-null-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'null-workflow', null);
+        expect(() => loadConfig(projectRoot)).not.toThrow();
+        const config = loadConfig(projectRoot);
+        expect(config.workflows?.['null-workflow']?.nodes.step?.action).toBeNull();
       } finally {
         rmSync(projectRoot, { recursive: true, force: true });
       }
