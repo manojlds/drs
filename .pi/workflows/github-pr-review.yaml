@@ -263,6 +263,7 @@ nodes:
     target: fix-issues
     exit: fix-done
     maxIterations: "{{inputs.fixMaxIterations}}"
+    onMaxIterations: exit
 
   fix-done:
     control: condition

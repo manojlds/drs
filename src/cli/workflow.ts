@@ -3457,10 +3457,15 @@ function runControlWorkflowNode(
     if (!node.target || !node.exit) {
       throw new Error(`Workflow loop node "${nodeId}" must define target and exit.`);
     }
-    const configuredMaxIterations = node.maxIterations;
+    const rawMaxIterations: string | number | undefined = node.maxIterations;
+    const renderedMaxIterations =
+      typeof rawMaxIterations === 'string'
+        ? renderTemplate(rawMaxIterations, context).trim()
+        : String(rawMaxIterations ?? '');
+    const configuredMaxIterations = Number.parseInt(renderedMaxIterations, 10);
     if (
+      renderedMaxIterations === '' ||
       !Number.isInteger(configuredMaxIterations) ||
-      configuredMaxIterations === undefined ||
       configuredMaxIterations <= 0
     ) {
       throw new Error(`Workflow loop node "${nodeId}" must define a positive maxIterations.`);
