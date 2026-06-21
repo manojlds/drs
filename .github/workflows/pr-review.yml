@@ -123,7 +123,8 @@ jobs:
             --input post=true \
             --input visual=true \
             --input fix=true \
-            --input fixCreateChangeRequest=true \
+            --input fixMode=internal \
+            --input fixMaxIterations=2 \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
       - name: Upload visual explainer artifact
