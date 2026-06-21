@@ -2383,10 +2383,9 @@ describe('workflow runner', () => {
       lastDecision: 'exit',
     });
     expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
-    expect(mocks.git.commit).not.toHaveBeenCalledWith(
-      'fix: address DRS review issues for PR #7',
-      ['.']
-    );
+    expect(mocks.git.commit).not.toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
+      '.',
+    ]);
     expect(mocks.git.raw).not.toHaveBeenCalledWith(['push', 'origin', 'HEAD:feature']);
     expect(result.artifacts.fixStatus).toMatchObject({
       resolved: 0,
