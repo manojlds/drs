@@ -984,6 +984,9 @@ async function runActionWorkflowNode(
   if (node.action === 'review-artifact-update-findings') {
     return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context);
   }
+  if (node.action === 'reconcile-review-findings' || node.action === 'verify-fix') {
+    return runReconcileReviewFindingsWorkflowNode(nodeId, node, workingDir, context);
+  }
   if (node.action === 'review-artifact-promote-finding') {
     return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context, {
       disposition: 'confirmed',
@@ -1730,6 +1733,7 @@ function parseReviewFindingDisposition(
     value === 'uncertain' ||
     value === 'pre_existing' ||
     value === 'partial' ||
+    value === 'still_open' ||
     value === 'regression' ||
     value === 'resolved'
   ) {
@@ -1854,6 +1858,83 @@ async function runReviewArtifactUpdateFindingsWorkflowNode(
     action: node.action,
     response: `updated ${updatedIds.length} review finding(s)${persisted.responseSuffix}`,
     output: persisted.output,
+  };
+}
+
+async function runReconcileReviewFindingsWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const { artifact, envelope } = getReviewArtifactInput(nodeId, node, context);
+  const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'reReview';
+  const review = context.artifacts[reviewArtifact];
+  if (!isReviewResult(review)) {
+    throw new Error(`Workflow reconcile-review-findings node "${nodeId}" needs a ReviewResult.`);
+  }
+
+  const severity = (getStringActionOption(node, 'severity', context) ?? 'high').toUpperCase();
+  if (severityRank(severity) === 0) {
+    throw new Error(
+      `Workflow reconcile-review-findings node "${nodeId}" has unsupported severity "${severity}".`
+    );
+  }
+  const minIssues = hasActionOption(node, 'minIssues')
+    ? requireNumberActionOption(nodeId, node, 'minIssues', context)
+    : 1;
+  const fixChangeName = getStringActionOption(node, 'fixChange', context);
+  const fixChange = fixChangeName ? context.artifacts[fixChangeName] : undefined;
+  const fixSource = isReviewSource(fixChange) ? fixChange : undefined;
+
+  const reconciliation = reconcileReviewArtifactFindings(artifact, review, {
+    severity,
+    minIssues,
+    fixSource,
+  });
+  const persisted = await persistMutatedReviewArtifact(
+    workingDir,
+    reconciliation.artifact,
+    envelope
+  );
+  const status = getReviewArtifactStatus(reconciliation.artifact);
+  const output = {
+    ...(typeof persisted.output === 'object' && persisted.output !== null ? persisted.output : {}),
+    payload: reconciliation.artifact,
+    verification: {
+      severity,
+      minIssues,
+      shouldContinue: reconciliation.shouldContinue,
+      actionableOpen: reconciliation.actionableOpen,
+      fixFiles: fixSource?.files.length ?? 0,
+      resolved: reconciliation.resolved,
+      partial: reconciliation.partial,
+      stillOpen: reconciliation.stillOpen,
+      regression: reconciliation.regression,
+      statuses: reconciliation.statuses.map((statusItem) => ({
+        id: statusItem.finding.id,
+        fingerprint: statusItem.finding.fingerprint,
+        disposition: statusItem.disposition,
+        severity: statusItem.finding.issue.severity,
+        file: statusItem.finding.issue.file,
+        line: statusItem.finding.issue.line,
+        title: statusItem.finding.issue.title,
+      })),
+    },
+    shouldContinue: reconciliation.shouldContinue,
+    actionableOpen: reconciliation.actionableOpen,
+    fixFiles: fixSource?.files.length ?? 0,
+    status,
+  };
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: reconciliation.shouldContinue
+      ? `${reconciliation.actionableOpen} actionable finding(s) remain${persisted.responseSuffix}`
+      : `fix verification converged${persisted.responseSuffix}`,
+    output,
   };
 }
 
@@ -2753,17 +2834,22 @@ interface FixFindingStatus {
   diffSnippet?: string;
 }
 
+interface FindingMatch {
+  issue: ReviewIssue;
+  kind: 'exact' | 'nearby';
+}
+
 function matchFindings(
   originalFindings: ReviewFinding[],
   reReviewIssues: ReviewIssue[]
-): Map<string, ReviewIssue> {
-  const matched = new Map<string, ReviewIssue>();
+): Map<string, FindingMatch> {
+  const matched = new Map<string, FindingMatch>();
   for (const finding of originalFindings) {
     const exact = reReviewIssues.find(
       (issue) => createIssueFingerprint(issue) === finding.fingerprint
     );
     if (exact) {
-      matched.set(finding.id, exact);
+      matched.set(finding.id, { issue: exact, kind: 'exact' });
       continue;
     }
     const nearby = reReviewIssues.find(
@@ -2774,10 +2860,137 @@ function matchFindings(
         Math.abs((issue.line ?? 0) - (finding.issue.line ?? 0)) <= 10
     );
     if (nearby) {
-      matched.set(finding.id, nearby);
+      matched.set(finding.id, { issue: nearby, kind: 'nearby' });
     }
   }
   return matched;
+}
+
+function getReconciledFindingDisposition(
+  finding: ReviewFinding,
+  match: FindingMatch | undefined
+): ReviewFindingDisposition {
+  if (!match) {
+    return 'resolved';
+  }
+  if (finding.disposition === 'regression') {
+    return 'regression';
+  }
+  return match.kind === 'exact' ? 'still_open' : 'partial';
+}
+
+function getFixStatusDisposition(
+  finding: ReviewFinding,
+  match: FindingMatch | undefined
+): FixFindingStatus['disposition'] {
+  const disposition = getReconciledFindingDisposition(finding, match);
+  if (disposition === 'resolved') return 'resolved';
+  if (disposition === 'partial') return 'partial';
+  if (disposition === 'regression') return 'regression';
+  return 'still-open';
+}
+
+function getFixReviewIssueFingerprints(matches: Map<string, FindingMatch>): Set<string> {
+  return new Set(Array.from(matches.values()).map((match) => createIssueFingerprint(match.issue)));
+}
+
+function isIssueInFixScope(
+  issue: ReviewIssue,
+  artifact: ReviewArtifactPayload,
+  fixSource?: ReviewSource
+) {
+  const fixFiles = new Set(fixSource?.files ?? []);
+  if (fixFiles.size > 0) {
+    return fixFiles.has(issue.file);
+  }
+  return artifact.findings.some((finding) => finding.issue.file === issue.file);
+}
+
+function reconcileReviewArtifactFindings(
+  artifact: ReviewArtifactPayload,
+  reReview: ReviewResult,
+  options: { severity: string; minIssues: number; fixSource?: ReviewSource }
+): {
+  artifact: ReviewArtifactPayload;
+  statuses: FixFindingStatus[];
+  shouldContinue: boolean;
+  actionableOpen: number;
+  resolved: number;
+  partial: number;
+  stillOpen: number;
+  regression: number;
+} {
+  const now = new Date().toISOString();
+  const thresholdRank = severityRank(options.severity);
+  const matches = matchFindings(artifact.findings, reReview.issues);
+  const matchedIssueFingerprints = getFixReviewIssueFingerprints(matches);
+  const existingFingerprints = new Set(artifact.findings.map((finding) => finding.fingerprint));
+
+  const reconciledFindings = artifact.findings.map((finding) => {
+    const match = matches.get(finding.id);
+    const disposition = getReconciledFindingDisposition(finding, match);
+    return {
+      ...finding,
+      state: disposition === 'resolved' ? ('resolved' as const) : ('open' as const),
+      disposition,
+      updatedAt: now,
+    };
+  });
+
+  for (const issue of reReview.issues) {
+    const fingerprint = createIssueFingerprint(issue);
+    if (
+      matchedIssueFingerprints.has(fingerprint) ||
+      existingFingerprints.has(fingerprint) ||
+      !isIssueInFixScope(issue, artifact, options.fixSource)
+    ) {
+      continue;
+    }
+    existingFingerprints.add(fingerprint);
+    reconciledFindings.push({
+      id: `R${reconciledFindings.length + 1}`,
+      fingerprint,
+      issue,
+      state: 'open',
+      disposition: 'regression',
+      source: 'agent',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const updatedArtifact = { ...artifact, findings: reconciledFindings };
+  const updatedMatches = matchFindings(updatedArtifact.findings, reReview.issues);
+  const statuses = updatedArtifact.findings.map((finding) => {
+    const disposition = getFixStatusDisposition(finding, updatedMatches.get(finding.id));
+    const diffSnippet =
+      disposition === 'resolved' || disposition === 'regression'
+        ? extractDiffSnippet(options.fixSource, finding.issue.file, finding.issue.line)
+        : undefined;
+    return { finding, disposition, diffSnippet };
+  });
+
+  const actionableOpen = updatedArtifact.findings.filter(
+    (finding) =>
+      finding.state === 'open' &&
+      severityRank(finding.issue.severity) >= thresholdRank &&
+      (finding.disposition === 'still_open' ||
+        finding.disposition === 'partial' ||
+        finding.disposition === 'regression')
+  ).length;
+
+  return {
+    artifact: updatedArtifact,
+    statuses,
+    shouldContinue: actionableOpen >= options.minIssues,
+    actionableOpen,
+    resolved: updatedArtifact.findings.filter((finding) => finding.state === 'resolved').length,
+    partial: updatedArtifact.findings.filter((finding) => finding.disposition === 'partial').length,
+    stillOpen: updatedArtifact.findings.filter((finding) => finding.disposition === 'still_open')
+      .length,
+    regression: updatedArtifact.findings.filter((finding) => finding.disposition === 'regression')
+      .length,
+  };
 }
 
 function extractDiffSnippet(
@@ -2918,14 +3131,13 @@ async function runPostFixStatusWorkflowNode(
   const reReviewIssues = hasReReview ? fixReviewResult.issues : [];
   const matchedFindings = hasReReview
     ? matchFindings(originalFindings, reReviewIssues)
-    : new Map<string, ReviewIssue>();
+    : new Map<string, FindingMatch>();
 
   const statuses: FixFindingStatus[] = originalFindings.map((finding) => {
     if (hasReReview) {
-      const isMatched = matchedFindings.has(finding.id);
-      const disposition: FixFindingStatus['disposition'] = isMatched ? 'still-open' : 'resolved';
+      const disposition = getFixStatusDisposition(finding, matchedFindings.get(finding.id));
       const diffSnippet =
-        disposition === 'resolved'
+        disposition === 'resolved' || disposition === 'regression'
           ? extractDiffSnippet(fixSource, finding.issue.file, finding.issue.line)
           : undefined;
       return { finding, disposition, diffSnippet };
@@ -2937,7 +3149,7 @@ async function runPostFixStatusWorkflowNode(
   if (hasReReview) {
     const originalFiles = new Set(originalFindings.map((f) => f.issue.file));
     const matchedIssueFingerprints = new Set(
-      Array.from(matchedFindings.values()).map((issue) => createIssueFingerprint(issue))
+      Array.from(matchedFindings.values()).map((match) => createIssueFingerprint(match.issue))
     );
     for (const issue of reReviewIssues) {
       if (originalFiles.has(issue.file)) {
