@@ -124,6 +124,7 @@ jobs:
             --input visual=true \
             --input fix=true \
             --input fixMode=internal \
+            --input fixSeverity=medium \
             --input fixMaxIterations=2 \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
