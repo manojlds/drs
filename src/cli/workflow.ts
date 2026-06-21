@@ -25,6 +25,7 @@ import {
   type ReviewResult,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
+import { executeUnifiedReview } from '../lib/unified-review-executor.js';
 import { ExitError, setExitHandler } from '../lib/exit.js';
 import type {
   FileChange,
@@ -3050,6 +3051,49 @@ async function enforceWorkflowReviewTarget(
   });
 }
 
+function createUnifiedReviewWorkflowOptions(
+  config: DRSConfig,
+  node: WorkflowNodeConfig,
+  source: ReviewSource,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext,
+  options: WorkflowRunOptions
+) {
+  const target = readSourcePostTarget(source);
+  if (!target.platform || !target.projectId || !target.prNumber || !target.pullRequest) {
+    return undefined;
+  }
+
+  const lineValidator = createWorkflowLineValidator(target.platform, source);
+  const createInlinePosition = lineValidator
+    ? createWorkflowInlinePosition(target.platform, source)
+    : undefined;
+  const rawBaseBranch = getStringActionOption(node, 'baseBranch', context)?.trim();
+  const baseBranch = rawBaseBranch === '' ? undefined : rawBaseBranch;
+  const postComments = getBooleanActionOption(node, 'postComments', context);
+  const postDescription = getBooleanActionOption(node, 'postDescription', context);
+
+  return {
+    platformClient: getWorkflowPlatformClient(executionContext, target.platform),
+    projectId: target.projectId,
+    prNumber: target.prNumber,
+    pullRequest: target.pullRequest,
+    changedFiles: target.changedFiles,
+    postComments,
+    baseBranch,
+    lineValidator,
+    createInlinePosition,
+    cursorFixLinks: postComments
+      ? resolveCursorFixLinkOptions(config, target.projectId, workingDir)
+      : undefined,
+    workingDir,
+    postDescription,
+    debug: options.debug,
+    thinkingLevel: options.thinkingLevel,
+  };
+}
+
 async function runReviewWorkflowNode(
   config: DRSConfig,
   nodeId: string,
@@ -3081,10 +3125,24 @@ async function runReviewWorkflowNode(
     }
 
     try {
-      await enforceWorkflowReviewTarget(config, source, source.workingDir ?? workingDir);
+      const reviewWorkingDir = source.workingDir ?? workingDir;
+      await enforceWorkflowReviewTarget(config, source, reviewWorkingDir);
+      const unifiedOptions = createUnifiedReviewWorkflowOptions(
+        config,
+        node,
+        source,
+        reviewWorkingDir,
+        context,
+        executionContext,
+        options
+      );
+      if (unifiedOptions) {
+        return await executeUnifiedReview(config, unifiedOptions);
+      }
+
       return await executeReview(config, {
         ...source,
-        workingDir: source.workingDir ?? workingDir,
+        workingDir: reviewWorkingDir,
         debug: options.debug,
         thinkingLevel: options.thinkingLevel,
       });

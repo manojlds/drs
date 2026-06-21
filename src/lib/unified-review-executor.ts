@@ -23,6 +23,7 @@ import {
   connectToRuntime,
   filterIgnoredFiles,
   getReviewBudgetModelIds,
+  type ReviewResult,
 } from './review-orchestrator.js';
 import { buildBaseInstructions, runReviewPipeline, displayReviewSummary } from './review-core.js';
 import type {
@@ -49,6 +50,7 @@ import {
 import { runDescribeIfEnabled } from './description-executor.js';
 import { formatDescribeSummary, type Description } from './description-formatter.js';
 import { removeErrorComment } from './error-comment-poster.js';
+import { createEmptyReviewUsageSummary } from './review-usage.js';
 
 // Re-export functions for backward compatibility
 export { enforceRepoBranchMatch } from './repository-validator.js';
@@ -122,7 +124,7 @@ export interface UnifiedReviewOptions {
 export async function executeUnifiedReview(
   config: DRSConfig,
   options: UnifiedReviewOptions
-): Promise<void> {
+): Promise<ReviewResult> {
   const { platformClient, projectId, prNumber, postComments } = options;
 
   // Track runtime client for cleanup
@@ -151,7 +153,12 @@ export async function executeUnifiedReview(
 
     if (allFiles.length === 0) {
       console.log(chalk.yellow('✓ No changes to review\n'));
-      return;
+      return {
+        issues: [],
+        summary: calculateSummary(0, []),
+        filesReviewed: 0,
+        usage: createEmptyReviewUsageSummary(),
+      };
     }
 
     // Get list of changed files (excluding deleted files)
@@ -161,7 +168,12 @@ export async function executeUnifiedReview(
 
     if (changedFileNames.length === 0) {
       console.log(chalk.yellow('✓ No files to review after filtering\n'));
-      return;
+      return {
+        issues: [],
+        summary: calculateSummary(0, []),
+        filesReviewed: 0,
+        usage: createEmptyReviewUsageSummary(),
+      };
     }
 
     // Filter files by ignore patterns
@@ -175,7 +187,12 @@ export async function executeUnifiedReview(
 
     if (filteredFiles.length === 0) {
       console.log(chalk.yellow('✓ No files to review after filtering\n'));
-      return;
+      return {
+        issues: [],
+        summary: calculateSummary(0, []),
+        filesReviewed: 0,
+        usage: createEmptyReviewUsageSummary(),
+      };
     }
 
     const agentModelOverrides = getModelOverrides(config);
@@ -368,6 +385,14 @@ export async function executeUnifiedReview(
     } else if (result.summary.issuesFound === 0) {
       console.log(chalk.green('✓ No issues found! Code looks good.\n'));
     }
+
+    return {
+      issues: result.issues,
+      summary: result.summary,
+      changeSummary: result.changeSummary,
+      filesReviewed: result.filesReviewed,
+      usage: result.usage ?? createEmptyReviewUsageSummary(),
+    };
   } catch (error) {
     // Handle "all agents failed" error
     if (error instanceof Error && error.message === 'All review agents failed') {
