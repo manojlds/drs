@@ -303,9 +303,36 @@ function validateWorkflowControlTargets(nodes: Record<string, WorkflowNodeConfig
   }
 }
 
+function validateWorkflowPassThroughShape(nodeId: string, node: WorkflowNodeConfig): void {
+  if (node.control !== 'passThrough') {
+    return;
+  }
+  if (!node.target) {
+    throw new Error(`Workflow passThrough node "${nodeId}" must define "target".`);
+  }
+  const forbiddenKeys = [
+    'if',
+    'then',
+    'else',
+    'condition',
+    'exit',
+    'cases',
+    'default',
+    'maxIterations',
+    'onMaxIterations',
+    'value',
+  ];
+  const extraFields = forbiddenKeys.filter((key) => key in node);
+  if (extraFields.length > 0) {
+    throw new Error(
+      `Workflow passThrough node "${nodeId}" must not define extra control logic: ${extraFields.join(', ')}.`
+    );
+  }
+}
 function validateWorkflowNodeKinds(nodes: Record<string, WorkflowNodeConfig>): void {
-  for (const node of Object.values(nodes)) {
+  for (const [nodeId, node] of Object.entries(nodes)) {
     getNodeKind(node);
+    validateWorkflowPassThroughShape(nodeId, node);
   }
 }
 
@@ -3845,6 +3872,18 @@ function runControlWorkflowNode(
     };
   }
 
+  if (node.control === 'passThrough') {
+    const result: WorkflowNodeResult = {
+      id: nodeId,
+      type: 'control',
+      control: 'passThrough',
+      target: node.target,
+      decision: 'pass',
+      response: `passed through to ${node.target}`,
+    };
+    return { result, nextNodeId: node.target };
+  }
+
   throw new Error(`Unsupported workflow control "${node.control}" in node "${nodeId}".`);
 }
 
@@ -4289,6 +4328,9 @@ function getWorkflowNodeRoutes(node: WorkflowNodeConfig): WorkflowNodeDetail['ro
   }
   if (node.control === 'switch') {
     return { cases: node.cases, default: node.default };
+  }
+  if (node.control === 'passThrough') {
+    return { target: node.target };
   }
   return undefined;
 }
