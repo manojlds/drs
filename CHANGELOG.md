@@ -1,3 +1,12 @@
+## Unreleased
+
+### Removed
+
+- **Breaking:** workflow action `reconcile-review-findings` has been removed. Since 4.0.0 it has been a silent alias of `verify-fix`; the name is now canonical and the alias is gone. Workflows still using `action: reconcile-review-findings` will fail with an explicit error pointing at `verify-fix`. See the 4.0.0 release for the original alias introduction.
+
+### Added
+
+- Expose `output.updatedIds` on `review-artifact-update-findings` and `verify-fix`. The two helpers mean slightly different things by design: `review-artifact-update-findings` returns only the IDs whose `state` or `disposition` actually changed; `verify-fix` returns the IDs of every finding currently in the artifact after reconciliation (including new regressions added this iteration). Field shape is identical (`string[]` of finding IDs).
 # Changelog
 
 All notable changes to DRS are documented in this file.

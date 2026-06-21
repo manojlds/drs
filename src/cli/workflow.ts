@@ -1011,8 +1011,8 @@ async function runActionWorkflowNode(
   if (node.action === 'review-artifact-update-findings') {
     return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context);
   }
-  if (node.action === 'reconcile-review-findings' || node.action === 'verify-fix') {
-    return runReconcileReviewFindingsWorkflowNode(nodeId, node, workingDir, context);
+  if (node.action === 'verify-fix') {
+    return runVerifyFixWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'review-artifact-promote-finding') {
     return runReviewArtifactUpdateFindingsWorkflowNode(nodeId, node, workingDir, context, {
@@ -1085,6 +1085,14 @@ async function runActionWorkflowNode(
       workingDir,
       context,
       executionContext
+    );
+  }
+
+  if (node.action === 'reconcile-review-findings') {
+    throw new Error(
+      `Unsupported workflow action 'reconcile-review-findings' in node '${nodeId}'. ` +
+        "Did you mean 'verify-fix'? The action `reconcile-review-findings` has been renamed " +
+        'to `verify-fix`; see CHANGELOG.md.'
     );
   }
 
@@ -1884,11 +1892,16 @@ async function runReviewArtifactUpdateFindingsWorkflowNode(
     type: 'action',
     action: node.action,
     response: `updated ${updatedIds.length} review finding(s)${persisted.responseSuffix}`,
-    output: persisted.output,
+    output: {
+      ...(typeof persisted.output === 'object' && persisted.output !== null
+        ? persisted.output
+        : {}),
+      updatedIds,
+    },
   };
 }
 
-async function runReconcileReviewFindingsWorkflowNode(
+async function runVerifyFixWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
@@ -1898,14 +1911,12 @@ async function runReconcileReviewFindingsWorkflowNode(
   const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'reReview';
   const review = context.artifacts[reviewArtifact];
   if (!isReviewResult(review)) {
-    throw new Error(`Workflow reconcile-review-findings node "${nodeId}" needs a ReviewResult.`);
+    throw new Error(`Workflow verify-fix node "${nodeId}" needs a ReviewResult.`);
   }
 
   const severity = (getStringActionOption(node, 'severity', context) ?? 'high').toUpperCase();
   if (severityRank(severity) === 0) {
-    throw new Error(
-      `Workflow reconcile-review-findings node "${nodeId}" has unsupported severity "${severity}".`
-    );
+    throw new Error(`Workflow verify-fix node "${nodeId}" has unsupported severity "${severity}".`);
   }
   const minIssues = hasActionOption(node, 'minIssues')
     ? requireNumberActionOption(nodeId, node, 'minIssues', context)
@@ -1951,6 +1962,7 @@ async function runReconcileReviewFindingsWorkflowNode(
     shouldContinue: reconciliation.shouldContinue,
     actionableOpen: reconciliation.actionableOpen,
     fixFiles: fixSource?.files.length ?? 0,
+    updatedIds: reconciliation.statuses.map((statusItem) => statusItem.finding.id),
     status,
   };
 
