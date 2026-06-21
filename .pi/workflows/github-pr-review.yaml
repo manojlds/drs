@@ -385,5 +385,29 @@ nodes:
 
       <!-- drs-stacked-fix-notification -->
 
+  post-fix-status-stacked:
+    action: post-fix-status
+    needs:
+      - create-fix-pr
+      - save-review-artifact
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      marker: drs-fix-status
+    output: fixStatus
+
+  finish-stacked:
+    control: condition
+    needs:
+      - post-fix-status-stacked
+    if: "true"
+    then: done
+    else: done
+
   done:
     control: end

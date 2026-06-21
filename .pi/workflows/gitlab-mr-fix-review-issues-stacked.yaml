@@ -43,6 +43,25 @@ nodes:
       source: change
     output: review
 
+  review-artifact:
+    action: create-review-artifact
+    needs:
+      - review
+    with:
+      source: change
+      review: review
+    output: reviewArtifact
+
+  save-review-artifact:
+    action: save-artifact
+    needs:
+      - review-artifact
+    with:
+      kind: review
+      source: change
+      artifact: reviewArtifact
+    output: persistedReviewArtifact
+
   threshold:
     action: review-threshold
     needs:
@@ -72,23 +91,37 @@ nodes:
     agent: task/review-issue-fixer
     needs:
       - branch
-      - review
+      - review-artifact
     input: |
-      Fix actionable issues from this DRS review result for GitLab MR !{{inputs.mr}}.
+      Fix actionable issues from this DRS review artifact for GitLab MR !{{inputs.mr}}.
 
-      Only fix issues at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
+      Only fix findings at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review result:
-      {{artifacts.review}}
+      Review artifact:
+      {{artifacts.reviewArtifact}}
+
+      Persisted artifact envelope:
+      {{artifacts.persistedReviewArtifact}}
 
       Current MR change source:
       {{artifacts.change}}
     output: fixes
 
+  mark-fix-attempted:
+    action: review-artifact-update-findings
+    needs:
+      - fix-issues
+    with:
+      artifact: persistedReviewArtifact
+      severity: "{{inputs.severity}}"
+      state: attempted
+      disposition: partial
+    output: persistedReviewArtifact
+
   diff:
     action: has-diff
     needs:
-      - fix-issues
+      - mark-fix-attempted
     output: fixDiff
 
   should-create:
@@ -133,6 +166,29 @@ nodes:
         <!-- drs-stack-source: gitlab:{{inputs.project}}!{{inputs.mr}} -->
         <!-- drs-stack-kind: fix -->
     output: changeRequest
+
+  post-fix-status:
+    action: post-fix-status
+    needs:
+      - create
+      - save-review-artifact
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      marker: drs-fix-status
+    output: fixStatus
+
+  finish:
+    control: condition
+    needs:
+      - post-fix-status
+    if: "true"
+    then: done
+    else: done
 
   done:
     control: end

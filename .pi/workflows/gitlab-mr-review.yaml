@@ -6,6 +6,15 @@ inputs:
   describe: "false"
   post: "false"
   visual: "false"
+  fix: "false"
+  fixMode: "stacked"
+  fixSeverity: "high"
+  fixMinIssues: "1"
+  fixBranchPrefix: "drs-fix/mr-"
+  fixCreateChangeRequest: "false"
+  fixMaxIterations: "3"
+  allowStackedSource: "false"
+  fixDraft: "false"
   visualOutputPath: ".drs/visual-mr-explainer.html"
   codeQuality: "false"
   codeQualityReport: gl-code-quality-report.json
@@ -125,13 +134,21 @@ nodes:
       review: review
     output: postedReview
 
+  continue-code-quality:
+    control: condition
+    needs:
+      - post-comments
+    if: "true"
+    then: should-code-quality
+    else: should-code-quality
+
   should-code-quality:
     control: condition
     needs:
       - review
     if: "{{inputs.codeQuality}} == true"
     then: code-quality
-    else: done
+    else: should-fix-enabled
 
   code-quality:
     action: code-quality-report
@@ -141,6 +158,277 @@ nodes:
       review: review
       path: "{{inputs.codeQualityReport}}"
     output: codeQualityReport
+
+  continue-fix:
+    control: condition
+    needs:
+      - code-quality
+    if: "true"
+    then: should-fix-enabled
+    else: should-fix-enabled
+
+  should-fix-enabled:
+    control: condition
+    needs:
+      - save-review-artifact
+    if: "{{inputs.fix}} == true"
+    then: stack-guard
+    else: done
+
+  stack-guard:
+    action: stack-guard
+    needs:
+      - change
+    with:
+      source: change
+      allowStackedSource: "{{inputs.allowStackedSource}}"
+    output: stackGuard
+
+  should-stack:
+    control: condition
+    needs:
+      - stack-guard
+    if: "{{artifacts.stackGuard.allowed}} == true"
+    then: fix-threshold
+    else: done
+
+  fix-threshold:
+    action: review-threshold
+    needs:
+      - review
+    with:
+      review: review
+      severity: "{{inputs.fixSeverity}}"
+      minIssues: "{{inputs.fixMinIssues}}"
+    output: reviewThreshold
+
+  should-fix:
+    control: condition
+    needs:
+      - fix-threshold
+    if: "{{artifacts.reviewThreshold.matched}} == true"
+    then: fix-branch
+    else: done
+
+  fix-branch:
+    action: git-branch
+    with:
+      name: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
+      force: true
+    output: fixBranch
+
+  fix-issues:
+    agent: task/review-issue-fixer
+    needs:
+      - fix-branch
+      - review-artifact
+    input: |
+      Fix actionable issues from this DRS review artifact for GitLab MR !{{inputs.mr}}.
+
+      Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
+
+      Review artifact:
+      {{artifacts.reviewArtifact}}
+
+      Persisted artifact envelope:
+      {{artifacts.persistedReviewArtifact}}
+
+      Current MR change source:
+      {{artifacts.change}}
+    output: fixes
+
+  should-internal-loop:
+    control: condition
+    needs:
+      - fix-issues
+    if: "{{inputs.fixMode}} == internal"
+    then: stage-fixes
+    else: mark-fix-attempted
+
+  stage-fixes:
+    action: git-add
+    needs:
+      - fix-issues
+    with:
+      paths: "."
+    output: stagedFixes
+
+  fix-change:
+    action: change-source
+    needs:
+      - stage-fixes
+    with:
+      type: local
+      staged: true
+    output: fixChange
+
+  re-review:
+    action: review
+    needs:
+      - fix-change
+    with:
+      source: fixChange
+    output: reReview
+
+  re-threshold:
+    action: review-threshold
+    needs:
+      - re-review
+    with:
+      review: reReview
+      severity: "{{inputs.fixSeverity}}"
+      minIssues: "1"
+    output: reThreshold
+
+  fix-loop:
+    control: loop
+    needs:
+      - re-threshold
+    condition: "{{artifacts.reThreshold.matched}} == true"
+    target: fix-issues
+    exit: fix-done
+    maxIterations: "{{inputs.fixMaxIterations}}"
+    onMaxIterations: exit
+
+  fix-done:
+    control: condition
+    needs:
+      - re-threshold
+    if: "{{inputs.fixMode}} == internal"
+    then: post-fix-status-internal
+    else: mark-fix-attempted
+
+  post-fix-status-internal:
+    action: post-fix-status
+    needs:
+      - re-threshold
+      - save-review-artifact
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      fixReview: reReview
+      fixChange: fixChange
+      marker: drs-fix-status
+    output: fixStatus
+
+  should-done-internal:
+    control: condition
+    needs:
+      - post-fix-status-internal
+    if: "true"
+    then: done
+    else: done
+
+  mark-fix-attempted:
+    action: review-artifact-update-findings
+    needs:
+      - fix-issues
+    with:
+      artifact: persistedReviewArtifact
+      severity: "{{inputs.fixSeverity}}"
+      state: attempted
+      disposition: partial
+    output: persistedReviewArtifact
+
+  fix-diff:
+    action: has-diff
+    needs:
+      - mark-fix-attempted
+    output: fixDiff
+
+  should-create-fix-mr:
+    control: condition
+    needs:
+      - fix-diff
+    if: "{{artifacts.fixDiff.changed}} == true"
+    then: should-create-fix-change-request
+    else: done
+
+  should-create-fix-change-request:
+    control: condition
+    needs:
+      - fix-diff
+    if: "{{inputs.fixCreateChangeRequest}} == true"
+    then: fix-commit
+    else: done
+
+  fix-commit:
+    action: git-commit
+    with:
+      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
+      paths: "."
+    output: fixCommit
+
+  fix-push:
+    action: git-push
+    needs:
+      - fix-commit
+    with:
+      branch: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
+    output: fixPush
+
+  create-fix-mr:
+    action: create-change-request
+    needs:
+      - fix-push
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      sourceBranch: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
+      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      title: "fix: address DRS review issues for MR !{{inputs.mr}}"
+      draft: "{{inputs.fixDraft}}"
+      body: |
+        Automated DRS fix stacked on MR !{{inputs.mr}} from the main gitlab-mr-review workflow.
+
+        Threshold: {{inputs.fixSeverity}}, minimum issues: {{inputs.fixMinIssues}}
+        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+
+        <!-- drs-stack-source: gitlab:{{inputs.project}}!{{inputs.mr}} -->
+        <!-- drs-stack-kind: fix -->
+    output: changeRequest
+
+  notify-fix-mr:
+    action: post-comment
+    needs:
+      - create-fix-mr
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+      marker: drs-stacked-fix-notification
+    input: |
+      🔧 DRS created a stacked fix MR: {{artifacts.changeRequest.url}}
+
+      The fix addresses {{inputs.fixSeverity}}-priority review findings from this MR's review run.
+
+      <!-- drs-stacked-fix-notification -->
+
+  post-fix-status-stacked:
+    action: post-fix-status
+    needs:
+      - create-fix-mr
+      - save-review-artifact
+    with:
+      platform: gitlab
+      project: "{{inputs.project}}"
+      mr: "{{inputs.mr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      marker: drs-fix-status
+    output: fixStatus
+
+  finish-stacked:
+    control: condition
+    needs:
+      - post-fix-status-stacked
+    if: "true"
+    then: done
+    else: done
 
   done:
     control: end

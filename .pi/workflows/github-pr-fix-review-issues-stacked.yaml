@@ -45,6 +45,25 @@ nodes:
       source: change
     output: review
 
+  review-artifact:
+    action: create-review-artifact
+    needs:
+      - review
+    with:
+      source: change
+      review: review
+    output: reviewArtifact
+
+  save-review-artifact:
+    action: save-artifact
+    needs:
+      - review-artifact
+    with:
+      kind: review
+      source: change
+      artifact: reviewArtifact
+    output: persistedReviewArtifact
+
   threshold:
     action: review-threshold
     needs:
@@ -74,23 +93,37 @@ nodes:
     agent: task/review-issue-fixer
     needs:
       - branch
-      - review
+      - review-artifact
     input: |
-      Fix actionable issues from this DRS review result for GitHub PR #{{inputs.pr}}.
+      Fix actionable issues from this DRS review artifact for GitHub PR #{{inputs.pr}}.
 
-      Only fix issues at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
+      Only fix findings at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review result:
-      {{artifacts.review}}
+      Review artifact:
+      {{artifacts.reviewArtifact}}
+
+      Persisted artifact envelope:
+      {{artifacts.persistedReviewArtifact}}
 
       Current PR change source:
       {{artifacts.change}}
     output: fixes
 
+  mark-fix-attempted:
+    action: review-artifact-update-findings
+    needs:
+      - fix-issues
+    with:
+      artifact: persistedReviewArtifact
+      severity: "{{inputs.severity}}"
+      state: attempted
+      disposition: partial
+    output: persistedReviewArtifact
+
   diff:
     action: has-diff
     needs:
-      - fix-issues
+      - mark-fix-attempted
     output: fixDiff
 
   should-create:
@@ -136,6 +169,30 @@ nodes:
         <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
         <!-- drs-stack-kind: fix -->
     output: changeRequest
+
+  post-fix-status:
+    action: post-fix-status
+    needs:
+      - create
+      - save-review-artifact
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      marker: drs-fix-status
+    output: fixStatus
+
+  finish:
+    control: condition
+    needs:
+      - post-fix-status
+    if: "true"
+    then: done
+    else: done
 
   done:
     control: end
