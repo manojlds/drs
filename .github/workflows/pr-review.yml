@@ -119,9 +119,9 @@ jobs:
             --input owner="${{ github.event.repository.owner.login }}" \
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
-            --input describe=true \
+            --input describe=false \
             --input post=true \
-            --input visual=true \
+            --input visual=false \
             --input fix=true \
             --input fixMode=internal \
             --input fixSeverity=medium \
