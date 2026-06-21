@@ -1,20 +1,20 @@
 name: gitlab-mr-update-agents-md-stacked
 description: Update agent guidance for a GitLab MR and open a stacked MR when warranted
 inputs:
-  project: ""
-  mr: ""
-  paths: "AGENTS.md,CLAUDE.md,.github/copilot-instructions.md"
-  branchPrefix: "drs-guidance/mr-"
-  allowStackedSource: "false"
-  draft: "false"
+  project: ''
+  mr: ''
+  paths: 'AGENTS.md,CLAUDE.md,.github/copilot-instructions.md'
+  branchPrefix: 'drs-guidance/mr-'
+  allowStackedSource: 'false'
+  draft: 'false'
 output: changeRequest
 nodes:
   change:
     action: change-source
     with:
       type: gitlab-mr
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
     output: change
 
   guard:
@@ -23,21 +23,21 @@ nodes:
       - change
     with:
       source: change
-      allowStackedSource: "{{inputs.allowStackedSource}}"
+      allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
   should-stack:
     control: condition
     needs:
       - guard
-    if: "{{artifacts.stackGuard.allowed}} == true"
+    if: '{{artifacts.stackGuard.allowed}} == true'
     then: branch
     else: done
 
   branch:
     action: git-branch
     with:
-      name: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      name: '{{inputs.branchPrefix}}{{inputs.mr}}'
       force: true
     output: branch
 
@@ -62,22 +62,22 @@ nodes:
     needs:
       - update-guidance
     with:
-      paths: "{{inputs.paths}}"
+      paths: '{{inputs.paths}}'
     output: guidanceDiff
 
   should-create:
     control: condition
     needs:
       - diff
-    if: "{{artifacts.guidanceDiff.changed}} == true"
+    if: '{{artifacts.guidanceDiff.changed}} == true'
     then: commit
     else: done
 
   commit:
     action: git-commit
     with:
-      message: "docs: update agent guidance for MR !{{inputs.mr}}"
-      paths: "{{inputs.paths}}"
+      message: 'docs: update agent guidance for MR !{{inputs.mr}}'
+      paths: '{{inputs.paths}}'
     output: commit
 
   push:
@@ -85,7 +85,7 @@ nodes:
     needs:
       - commit
     with:
-      branch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      branch: '{{inputs.branchPrefix}}{{inputs.mr}}'
     output: push
 
   create:
@@ -94,11 +94,11 @@ nodes:
       - push
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      sourceBranch: "{{inputs.branchPrefix}}{{inputs.mr}}"
-      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
-      title: "docs: update agent guidance for MR !{{inputs.mr}}"
-      draft: "{{inputs.draft}}"
+      project: '{{inputs.project}}'
+      sourceBranch: '{{inputs.branchPrefix}}{{inputs.mr}}'
+      targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}'
+      title: 'docs: update agent guidance for MR !{{inputs.mr}}'
+      draft: '{{inputs.draft}}'
       body: |
         Automated DRS guidance update stacked on MR !{{inputs.mr}}.
 

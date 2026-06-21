@@ -1,21 +1,21 @@
 name: gitlab-mr-fix-review-issues-stacked
 description: Fix high-severity GitLab MR review issues and open a stacked MR
 inputs:
-  project: ""
-  mr: ""
-  severity: "high"
-  minIssues: "1"
-  branchPrefix: "drs-fix/mr-"
-  allowStackedSource: "false"
-  draft: "false"
+  project: ''
+  mr: ''
+  severity: 'high'
+  minIssues: '1'
+  branchPrefix: 'drs-fix/mr-'
+  allowStackedSource: 'false'
+  draft: 'false'
 output: changeRequest
 nodes:
   change:
     action: change-source
     with:
       type: gitlab-mr
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
     output: change
 
   guard:
@@ -24,14 +24,14 @@ nodes:
       - change
     with:
       source: change
-      allowStackedSource: "{{inputs.allowStackedSource}}"
+      allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
   should-stack:
     control: condition
     needs:
       - guard
-    if: "{{artifacts.stackGuard.allowed}} == true"
+    if: '{{artifacts.stackGuard.allowed}} == true'
     then: review
     else: done
 
@@ -68,22 +68,22 @@ nodes:
       - review
     with:
       review: review
-      severity: "{{inputs.severity}}"
-      minIssues: "{{inputs.minIssues}}"
+      severity: '{{inputs.severity}}'
+      minIssues: '{{inputs.minIssues}}'
     output: reviewThreshold
 
   should-fix:
     control: condition
     needs:
       - threshold
-    if: "{{artifacts.reviewThreshold.matched}} == true"
+    if: '{{artifacts.reviewThreshold.matched}} == true'
     then: branch
     else: done
 
   branch:
     action: git-branch
     with:
-      name: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      name: '{{inputs.branchPrefix}}{{inputs.mr}}'
       force: true
     output: branch
 
@@ -113,7 +113,7 @@ nodes:
       - fix-issues
     with:
       artifact: persistedReviewArtifact
-      severity: "{{inputs.severity}}"
+      severity: '{{inputs.severity}}'
       state: attempted
       disposition: partial
     output: persistedReviewArtifact
@@ -128,15 +128,15 @@ nodes:
     control: condition
     needs:
       - diff
-    if: "{{artifacts.fixDiff.changed}} == true"
+    if: '{{artifacts.fixDiff.changed}} == true'
     then: commit
     else: done
 
   commit:
     action: git-commit
     with:
-      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
-      paths: "."
+      message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
+      paths: '.'
     output: commit
 
   push:
@@ -144,7 +144,7 @@ nodes:
     needs:
       - commit
     with:
-      branch: "{{inputs.branchPrefix}}{{inputs.mr}}"
+      branch: '{{inputs.branchPrefix}}{{inputs.mr}}'
     output: push
 
   create:
@@ -153,11 +153,11 @@ nodes:
       - push
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      sourceBranch: "{{inputs.branchPrefix}}{{inputs.mr}}"
-      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
-      title: "fix: address DRS review issues for MR !{{inputs.mr}}"
-      draft: "{{inputs.draft}}"
+      project: '{{inputs.project}}'
+      sourceBranch: '{{inputs.branchPrefix}}{{inputs.mr}}'
+      targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}'
+      title: 'fix: address DRS review issues for MR !{{inputs.mr}}'
+      draft: '{{inputs.draft}}'
       body: |
         Automated DRS fix stacked on MR !{{inputs.mr}}.
 
@@ -174,11 +174,11 @@ nodes:
       - save-review-artifact
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
-      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
 
@@ -186,7 +186,7 @@ nodes:
     control: condition
     needs:
       - post-fix-status
-    if: "true"
+    if: 'true'
     then: done
     else: done
 

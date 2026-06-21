@@ -1,7 +1,7 @@
 name: local-update-agents-md
 description: Update repository agent guidance from local changes
 inputs:
-  path: ""
+  path: ''
 nodes:
   change:
     action: change-source

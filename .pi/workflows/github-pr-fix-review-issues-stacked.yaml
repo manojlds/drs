@@ -1,23 +1,23 @@
 name: github-pr-fix-review-issues-stacked
 description: Fix high-severity GitHub PR review issues and open a stacked PR
 inputs:
-  owner: ""
-  repo: ""
-  pr: ""
-  severity: "high"
-  minIssues: "1"
-  branchPrefix: "drs-fix/pr-"
-  allowStackedSource: "false"
-  draft: "false"
+  owner: ''
+  repo: ''
+  pr: ''
+  severity: 'high'
+  minIssues: '1'
+  branchPrefix: 'drs-fix/pr-'
+  allowStackedSource: 'false'
+  draft: 'false'
 output: changeRequest
 nodes:
   change:
     action: change-source
     with:
       type: github-pr
-      owner: "{{inputs.owner}}"
-      repo: "{{inputs.repo}}"
-      pr: "{{inputs.pr}}"
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      pr: '{{inputs.pr}}'
     output: change
 
   guard:
@@ -26,14 +26,14 @@ nodes:
       - change
     with:
       source: change
-      allowStackedSource: "{{inputs.allowStackedSource}}"
+      allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
   should-stack:
     control: condition
     needs:
       - guard
-    if: "{{artifacts.stackGuard.allowed}} == true"
+    if: '{{artifacts.stackGuard.allowed}} == true'
     then: review
     else: done
 
@@ -70,22 +70,22 @@ nodes:
       - review
     with:
       review: review
-      severity: "{{inputs.severity}}"
-      minIssues: "{{inputs.minIssues}}"
+      severity: '{{inputs.severity}}'
+      minIssues: '{{inputs.minIssues}}'
     output: reviewThreshold
 
   should-fix:
     control: condition
     needs:
       - threshold
-    if: "{{artifacts.reviewThreshold.matched}} == true"
+    if: '{{artifacts.reviewThreshold.matched}} == true'
     then: branch
     else: done
 
   branch:
     action: git-branch
     with:
-      name: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      name: '{{inputs.branchPrefix}}{{inputs.pr}}'
       force: true
     output: branch
 
@@ -115,7 +115,7 @@ nodes:
       - fix-issues
     with:
       artifact: persistedReviewArtifact
-      severity: "{{inputs.severity}}"
+      severity: '{{inputs.severity}}'
       state: attempted
       disposition: partial
     output: persistedReviewArtifact
@@ -130,15 +130,15 @@ nodes:
     control: condition
     needs:
       - diff
-    if: "{{artifacts.fixDiff.changed}} == true"
+    if: '{{artifacts.fixDiff.changed}} == true'
     then: commit
     else: done
 
   commit:
     action: git-commit
     with:
-      message: "fix: address DRS review issues for PR #{{inputs.pr}}"
-      paths: "."
+      message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
+      paths: '.'
     output: commit
 
   push:
@@ -146,7 +146,7 @@ nodes:
     needs:
       - commit
     with:
-      branch: "{{inputs.branchPrefix}}{{inputs.pr}}"
+      branch: '{{inputs.branchPrefix}}{{inputs.pr}}'
     output: push
 
   create:
@@ -155,12 +155,12 @@ nodes:
       - push
     with:
       platform: github
-      owner: "{{inputs.owner}}"
-      repo: "{{inputs.repo}}"
-      sourceBranch: "{{inputs.branchPrefix}}{{inputs.pr}}"
-      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
-      title: "fix: address DRS review issues for PR #{{inputs.pr}}"
-      draft: "{{inputs.draft}}"
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      sourceBranch: '{{inputs.branchPrefix}}{{inputs.pr}}'
+      targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}'
+      title: 'fix: address DRS review issues for PR #{{inputs.pr}}'
+      draft: '{{inputs.draft}}'
       body: |
         Automated DRS fix stacked on PR #{{inputs.pr}}.
 
@@ -177,12 +177,12 @@ nodes:
       - save-review-artifact
     with:
       platform: github
-      owner: "{{inputs.owner}}"
-      repo: "{{inputs.repo}}"
-      pr: "{{inputs.pr}}"
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      pr: '{{inputs.pr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
-      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
 
@@ -190,7 +190,7 @@ nodes:
     control: condition
     needs:
       - post-fix-status
-    if: "true"
+    if: 'true'
     then: done
     else: done
 

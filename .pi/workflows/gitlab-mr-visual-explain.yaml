@@ -1,18 +1,18 @@
 name: gitlab-mr-visual-explain
 description: Generate a visual HTML explainer artifact for a GitLab merge request
 inputs:
-  project: ""
-  mr: ""
-  outputPath: ".drs/visual-mr-explainer.html"
-  slides: "false"
+  project: ''
+  mr: ''
+  outputPath: '.drs/visual-mr-explainer.html'
+  slides: 'false'
 output: visualExplainer
 nodes:
   change:
     action: change-source
     with:
       type: gitlab-mr
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
     output: change
 
   visual:
@@ -29,5 +29,5 @@ nodes:
 
       DRS change-source context:
       {{artifacts.change}}
-    writes: "{{inputs.outputPath}}"
+    writes: '{{inputs.outputPath}}'
     output: visualExplainer

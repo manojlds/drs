@@ -1,20 +1,20 @@
 name: github-pr-visual-explain
 description: Generate a visual HTML explainer artifact for a GitHub pull request
 inputs:
-  owner: ""
-  repo: ""
-  pr: ""
-  outputPath: ".drs/visual-pr-explainer.html"
-  slides: "false"
+  owner: ''
+  repo: ''
+  pr: ''
+  outputPath: '.drs/visual-pr-explainer.html'
+  slides: 'false'
 output: visualExplainer
 nodes:
   change:
     action: change-source
     with:
       type: github-pr
-      owner: "{{inputs.owner}}"
-      repo: "{{inputs.repo}}"
-      pr: "{{inputs.pr}}"
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      pr: '{{inputs.pr}}'
     output: change
 
   visual:
@@ -31,5 +31,5 @@ nodes:
 
       DRS change-source context:
       {{artifacts.change}}
-    writes: "{{inputs.outputPath}}"
+    writes: '{{inputs.outputPath}}'
     output: visualExplainer

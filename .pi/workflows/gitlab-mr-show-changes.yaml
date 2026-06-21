@@ -1,16 +1,16 @@
 name: gitlab-mr-show-changes
 description: Show the review context for a GitLab merge request
 inputs:
-  project: ""
-  mr: ""
-  file: ""
+  project: ''
+  mr: ''
+  file: ''
 nodes:
   change:
     action: change-source
     with:
       type: gitlab-mr
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
     output: change
 
   context:
@@ -19,5 +19,5 @@ nodes:
       - change
     with:
       source: change
-      file: "{{inputs.file}}"
+      file: '{{inputs.file}}'
     output: reviewContext
