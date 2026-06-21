@@ -245,21 +245,25 @@ nodes:
       source: fixChange
     output: reReview
 
-  re-threshold:
-    action: review-threshold
+  verify-fix:
+    action: verify-fix
     needs:
       - re-review
+      - save-review-artifact
+      - fix-change
     with:
+      artifact: persistedReviewArtifact
       review: reReview
+      fixChange: fixChange
       severity: "{{inputs.fixSeverity}}"
       minIssues: "1"
-    output: reThreshold
+    output: persistedReviewArtifact
 
   fix-loop:
     control: loop
     needs:
-      - re-threshold
-    condition: "{{artifacts.reThreshold.matched}} == true"
+      - verify-fix
+    condition: "{{artifacts.verify-fix.shouldContinue}} == true"
     target: fix-issues
     exit: fix-done
     maxIterations: "{{inputs.fixMaxIterations}}"
@@ -268,7 +272,7 @@ nodes:
   fix-done:
     control: condition
     needs:
-      - re-threshold
+      - verify-fix
     if: "{{inputs.fixMode}} == internal"
     then: post-fix-status-internal
     else: mark-fix-attempted
@@ -276,8 +280,7 @@ nodes:
   post-fix-status-internal:
     action: post-fix-status
     needs:
-      - re-threshold
-      - save-review-artifact
+      - verify-fix
     with:
       platform: github
       owner: "{{inputs.owner}}"

@@ -1561,6 +1561,186 @@ describe('workflow runner', () => {
     });
   });
 
+  it('reconciles fix verification findings and persists updated artifact state', async () => {
+    const projectRoot = createTempDir('drs-workflow-verify-fix-');
+    const resolvedIssue = {
+      severity: 'HIGH',
+      category: 'QUALITY',
+      title: 'Resolved issue',
+      file: 'src/app.ts',
+      line: 10,
+      problem: 'Original problem',
+      solution: 'Original solution',
+      agent: 'unified',
+    };
+    const stillOpenIssue = {
+      severity: 'HIGH',
+      category: 'QUALITY',
+      title: 'Still open issue',
+      file: 'src/app.ts',
+      line: 20,
+      problem: 'Still present',
+      solution: 'Fix it',
+      agent: 'unified',
+    };
+    const regressionIssue = {
+      severity: 'HIGH',
+      category: 'SECURITY',
+      title: 'New regression',
+      file: 'src/app.ts',
+      line: 30,
+      problem: 'Regression problem',
+      solution: 'Undo regression',
+      agent: 'unified',
+    };
+    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) => {
+      const issues = source.staged
+        ? [stillOpenIssue, regressionIssue]
+        : [resolvedIssue, stillOpenIssue];
+      return {
+        issues,
+        summary: {
+          filesReviewed: 1,
+          issuesFound: issues.length,
+          bySeverity: { HIGH: issues.length },
+          byCategory: { QUALITY: issues.length },
+        },
+        filesReviewed: 1,
+      };
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        verifyFix: {
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            artifact: {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            save: {
+              action: 'save-artifact',
+              needs: ['artifact'],
+              with: { kind: 'review', artifact: 'reviewArtifact' },
+              output: 'persistedReviewArtifact',
+            },
+            fixChange: {
+              action: 'change-source',
+              needs: ['save'],
+              with: { type: 'local', staged: true },
+              output: 'fixChange',
+            },
+            reReview: {
+              action: 'review',
+              needs: ['fixChange'],
+              with: { source: 'fixChange' },
+              output: 'reReview',
+            },
+            verify: {
+              action: 'verify-fix',
+              needs: ['reReview'],
+              with: {
+                artifact: 'persistedReviewArtifact',
+                review: 'reReview',
+                fixChange: 'fixChange',
+                severity: 'high',
+              },
+              output: 'persistedReviewArtifact',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'verifyFix', { workingDir: projectRoot });
+    const verified = result.artifacts.verify as {
+      shouldContinue: boolean;
+      actionableOpen: number;
+      payload: {
+        findings: Array<{ state: string; disposition: string; issue: { title: string } }>;
+      };
+    };
+
+    expect(verified.shouldContinue).toBe(true);
+    expect(verified.actionableOpen).toBe(2);
+    expect(verified.payload.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ state: 'resolved', disposition: 'resolved' }),
+        expect.objectContaining({ state: 'open', disposition: 'still_open' }),
+        expect.objectContaining({ state: 'open', disposition: 'regression' }),
+      ])
+    );
+    expect(result.artifacts.persistedReviewArtifact).toMatchObject({ shouldContinue: true });
+  });
+
+  it('marks fix verification converged when re-review has no matching findings', async () => {
+    const projectRoot = createTempDir('drs-workflow-verify-fix-clean-');
+    const issue = createMockReviewIssue('Fixed issue');
+    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
+      source.staged ? createMockReviewResult([]) : createMockReviewResult([issue])
+    );
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        verifyClean: {
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            artifact: {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            save: {
+              action: 'save-artifact',
+              needs: ['artifact'],
+              with: { kind: 'review', artifact: 'reviewArtifact' },
+              output: 'persistedReviewArtifact',
+            },
+            fixChange: {
+              action: 'change-source',
+              needs: ['save'],
+              with: { type: 'local', staged: true },
+              output: 'fixChange',
+            },
+            reReview: {
+              action: 'review',
+              needs: ['fixChange'],
+              with: { source: 'fixChange' },
+              output: 'reReview',
+            },
+            verify: {
+              action: 'verify-fix',
+              needs: ['reReview'],
+              with: { artifact: 'persistedReviewArtifact', review: 'reReview', severity: 'high' },
+              output: 'persistedReviewArtifact',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'verifyClean', { workingDir: projectRoot });
+
+    expect(result.artifacts.verify).toMatchObject({ shouldContinue: false, actionableOpen: 0 });
+  });
+
   it('checks whether a workflow artifact exists', async () => {
     const projectRoot = createTempDir('drs-workflow-artifact-exists-');
     const config = {

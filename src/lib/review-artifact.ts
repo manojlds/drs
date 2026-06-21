@@ -9,6 +9,7 @@ export type ReviewFindingDisposition =
   | 'uncertain'
   | 'pre_existing'
   | 'partial'
+  | 'still_open'
   | 'regression'
   | 'resolved';
 export type ReviewFindingSource = 'agent' | 'manual' | 'external';
@@ -191,6 +192,7 @@ export function getReviewArtifactStatus(artifact: ReviewArtifactPayload): Review
     uncertain: 0,
     pre_existing: 0,
     partial: 0,
+    still_open: 0,
     regression: 0,
     resolved: 0,
   };
