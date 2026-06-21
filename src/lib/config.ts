@@ -64,7 +64,8 @@ export interface WorkflowNodeConfig {
     | 'describe'
     | 'code-quality-report'
     | 'post-comment'
-    | 'post-review-comments';
+    | 'post-review-comments'
+    | 'post-fix-status';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
@@ -82,7 +83,7 @@ export interface WorkflowNodeConfig {
   /** Target node when a loop exits. */
   exit?: string;
   /** Maximum loop iterations before failing or exiting. */
-  maxIterations?: number;
+  maxIterations?: string | number;
   /** Behavior when maxIterations is reached. Defaults to fail. */
   onMaxIterations?: 'fail' | 'exit';
   /** Value expression for switch control nodes. */

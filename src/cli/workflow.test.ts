@@ -2760,11 +2760,66 @@ describe('workflow runner', () => {
       expect.objectContaining({ prompt: 'done clean' })
     );
     expect(result.loop.repeat).toMatchObject({
-      iteration: 1,
+      iteration: 2,
       maxIterations: 3,
       lastDecision: 'loop',
     });
     expect(result.artifacts.review).toBe('clean');
+  });
+
+  it('counts maxIterations as total target executions including the initial pass', async () => {
+    const reviewOutputs = ['issues', 'issues', 'clean'];
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      if (agent === 'task/review') {
+        return createMockAgentResult(agent, reviewOutputs.shift() ?? 'clean');
+      }
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        reviewFix: {
+          nodes: {
+            review: { agent: 'task/review', input: 'review', output: 'review' },
+            shouldFix: {
+              control: 'condition',
+              needs: ['review'],
+              if: '{{artifacts.review}} != clean',
+              then: 'fix',
+              else: 'done',
+            },
+            fix: { agent: 'task/fix', input: 'fix {{artifacts.review}}' },
+            repeat: {
+              control: 'loop',
+              needs: ['fix'],
+              condition: '{{artifacts.review}} != clean',
+              target: 'review',
+              exit: 'done',
+              maxIterations: 2,
+              onMaxIterations: 'exit',
+            },
+            done: { agent: 'task/done', input: 'done {{artifacts.review}}' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'reviewFix');
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review',
+      'task/fix',
+      'task/review',
+      'task/fix',
+      'task/done',
+    ]);
+    expect(result.loop.repeat).toMatchObject({
+      iteration: 2,
+      maxIterations: 2,
+      lastDecision: 'exit',
+    });
+    expect(result.artifacts.review).toBe('issues');
   });
 
   it('uses explicit workflow output when a control end node is last', async () => {
@@ -2970,5 +3025,241 @@ describe('workflow runner', () => {
     expect(() => showWorkflow(baseConfig, 'missing', { workingDir: process.cwd() })).toThrow(
       'Unknown workflow "missing".'
     );
+  });
+
+  it('posts a fix-status comment comparing original findings against re-review', async () => {
+    const projectRoot = createTempDir('drs-workflow-fix-status-');
+    mocks.executeReview.mockImplementation(
+      async (_config, source: { files: string[]; staged?: boolean }) => {
+        if (source.staged) {
+          return {
+            issues: [
+              {
+                severity: 'MEDIUM',
+                category: 'QUALITY',
+                title: 'New regression in fixed file',
+                file: 'src/cli/workflow.ts',
+                line: 570,
+                problem: 'New issue introduced by the fix',
+                solution: 'Avoid introducing regressions',
+                agent: 'unified',
+              },
+            ],
+            summary: {
+              filesReviewed: 1,
+              issuesFound: 1,
+              bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 0 },
+              byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+            },
+            filesReviewed: 1,
+          };
+        }
+        return {
+          issues: [
+            {
+              severity: 'HIGH',
+              category: 'QUALITY',
+              title: 'Truncation corrupts state',
+              file: 'src/cli/workflow.ts',
+              line: 566,
+              problem: 'Truncation',
+              solution: 'Use file size guard',
+              agent: 'unified',
+            },
+          ],
+          summary: {
+            filesReviewed: 1,
+            issuesFound: 1,
+            bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+            byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+          },
+          filesReviewed: 1,
+        };
+      }
+    );
+    mocks.git.diff.mockResolvedValue('diff --git a/src/cli/workflow.ts b/src/cli/workflow.ts');
+    mocks.getFilesWithDiffs.mockReturnValue([
+      {
+        filename: 'src/cli/workflow.ts',
+        patch:
+          '@@ -100 +100 @@\n-old unrelated\n+new unrelated\n@@ -560,12 +560,13 @@\n context\n-old\n+new\n+regression',
+      },
+    ]);
+    mocks.githubAdapter.getComments.mockResolvedValue([]);
+    mocks.githubAdapter.createComment.mockResolvedValue(undefined);
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        fixStatus: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            'review-artifact': {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            'save-review-artifact': {
+              action: 'save-artifact',
+              needs: ['review-artifact'],
+              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
+              output: 'persistedReviewArtifact',
+            },
+            'fix-change': {
+              action: 'change-source',
+              with: { type: 'local', staged: true },
+              output: 'fixChange',
+            },
+            're-review': {
+              action: 'review',
+              needs: ['fix-change'],
+              with: { source: 'fixChange' },
+              output: 'reReview',
+            },
+            'post-status': {
+              action: 'post-fix-status',
+              needs: ['re-review', 'save-review-artifact'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: '7',
+                source: 'change',
+                reviewArtifact: 'persistedReviewArtifact',
+                fixReview: 'reReview',
+                fixChange: 'fixChange',
+                marker: 'drs-fix-status',
+              },
+              output: 'fixStatus',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'fixStatus', { workingDir: projectRoot });
+
+    expect(mocks.githubAdapter.createComment).toHaveBeenCalledTimes(1);
+    const commentBody = mocks.githubAdapter.createComment.mock.calls[0]?.[2] as string;
+    expect(commentBody).toContain('drs-fix-status');
+    expect(commentBody).toContain('Fix Status');
+    expect(commentBody).toContain('Truncation corrupts state');
+    expect(commentBody).toContain('Resolved');
+    expect(commentBody).toContain('New regression in fixed file');
+    expect(commentBody).toContain('Regression');
+    expect(commentBody).toContain('@@ -560,12 +560,13 @@');
+    expect(commentBody).not.toContain('@@ -100 +100 @@');
+    expect(result.artifacts.fixStatus).toMatchObject({
+      resolved: 1,
+      regression: 1,
+      stillOpen: 0,
+    });
+  });
+
+  it('posts fix-status with attempted disposition when no re-review is provided', async () => {
+    const projectRoot = createTempDir('drs-workflow-fix-status-attempted-');
+    mocks.executeReview.mockResolvedValue({
+      issues: [
+        {
+          severity: 'HIGH',
+          category: 'QUALITY',
+          title: 'Shared activeNodeId race',
+          file: 'src/cli/workflow.ts',
+          line: 3478,
+          problem: 'Race condition',
+          solution: 'Propagate with rejection',
+          agent: 'unified',
+        },
+      ],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+    });
+    mocks.git.diff.mockResolvedValue('diff --git a/src/cli/workflow.ts b/src/cli/workflow.ts');
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/cli/workflow.ts', patch: '@@ -3478 +3478 @@\n-old\n+new' },
+    ]);
+    mocks.githubAdapter.getComments.mockResolvedValue([]);
+    mocks.githubAdapter.createComment.mockResolvedValue(undefined);
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        fixStatusAttempted: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            'review-artifact': {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            'save-review-artifact': {
+              action: 'save-artifact',
+              needs: ['review-artifact'],
+              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
+              output: 'persistedReviewArtifact',
+            },
+            'fix-change': {
+              action: 'change-source',
+              with: { type: 'local', staged: true },
+              output: 'fixChange',
+            },
+            'post-status': {
+              action: 'post-fix-status',
+              needs: ['save-review-artifact'],
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: '7',
+                source: 'change',
+                reviewArtifact: 'persistedReviewArtifact',
+                fixChange: 'fixChange',
+                stackedPrUrl: 'https://github.com/octocat/hello-world/pull/99',
+                marker: 'drs-fix-status',
+              },
+              output: 'fixStatus',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'fixStatusAttempted', { workingDir: projectRoot });
+
+    const commentBody = mocks.githubAdapter.createComment.mock.calls[0]?.[2] as string;
+    expect(commentBody).toContain('Attempted');
+    expect(commentBody).toContain('Shared activeNodeId race');
+    expect(commentBody).toContain('https://github.com/octocat/hello-world/pull/99');
+    expect(result.artifacts.fixStatus).toMatchObject({
+      attempted: 1,
+      resolved: 0,
+    });
   });
 });
