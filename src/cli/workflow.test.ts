@@ -2352,6 +2352,49 @@ describe('workflow runner', () => {
     expect(mocks.git.raw).not.toHaveBeenCalledWith(['push', 'origin', 'HEAD:feature']);
   });
 
+  it('exits packaged GitHub internal fix loop after one diverging iteration and skips commit and push', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-fix-one-iter-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('One-iter divergent issue');
+    mocks.executeUnifiedReview.mockResolvedValue(createMockReviewResult([issue]));
+    mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs: {
+        owner: 'octocat',
+        repo: 'hello-world',
+        pr: '7',
+        fix: 'true',
+        fixMode: 'internal',
+        fixSeverity: 'high',
+        fixMaxIterations: '1',
+      },
+      workingDir: projectRoot,
+    });
+
+    // The loop ran exactly one fixer iter, hit maxIterations, and the cascade's
+    // should-done-internal gate (verify-fix.shouldContinue == false?) is false
+    // because the issue is still open. With the cascade-nesting fix the gate
+    // routes to done, so neither commit nor push runs.
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(result.loop['fix-loop']).toMatchObject({
+      iteration: 1,
+      maxIterations: 1,
+      lastDecision: 'exit',
+    });
+    expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
+    expect(mocks.git.commit).not.toHaveBeenCalledWith(
+      'fix: address DRS review issues for PR #7',
+      ['.']
+    );
+    expect(mocks.git.raw).not.toHaveBeenCalledWith(['push', 'origin', 'HEAD:feature']);
+    expect(result.artifacts.fixStatus).toMatchObject({
+      resolved: 0,
+      stillOpen: 1,
+      regression: 0,
+    });
+  });
+
   it('resumes packaged GitHub internal fix flow from checkpoint without re-running completed fixer work', async () => {
     const projectRoot = createTempDir('drs-workflow-github-fix-resume-');
     const config = loadConfig(projectRoot);
