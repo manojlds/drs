@@ -1,14 +1,14 @@
 name: local-review
 description: Review local git diff
 inputs:
-  staged: "false"
+  staged: 'false'
 output: review
 nodes:
   change:
     action: change-source
     with:
       type: local
-      staged: "{{inputs.staged}}"
+      staged: '{{inputs.staged}}'
     output: change
 
   review:

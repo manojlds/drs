@@ -17,10 +17,13 @@
     "test:e2e": "DRS_E2E_LIVE=1 vitest run src/cli/review-local.live.e2e.test.ts",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
-    "format": "prettier --write 'src/**/*.{ts,json}'",
-    "format:check": "prettier --check 'src/**/*.{ts,json}'",
+    "format": "prettier --write 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}'",
+    "format:check": "prettier --check 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}'",
     "check:all": "npm run format && npm run lint:fix && npm run build && npm test && npm run format:check && npm run lint",
     "type-check": "tsc --noEmit",
+    "prek:install": "prek install",
+    "prek:run": "prek run --all-files",
+    "prek:uninstall": "prek uninstall",
     "prepublishOnly": "npm run build"
   },
   "files": [

@@ -1,0 +1,32 @@
+# .pre-commit-config.yaml
+#
+# Pre-commit hook for the DRS project. We use `prek` (a Rust
+# drop-in replacement for pre-commit from https://github.com/jdx/prek);
+# this file uses the same schema that the upstream Python pre-commit
+# framework reads, so either tool works.
+#
+# Install the hook once on a fresh clone:   prek install
+# Run all hooks against the whole tree:     prek run --all-files
+# Run hooks against staged files only:      prek run
+# Bypass hooks for a single commit:         git commit --no-verify
+#
+# The hook is invoked through `language: system`, which shells out
+# via `/bin/sh`. The entry uses `npx` to resolve to the project's
+# locally pinned `prettier` (devDependency, currently ^3.8.4) so the
+# hook and CI format-check always agree on configuration. This means
+# contributors need a working `npx` (i.e. Node 22.19+ on PATH); the
+# project's `engines.node` already pins this.
+
+repos:
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (project)
+        entry: npx prettier --write
+        language: system
+        pass_filenames: true
+        # Scope to project source surfaces so `.pre-commit-config.yaml`
+        # itself is not reformatted on every install. Mirrors the CI
+        # `format:check` step (`src/**/*.{ts,json}`) and extends to the
+        # workflow YAMLs under `.pi/`.
+        files: '^(src/|\.pi/).*\.(ts|json|ya?ml)$|^package\.json$'

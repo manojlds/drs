@@ -1,22 +1,22 @@
 name: gitlab-mr-review
 description: Review a GitLab merge request, optionally posting a description, DRS comments, Code Quality, and a visual HTML explainer
 inputs:
-  project: ""
-  mr: ""
-  describe: "false"
-  post: "false"
-  visual: "false"
-  fix: "false"
-  fixMode: "stacked"
-  fixSeverity: "high"
-  fixMinIssues: "1"
-  fixBranchPrefix: "drs-fix/mr-"
-  fixCreateChangeRequest: "false"
-  fixMaxIterations: "3"
-  allowStackedSource: "false"
-  fixDraft: "false"
-  visualOutputPath: ".drs/visual-mr-explainer.html"
-  codeQuality: "false"
+  project: ''
+  mr: ''
+  describe: 'false'
+  post: 'false'
+  visual: 'false'
+  fix: 'false'
+  fixMode: 'stacked'
+  fixSeverity: 'high'
+  fixMinIssues: '1'
+  fixBranchPrefix: 'drs-fix/mr-'
+  fixCreateChangeRequest: 'false'
+  fixMaxIterations: '3'
+  allowStackedSource: 'false'
+  fixDraft: 'false'
+  visualOutputPath: '.drs/visual-mr-explainer.html'
+  codeQuality: 'false'
   codeQualityReport: gl-code-quality-report.json
 output: review
 nodes:
@@ -24,15 +24,15 @@ nodes:
     action: change-source
     with:
       type: gitlab-mr
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
     output: change
 
   should-describe:
     control: condition
     needs:
       - change
-    if: "{{inputs.describe}} == true"
+    if: '{{inputs.describe}} == true'
     then: describe
     else: review
 
@@ -49,7 +49,7 @@ nodes:
     control: condition
     needs:
       - describe
-    if: "true"
+    if: 'true'
     then: review
     else: review
 
@@ -84,7 +84,7 @@ nodes:
     control: condition
     needs:
       - save-review-artifact
-    if: "{{inputs.visual}} == true"
+    if: '{{inputs.visual}} == true'
     then: visual
     else: should-post
 
@@ -106,14 +106,14 @@ nodes:
 
       DRS review result:
       {{artifacts.review}}
-    writes: "{{inputs.visualOutputPath}}"
+    writes: '{{inputs.visualOutputPath}}'
     output: visualExplainer
 
   continue-review:
     control: condition
     needs:
       - visual
-    if: "true"
+    if: 'true'
     then: should-post
     else: should-post
 
@@ -121,7 +121,7 @@ nodes:
     control: condition
     needs:
       - review
-    if: "{{inputs.post}} == true"
+    if: '{{inputs.post}} == true'
     then: post-comments
     else: should-code-quality
 
@@ -138,7 +138,7 @@ nodes:
     control: condition
     needs:
       - post-comments
-    if: "true"
+    if: 'true'
     then: should-code-quality
     else: should-code-quality
 
@@ -146,7 +146,7 @@ nodes:
     control: condition
     needs:
       - review
-    if: "{{inputs.codeQuality}} == true"
+    if: '{{inputs.codeQuality}} == true'
     then: code-quality
     else: should-fix-enabled
 
@@ -156,14 +156,14 @@ nodes:
       - review
     with:
       review: review
-      path: "{{inputs.codeQualityReport}}"
+      path: '{{inputs.codeQualityReport}}'
     output: codeQualityReport
 
   continue-fix:
     control: condition
     needs:
       - code-quality
-    if: "true"
+    if: 'true'
     then: should-fix-enabled
     else: should-fix-enabled
 
@@ -171,7 +171,7 @@ nodes:
     control: condition
     needs:
       - save-review-artifact
-    if: "{{inputs.fix}} == true"
+    if: '{{inputs.fix}} == true'
     then: stack-guard
     else: done
 
@@ -181,14 +181,14 @@ nodes:
       - change
     with:
       source: change
-      allowStackedSource: "{{inputs.allowStackedSource}}"
+      allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
   should-stack:
     control: condition
     needs:
       - stack-guard
-    if: "{{artifacts.stackGuard.allowed}} == true"
+    if: '{{artifacts.stackGuard.allowed}} == true'
     then: fix-threshold
     else: done
 
@@ -198,22 +198,22 @@ nodes:
       - review
     with:
       review: review
-      severity: "{{inputs.fixSeverity}}"
-      minIssues: "{{inputs.fixMinIssues}}"
+      severity: '{{inputs.fixSeverity}}'
+      minIssues: '{{inputs.fixMinIssues}}'
     output: reviewThreshold
 
   should-fix:
     control: condition
     needs:
       - fix-threshold
-    if: "{{artifacts.reviewThreshold.matched}} == true"
+    if: '{{artifacts.reviewThreshold.matched}} == true'
     then: fix-branch
     else: done
 
   fix-branch:
     action: git-branch
     with:
-      name: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
+      name: '{{inputs.fixBranchPrefix}}{{inputs.mr}}'
       force: true
     output: fixBranch
 
@@ -241,7 +241,7 @@ nodes:
     control: condition
     needs:
       - fix-issues
-    if: "{{inputs.fixMode}} == internal"
+    if: '{{inputs.fixMode}} == internal'
     then: stage-fixes
     else: mark-fix-attempted
 
@@ -250,7 +250,7 @@ nodes:
     needs:
       - fix-issues
     with:
-      paths: "."
+      paths: '.'
     output: stagedFixes
 
   fix-change:
@@ -280,25 +280,25 @@ nodes:
       artifact: persistedReviewArtifact
       review: reReview
       fixChange: fixChange
-      severity: "{{inputs.fixSeverity}}"
-      minIssues: "1"
+      severity: '{{inputs.fixSeverity}}'
+      minIssues: '1'
     output: persistedReviewArtifact
 
   fix-loop:
     control: loop
     needs:
       - verify-fix
-    condition: "{{artifacts.verify-fix.shouldContinue}} == true"
+    condition: '{{artifacts.verify-fix.shouldContinue}} == true'
     target: fix-issues
     exit: fix-done
-    maxIterations: "{{inputs.fixMaxIterations}}"
+    maxIterations: '{{inputs.fixMaxIterations}}'
     onMaxIterations: exit
 
   fix-done:
     control: condition
     needs:
       - verify-fix
-    if: "{{inputs.fixMode}} == internal"
+    if: '{{inputs.fixMode}} == internal'
     then: post-fix-status-internal
     else: mark-fix-attempted
 
@@ -308,8 +308,8 @@ nodes:
       - verify-fix
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
       fixReview: reReview
@@ -321,7 +321,7 @@ nodes:
     control: condition
     needs:
       - post-fix-status-internal
-    if: "{{artifacts.verify-fix.shouldContinue}} == false"
+    if: '{{artifacts.verify-fix.shouldContinue}} == false'
     then: should-push-internal-fix
     else: done
 
@@ -329,7 +329,7 @@ nodes:
     control: condition
     needs:
       - should-done-internal
-    if: "{{artifacts.verify-fix.fixFiles}} > 0"
+    if: '{{artifacts.verify-fix.fixFiles}} > 0'
     then: commit-internal-fix
     else: done
 
@@ -338,8 +338,8 @@ nodes:
     needs:
       - should-push-internal-fix
     with:
-      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
-      paths: "."
+      message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
+      paths: '.'
     output: internalFixCommit
 
   push-internal-fix:
@@ -348,7 +348,7 @@ nodes:
       - commit-internal-fix
     with:
       branch: HEAD
-      remoteBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
+      remoteBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}'
       setUpstream: false
     output: internalFixPush
 
@@ -356,7 +356,7 @@ nodes:
     control: condition
     needs:
       - push-internal-fix
-    if: "true"
+    if: 'true'
     then: done
     else: done
 
@@ -366,7 +366,7 @@ nodes:
       - fix-issues
     with:
       artifact: persistedReviewArtifact
-      severity: "{{inputs.fixSeverity}}"
+      severity: '{{inputs.fixSeverity}}'
       state: attempted
       disposition: partial
     output: persistedReviewArtifact
@@ -381,7 +381,7 @@ nodes:
     control: condition
     needs:
       - fix-diff
-    if: "{{artifacts.fixDiff.changed}} == true"
+    if: '{{artifacts.fixDiff.changed}} == true'
     then: should-create-fix-change-request
     else: done
 
@@ -389,7 +389,7 @@ nodes:
     control: condition
     needs:
       - should-create-fix-mr
-    if: "{{inputs.fixCreateChangeRequest}} == true"
+    if: '{{inputs.fixCreateChangeRequest}} == true'
     then: fix-commit
     else: done
 
@@ -398,8 +398,8 @@ nodes:
     needs:
       - should-create-fix-change-request
     with:
-      message: "fix: address DRS review issues for MR !{{inputs.mr}}"
-      paths: "."
+      message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
+      paths: '.'
     output: fixCommit
 
   fix-push:
@@ -407,7 +407,7 @@ nodes:
     needs:
       - fix-commit
     with:
-      branch: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
+      branch: '{{inputs.fixBranchPrefix}}{{inputs.mr}}'
     output: fixPush
 
   create-fix-mr:
@@ -416,11 +416,11 @@ nodes:
       - fix-push
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      sourceBranch: "{{inputs.fixBranchPrefix}}{{inputs.mr}}"
-      targetBranch: "{{artifacts.change.context.pullRequest.sourceBranch}}"
-      title: "fix: address DRS review issues for MR !{{inputs.mr}}"
-      draft: "{{inputs.fixDraft}}"
+      project: '{{inputs.project}}'
+      sourceBranch: '{{inputs.fixBranchPrefix}}{{inputs.mr}}'
+      targetBranch: '{{artifacts.change.context.pullRequest.sourceBranch}}'
+      title: 'fix: address DRS review issues for MR !{{inputs.mr}}'
+      draft: '{{inputs.fixDraft}}'
       body: |
         Automated DRS fix stacked on MR !{{inputs.mr}} from the main gitlab-mr-review workflow.
 
@@ -437,8 +437,8 @@ nodes:
       - create-fix-mr
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
       marker: drs-stacked-fix-notification
     input: |
       🔧 DRS created a stacked fix MR: {{artifacts.changeRequest.url}}
@@ -454,11 +454,11 @@ nodes:
       - save-review-artifact
     with:
       platform: gitlab
-      project: "{{inputs.project}}"
-      mr: "{{inputs.mr}}"
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
-      stackedPrUrl: "{{artifacts.changeRequest.url}}"
+      stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
 
@@ -466,7 +466,7 @@ nodes:
     control: condition
     needs:
       - post-fix-status-stacked
-    if: "true"
+    if: 'true'
     then: done
     else: done
 

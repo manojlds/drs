@@ -1,7 +1,7 @@
 name: local-fix-review-issues
 description: Fix actionable issues from a saved DRS review result
 inputs:
-  review: ""
+  review: ''
 nodes:
   change:
     action: change-source

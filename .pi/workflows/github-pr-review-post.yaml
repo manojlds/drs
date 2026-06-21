@@ -1,18 +1,18 @@
 name: github-pr-review-post
 description: Describe and review a GitHub pull request, posting the description and DRS comments
 inputs:
-  owner: ""
-  repo: ""
-  pr: ""
+  owner: ''
+  repo: ''
+  pr: ''
 output: review
 nodes:
   change:
     action: change-source
     with:
       type: github-pr
-      owner: "{{inputs.owner}}"
-      repo: "{{inputs.repo}}"
-      pr: "{{inputs.pr}}"
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      pr: '{{inputs.pr}}'
     output: change
 
   describe:

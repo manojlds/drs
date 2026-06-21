@@ -1,15 +1,15 @@
 name: tag-changelog-update
 description: Update CHANGELOG.md from changes between two git refs or tags
 inputs:
-  from: ""
-  to: ""
+  from: ''
+  to: ''
 nodes:
   release-change:
     action: change-source
     with:
       type: git-range
-      from: "{{inputs.from}}"
-      to: "{{inputs.to}}"
+      from: '{{inputs.from}}'
+      to: '{{inputs.to}}'
     output: change
 
   update-changelog:
