@@ -304,7 +304,7 @@ nodes:
   should-push-internal-fix:
     control: condition
     needs:
-      - post-fix-status-internal
+      - should-done-internal
     if: "{{artifacts.verify-fix.fixFiles}} > 0"
     then: commit-internal-fix
     else: done
@@ -312,7 +312,7 @@ nodes:
   commit-internal-fix:
     action: git-commit
     needs:
-      - post-fix-status-internal
+      - should-push-internal-fix
     with:
       message: "fix: address DRS review issues for PR #{{inputs.pr}}"
       paths: "."
@@ -364,13 +364,15 @@ nodes:
   should-create-fix-change-request:
     control: condition
     needs:
-      - fix-diff
+      - should-create-fix-pr
     if: "{{inputs.fixCreateChangeRequest}} == true"
     then: fix-commit
     else: done
 
   fix-commit:
     action: git-commit
+    needs:
+      - should-create-fix-change-request
     with:
       message: "fix: address DRS review issues for PR #{{inputs.pr}}"
       paths: "."
