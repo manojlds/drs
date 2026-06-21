@@ -3473,7 +3473,7 @@ function runControlWorkflowNode(
     const maxIterations = configuredMaxIterations;
 
     const shouldLoop = evaluateWorkflowExpression(expression, context);
-    const current = context.loop[nodeId] ?? { iteration: 0, maxIterations };
+    const current = context.loop[nodeId] ?? { iteration: 1, maxIterations };
     let nextNodeId = node.exit;
     let decision: 'loop' | 'exit' = 'exit';
 

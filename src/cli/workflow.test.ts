@@ -2760,11 +2760,66 @@ describe('workflow runner', () => {
       expect.objectContaining({ prompt: 'done clean' })
     );
     expect(result.loop.repeat).toMatchObject({
-      iteration: 1,
+      iteration: 2,
       maxIterations: 3,
       lastDecision: 'loop',
     });
     expect(result.artifacts.review).toBe('clean');
+  });
+
+  it('counts maxIterations as total target executions including the initial pass', async () => {
+    const reviewOutputs = ['issues', 'issues', 'clean'];
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      if (agent === 'task/review') {
+        return createMockAgentResult(agent, reviewOutputs.shift() ?? 'clean');
+      }
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        reviewFix: {
+          nodes: {
+            review: { agent: 'task/review', input: 'review', output: 'review' },
+            shouldFix: {
+              control: 'condition',
+              needs: ['review'],
+              if: '{{artifacts.review}} != clean',
+              then: 'fix',
+              else: 'done',
+            },
+            fix: { agent: 'task/fix', input: 'fix {{artifacts.review}}' },
+            repeat: {
+              control: 'loop',
+              needs: ['fix'],
+              condition: '{{artifacts.review}} != clean',
+              target: 'review',
+              exit: 'done',
+              maxIterations: 2,
+              onMaxIterations: 'exit',
+            },
+            done: { agent: 'task/done', input: 'done {{artifacts.review}}' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'reviewFix');
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review',
+      'task/fix',
+      'task/review',
+      'task/fix',
+      'task/done',
+    ]);
+    expect(result.loop.repeat).toMatchObject({
+      iteration: 2,
+      maxIterations: 2,
+      lastDecision: 'exit',
+    });
+    expect(result.artifacts.review).toBe('issues');
   });
 
   it('uses explicit workflow output when a control end node is last', async () => {
