@@ -53,7 +53,6 @@ export interface WorkflowNodeConfig {
     | 'review-artifact-status'
     | 'review-artifact-add-finding'
     | 'review-artifact-update-findings'
-    | 'reconcile-review-findings'
     | 'verify-fix'
     | 'review-artifact-promote-finding'
     | 'review-artifact-resolve-finding'
