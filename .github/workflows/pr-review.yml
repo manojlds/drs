@@ -46,7 +46,7 @@ jobs:
   # Auto-review for trusted contributors (repository members/collaborators)
   review-trusted:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: verify-contributor
     if: needs.verify-contributor.outputs.is-trusted == 'true'
     permissions:
