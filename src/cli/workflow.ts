@@ -35,7 +35,7 @@ import type {
 } from '../lib/platform-client.js';
 import type { ReviewIssue } from '../lib/comment-formatter.js';
 import { postReviewComments } from '../lib/comment-poster.js';
-import { findExistingCommentById } from '../lib/comment-manager.js';
+import { findExistingCommentById, createIssueFingerprint } from '../lib/comment-manager.js';
 import { removeErrorComment } from '../lib/error-comment-poster.js';
 import { runDescribeIfEnabled } from '../lib/description-executor.js';
 import type { Description } from '../lib/description-formatter.js';
@@ -72,6 +72,7 @@ import {
   isReviewArtifactPayload,
   updateReviewArtifactFindings,
   type ReviewFindingDisposition,
+  type ReviewFinding,
   type ReviewFindingSource,
   type ReviewFindingState,
   type ReviewArtifactPayload,
@@ -1034,6 +1035,16 @@ async function runActionWorkflowNode(
   if (node.action === 'post-review-comments') {
     return runPostReviewCommentsWorkflowNode(
       config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
+  }
+  if (node.action === 'post-fix-status') {
+    return runPostFixStatusWorkflowNode(
       nodeId,
       node,
       options,
@@ -2728,6 +2739,254 @@ async function runPostReviewCommentsWorkflowNode(
       projectId: target.projectId,
       prNumber: target.prNumber,
       issues: reviewResult.issues.length,
+    },
+  };
+}
+
+interface FixFindingStatus {
+  finding: ReviewFinding;
+  disposition: 'resolved' | 'partial' | 'still-open' | 'regression' | 'attempted';
+  diffSnippet?: string;
+}
+
+function matchFindings(
+  originalFindings: ReviewFinding[],
+  reReviewIssues: ReviewIssue[]
+): Map<string, ReviewIssue> {
+  const matched = new Map<string, ReviewIssue>();
+  for (const finding of originalFindings) {
+    const exact = reReviewIssues.find(
+      (issue) => createIssueFingerprint(issue) === finding.fingerprint
+    );
+    if (exact) {
+      matched.set(finding.id, exact);
+      continue;
+    }
+    const nearby = reReviewIssues.find(
+      (issue) =>
+        issue.file === finding.issue.file &&
+        issue.category === finding.issue.category &&
+        issue.title === finding.issue.title &&
+        Math.abs((issue.line ?? 0) - (finding.issue.line ?? 0)) <= 10
+    );
+    if (nearby) {
+      matched.set(finding.id, nearby);
+    }
+  }
+  return matched;
+}
+
+function extractDiffSnippet(
+  fixChange: ReviewSource | undefined,
+  filePath: string,
+  line?: number
+): string | undefined {
+  if (!fixChange?.filesWithDiffs) {
+    return undefined;
+  }
+  const fileWithDiff = fixChange.filesWithDiffs.find((f) => f.filename === filePath);
+  if (!fileWithDiff?.patch) {
+    return undefined;
+  }
+  const lines = fileWithDiff.patch.split('\n');
+  if (!line) {
+    return lines.slice(0, 15).join('\n');
+  }
+  const hunkStart = lines.findIndex((l, i) => i > 0 && l.startsWith('@@'));
+  const contextStart = hunkStart >= 0 ? hunkStart + 1 : 0;
+  const window = 5;
+  const start = Math.max(contextStart, contextStart + line - window);
+  return lines.slice(start, start + window * 2 + 5).join('\n');
+}
+
+function formatFixStatusComment(statuses: FixFindingStatus[], stackedPrUrl?: string): string {
+  const lines: string[] = ['## Fix Status', ''];
+
+  if (statuses.length === 0) {
+    lines.push('No findings to report.');
+    return lines.join('\n');
+  }
+
+  lines.push('| # | Severity | File | Issue | Status |');
+  lines.push('|---|----------|------|-------|--------|');
+  for (let i = 0; i < statuses.length; i++) {
+    const s = statuses[i];
+    const statusIcon =
+      s.disposition === 'resolved'
+        ? '✅ Resolved'
+        : s.disposition === 'partial'
+          ? '🟡 Partial'
+          : s.disposition === 'regression'
+            ? '🔴 Regression'
+            : s.disposition === 'attempted'
+              ? '🔧 Attempted'
+              : '⚪ Still Open';
+    const file = `${s.finding.issue.file}${s.finding.issue.line ? `:${s.finding.issue.line}` : ''}`;
+    lines.push(
+      `| ${i + 1} | ${s.finding.issue.severity} | ${file} | ${s.finding.issue.title} | ${statusIcon} |`
+    );
+  }
+
+  const resolved = statuses.filter((s) => s.disposition === 'resolved' && s.diffSnippet);
+  if (resolved.length > 0) {
+    lines.push('');
+    lines.push('### Fix Details');
+    for (let i = 0; i < statuses.length; i++) {
+      const s = statuses[i];
+      if (s.disposition === 'resolved' && s.diffSnippet) {
+        lines.push('');
+        lines.push(`**#${i + 1} — ${s.finding.issue.title} (${s.disposition})**`);
+        lines.push('```diff');
+        lines.push(s.diffSnippet);
+        lines.push('```');
+      }
+    }
+  }
+
+  if (stackedPrUrl) {
+    lines.push('');
+    lines.push(`Stacked fix PR: ${stackedPrUrl}`);
+  }
+
+  return lines.join('\n');
+}
+
+async function runPostFixStatusWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext,
+  executionContext: WorkflowExecutionContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = isReviewSource(context.artifacts[sourceArtifact])
+    ? context.artifacts[sourceArtifact]
+    : undefined;
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
+
+  const reviewArtifactName =
+    getStringActionOption(node, 'reviewArtifact', context) ?? 'reviewArtifact';
+  const reviewArtifactValue = context.artifacts[reviewArtifactName];
+  let artifactPayload: ReviewArtifactPayload | undefined;
+  if (isReviewArtifactPayload(reviewArtifactValue)) {
+    artifactPayload = reviewArtifactValue;
+  } else if (
+    reviewArtifactValue &&
+    typeof reviewArtifactValue === 'object' &&
+    'payload' in reviewArtifactValue
+  ) {
+    const payload = reviewArtifactValue.payload;
+    if (isReviewArtifactPayload(payload)) {
+      artifactPayload = payload;
+    }
+  }
+  if (!artifactPayload) {
+    throw new Error(
+      `Workflow post-fix-status node "${nodeId}" needs a review artifact (with.reviewArtifact).`
+    );
+  }
+
+  const fixReviewName = getStringActionOption(node, 'fixReview', context);
+  const fixReviewResult = fixReviewName ? context.artifacts[fixReviewName] : undefined;
+  const hasReReview = isReviewResult(fixReviewResult);
+
+  const fixChangeName = getStringActionOption(node, 'fixChange', context);
+  const fixChange = fixChangeName ? context.artifacts[fixChangeName] : undefined;
+  const fixSource = isReviewSource(fixChange) ? fixChange : undefined;
+
+  const stackedPrUrl = getStringActionOption(node, 'stackedPrUrl', context);
+  const marker = getStringActionOption(node, 'marker', context)?.trim() ?? 'drs-fix-status';
+
+  const originalFindings = artifactPayload.findings;
+  const reReviewIssues = hasReReview ? fixReviewResult.issues : [];
+
+  const statuses: FixFindingStatus[] = originalFindings.map((finding) => {
+    if (hasReReview) {
+      const matched = matchFindings([finding], reReviewIssues);
+      const isMatched = matched.has(finding.id);
+      const disposition: FixFindingStatus['disposition'] = isMatched ? 'still-open' : 'resolved';
+      const diffSnippet =
+        disposition === 'resolved'
+          ? extractDiffSnippet(fixSource, finding.issue.file, finding.issue.line)
+          : undefined;
+      return { finding, disposition, diffSnippet };
+    }
+    const diffSnippet = extractDiffSnippet(fixSource, finding.issue.file, finding.issue.line);
+    return { finding, disposition: 'attempted', diffSnippet };
+  });
+
+  if (hasReReview) {
+    const originalFiles = new Set(originalFindings.map((f) => f.issue.file));
+    for (const issue of reReviewIssues) {
+      if (!originalFiles.has(issue.file)) {
+        const originalFingerprint = createIssueFingerprint(issue);
+        const isExisting = originalFindings.some((f) => f.fingerprint === originalFingerprint);
+        if (!isExisting) {
+          statuses.push({
+            finding: {
+              id: `R${statuses.length + 1}`,
+              fingerprint: originalFingerprint,
+              issue,
+              state: 'open',
+              disposition: 'regression',
+              source: 'agent',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            disposition: 'regression',
+            diffSnippet: extractDiffSnippet(fixSource, issue.file, issue.line),
+          });
+        }
+      }
+    }
+  }
+
+  const body = formatFixStatusComment(statuses, stackedPrUrl);
+  const markedBody = formatMarkedComment(body, marker);
+  let operation = 'created';
+
+  try {
+    const comments = await target.platformClient.getComments(target.projectId, target.prNumber);
+    const existingComment = findExistingCommentById(comments, marker);
+    if (existingComment) {
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
+        target.platformClient.updateComment(
+          target.projectId,
+          target.prNumber,
+          existingComment.id,
+          markedBody
+        )
+      );
+      operation = 'updated';
+    } else {
+      await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
+        target.platformClient.createComment(target.projectId, target.prNumber, markedBody)
+      );
+    }
+  } catch (error) {
+    throw new Error(
+      `Workflow post-fix-status node "${nodeId}" failed to post comment: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `${operation} fix-status comment on ${target.platform} ${target.projectId}#${target.prNumber}`,
+    output: {
+      platform: target.platform,
+      projectId: target.projectId,
+      prNumber: target.prNumber,
+      operation,
+      resolved: statuses.filter((s) => s.disposition === 'resolved').length,
+      partial: statuses.filter((s) => s.disposition === 'partial').length,
+      stillOpen: statuses.filter((s) => s.disposition === 'still-open').length,
+      regression: statuses.filter((s) => s.disposition === 'regression').length,
+      attempted: statuses.filter((s) => s.disposition === 'attempted').length,
     },
   };
 }

@@ -64,7 +64,8 @@ export interface WorkflowNodeConfig {
     | 'describe'
     | 'code-quality-report'
     | 'post-comment'
-    | 'post-review-comments';
+    | 'post-review-comments'
+    | 'post-fix-status';
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */

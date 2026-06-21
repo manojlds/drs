@@ -8,10 +8,12 @@ inputs:
   post: "false"
   visual: "false"
   fix: "false"
+  fixMode: "stacked"
   fixSeverity: "high"
   fixMinIssues: "1"
   fixBranchPrefix: "drs-fix/pr-"
   fixCreateChangeRequest: "false"
+  fixMaxIterations: "3"
   allowStackedSource: "false"
   fixDraft: "false"
   visualOutputPath: ".drs/visual-pr-explainer.html"
@@ -209,6 +211,91 @@ nodes:
       Current PR change source:
       {{artifacts.change}}
     output: fixes
+
+  should-internal-loop:
+    control: condition
+    needs:
+      - fix-issues
+    if: "{{inputs.fixMode}} == internal"
+    then: stage-fixes
+    else: mark-fix-attempted
+
+  stage-fixes:
+    action: git-add
+    needs:
+      - fix-issues
+    with:
+      paths: "."
+    output: stagedFixes
+
+  fix-change:
+    action: change-source
+    needs:
+      - stage-fixes
+    with:
+      type: local
+      staged: true
+    output: fixChange
+
+  re-review:
+    action: review
+    needs:
+      - fix-change
+    with:
+      source: fixChange
+    output: reReview
+
+  re-threshold:
+    action: review-threshold
+    needs:
+      - re-review
+    with:
+      review: reReview
+      severity: "{{inputs.fixSeverity}}"
+      minIssues: "1"
+    output: reThreshold
+
+  fix-loop:
+    control: loop
+    needs:
+      - re-threshold
+    condition: "{{artifacts.reThreshold.matched}} == true"
+    target: fix-issues
+    exit: fix-done
+    maxIterations: "{{inputs.fixMaxIterations}}"
+
+  fix-done:
+    control: condition
+    needs:
+      - re-threshold
+    if: "{{inputs.fixMode}} == internal"
+    then: post-fix-status-internal
+    else: mark-fix-attempted
+
+  post-fix-status-internal:
+    action: post-fix-status
+    needs:
+      - re-threshold
+      - save-review-artifact
+    with:
+      platform: github
+      owner: "{{inputs.owner}}"
+      repo: "{{inputs.repo}}"
+      pr: "{{inputs.pr}}"
+      source: change
+      reviewArtifact: persistedReviewArtifact
+      fixReview: reReview
+      fixChange: fixChange
+      marker: drs-fix-status
+    output: fixStatus
+
+  should-done-internal:
+    control: condition
+    needs:
+      - post-fix-status-internal
+    if: "true"
+    then: done
+    else: done
 
   mark-fix-attempted:
     action: review-artifact-update-findings
