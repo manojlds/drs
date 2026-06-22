@@ -528,17 +528,6 @@ describe('Config', () => {
       }
     });
 
-    it('throws the rename redirect for the dropped reconcile-review-findings alias', () => {
-      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-rename-'));
-      try {
-        writeWorkflowWithAction(projectRoot, 'rename-workflow', 'reconcile-review-findings');
-        expect(() => loadConfig(projectRoot)).toThrow(/verify-fix/);
-        expect(() => loadConfig(projectRoot)).toThrow(/renamed to 'verify-fix'/);
-      } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
-      }
-    });
-
     it('lists every supported action for a wholly unknown action', () => {
       const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-unknown-'));
       try {

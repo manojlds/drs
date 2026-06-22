@@ -401,13 +401,6 @@ function isWorkflowFileName(fileName: string): boolean {
   return fileName.endsWith('.yaml') || fileName.endsWith('.yml');
 }
 
-// Historical redirects for workflow actions that have been removed entirely.
-// Each entry maps a now-unsupported action to its successor so the load-time
-// validator can give a precise did-you-mean hint instead of a generic list.
-export const LOST_ACTION_RENAMES: Readonly<Record<string, string>> = {
-  'reconcile-review-findings': 'verify-fix',
-};
-
 const SUPPORTED_ACTION_SET: ReadonlySet<string> = new Set(SUPPORTED_WORKFLOW_ACTIONS);
 
 function levenshteinDistance(a: string, b: string): number {
@@ -448,8 +441,6 @@ function findClosestSupportedAction(input: string): string | undefined {
 /**
  * Validate every node's `action` value in a workflow against
  * SUPPORTED_WORKFLOW_ACTIONS. Throws with a did-you-mean hint on failure:
- *   - LOST_ACTION_RENAMES hits get a specific redirect message (e.g. for
- *     the dropped `reconcile-review-findings` alias).
  *   - Near-miss typos get the closest supported action via Levenshtein.
  *   - Wholly unknown actions get a list of every supported action.
  *
@@ -466,24 +457,11 @@ export function validateWorkflowActions(
     if (SUPPORTED_ACTION_SET.has(action)) continue;
 
     let hint: string;
-    const renamedTo = LOST_ACTION_RENAMES[action];
-    if (renamedTo) {
-      hint =
-        "Did you mean '" +
-        renamedTo +
-        "'? The action '" +
-        action +
-        "' has been renamed " +
-        "to '" +
-        renamedTo +
-        "'; see CHANGELOG.md.";
+    const closest = findClosestSupportedAction(action);
+    if (closest) {
+      hint = "Did you mean '" + closest + "'?";
     } else {
-      const closest = findClosestSupportedAction(action);
-      if (closest) {
-        hint = "Did you mean '" + closest + "'?";
-      } else {
-        hint = 'Supported actions: ' + SUPPORTED_WORKFLOW_ACTIONS.join(', ') + '.';
-      }
+      hint = 'Supported actions: ' + SUPPORTED_WORKFLOW_ACTIONS.join(', ') + '.';
     }
     throw new Error(
       'Workflow "' +
