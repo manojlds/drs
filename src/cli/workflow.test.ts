@@ -1550,6 +1550,7 @@ describe('workflow runner', () => {
       line: 10,
       problem: 'Original problem',
       solution: 'Original solution',
+      references: [],
       agent: 'unified',
     };
     const stillOpenIssue = {
@@ -1572,12 +1573,24 @@ describe('workflow runner', () => {
       solution: 'Undo regression',
       agent: 'unified',
     };
+    mocks.getFilesWithDiffs.mockReturnValue([
+      {
+        filename: 'src/app.ts',
+        patch: '@@ -8,6 +8,6 @@\n-old\n+new\n@@ -30,2 +30,2 @@\n-old\n+new',
+      },
+    ]);
     mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) => {
-      const issues = source.staged
-        ? [stillOpenIssue, regressionIssue]
-        : [resolvedIssue, stillOpenIssue];
+      const issues = source.staged ? [regressionIssue] : [resolvedIssue, stillOpenIssue];
       return {
         issues,
+        verification: source.staged
+          ? {
+              findings: [
+                { id: 'F001', disposition: 'resolved', rationale: 'fixed' },
+                { id: 'F002', disposition: 'still_open', rationale: 'still present' },
+              ],
+            }
+          : undefined,
         summary: {
           filesReviewed: 1,
           issuesFound: issues.length,
@@ -1665,7 +1678,12 @@ describe('workflow runner', () => {
     const projectRoot = createTempDir('drs-workflow-verify-fix-clean-');
     const issue = createMockReviewIssue('Fixed issue');
     mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
-      source.staged ? createMockReviewResult([]) : createMockReviewResult([issue])
+      source.staged
+        ? {
+            ...createMockReviewResult([]),
+            verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+          }
+        : createMockReviewResult([issue])
     );
 
     const config = {
@@ -1718,6 +1736,92 @@ describe('workflow runner', () => {
     const result = await runWorkflow(config, 'verifyClean', { workingDir: projectRoot });
 
     expect(result.artifacts.verify).toMatchObject({ shouldContinue: false, actionableOpen: 0 });
+  });
+
+  it('keeps unmatched findings open when the staged fix diff did not touch them', async () => {
+    const projectRoot = createTempDir('drs-workflow-verify-fix-untouched-');
+    const issue = {
+      severity: 'HIGH',
+      category: 'QUALITY',
+      title: 'Untouched issue',
+      file: 'src/app.ts',
+      line: 50,
+      problem: 'Original problem',
+      solution: 'Original solution',
+      references: [],
+      agent: 'unified',
+    };
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/app.ts', patch: '@@ -1,2 +1,2 @@\n-old\n+new' },
+    ]);
+    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
+      source.staged ? createMockReviewResult([]) : createMockReviewResult([issue])
+    );
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        verifyUntouched: {
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+            artifact: {
+              action: 'create-review-artifact',
+              needs: ['review'],
+              with: { source: 'change', review: 'review' },
+              output: 'reviewArtifact',
+            },
+            save: {
+              action: 'save-artifact',
+              needs: ['artifact'],
+              with: { kind: 'review', artifact: 'reviewArtifact' },
+              output: 'persistedReviewArtifact',
+            },
+            fixChange: {
+              action: 'change-source',
+              needs: ['save'],
+              with: { type: 'local', staged: true },
+              output: 'fixChange',
+            },
+            reReview: {
+              action: 'review',
+              needs: ['fixChange'],
+              with: { source: 'fixChange' },
+              output: 'reReview',
+            },
+            verify: {
+              action: 'verify-fix',
+              needs: ['reReview'],
+              with: {
+                artifact: 'persistedReviewArtifact',
+                review: 'reReview',
+                fixChange: 'fixChange',
+                severity: 'high',
+              },
+              output: 'persistedReviewArtifact',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'verifyUntouched', { workingDir: projectRoot });
+    const verified = result.artifacts.verify as {
+      shouldContinue: boolean;
+      actionableOpen: number;
+      payload: { findings: Array<{ state: string; disposition: string }> };
+    };
+
+    expect(verified.shouldContinue).toBe(true);
+    expect(verified.actionableOpen).toBe(1);
+    expect(verified.payload.findings).toEqual([
+      expect.objectContaining({ state: 'open', disposition: 'still_open' }),
+    ]);
   });
 
   it('checks whether a workflow artifact exists', async () => {
@@ -1833,6 +1937,71 @@ describe('workflow runner', () => {
     ).toMatchObject({
       filesReviewed: 1,
     });
+  });
+
+  it('runs packaged local fix workflow with explicit verification over updated local diff', async () => {
+    const projectRoot = createTempDir('drs-workflow-local-fix-loop-');
+    const config = loadConfig(projectRoot);
+    const issue = {
+      severity: 'HIGH',
+      category: 'QUALITY',
+      title: 'Local issue',
+      file: 'src/app.ts',
+      line: 1,
+      problem: 'Local problem',
+      solution: 'Local solution',
+      references: [],
+      agent: 'unified',
+    };
+    mocks.executeReview.mockImplementation(
+      async (_config, source: { files: string[]; context?: Record<string, unknown> }) => {
+        if (source.context?.sourceType === 'fix-verification') {
+          return {
+            ...createMockReviewResult([]),
+            verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+          };
+        }
+        return createMockReviewResult([issue]);
+      }
+    );
+
+    await runWorkflow(config, 'local-review', {
+      inputs: { staged: 'false' },
+      workingDir: projectRoot,
+    });
+
+    const result = await runWorkflow(config, 'local-fix-review-issues', {
+      inputs: { staged: 'false', fixSeverity: 'high', fixMaxIterations: '2' },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      config,
+      'task/review-issue-fixer',
+      expect.objectContaining({
+        prompt: expect.stringContaining('saved local DRS review artifact'),
+      })
+    );
+    expect(result.loop['fix-loop']).toMatchObject({ iteration: 1, lastDecision: 'exit' });
+    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+      shouldContinue: false,
+      actionableOpen: 0,
+      payload: {
+        findings: [expect.objectContaining({ id: 'F001', disposition: 'resolved' })],
+      },
+    });
+    const verificationSource = mocks.executeReview.mock.calls
+      .map(
+        (call) =>
+          call[1] as {
+            context?: { sourceType?: unknown; verification?: { artifact?: { reviewId?: string } } };
+            filesWithDiffs?: Array<{ patch?: string }>;
+          }
+      )
+      .find((source) => source.context?.sourceType === 'fix-verification');
+    expect(verificationSource?.filesWithDiffs?.[0]?.patch).toContain('Original PR/MR diff');
+    expect(verificationSource?.filesWithDiffs?.[0]?.patch).toContain('Local fix diff');
+    expect(verificationSource?.context?.verification?.artifact?.reviewId).toMatch(/^rev_/);
   });
 
   it('loads a git range change source from explicit refs', async () => {
@@ -2233,8 +2402,20 @@ describe('workflow runner', () => {
     const projectRoot = createTempDir('drs-workflow-github-fix-loop-');
     const config = loadConfig(projectRoot);
     const originalIssue = createMockReviewIssue('Original issue');
-    const remainingIssue = createMockReviewIssue('Original issue');
-    const reReviewResults = [createMockReviewResult([remainingIssue]), createMockReviewResult([])];
+    const reReviewResults = [
+      {
+        ...createMockReviewResult([]),
+        verification: { findings: [{ id: 'F001', disposition: 'still_open' }] },
+      },
+      {
+        ...createMockReviewResult([]),
+        verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+      },
+    ];
+    mocks.getChangedFiles.mockReturnValue(['src/github.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/github.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
+    ]);
     mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
       source.staged
         ? (reReviewResults.shift() ?? createMockReviewResult([]))
@@ -2269,6 +2450,22 @@ describe('workflow runner', () => {
       stillOpen: 0,
       regression: 0,
     });
+    const verificationSources = mocks.executeReview.mock.calls
+      .map(
+        (call) =>
+          call[1] as {
+            context?: {
+              sourceType?: unknown;
+              verification?: { artifact?: { findings?: Array<{ id?: string }> } };
+            };
+            filesWithDiffs?: Array<{ patch?: string }>;
+          }
+      )
+      .filter((source) => source?.context?.sourceType === 'fix-verification');
+    expect(verificationSources).toHaveLength(2);
+    expect(verificationSources[0]?.filesWithDiffs?.[0]?.patch).toContain('Original PR/MR diff');
+    expect(verificationSources[0]?.filesWithDiffs?.[0]?.patch).toContain('Local fix diff');
+    expect(verificationSources[0]?.context?.verification?.artifact?.findings?.[0]?.id).toBe('F001');
     expect(mocks.githubAdapter.createChangeRequest).not.toHaveBeenCalled();
     expect(mocks.githubAdapter.createComment).toHaveBeenCalledWith(
       'octocat/hello-world',
@@ -2369,13 +2566,20 @@ describe('workflow runner', () => {
     const config = loadConfig(projectRoot);
     const issue = createMockReviewIssue('Resumable issue');
     let failReReview = true;
+    mocks.getChangedFiles.mockReturnValue(['src/github.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/github.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
+    ]);
     mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) => {
       if (source.staged) {
         if (failReReview) {
           failReReview = false;
           throw new Error('temporary re-review failure');
         }
-        return createMockReviewResult([]);
+        return {
+          ...createMockReviewResult([]),
+          verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+        };
       }
       return createMockReviewResult([issue]);
     });
@@ -3439,6 +3643,9 @@ describe('workflow runner', () => {
                 agent: 'unified',
               },
             ],
+            verification: {
+              findings: [{ id: 'F001', disposition: 'resolved', rationale: 'fixed' }],
+            },
             summary: {
               filesReviewed: 1,
               issuesFound: 1,
@@ -3523,7 +3730,7 @@ describe('workflow runner', () => {
             },
             'post-status': {
               action: 'post-fix-status',
-              needs: ['re-review', 'save-review-artifact'],
+              needs: ['verify'],
               with: {
                 platform: 'github',
                 owner: 'octocat',
@@ -3536,6 +3743,17 @@ describe('workflow runner', () => {
                 marker: 'drs-fix-status',
               },
               output: 'fixStatus',
+            },
+            verify: {
+              action: 'verify-fix',
+              needs: ['re-review', 'save-review-artifact', 'fix-change'],
+              with: {
+                artifact: 'persistedReviewArtifact',
+                review: 'reReview',
+                fixChange: 'fixChange',
+                severity: 'high',
+              },
+              output: 'persistedReviewArtifact',
             },
           },
         },

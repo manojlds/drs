@@ -226,16 +226,22 @@ describe('Config', () => {
         },
       });
       expect(config.workflows?.['local-fix-review-issues']).toMatchObject({
-        description: 'Fix actionable issues from a saved DRS review result',
+        description:
+          'Fix actionable issues from a saved local DRS review artifact with verification loop',
         inputs: {
           review: '',
+          fixSeverity: 'high',
+          fixMaxIterations: '3',
         },
         nodes: {
           'fix-issues': {
             agent: 'task/review-issue-fixer',
           },
-          review: {
+          're-review': {
             action: 'review',
+          },
+          'verify-fix': {
+            action: 'verify-fix',
           },
         },
       });

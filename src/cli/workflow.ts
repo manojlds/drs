@@ -22,6 +22,7 @@ import {
   connectToRuntime,
   executeReview,
   filterIgnoredFiles,
+  type ReviewVerificationFinding,
   type ReviewResult,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
@@ -2178,6 +2179,63 @@ async function loadGitLabChangeSource(
   );
 }
 
+function combineVerificationPatch(originalPatch?: string, fixPatch?: string): string {
+  const sections: string[] = [];
+  if (originalPatch) {
+    sections.push(`# Original PR/MR diff\n${originalPatch}`);
+  }
+  if (fixPatch) {
+    sections.push(`# Local fix diff\n${fixPatch}`);
+  }
+  return sections.join('\n\n');
+}
+
+function loadFixVerificationChangeSource(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): ReviewSource {
+  const sourceName = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceName];
+  if (!isReviewSource(source)) {
+    throw new Error(
+      `Workflow fix-verification change-source node "${nodeId}" needs a source ReviewSource artifact.`
+    );
+  }
+
+  const fixChangeName = getStringActionOption(node, 'fixChange', context) ?? 'fixChange';
+  const fixChange = context.artifacts[fixChangeName];
+  if (!isReviewSource(fixChange)) {
+    throw new Error(
+      `Workflow fix-verification change-source node "${nodeId}" needs a fixChange ReviewSource artifact.`
+    );
+  }
+
+  const files = [...new Set([...source.files, ...fixChange.files])];
+  const originalDiffs = new Map(
+    (source.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
+  );
+  const fixDiffs = new Map(
+    (fixChange.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
+  );
+
+  return {
+    ...source,
+    name: `${source.name} with local fixes`,
+    files,
+    filesWithDiffs: files.map((filename) => ({
+      filename,
+      patch: combineVerificationPatch(originalDiffs.get(filename), fixDiffs.get(filename)),
+    })),
+    context: {
+      ...source.context,
+      sourceType: 'fix-verification',
+      fixFiles: fixChange.files,
+    },
+    staged: fixChange.staged,
+  };
+}
+
 async function runChangeSourceWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -2195,10 +2253,12 @@ async function runChangeSourceWorkflowNode(
     source = await loadGitHubChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'gitlab-mr') {
     source = await loadGitLabChangeSource(nodeId, node, workingDir, context, executionContext);
+  } else if (type === 'fix-verification') {
+    source = loadFixVerificationChangeSource(nodeId, node, context);
   } else {
     throw new Error(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +
-        'Currently supported: local, git-range, github-pr, gitlab-mr.'
+        'Currently supported: local, git-range, github-pr, gitlab-mr, fix-verification.'
     );
   }
   const writes = renderNodeWritesPath(nodeId, node, context);
@@ -2859,76 +2919,26 @@ interface FixFindingStatus {
   diffSnippet?: string;
 }
 
-interface FindingMatch {
-  issue: ReviewIssue;
-  kind: 'exact' | 'nearby';
-}
-
-function matchFindings(
-  originalFindings: ReviewFinding[],
-  reReviewIssues: ReviewIssue[]
-): Map<string, FindingMatch> {
-  const matched = new Map<string, FindingMatch>();
-  for (const finding of originalFindings) {
-    const exact = reReviewIssues.find(
-      (issue) => createIssueFingerprint(issue) === finding.fingerprint
-    );
-    if (exact) {
-      matched.set(finding.id, { issue: exact, kind: 'exact' });
-      continue;
-    }
-    const nearby = reReviewIssues.find(
-      (issue) =>
-        issue.file === finding.issue.file &&
-        issue.category === finding.issue.category &&
-        issue.title === finding.issue.title &&
-        Math.abs((issue.line ?? 0) - (finding.issue.line ?? 0)) <= 10
-    );
-    if (nearby) {
-      matched.set(finding.id, { issue: nearby, kind: 'nearby' });
-    }
-  }
-  return matched;
-}
-
-function getReconciledFindingDisposition(
-  finding: ReviewFinding,
-  match: FindingMatch | undefined
-): ReviewFindingDisposition {
-  if (!match) {
-    return 'resolved';
-  }
-  if (finding.disposition === 'regression') {
-    return 'regression';
-  }
-  return match.kind === 'exact' ? 'still_open' : 'partial';
-}
-
-function getFixStatusDisposition(
-  finding: ReviewFinding,
-  match: FindingMatch | undefined
-): FixFindingStatus['disposition'] {
-  const disposition = getReconciledFindingDisposition(finding, match);
+function getFixStatusDisposition(finding: ReviewFinding): FixFindingStatus['disposition'] {
+  const disposition = finding.disposition;
   if (disposition === 'resolved') return 'resolved';
   if (disposition === 'partial') return 'partial';
   if (disposition === 'regression') return 'regression';
   return 'still-open';
 }
 
-function getFixReviewIssueFingerprints(matches: Map<string, FindingMatch>): Set<string> {
-  return new Set(Array.from(matches.values()).map((match) => createIssueFingerprint(match.issue)));
-}
-
-function isIssueInFixScope(
-  issue: ReviewIssue,
-  artifact: ReviewArtifactPayload,
-  fixSource?: ReviewSource
-) {
-  const fixFiles = new Set(fixSource?.files ?? []);
-  if (fixFiles.size > 0) {
-    return fixFiles.has(issue.file);
+function getVerificationDisposition(
+  finding: ReviewFinding,
+  verdict: ReviewVerificationFinding | undefined,
+  thresholdRank: number
+): ReviewFindingDisposition {
+  if (severityRank(finding.issue.severity) < thresholdRank) {
+    return finding.disposition;
   }
-  return artifact.findings.some((finding) => finding.issue.file === issue.file);
+  if (!verdict) {
+    return 'still_open';
+  }
+  return verdict.disposition === 'still_open' ? 'still_open' : verdict.disposition;
 }
 
 function reconcileReviewArtifactFindings(
@@ -2947,15 +2957,18 @@ function reconcileReviewArtifactFindings(
 } {
   const now = new Date().toISOString();
   const thresholdRank = severityRank(options.severity);
-  const matches = matchFindings(artifact.findings, reReview.issues);
-  const matchedIssueFingerprints = getFixReviewIssueFingerprints(matches);
+  const verdicts = new Map(
+    (reReview.verification?.findings ?? []).map((finding) => [finding.id, finding])
+  );
   const existingFingerprints = new Set(artifact.findings.map((finding) => finding.fingerprint));
 
   const reconciledFindings = artifact.findings.map((finding) => {
-    const match = matches.get(finding.id);
-    const disposition = getReconciledFindingDisposition(finding, match);
+    const verdict = verdicts.get(finding.id);
+    const disposition = getVerificationDisposition(finding, verdict, thresholdRank);
+    const issue = isReviewIssue(verdict?.issue) ? verdict.issue : finding.issue;
     return {
       ...finding,
+      issue,
       state: disposition === 'resolved' ? ('resolved' as const) : ('open' as const),
       disposition,
       updatedAt: now,
@@ -2964,11 +2977,7 @@ function reconcileReviewArtifactFindings(
 
   for (const issue of reReview.issues) {
     const fingerprint = createIssueFingerprint(issue);
-    if (
-      matchedIssueFingerprints.has(fingerprint) ||
-      existingFingerprints.has(fingerprint) ||
-      !isIssueInFixScope(issue, artifact, options.fixSource)
-    ) {
+    if (existingFingerprints.has(fingerprint)) {
       continue;
     }
     existingFingerprints.add(fingerprint);
@@ -2985,9 +2994,8 @@ function reconcileReviewArtifactFindings(
   }
 
   const updatedArtifact = { ...artifact, findings: reconciledFindings };
-  const updatedMatches = matchFindings(updatedArtifact.findings, reReview.issues);
   const statuses = updatedArtifact.findings.map((finding) => {
-    const disposition = getFixStatusDisposition(finding, updatedMatches.get(finding.id));
+    const disposition = getFixStatusDisposition(finding);
     const diffSnippet =
       disposition === 'resolved' || disposition === 'regression'
         ? extractDiffSnippet(options.fixSource, finding.issue.file, finding.issue.line)
@@ -3153,14 +3161,10 @@ async function runPostFixStatusWorkflowNode(
   const marker = getStringActionOption(node, 'marker', context)?.trim() ?? 'drs-fix-status';
 
   const originalFindings = artifactPayload.findings;
-  const reReviewIssues = hasReReview ? fixReviewResult.issues : [];
-  const matchedFindings = hasReReview
-    ? matchFindings(originalFindings, reReviewIssues)
-    : new Map<string, FindingMatch>();
 
   const statuses: FixFindingStatus[] = originalFindings.map((finding) => {
     if (hasReReview) {
-      const disposition = getFixStatusDisposition(finding, matchedFindings.get(finding.id));
+      const disposition = getFixStatusDisposition(finding);
       const diffSnippet =
         disposition === 'resolved' || disposition === 'regression'
           ? extractDiffSnippet(fixSource, finding.issue.file, finding.issue.line)
@@ -3170,34 +3174,6 @@ async function runPostFixStatusWorkflowNode(
     const diffSnippet = extractDiffSnippet(fixSource, finding.issue.file, finding.issue.line);
     return { finding, disposition: 'attempted', diffSnippet };
   });
-
-  if (hasReReview) {
-    const originalFiles = new Set(originalFindings.map((f) => f.issue.file));
-    const matchedIssueFingerprints = new Set(
-      Array.from(matchedFindings.values()).map((match) => createIssueFingerprint(match.issue))
-    );
-    for (const issue of reReviewIssues) {
-      if (originalFiles.has(issue.file)) {
-        const originalFingerprint = createIssueFingerprint(issue);
-        if (!matchedIssueFingerprints.has(originalFingerprint)) {
-          statuses.push({
-            finding: {
-              id: `R${statuses.length + 1}`,
-              fingerprint: originalFingerprint,
-              issue,
-              state: 'open',
-              disposition: 'regression',
-              source: 'agent',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-            disposition: 'regression',
-            diffSnippet: extractDiffSnippet(fixSource, issue.file, issue.line),
-          });
-        }
-      }
-    }
-  }
 
   const body = formatFixStatusComment(statuses, stackedPrUrl);
   const markedBody = formatMarkedComment(body, marker);
@@ -3280,6 +3256,27 @@ async function runReviewWorkflowNode(
     );
   }
 
+  const reviewArtifactName = getStringActionOption(node, 'reviewArtifact', context);
+  const reviewArtifact = reviewArtifactName
+    ? getReviewArtifactPayloadFromValue(nodeId, context.artifacts[reviewArtifactName])
+    : undefined;
+  const severity = getStringActionOption(node, 'severity', context)?.toUpperCase();
+  const sourceForReview: ReviewSource = reviewArtifact
+    ? {
+        ...source,
+        context: {
+          ...source.context,
+          verification: {
+            artifact: {
+              reviewId: reviewArtifact.reviewId,
+              findings: reviewArtifact.findings,
+            },
+            severity,
+          },
+        },
+      }
+    : source;
+
   const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
     const originalLog = console.log;
     const originalWarn = console.warn;
@@ -3291,8 +3288,8 @@ async function runReviewWorkflowNode(
 
     try {
       return await executeReview(config, {
-        ...source,
-        workingDir: source.workingDir ?? workingDir,
+        ...sourceForReview,
+        workingDir: sourceForReview.workingDir ?? workingDir,
         debug: options.debug,
         thinkingLevel: options.thinkingLevel,
       });

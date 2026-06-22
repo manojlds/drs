@@ -231,12 +231,24 @@ nodes:
       staged: true
     output: fixChange
 
-  re-review:
-    action: review
+  verification-change:
+    action: change-source
     needs:
       - fix-change
     with:
-      source: fixChange
+      type: fix-verification
+      source: change
+      fixChange: fixChange
+    output: verificationChange
+
+  re-review:
+    action: review
+    needs:
+      - verification-change
+    with:
+      source: verificationChange
+      reviewArtifact: persistedReviewArtifact
+      severity: '{{inputs.fixSeverity}}'
     output: reReview
 
   verify-fix:

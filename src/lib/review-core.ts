@@ -20,6 +20,12 @@ import type { ChangeSummary } from './change-summary.js';
 import type { RuntimeClient } from '../runtime/client.js';
 import { loadAgents, type AgentDefinition } from '../runtime/agent-loader.js';
 import { getLogger } from './logger.js';
+import type {
+  ReviewVerificationContext,
+  ReviewVerificationDisposition,
+  ReviewVerificationFinding,
+  ReviewVerificationResult,
+} from './review-orchestrator.js';
 import {
   aggregateAgentUsage,
   applySkillCall,
@@ -57,12 +63,15 @@ export interface AgentReviewResult {
   agentResults: AgentResult[];
   /** Token usage and cost details for the review run */
   usage?: ReviewUsageSummary;
+  /** Explicit verification verdicts for existing review findings. */
+  verification?: ReviewVerificationResult;
 }
 
 export interface AgentResult {
   agentType: string;
   success: boolean;
   issues: ReviewIssue[];
+  verification?: ReviewVerificationResult;
   usage?: AgentUsageSummary;
 }
 
@@ -363,7 +372,8 @@ async function executeSingleAgent(
   debug: boolean,
   agentType: string,
   reviewModelOverrides: Record<string, string>,
-  describeSummary: string | undefined
+  describeSummary: string | undefined,
+  verificationContext: ReviewVerificationContext | undefined
 ): Promise<AgentResult> {
   const agentName = agentType;
   console.log(chalk.gray(`Running ${agentType} review...\n`));
@@ -381,7 +391,8 @@ async function executeSingleAgent(
       filteredFiles,
       workingDir,
       config,
-      describeSummary
+      describeSummary,
+      verificationContext
     );
 
     logPromptInputBudget({
@@ -461,6 +472,7 @@ async function executeSingleAgent(
 
     const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
     const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
+    const verification = parseReviewVerification(reviewOutput);
     if (parsedIssues.length > 0) {
       agentIssues.push(...parsedIssues);
       console.log(chalk.green(`✓ [${agentType}] Found ${parsedIssues.length} issue(s)`));
@@ -469,6 +481,7 @@ async function executeSingleAgent(
       agentType,
       success: true,
       issues: agentIssues,
+      verification,
       usage: {
         ...agentUsage,
         success: true,
@@ -520,6 +533,9 @@ export async function runReviewAgents(
     typeof additionalContext.describeSummary === 'string'
       ? additionalContext.describeSummary
       : undefined;
+  const verificationContext = isReviewVerificationContext(additionalContext.verificationContext)
+    ? additionalContext.verificationContext
+    : undefined;
 
   const agentResults = await Promise.all(
     agentNames.map((agentType) =>
@@ -533,7 +549,8 @@ export async function runReviewAgents(
         debug,
         agentType,
         reviewModelOverrides,
-        describeSummary
+        describeSummary,
+        verificationContext
       )
     )
   );
@@ -569,12 +586,16 @@ export async function runReviewAgents(
   agentResults.forEach((result) => issues.push(...result.issues));
 
   const summary = calculateSummary(filteredFiles.length, issues);
+  const verificationFindings = agentResults.flatMap(
+    (result) => result.verification?.findings ?? []
+  );
 
   return {
     issues,
     summary,
     filesReviewed: filteredFiles.length,
     agentResults,
+    verification: verificationFindings.length > 0 ? { findings: verificationFindings } : undefined,
     usage: summarizeRunUsage(agentResults),
   };
 }
@@ -599,6 +620,46 @@ export async function runReviewPipeline(
     workingDir,
     debug
   );
+}
+
+function isReviewVerificationContext(value: unknown): value is ReviewVerificationContext {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<ReviewVerificationContext>;
+  return !!candidate.artifact && Array.isArray(candidate.artifact.findings);
+}
+
+function parseReviewVerification(value: unknown): ReviewVerificationResult | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const verification = (value as { verification?: unknown }).verification;
+  if (!verification || typeof verification !== 'object') {
+    return undefined;
+  }
+  const findings = (verification as { findings?: unknown }).findings;
+  if (!Array.isArray(findings)) {
+    return undefined;
+  }
+  const parsed = findings.filter(isReviewVerificationFinding);
+  return parsed.length > 0 ? { findings: parsed } : undefined;
+}
+
+function isReviewVerificationFinding(value: unknown): value is ReviewVerificationFinding {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<ReviewVerificationFinding>;
+  return (
+    typeof candidate.id === 'string' &&
+    isReviewVerificationDisposition(candidate.disposition) &&
+    (candidate.rationale === undefined || typeof candidate.rationale === 'string')
+  );
+}
+
+function isReviewVerificationDisposition(value: unknown): value is ReviewVerificationDisposition {
+  return value === 'resolved' || value === 'still_open' || value === 'partial';
 }
 
 /**
