@@ -333,6 +333,7 @@ export async function executeReview(
       changeSummary: result.changeSummary,
       filesReviewed: result.filesReviewed,
       usage: result.usage ?? createEmptyReviewUsageSummary(),
+      verification: result.verification,
     };
   } finally {
     // Always shut down Pi runtime client
