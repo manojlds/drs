@@ -3441,6 +3441,59 @@ describe('workflow runner', () => {
     expect(result.artifacts.review).toBe('issues');
   });
 
+  it('does not rerun completed prerequisites when a loop re-enters a target node', async () => {
+    const checkOutputs = ['again', 'done'];
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      if (agent === 'task/check') {
+        return createMockAgentResult(agent, checkOutputs.shift() ?? 'done');
+      }
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        loopTargetDependency: {
+          nodes: {
+            setup: { agent: 'task/setup', input: 'prepared', output: 'setup' },
+            fix: {
+              agent: 'task/fix',
+              needs: ['setup'],
+              input: 'fix {{artifacts.setup}}',
+              output: 'fix',
+            },
+            check: {
+              agent: 'task/check',
+              needs: ['fix'],
+              input: 'check {{artifacts.fix}}',
+              output: 'check',
+            },
+            repeat: {
+              control: 'loop',
+              needs: ['check'],
+              condition: '{{artifacts.check}} != done',
+              target: 'fix',
+              exit: 'done',
+              maxIterations: 2,
+            },
+            done: { agent: 'task/done', input: 'done {{artifacts.check}}' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'loopTargetDependency');
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/setup',
+      'task/fix',
+      'task/check',
+      'task/fix',
+      'task/check',
+      'task/done',
+    ]);
+  });
+
   it('uses explicit workflow output when a control end node is last', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);

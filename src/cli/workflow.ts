@@ -3483,7 +3483,8 @@ function findWorkflowSegmentIndex(segments: WorkflowSegment[], targetNodeId: str
 function computeActiveWorkflowNodes(
   workflowNodes: Record<string, WorkflowNodeConfig>,
   nodeIds: string[],
-  rootNodeId: string
+  rootNodeId: string,
+  includeRootDependencies = true
 ): Set<string> {
   const segmentNodeIds = new Set(nodeIds);
   const downstream = new Set<string>([rootNodeId]);
@@ -3511,8 +3512,10 @@ function computeActiveWorkflowNodes(
     }
   };
 
-  for (const nodeId of downstream) {
-    includeDependencies(nodeId);
+  if (includeRootDependencies) {
+    for (const nodeId of downstream) {
+      includeDependencies(nodeId);
+    }
   }
 
   return active;
@@ -3581,7 +3584,7 @@ async function runWorkflowDagSegment(
     for (const nodeId of nodeIds) {
       if (!activeNodeIds.has(nodeId)) {
         completed.add(nodeId);
-        context.nodes[nodeId] = createSkippedWorkflowNodeResult(nodeId);
+        context.nodes[nodeId] ??= createSkippedWorkflowNodeResult(nodeId);
       }
     }
   }
@@ -3880,7 +3883,8 @@ async function runControlWorkflow(
       targetSegment.activeNodeIds = computeActiveWorkflowNodes(
         workflowNodes,
         targetSegment.nodeIds,
-        nextNodeId
+        nextNodeId,
+        !(node.control === 'loop' && nextNodeId === node.target)
       );
     }
     segmentIndex = targetIndex;

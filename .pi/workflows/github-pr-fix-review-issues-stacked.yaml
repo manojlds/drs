@@ -83,6 +83,7 @@ nodes:
     needs:
       - branch
       - review-artifact
+      - save-review-artifact
     input: |
       Fix actionable issues from this DRS review artifact for GitHub PR #{{inputs.pr}}.
 
