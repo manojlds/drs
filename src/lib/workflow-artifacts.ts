@@ -54,6 +54,39 @@ export function createWorkflowArtifactId(date: Date = new Date()): string {
   return `art_${timestamp}_${random}`;
 }
 
+/**
+ * Canonical workflow artifact id pattern.
+ *
+ * Matches IDs produced by the two artifact generators:
+ *   - `createWorkflowArtifactId` -> `art_<ISO-date-digits>_<6-char-base36>`
+ *   - `createReviewId`            -> `rev_<ISO-date-digits>_<6-char-base36>`
+ *
+ * Both generators always emit lowercase, so the regex is intentionally
+ * case-sensitive — early versions with `/i` over-matched rejected inputs
+ * like `ART_…_A1B2C3` which are also non-canonical.
+ *
+ * Any id that does not match this shape is rejected because workflows allow
+ * the `id` option on `load`/`artifact-exists` to be templated from
+ * `--input` values, which means a malicious caller can otherwise inject
+ * `../` segments and escape the `.drs/artifacts/<scope>/` namespace.
+ */
+const ARTIFACT_ID_PATTERN = /^(art|rev)_[0-9]+_[a-z0-9]+$/;
+
+/**
+ * Assert that an artifact id matches the canonical auto-generated shape.
+ *
+ * Accepts `unknown` so callers at workflow boundaries can pass raw
+ * template-rendered values without an upfront cast. Throws when the value
+ * is not a string, or the string does not match the canonical pattern.
+ * Exposed so callers (including workflow action runners) can validate ids
+ * before joining them onto a directory path.
+ */
+export function assertSafeArtifactId(id: unknown, action: 'read' | 'write' = 'read'): void {
+  if (typeof id !== 'string' || !ARTIFACT_ID_PATTERN.test(id)) {
+    throw new Error(`Refusing to ${action} workflow artifact with invalid id: ${String(id)}`);
+  }
+}
+
 export function getWorkflowArtifactSubject(scope: WorkflowArtifactScope): string {
   if (scope.subject) {
     return slugSegment(scope.subject, 'subject');
@@ -103,6 +136,9 @@ export async function saveWorkflowArtifact<T>(
   workingDir: string,
   options: SaveWorkflowArtifactOptions<T>
 ): Promise<SavedWorkflowArtifact<T>> {
+  if (options.id !== undefined) {
+    assertSafeArtifactId(options.id, 'write');
+  }
   const artifact = createWorkflowArtifact(options);
   const directory = getWorkflowArtifactDirectory(workingDir, options.kind, options.scope);
   const path = join(directory, `${artifact.id}.json`);
@@ -120,6 +156,7 @@ export async function updateWorkflowArtifact<T>(
   workingDir: string,
   options: UpdateWorkflowArtifactOptions<T>
 ): Promise<SavedWorkflowArtifact<T>> {
+  assertSafeArtifactId(options.artifact.id, 'write');
   const artifact: WorkflowArtifactEnvelope<T> = {
     ...options.artifact,
     updatedAt: new Date().toISOString(),
@@ -162,6 +199,9 @@ export async function loadWorkflowArtifact<T = unknown>(
   scope: WorkflowArtifactScope,
   id?: string
 ): Promise<{ artifact: WorkflowArtifactEnvelope<T>; path: string }> {
+  if (id !== undefined) {
+    assertSafeArtifactId(id, 'read');
+  }
   const directory = getWorkflowArtifactDirectory(workingDir, kind, scope);
   const path = join(directory, id ? `${id}.json` : 'latest.json');
   const parsed = JSON.parse(await readFile(path, 'utf-8')) as unknown;
