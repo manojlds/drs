@@ -128,7 +128,7 @@ nodes:
       - re-threshold
     condition: "{{artifacts.reThreshold.matched}} == true"
     target: fix-issues
-    exit: fix-done
+    exit: post-fix-status-internal
     maxIterations: "{{inputs.fixMaxIterations}}"
 
   # --- Stacked mode: commit, push, create PR ---

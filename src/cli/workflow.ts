@@ -3411,24 +3411,83 @@ function compareWorkflowValues(left: unknown, operator: string, right: unknown):
   throw new Error(`Unsupported workflow expression operator "${operator}".`);
 }
 
-function evaluateWorkflowExpression(expression: string, context: WorkflowTemplateContext): boolean {
-  const rendered = renderTemplate(expression, context).trim();
-  if (rendered.includes('&&')) {
-    return rendered.split(/\s+&&\s+/).every((part) =>
-      evaluateWorkflowExpression(part, {
-        ...context,
-        inputs: context.inputs,
-      })
-    );
+function splitWorkflowExpressionOperator(expression: string, operator: '&&' | '||'): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+  let depth = 0;
+
+  for (let i = 0; i < expression.length; i++) {
+    const char = expression[i] ?? '';
+    if ((char === '"' || char === "'") && expression[i - 1] !== '\\') {
+      quote = quote === char ? undefined : (quote ?? char);
+      current += char;
+      continue;
+    }
+
+    if (!quote && char === '(') {
+      depth += 1;
+      current += char;
+      continue;
+    }
+
+    if (!quote && char === ')' && depth > 0) {
+      depth -= 1;
+      current += char;
+      continue;
+    }
+
+    if (!quote && depth === 0 && expression.slice(i, i + operator.length) === operator) {
+      parts.push(current.trim());
+      current = '';
+      i += operator.length - 1;
+      continue;
+    }
+
+    current += char;
   }
-  if (rendered.includes('||')) {
-    return rendered.split(/\s+\|\|\s+/).some((part) =>
-      evaluateWorkflowExpression(part, {
-        ...context,
-        inputs: context.inputs,
-      })
-    );
+
+  parts.push(current.trim());
+  return parts;
+}
+
+function stripWorkflowExpressionParens(expression: string): string {
+  const trimmed = expression.trim();
+  if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) {
+    return trimmed;
   }
+
+  let quote: '"' | "'" | undefined;
+  let depth = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i] ?? '';
+    if ((char === '"' || char === "'") && trimmed[i - 1] !== '\\') {
+      quote = quote === char ? undefined : (quote ?? char);
+      continue;
+    }
+    if (quote) continue;
+    if (char === '(') depth += 1;
+    if (char === ')') depth -= 1;
+    if (depth === 0 && i < trimmed.length - 1) {
+      return trimmed;
+    }
+  }
+
+  return trimmed.slice(1, -1).trim();
+}
+
+function evaluateRenderedWorkflowExpression(rendered: string): boolean {
+  rendered = stripWorkflowExpressionParens(rendered);
+  const orParts = splitWorkflowExpressionOperator(rendered, '||');
+  if (orParts.length > 1) {
+    return orParts.some((part) => evaluateRenderedWorkflowExpression(part));
+  }
+
+  const andParts = splitWorkflowExpressionOperator(rendered, '&&');
+  if (andParts.length > 1) {
+    return andParts.every((part) => evaluateRenderedWorkflowExpression(part));
+  }
+
   const match = rendered.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
   if (!match) {
     return isWorkflowTruthy(parseWorkflowExpressionValue(rendered));
@@ -3439,6 +3498,10 @@ function evaluateWorkflowExpression(expression: string, context: WorkflowTemplat
     match[2] ?? '',
     parseWorkflowExpressionValue(match[3] ?? '')
   );
+}
+
+function evaluateWorkflowExpression(expression: string, context: WorkflowTemplateContext): boolean {
+  return evaluateRenderedWorkflowExpression(renderTemplate(expression, context).trim());
 }
 
 function splitWorkflowSegments(

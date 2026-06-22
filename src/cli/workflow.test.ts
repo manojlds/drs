@@ -3286,6 +3286,48 @@ describe('workflow runner', () => {
     ]);
   });
 
+  it('evaluates compound direct if conditions with precedence, quotes, and parentheses', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        compoundConditions: {
+          inputs: { value: 'a && b' },
+          nodes: {
+            precedence: {
+              agent: 'task/precedence',
+              if: 'false && true || true',
+              input: 'precedence',
+            },
+            quoted: {
+              agent: 'task/quoted',
+              if: '"{{inputs.value}}" == "a && b"',
+              input: 'quoted',
+            },
+            parenthesized: {
+              agent: 'task/parenthesized',
+              if: '(false && true) || true',
+              input: 'parenthesized',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'compoundConditions');
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/precedence',
+      'task/quoted',
+      'task/parenthesized',
+    ]);
+    expect(result.nodes.precedence).toMatchObject({ type: 'agent' });
+    expect(result.nodes.quoted).toMatchObject({ type: 'agent' });
+    expect(result.nodes.parenthesized).toMatchObject({ type: 'agent' });
+  });
+
   it('skips executable nodes when a direct if condition is false', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);
