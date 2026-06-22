@@ -318,6 +318,7 @@ nodes:
       reviewArtifact: persistedReviewArtifact
       fixReview: reReview
       fixChange: fixChange
+      severity: '{{inputs.fixSeverity}}'
       marker: drs-fix-status
     output: fixStatus
 
@@ -460,6 +461,7 @@ nodes:
       mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
+      severity: '{{inputs.fixSeverity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus

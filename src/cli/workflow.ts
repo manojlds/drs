@@ -3162,8 +3162,12 @@ async function runPostFixStatusWorkflowNode(
 
   const stackedPrUrl = getStringActionOption(node, 'stackedPrUrl', context);
   const marker = getStringActionOption(node, 'marker', context)?.trim() ?? 'drs-fix-status';
+  const severity = (getStringActionOption(node, 'severity', context) ?? 'high').toUpperCase();
+  const thresholdRank = severityRank(severity);
 
-  const originalFindings = artifactPayload.findings;
+  const originalFindings = artifactPayload.findings.filter(
+    (finding) => severityRank(finding.issue.severity) >= thresholdRank
+  );
 
   const statuses: FixFindingStatus[] = originalFindings.map((finding) => {
     if (hasReReview) {

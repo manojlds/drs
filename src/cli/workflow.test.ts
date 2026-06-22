@@ -3633,7 +3633,7 @@ describe('workflow runner', () => {
           return {
             issues: [
               {
-                severity: 'MEDIUM',
+                severity: 'HIGH',
                 category: 'QUALITY',
                 title: 'New regression in fixed file',
                 file: 'src/cli/workflow.ts',
@@ -3649,7 +3649,7 @@ describe('workflow runner', () => {
             summary: {
               filesReviewed: 1,
               issuesFound: 1,
-              bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 0 },
+              bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
               byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
             },
             filesReviewed: 1,
@@ -3740,6 +3740,7 @@ describe('workflow runner', () => {
                 reviewArtifact: 'persistedReviewArtifact',
                 fixReview: 'reReview',
                 fixChange: 'fixChange',
+                severity: 'high',
                 marker: 'drs-fix-status',
               },
               output: 'fixStatus',
