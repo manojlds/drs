@@ -25,8 +25,6 @@ import {
   type ReviewResult,
   type ReviewSource,
 } from '../lib/review-orchestrator.js';
-import { executeUnifiedReview } from '../lib/unified-review-executor.js';
-import { ExitError, setExitHandler } from '../lib/exit.js';
 import type {
   FileChange,
   InlineCommentPosition,
@@ -48,11 +46,7 @@ import {
   readArtifactOutputPointer,
   validateHtmlArtifact,
 } from '../lib/html-artifact.js';
-import {
-  enforceRepoBranchMatch,
-  getCanonicalDiffCommand,
-  resolveBaseBranch,
-} from '../lib/repository-validator.js';
+import { getCanonicalDiffCommand, resolveBaseBranch } from '../lib/repository-validator.js';
 import { formatCodeQualityReport, generateCodeQualityReport } from '../lib/code-quality-report.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
@@ -3268,75 +3262,6 @@ function isReviewSource(value: unknown): value is ReviewSource {
   );
 }
 
-async function enforceWorkflowReviewTarget(
-  config: DRSConfig,
-  source: ReviewSource,
-  workingDir: string
-): Promise<void> {
-  const platform =
-    typeof source.context.platform === 'string' ? source.context.platform : undefined;
-  if (!isWorkflowPlatform(platform)) {
-    return;
-  }
-
-  const projectId =
-    typeof source.context.projectId === 'string' ? source.context.projectId : undefined;
-  const pullRequest = isPullRequest(source.context.pullRequest)
-    ? source.context.pullRequest
-    : undefined;
-  if (!projectId || !pullRequest) {
-    throw new Error('Workflow platform review source is missing project or PR/MR metadata.');
-  }
-
-  await enforceRepoBranchMatch(workingDir, projectId, pullRequest, {
-    skipRepoCheck: config.review.skipRepoCheck,
-    skipBranchCheck: config.review.skipBranchCheck,
-  });
-}
-
-function createUnifiedReviewWorkflowOptions(
-  config: DRSConfig,
-  node: WorkflowNodeConfig,
-  source: ReviewSource,
-  workingDir: string,
-  context: WorkflowTemplateContext,
-  executionContext: WorkflowExecutionContext,
-  options: WorkflowRunOptions
-) {
-  const target = readSourcePostTarget(source);
-  if (!target.platform || !target.projectId || !target.prNumber || !target.pullRequest) {
-    return undefined;
-  }
-
-  const lineValidator = createWorkflowLineValidator(target.platform, source);
-  const createInlinePosition = lineValidator
-    ? createWorkflowInlinePosition(target.platform, source)
-    : undefined;
-  const rawBaseBranch = getStringActionOption(node, 'baseBranch', context)?.trim();
-  const baseBranch = rawBaseBranch === '' ? undefined : rawBaseBranch;
-  const postComments = getBooleanActionOption(node, 'postComments', context);
-  const postDescription = getBooleanActionOption(node, 'postDescription', context);
-
-  return {
-    platformClient: getWorkflowPlatformClient(executionContext, target.platform),
-    projectId: target.projectId,
-    prNumber: target.prNumber,
-    pullRequest: target.pullRequest,
-    changedFiles: target.changedFiles,
-    postComments,
-    baseBranch,
-    lineValidator,
-    createInlinePosition,
-    cursorFixLinks: postComments
-      ? resolveCursorFixLinkOptions(config, target.projectId, workingDir)
-      : undefined,
-    workingDir,
-    postDescription,
-    debug: options.debug,
-    thinkingLevel: options.thinkingLevel,
-  };
-}
-
 async function runReviewWorkflowNode(
   config: DRSConfig,
   nodeId: string,
@@ -3356,9 +3281,6 @@ async function runReviewWorkflowNode(
   }
 
   const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
-    const restoreExit = setExitHandler((code: number): never => {
-      throw new ExitError(code);
-    });
     const originalLog = console.log;
     const originalWarn = console.warn;
 
@@ -3368,38 +3290,17 @@ async function runReviewWorkflowNode(
     }
 
     try {
-      const reviewWorkingDir = source.workingDir ?? workingDir;
-      await enforceWorkflowReviewTarget(config, source, reviewWorkingDir);
-      const unifiedOptions = createUnifiedReviewWorkflowOptions(
-        config,
-        node,
-        source,
-        reviewWorkingDir,
-        context,
-        executionContext,
-        options
-      );
-      if (unifiedOptions) {
-        return await executeUnifiedReview(config, unifiedOptions);
-      }
-
       return await executeReview(config, {
         ...source,
-        workingDir: reviewWorkingDir,
+        workingDir: source.workingDir ?? workingDir,
         debug: options.debug,
         thinkingLevel: options.thinkingLevel,
       });
-    } catch (error) {
-      if (error instanceof ExitError) {
-        throw new Error(`Workflow review node "${nodeId}" failed: all review agents failed.`);
-      }
-      throw error;
     } finally {
       if (options.jsonOutput) {
         console.log = originalLog;
         console.warn = originalWarn;
       }
-      restoreExit();
     }
   });
 

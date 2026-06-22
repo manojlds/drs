@@ -1,8 +1,7 @@
 /**
  * Core review execution logic shared between local and platform reviews
  *
- * This module contains the common agent execution logic to avoid duplication
- * between review-orchestrator.ts (local) and unified-review-executor.ts (platform).
+ * This module contains the common agent execution logic used by the review orchestrator.
  */
 
 import chalk from 'chalk';

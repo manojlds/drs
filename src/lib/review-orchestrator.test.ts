@@ -619,11 +619,9 @@ describe('review-orchestrator', () => {
       expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should handle "All review agents failed" error specially', async () => {
+    it('should propagate "All review agents failed" errors', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
       vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('All review agents failed'));
-
-      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
       const source: ReviewSource = {
         name: 'Test review',
@@ -632,9 +630,7 @@ describe('review-orchestrator', () => {
       };
 
       await expect(executeReview(mockConfig, source)).rejects.toThrow('All review agents failed');
-
-      expect(mockExit).toHaveBeenCalledWith(1);
-      mockExit.mockRestore();
+      expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
     it('should log compression warning when context is compressed', async () => {
