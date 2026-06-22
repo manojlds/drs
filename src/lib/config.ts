@@ -296,16 +296,8 @@ export interface DRSConfig {
     agents: (string | AgentConfig)[];
     ignorePatterns: string[];
     includePatterns?: string[];
-    /**
-     * @deprecated Legacy compatibility only. Prefer explicit review.agents ordering.
-     */
-    mode?: ReviewMode;
     unified?: {
       model?: string;
-      /**
-       * @deprecated Legacy hybrid escalation threshold. No-op in agents-first pipeline.
-       */
-      severityThreshold?: ReviewSeverity;
     };
     describe?: {
       enabled?: boolean;
@@ -342,9 +334,6 @@ export interface DRSConfig {
     models?: Record<string, ModelPricingConfig>;
   };
 }
-
-export type ReviewMode = 'multi-agent' | 'unified' | 'hybrid';
-export type ReviewSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 const DEFAULT_CONFIG: DRSConfig = {
   pi: {},
