@@ -553,7 +553,6 @@ describe('review-orchestrator', () => {
           review: {
             ...mockConfig.review,
             agents: ['review/unified-reviewer'],
-            mode: 'unified',
           },
         },
         source
@@ -583,7 +582,6 @@ describe('review-orchestrator', () => {
           review: {
             ...mockConfig.review,
             agents: ['review/security'],
-            mode: 'multi-agent',
           },
         },
         source

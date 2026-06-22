@@ -3,7 +3,6 @@ import {
   buildBaseInstructions,
   runReviewPipeline,
   runReviewAgents,
-  runUnifiedReviewAgent,
   displayReviewSummary,
   hasBlockingIssues,
   type FileWithDiff,
@@ -185,193 +184,6 @@ describe('review-core', () => {
     });
   });
 
-  describe('runUnifiedReviewAgent', () => {
-    let mockRuntime: RuntimeClient;
-    let mockConfig: DRSConfig;
-
-    beforeEach(() => {
-      // Reset console.log spy
-      vi.spyOn(console, 'log').mockImplementation(() => {});
-      vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      mockRuntime = {
-        createSession: vi.fn(async () => ({ id: 'session-1' })),
-        streamMessages: vi.fn(async function* () {
-          yield {
-            id: 'msg-1',
-            role: 'assistant',
-            content: JSON.stringify({
-              issues: [
-                {
-                  category: 'SECURITY',
-                  severity: 'HIGH',
-                  title: 'Security issue',
-                  file: 'src/app.ts',
-                  line: 10,
-                  problem: 'Found security issue',
-                  solution: 'Fix it',
-                },
-              ],
-            }),
-            timestamp: new Date(),
-          };
-        }),
-        closeSession: vi.fn(async () => {}),
-      } as any;
-
-      mockConfig = {
-        review: {
-          agents: ['review/unified-reviewer'],
-          mode: 'unified',
-        },
-      } as DRSConfig;
-    });
-
-    it('should run unified review agent successfully', async () => {
-      const result = await runUnifiedReviewAgent(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.issues).toHaveLength(1);
-      expect(result.issues[0].category).toBe('SECURITY');
-      expect(result.issues[0].severity).toBe('HIGH');
-      expect(result.filesReviewed).toBe(1);
-      expect(result.agentResults).toHaveLength(1);
-      expect(result.agentResults[0].success).toBe(true);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mockRuntime.createSession).toHaveBeenCalledWith({
-        agent: 'review/unified-reviewer',
-        message: expect.stringContaining('Review these files'),
-      });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mockRuntime.closeSession).toHaveBeenCalledWith('session-1');
-    });
-
-    it('captures token usage and model metadata from assistant messages', async () => {
-      mockRuntime.streamMessages = vi.fn(async function* () {
-        yield {
-          id: 'msg-usage-1',
-          role: 'assistant',
-          content: JSON.stringify({ issues: [] }),
-          provider: 'opencode',
-          model: 'glm-5-free',
-          usage: {
-            input: 1200,
-            output: 100,
-            cacheRead: 30,
-            cacheWrite: 0,
-            totalTokens: 1330,
-            cost: 0.02,
-          },
-          timestamp: new Date(),
-        };
-      }) as any;
-
-      const result = await runUnifiedReviewAgent(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.usage).toEqual(
-        expect.objectContaining({
-          total: expect.objectContaining({
-            input: 1200,
-            output: 100,
-            cacheRead: 30,
-            cacheWrite: 0,
-            totalTokens: 1330,
-            cost: 0.02,
-          }),
-          agents: [
-            expect.objectContaining({
-              agentType: 'review/unified-reviewer',
-              model: 'opencode/glm-5-free',
-              turns: 1,
-            }),
-          ],
-        })
-      );
-    });
-
-    it('should handle agent failure gracefully', async () => {
-      mockRuntime.createSession = vi.fn(async () => {
-        throw new Error('Session creation failed');
-      });
-
-      const result = await runUnifiedReviewAgent(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.issues).toHaveLength(0);
-      expect(result.agentResults[0].success).toBe(false);
-      expect(result.filesReviewed).toBe(1);
-    });
-
-    it('should handle invalid JSON output gracefully', async () => {
-      mockRuntime.streamMessages = vi.fn(async function* () {
-        yield {
-          id: 'msg-1',
-          role: 'assistant',
-          content: 'This is not valid JSON',
-          timestamp: new Date(),
-        };
-      }) as any;
-
-      // parseReviewOutput mock returns { issues: [] } for invalid JSON
-      // so this should succeed with no issues
-      const result = await runUnifiedReviewAgent(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.issues).toHaveLength(0);
-      expect(result.agentResults[0].success).toBe(true);
-    });
-
-    it('should log debug information when debug=true', async () => {
-      const logSpy = vi.spyOn(console, 'log');
-
-      await runUnifiedReviewAgent(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        true
-      );
-
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('DEBUG'));
-    });
-  });
-
   describe('runReviewAgents', () => {
     let mockRuntime: RuntimeClient;
     let mockConfig: DRSConfig;
@@ -409,7 +221,6 @@ describe('review-core', () => {
       mockConfig = {
         review: {
           agents: ['review/security', 'review/quality'],
-          mode: 'multi-agent',
         },
       } as DRSConfig;
     });
@@ -549,7 +360,6 @@ describe('review-core', () => {
       mockConfig = {
         review: {
           agents: ['review/unified-reviewer'],
-          mode: 'unified',
         },
       } as DRSConfig;
 
@@ -572,7 +382,6 @@ describe('review-core', () => {
       mockConfig = {
         review: {
           agents: ['review/security', 'review/quality'],
-          mode: 'multi-agent',
         },
       } as DRSConfig;
 
@@ -595,10 +404,6 @@ describe('review-core', () => {
       mockConfig = {
         review: {
           agents: ['review/unified-reviewer', 'review/security', 'review/quality'],
-          mode: 'hybrid',
-          unified: {
-            severityThreshold: 'HIGH',
-          },
         },
       } as DRSConfig;
 
@@ -647,10 +452,6 @@ describe('review-core', () => {
       mockConfig = {
         review: {
           agents: ['review/unified-reviewer', 'review/security'],
-          mode: 'hybrid',
-          unified: {
-            severityThreshold: 'HIGH',
-          },
         },
       } as DRSConfig;
 
@@ -691,7 +492,7 @@ describe('review-core', () => {
       expect(result.agentResults.length).toBeGreaterThan(1);
     });
 
-    it('should default to multi-agent mode when mode is undefined', async () => {
+    it('defaults to running all configured agents when no override is set', async () => {
       mockConfig = {
         review: {
           agents: ['review/security', 'review/quality'],

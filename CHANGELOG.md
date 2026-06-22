@@ -6,6 +6,8 @@
   - `process.env.REVIEW_MODE` handler and the `config.review.mode` validation warn.
   - `process.env.REVIEW_UNIFIED_THRESHOLD` handler and the `config.review.unified.severityThreshold` validation warn.
 - The `scripts/` directory is moved out of tracked source (added to `.gitignore`); ad-hoc apply helpers used during 4.0.0 prep were noise, not repo assets.
+- Inert `DRSConfig.review` schema removed: `mode?: ReviewMode`, the `ReviewMode` type, `unified.severityThreshold?: ReviewSeverity`, and the `ReviewSeverity` type. No production runtime path reads these fields — the env-var handlers and validators were already gone (commit 1b9ae4d); this commit drops the type-schema accidents left behind. Configure via `review.agents` ordering instead. Stray `mode:` or `severityThreshold:` keys in `.drs/drs.config.yaml` still parse (YAML has no static type checker) and are silently ignored.
+- `runUnifiedReviewAgent` exported helper dropped from `src/lib/review-core.ts` along with its dedicated test block. After workflow-first, production review runs go through `runReviewPipeline` -> `runReviewAgents` -> `executeSingleAgent`; the dedicated single-agent unified path had zero callers outside its own tests.
 
 ### Added
 
