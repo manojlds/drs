@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, type DRSConfig } from '../lib/config.js';
+import { loadConfig, SUPPORTED_WORKFLOW_ACTIONS, type DRSConfig } from '../lib/config.js';
 import { exitProcess } from '../lib/exit.js';
 import { runWorkflow, listWorkflows, showWorkflow } from './workflow.js';
 
@@ -3693,5 +3693,29 @@ describe('workflow runner', () => {
       attempted: 1,
       resolved: 0,
     });
+  });
+});
+
+describe('dispatch ↔ validator drift', () => {
+  // Pins the contract that every action dispatched by runActionWorkflowNode
+  // is also listed in SUPPORTED_WORKFLOW_ACTIONS, so an action added to the
+  // runtime switch without mirroring the tuple fails CI instead of bypassing
+  // load-time validation. Direction is loose (dispatch-facing): the tuple may
+  // legitimately lead (deprecation paths, staged rollouts); only the reverse
+  // drift — dispatch references unknown action — is enforced.
+  it('every action literal in runActionWorkflowNode is in SUPPORTED_WORKFLOW_ACTIONS', () => {
+    const dispatchUrl = new URL('../cli/workflow.ts', import.meta.url);
+    const dispatchSrc = readFileSync(dispatchUrl, 'utf-8');
+    const used = new Set([...dispatchSrc.matchAll(/node\.action === '([^']+)'/g)].map((m) => m[1]));
+    expect(
+      used.size,
+      'dispatch file has zero node.action === "X" literals — drift test cannot proceed'
+    ).toBeGreaterThan(0);
+    for (const action of used) {
+      expect(
+        SUPPORTED_WORKFLOW_ACTIONS as readonly string[],
+        `dispatch references '${action}' but SUPPORTED_WORKFLOW_ACTIONS does not list it`
+      ).toContain(action);
+    }
   });
 });
