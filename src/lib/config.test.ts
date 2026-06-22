@@ -500,4 +500,76 @@ describe('Config', () => {
       rmSync(projectRoot, { recursive: true, force: true });
     }
   });
+
+  describe('load-time action validation', () => {
+    function writeWorkflowWithAction(
+      projectRoot: string,
+      workflowName: string,
+      action: string | number | boolean | null
+    ): void {
+      mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+      const yaml = [
+        'description: Test workflow with bad action',
+        'nodes:',
+        '  step:',
+        '    action: ' + action,
+        '',
+      ].join('\n');
+      writeFileSync(join(projectRoot, '.drs', 'workflows', workflowName + '.yaml'), yaml);
+    }
+
+    it('throws did-you-mean for a near-miss typo of a supported action', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-typo-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'typo-workflow', 'verify-fx');
+        expect(() => loadConfig(projectRoot)).toThrow(/verify-fix/);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('throws the rename redirect for the dropped reconcile-review-findings alias', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-rename-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'rename-workflow', 'reconcile-review-findings');
+        expect(() => loadConfig(projectRoot)).toThrow(/verify-fix/);
+        expect(() => loadConfig(projectRoot)).toThrow(/renamed to 'verify-fix'/);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('lists every supported action for a wholly unknown action', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-unknown-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'unknown-workflow', 'do-the-thing');
+        expect(() => loadConfig(projectRoot)).toThrow(/Supported actions:/);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('accepts a valid action without throwing', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-ok-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'ok-workflow', 'verify-fix');
+        const config = loadConfig(projectRoot);
+        expect(config.workflows?.['ok-workflow']?.nodes.step?.action).toBe('verify-fix');
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('treats non-string action values as missing', () => {
+      const projectRoot = mkdtempSync(join(tmpdir(), 'drs-action-null-'));
+      try {
+        writeWorkflowWithAction(projectRoot, 'null-workflow', null);
+        expect(() => loadConfig(projectRoot)).not.toThrow();
+        const config = loadConfig(projectRoot);
+        expect(config.workflows?.['null-workflow']?.nodes.step?.action).toBeNull();
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    });
+  });
 });

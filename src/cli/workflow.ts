@@ -1088,14 +1088,6 @@ async function runActionWorkflowNode(
     );
   }
 
-  if (node.action === 'reconcile-review-findings') {
-    throw new Error(
-      `Unsupported workflow action 'reconcile-review-findings' in node '${nodeId}'. ` +
-        "Did you mean 'verify-fix'? The action `reconcile-review-findings` has been renamed " +
-        'to `verify-fix`; see CHANGELOG.md.'
-    );
-  }
-
   throw new Error(`Unsupported workflow action "${node.action}" in node "${nodeId}".`);
 }
 
