@@ -35,6 +35,7 @@ import {
 import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
 import { runDescribeAgent, type PreCompressedDiffs } from './description-executor.js';
 import { formatDescribeSummary } from './description-formatter.js';
+import type { ReviewFinding } from './review-artifact.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -58,6 +59,27 @@ export interface ReviewSource {
   thinkingLevel?: string;
 }
 
+export type ReviewVerificationDisposition = 'resolved' | 'still_open' | 'partial';
+
+export interface ReviewVerificationFinding {
+  id: string;
+  disposition: ReviewVerificationDisposition;
+  rationale?: string;
+  issue?: ReviewIssue;
+}
+
+export interface ReviewVerificationResult {
+  findings: ReviewVerificationFinding[];
+}
+
+export interface ReviewVerificationContext {
+  artifact: {
+    reviewId: string;
+    findings: ReviewFinding[];
+  };
+  severity?: string;
+}
+
 /**
  * Result of a review execution
  */
@@ -72,6 +94,8 @@ export interface ReviewResult {
   filesReviewed: number;
   /** Token usage and cost details for the review run */
   usage?: ReviewUsageSummary;
+  /** Explicit verification verdicts for an existing review artifact. */
+  verification?: ReviewVerificationResult;
 }
 
 /**
@@ -280,11 +304,16 @@ export async function executeReview(
     }
 
     // ── Review pass ──────────────────────────────────────────────────────
+    const verificationContext = isReviewVerificationContext(source.context.verification)
+      ? source.context.verification
+      : undefined;
+
     const baseInstructions = buildBaseInstructions(
       source.name,
       compression.files,
       diffCommand,
-      compressionSummary
+      compressionSummary,
+      verificationContext
     );
 
     // Run agents using shared core logic
@@ -294,7 +323,7 @@ export async function executeReview(
       baseInstructions,
       source.name,
       filteredFiles,
-      { ...source.context, describeSummary },
+      { ...source.context, describeSummary, verificationContext },
       source.workingDir ?? process.cwd(),
       source.debug ?? false
     );
@@ -305,11 +334,25 @@ export async function executeReview(
       changeSummary: result.changeSummary,
       filesReviewed: result.filesReviewed,
       usage: result.usage ?? createEmptyReviewUsageSummary(),
+      verification: result.verification,
     };
   } finally {
     // Always shut down Pi runtime client
     await runtimeClient.shutdown();
   }
+}
+
+function isReviewVerificationContext(value: unknown): value is ReviewVerificationContext {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<ReviewVerificationContext>;
+  return (
+    !!candidate.artifact &&
+    typeof candidate.artifact === 'object' &&
+    typeof candidate.artifact.reviewId === 'string' &&
+    Array.isArray(candidate.artifact.findings)
+  );
 }
 
 // Re-export display functions from core for backward compatibility

@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { DRSConfig } from './config.js';
 import { requireAgentId } from './agent-id.js';
 import { resolveAgentPaths } from '../runtime/path-config.js';
+import type { ReviewVerificationContext } from './review-orchestrator.js';
 
 export interface AgentContext {
   /**
@@ -82,7 +83,8 @@ export function buildReviewPrompt(
   changedFiles: string[],
   projectRoot: string = process.cwd(),
   config?: DRSConfig,
-  describeSummary?: string
+  describeSummary?: string,
+  verificationContext?: ReviewVerificationContext
 ): string {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentId, projectRoot, config);
@@ -118,6 +120,10 @@ export function buildReviewPrompt(
     prompt += `# Change Summary\n\n${describeSummary}\n\n`;
   }
 
+  if (verificationContext) {
+    prompt += formatVerificationContext(verificationContext);
+  }
+
   // 2. Agent-specific context (if available)
   if (agentContext.agentContext) {
     const agentLabel = agentId.split('/').pop() ?? agentId;
@@ -129,4 +135,42 @@ export function buildReviewPrompt(
   prompt += basePrompt;
 
   return prompt;
+}
+
+function formatVerificationContext(context: ReviewVerificationContext): string {
+  const severityText = context.severity ? ` at or above ${context.severity}` : '';
+  return `# Fix Verification Context
+
+This is a verification review over the full post-fix diff. Verify the existing review findings${severityText} before reporting anything else.
+
+For each relevant original finding, decide whether it is:
+- resolved: the original issue no longer exists in the full post-fix diff
+- still_open: the same issue still exists
+- partial: the fix attempted the issue but is incomplete or moved the problem
+
+Do not mark a finding resolved just because it is absent from a narrower local fix diff. Use the full diff and surrounding code as needed.
+
+In your review output JSON, include this additional top-level field:
+{
+  "verification": {
+    "findings": [
+      {
+        "id": "F001",
+        "disposition": "resolved",
+        "rationale": "short explanation",
+        "issue": null
+      }
+    ]
+  }
+}
+
+The allowed disposition values are: resolved, still_open, partial.
+
+The normal top-level "issues" array should contain only new regressions introduced by the fix, not the original findings being verified.
+
+Existing review artifact:
+
+${JSON.stringify(context.artifact, null, 2)}
+
+`;
 }

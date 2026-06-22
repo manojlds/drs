@@ -1,24 +1,40 @@
 name: local-fix-review-issues
-description: Fix actionable issues from a saved DRS review result
+description: Fix actionable issues from a saved local DRS review artifact with verification loop
 inputs:
   review: ''
+  staged: 'false'
+  fixSeverity: 'high'
+  fixMaxIterations: '3'
+output: persistedReviewArtifact
 nodes:
   change:
     action: change-source
     with:
       type: local
-      staged: false
+      staged: '{{inputs.staged}}'
     output: change
+
+  load-review-artifact:
+    action: load-artifact
+    needs:
+      - change
+    with:
+      kind: review
+      source: change
+      id: '{{inputs.review}}'
+    output: persistedReviewArtifact
 
   fix-issues:
     agent: task/review-issue-fixer
     needs:
-      - change
+      - load-review-artifact
     input: |
-      Fix actionable issues from this DRS review result.
+      Fix actionable issues from this saved local DRS review artifact.
 
-      Review result:
-      {{inputs.review}}
+      Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
+
+      Review artifact:
+      {{artifacts.persistedReviewArtifact}}
 
       Current local change source:
       {{artifacts.change}}
@@ -30,13 +46,54 @@ nodes:
       - fix-issues
     with:
       type: local
-      staged: false
+      staged: '{{inputs.staged}}'
     output: finalChange
 
-  review:
-    action: review
+  verification-change:
+    action: change-source
     needs:
       - final-change
     with:
-      source: finalChange
-    output: review
+      type: fix-verification
+      source: change
+      fixChange: finalChange
+    output: verificationChange
+
+  re-review:
+    action: review
+    needs:
+      - verification-change
+    with:
+      source: verificationChange
+      reviewArtifact: persistedReviewArtifact
+      severity: '{{inputs.fixSeverity}}'
+    output: reReview
+
+  verify-fix:
+    action: verify-fix
+    needs:
+      - re-review
+      - load-review-artifact
+      - final-change
+    with:
+      artifact: persistedReviewArtifact
+      review: reReview
+      fixChange: finalChange
+      severity: '{{inputs.fixSeverity}}'
+      minIssues: '1'
+    output: persistedReviewArtifact
+
+  fix-loop:
+    control: loop
+    needs:
+      - verify-fix
+    condition: '{{artifacts.verify-fix.shouldContinue}} == true'
+    target: fix-issues
+    exit: done
+    maxIterations: '{{inputs.fixMaxIterations}}'
+    onMaxIterations: exit
+
+  done:
+    control: end
+    needs:
+      - fix-loop
