@@ -3196,6 +3196,48 @@ describe('workflow runner', () => {
     expect(result.artifacts.follower).toBeUndefined();
   });
 
+  it('logs skipped nodes as skipped instead of running', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        skipLogs: {
+          inputs: { enabled: 'false' },
+          nodes: {
+            start: { agent: 'task/start', input: 'start', output: 'start' },
+            optional: {
+              agent: 'task/optional',
+              needs: ['start'],
+              if: '{{inputs.enabled}} == true',
+              input: 'optional',
+            },
+            dependent: { agent: 'task/dependent', needs: ['optional'], input: 'dependent' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'skipLogs');
+
+    const logs = logSpy.mock.calls.map((call) => String(call[0]));
+    expect(logs.some((log) => log.includes('Running node start...'))).toBe(true);
+    expect(
+      logs.some((log) =>
+        log.includes('Skipping node optional (condition false: {{inputs.enabled}} == true)')
+      )
+    ).toBe(true);
+    expect(
+      logs.some((log) => log.includes('Skipping node dependent (dependency skipped: optional)'))
+    ).toBe(true);
+    expect(logs.some((log) => log.includes('Running node optional...'))).toBe(false);
+    expect(logs.some((log) => log.includes('Running node dependent...'))).toBe(false);
+
+    logSpy.mockRestore();
+  });
+
   it('continues past optional directly conditioned nodes', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);

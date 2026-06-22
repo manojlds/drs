@@ -3602,11 +3602,40 @@ function getWorkflowNodeRunCondition(node: WorkflowNodeConfig): string | undefin
   return node.if ?? node.condition;
 }
 
-function hasSkippedWorkflowDependency(
+function getSkippedWorkflowDependencies(
   node: WorkflowNodeConfig,
   nodes: Record<string, WorkflowNodeResult>
-): boolean {
-  return getNodeNeeds(node).some((dependency) => nodes[dependency]?.status === 'skipped');
+): string[] {
+  return getNodeNeeds(node).filter((dependency) => nodes[dependency]?.status === 'skipped');
+}
+
+function getWorkflowNodeSkipReason(
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): string | undefined {
+  const skippedDependencies = getSkippedWorkflowDependencies(node, context.nodes);
+  if (skippedDependencies.length > 0) {
+    return `dependency skipped: ${skippedDependencies.join(', ')}`;
+  }
+
+  const condition = getWorkflowNodeRunCondition(node);
+  if (condition !== undefined && !evaluateWorkflowExpression(condition, context)) {
+    return `condition false: ${condition}`;
+  }
+
+  return undefined;
+}
+
+function logWorkflowNodeRunning(nodeId: string, options: WorkflowRunOptions): void {
+  if (!options.jsonOutput) {
+    console.log(chalk.gray(`Running node ${nodeId}...`));
+  }
+}
+
+function logWorkflowNodeSkipped(nodeId: string, reason: string, options: WorkflowRunOptions): void {
+  if (!options.jsonOutput) {
+    console.log(chalk.gray(`Skipping node ${nodeId} (${reason})`));
+  }
 }
 
 function recordWorkflowNodeResult(
@@ -3647,7 +3676,10 @@ async function runWorkflowDagSegment(
     for (const nodeId of nodeIds) {
       if (!activeNodeIds.has(nodeId)) {
         completed.add(nodeId);
-        context.nodes[nodeId] ??= createSkippedWorkflowNodeResult(nodeId);
+        if (context.nodes[nodeId] === undefined) {
+          logWorkflowNodeSkipped(nodeId, 'inactive branch', options);
+          context.nodes[nodeId] = createSkippedWorkflowNodeResult(nodeId);
+        }
       }
     }
   }
@@ -3673,11 +3705,14 @@ async function runWorkflowDagSegment(
           throw new Error(`Workflow references unknown node "${nodeId}".`);
         }
 
-        if (!options.jsonOutput) {
-          console.log(chalk.gray(`Running node ${nodeId}...`));
-        }
-
         try {
+          const skipReason = getWorkflowNodeSkipReason(node, context);
+          if (skipReason) {
+            logWorkflowNodeSkipped(nodeId, skipReason, options);
+            return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
+          }
+
+          logWorkflowNodeRunning(nodeId, options);
           const result = await runSingleWorkflowNode(
             config,
             nodeId,
@@ -3898,15 +3933,17 @@ async function runControlWorkflow(
     if (!node) {
       throw new Error(`Workflow references unknown node "${segment.nodeId}".`);
     }
-    if (!options.jsonOutput) {
-      console.log(chalk.gray(`Running node ${segment.nodeId}...`));
-    }
     const existing = context.nodes[segment.nodeId];
-    const controlResult = shouldReuseRestoredWorkflowNode(
-      segment.nodeId,
-      existing,
-      executionContext
-    )
+    const restored = shouldReuseRestoredWorkflowNode(segment.nodeId, existing, executionContext);
+    const skipReason = restored ? undefined : getWorkflowNodeSkipReason(node, context);
+    if (!restored) {
+      if (skipReason) {
+        logWorkflowNodeSkipped(segment.nodeId, skipReason, options);
+      } else {
+        logWorkflowNodeRunning(segment.nodeId, options);
+      }
+    }
+    const controlResult = restored
       ? {
           result: existing,
           nextNodeId:
@@ -3917,7 +3954,7 @@ async function runControlWorkflow(
                 : undefined,
           ended: (existing.output as { ended?: unknown } | undefined)?.ended === true,
         }
-      : hasSkippedWorkflowDependency(node, context.nodes)
+      : skipReason
         ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
         : runControlWorkflowNode(segment.nodeId, node, context);
     const { result, nextNodeId, ended } = controlResult;
@@ -3969,12 +4006,7 @@ async function runSingleWorkflowNode(
 ): Promise<WorkflowNodeResult> {
   const kind = getNodeKind(node);
 
-  if (hasSkippedWorkflowDependency(node, context.nodes)) {
-    return createSkippedWorkflowNodeResult(nodeId);
-  }
-
-  const condition = getWorkflowNodeRunCondition(node);
-  if (condition !== undefined && !evaluateWorkflowExpression(condition, context)) {
+  if (getWorkflowNodeSkipReason(node, context)) {
     return createSkippedWorkflowNodeResult(nodeId);
   }
 
@@ -4082,16 +4114,19 @@ export async function runWorkflow(
               throw new Error(`Workflow references unknown node "${nodeId}".`);
             }
 
-            if (!options.jsonOutput) {
-              console.log(chalk.gray(`Running node ${nodeId}...`));
-            }
-
             const existing = nodes[nodeId];
             if (shouldReuseRestoredWorkflowNode(nodeId, existing, executionContext)) {
               return { nodeId, node, result: existing };
             }
 
             try {
+              const skipReason = getWorkflowNodeSkipReason(node, context);
+              if (skipReason) {
+                logWorkflowNodeSkipped(nodeId, skipReason, options);
+                return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
+              }
+
+              logWorkflowNodeRunning(nodeId, options);
               const result = await runSingleWorkflowNode(
                 config,
                 nodeId,
