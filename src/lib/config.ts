@@ -652,25 +652,10 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
       model: defaultModelEnv,
     });
   }
-  if (process.env.REVIEW_MODE) {
-    console.warn(
-      '⚠ REVIEW_MODE is deprecated. Configure review.agents explicitly (include review/unified-reviewer when needed).'
-    );
-    config.review.mode = process.env.REVIEW_MODE as ReviewMode;
-  }
   if (process.env.REVIEW_UNIFIED_MODEL) {
     config.review.unified = {
       ...config.review.unified,
       model: process.env.REVIEW_UNIFIED_MODEL,
-    };
-  }
-  if (process.env.REVIEW_UNIFIED_THRESHOLD) {
-    console.warn(
-      '⚠ REVIEW_UNIFIED_THRESHOLD is deprecated and ignored by the agents-first pipeline.'
-    );
-    config.review.unified = {
-      ...config.review.unified,
-      severityThreshold: process.env.REVIEW_UNIFIED_THRESHOLD as ReviewSeverity,
     };
   }
   if (process.env.REVIEW_THINKING_LEVEL) {
@@ -695,25 +680,6 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   // Apply CLI overrides
   if (overrides) {
     config = mergeConfig(config, overrides);
-  }
-
-  if (config.review.mode) {
-    console.warn(
-      '⚠ review.mode is deprecated. Configure review.agents explicitly (include review/unified-reviewer when needed).'
-    );
-
-    const validModes: ReviewMode[] = ['multi-agent', 'unified', 'hybrid'];
-    if (!validModes.includes(config.review.mode)) {
-      throw new Error(
-        `Invalid review mode "${config.review.mode}". Valid options: ${validModes.join(', ')}`
-      );
-    }
-  }
-
-  if (config.review.unified?.severityThreshold) {
-    console.warn(
-      '⚠ review.unified.severityThreshold is deprecated and ignored by the agents-first pipeline.'
-    );
   }
 
   return normalizeRuntimeConfig(config);

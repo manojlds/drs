@@ -1,3 +1,6 @@
+# scratch and ad-hoc apply helpers used during 4.0.0 prep; never tracked
+/scripts/
+
 # Logs
 logs
 *.log

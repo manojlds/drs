@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Removed
+
+- Migration-cruft env-var handlers and validation blocks in `loadConfig` that only existed to smooth a 3.x → 4.0.0 transition. Since 4.0.0 has not shipped, there is no public stability surface to warn about — drop them now. Concretely:
+  - `process.env.REVIEW_MODE` handler and the `config.review.mode` validation warn.
+  - `process.env.REVIEW_UNIFIED_THRESHOLD` handler and the `config.review.unified.severityThreshold` validation warn.
+- The `scripts/` directory is moved out of tracked source (added to `.gitignore`); ad-hoc apply helpers used during 4.0.0 prep were noise, not repo assets.
+
 ### Added
 
 - Validate every workflow node's `action` value at config load time via `loadConfig`, producing a did-you-mean error before any wave executor runs. A small Levenshtein distance picks the closest supported action for near-miss typos; wholly unknown actions get a list of every supported action.
