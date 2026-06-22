@@ -72,21 +72,17 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow control node. */
-  control?: 'condition' | 'loop' | 'switch' | 'end' | 'passThrough';
+  control?: 'loop' | 'switch' | 'end' | 'passThrough';
   /** Built-in workflow action. */
   action?: WorkflowAction;
   /** Action-specific options. */
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
   needs?: string[];
-  /** Expression evaluated by condition/loop control nodes. */
+  /** Expression evaluated before running executable nodes. */
   if?: string;
-  /** Alias for if on loop nodes. */
+  /** Alias for if on executable and loop nodes. */
   condition?: string;
-  /** Target node when a condition is true. */
-  then?: string;
-  /** Target node when a condition is false. */
-  else?: string;
   /** Target node when a loop continues. */
   target?: string;
   /** Target node when a loop exits. */

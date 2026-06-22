@@ -1254,15 +1254,10 @@ describe('workflow runner', () => {
               needs: ['change'],
               output: 'guard',
             },
-            shouldStack: {
-              control: 'condition',
-              needs: ['guard'],
-              if: '{{artifacts.guard.allowed}} == true',
-              then: 'branch',
-              else: 'done',
-            },
             branch: {
               action: 'git-branch',
+              needs: ['guard'],
+              if: '{{artifacts.guard.allowed}} == true',
               with: { name: 'drs-fix/pr-7' },
             },
             done: { control: 'end' },
@@ -1274,6 +1269,7 @@ describe('workflow runner', () => {
     const result = await runWorkflow(config, 'guarded', { workingDir: projectRoot });
 
     expect(result.artifacts.guard).toMatchObject({ allowed: false, sourceBranch: 'drs-fix/pr-7' });
+    expect(result.nodes.branch).toMatchObject({ status: 'skipped' });
     expect(mocks.git.raw).not.toHaveBeenCalledWith(['checkout', '-b', 'drs-fix/pr-7']);
   });
 
@@ -3121,7 +3117,7 @@ describe('workflow runner', () => {
     );
   });
 
-  it('routes condition control nodes and skips inactive branch nodes', async () => {
+  it('runs executable nodes only when their direct if condition matches', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);
     });
@@ -3132,15 +3128,18 @@ describe('workflow runner', () => {
         conditional: {
           nodes: {
             count: { agent: 'task/count', input: '2', output: 'count' },
-            choose: {
-              control: 'condition',
+            positive: {
+              agent: 'task/positive',
               needs: ['count'],
               if: '{{artifacts.count}} > 0',
-              then: 'positive',
-              else: 'negative',
+              input: 'positive {{artifacts.count}}',
             },
-            positive: { agent: 'task/positive', input: 'positive {{artifacts.count}}' },
-            negative: { agent: 'task/negative', input: 'negative' },
+            negative: {
+              agent: 'task/negative',
+              needs: ['count'],
+              if: '{{artifacts.count}} < 0',
+              input: 'negative',
+            },
           },
         },
       },
@@ -3155,15 +3154,10 @@ describe('workflow runner', () => {
       'task/positive',
       expect.objectContaining({ prompt: 'positive 2' })
     );
-    expect(result.nodes.choose).toMatchObject({
-      type: 'control',
-      decision: 'then',
-      target: 'positive',
-    });
     expect(result.nodes.negative).toMatchObject({ type: 'skipped', status: 'skipped' });
   });
 
-  it('runs same-segment dependencies required by a condition branch target', async () => {
+  it('skips executable nodes when a dependency was skipped', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);
     });
@@ -3172,16 +3166,11 @@ describe('workflow runner', () => {
       workflows: {
         conditionalDependency: {
           nodes: {
-            choose: {
-              control: 'condition',
-              if: 'true',
-              then: 'target',
-              else: 'other',
-            },
             prerequisite: { agent: 'task/prerequisite', input: 'prepared', output: 'prerequisite' },
             target: {
               agent: 'task/target',
               needs: ['prerequisite'],
+              if: 'false',
               input: 'target {{artifacts.prerequisite}}',
               output: 'target',
             },
@@ -3191,7 +3180,6 @@ describe('workflow runner', () => {
               input: 'follower {{artifacts.target}}',
               output: 'follower',
             },
-            other: { agent: 'task/other', input: 'other', output: 'other' },
           },
         },
       },
@@ -3202,14 +3190,13 @@ describe('workflow runner', () => {
     });
 
     expect(result.nodes.prerequisite).toMatchObject({ type: 'agent' });
-    expect(result.nodes.target).toMatchObject({ type: 'agent' });
-    expect(result.nodes.follower).toMatchObject({ type: 'agent' });
-    expect(result.nodes.other).toMatchObject({ status: 'skipped' });
-    expect(result.artifacts.target).toBe('target prepared');
-    expect(result.artifacts.follower).toBe('follower target prepared');
+    expect(result.nodes.target).toMatchObject({ status: 'skipped' });
+    expect(result.nodes.follower).toMatchObject({ status: 'skipped' });
+    expect(result.artifacts.target).toBeUndefined();
+    expect(result.artifacts.follower).toBeUndefined();
   });
 
-  it('continues from an optional condition branch into a later DAG segment', async () => {
+  it('continues past optional directly conditioned nodes', async () => {
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
       return createMockAgentResult(agent, options.prompt ?? agent);
     });
@@ -3219,19 +3206,11 @@ describe('workflow runner', () => {
         optionalDescribe: {
           inputs: { describe: 'true' },
           nodes: {
-            shouldDescribe: {
-              control: 'condition',
+            describe: {
+              agent: 'task/describe',
               if: '{{inputs.describe}} == true',
-              then: 'describe',
-              else: 'review',
-            },
-            describe: { agent: 'task/describe', input: 'describe', output: 'description' },
-            continueReview: {
-              control: 'condition',
-              needs: ['describe'],
-              if: 'true',
-              then: 'review',
-              else: 'review',
+              input: 'describe',
+              output: 'description',
             },
             review: { agent: 'task/review', input: 'review', output: 'review' },
           },
@@ -3248,7 +3227,6 @@ describe('workflow runner', () => {
       'task/review',
     ]);
     expect(described.nodes.describe).toMatchObject({ type: 'agent' });
-    expect(described.nodes.continueReview).toMatchObject({ type: 'control', target: 'review' });
     expect(described.nodes.review).toMatchObject({ type: 'agent' });
 
     mocks.runAgent.mockClear();
@@ -3259,8 +3237,7 @@ describe('workflow runner', () => {
     });
 
     expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/review']);
-    expect(reviewedOnly.nodes.describe).toBeUndefined();
-    expect(reviewedOnly.nodes.continueReview).toBeUndefined();
+    expect(reviewedOnly.nodes.describe).toMatchObject({ status: 'skipped' });
     expect(reviewedOnly.nodes.review).toMatchObject({ type: 'agent' });
   });
 
@@ -3274,14 +3251,16 @@ describe('workflow runner', () => {
         booleanInput: {
           inputs: { enabled: 'false' },
           nodes: {
-            choose: {
-              control: 'condition',
+            enabled: {
+              agent: 'task/enabled',
               if: '{{inputs.enabled}} == true',
-              then: 'enabled',
-              else: 'disabled',
+              input: 'enabled',
             },
-            enabled: { agent: 'task/enabled', input: 'enabled' },
-            disabled: { agent: 'task/disabled', input: 'disabled' },
+            disabled: {
+              agent: 'task/disabled',
+              if: '{{inputs.enabled}} != true',
+              input: 'disabled',
+            },
           },
         },
       },
@@ -3307,6 +3286,52 @@ describe('workflow runner', () => {
     ]);
   });
 
+  it('skips executable nodes when a direct if condition is false', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) => {
+      return createMockAgentResult(agent, options.prompt ?? agent);
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        optionalDescribe: {
+          inputs: { describe: 'false' },
+          nodes: {
+            describe: {
+              agent: 'task/describe',
+              if: '{{inputs.describe}} == true',
+              input: 'describe',
+              output: 'description',
+            },
+            review: { agent: 'task/review', input: 'review', output: 'review' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const skipped = await runWorkflow(config, 'optionalDescribe', {
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/review']);
+    expect(skipped.nodes.describe).toMatchObject({ type: 'skipped', status: 'skipped' });
+    expect(skipped.artifacts.description).toBeUndefined();
+    expect(skipped.nodes.review).toMatchObject({ type: 'agent' });
+
+    mocks.runAgent.mockClear();
+
+    const described = await runWorkflow(config, 'optionalDescribe', {
+      inputs: { describe: 'true' },
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/describe',
+      'task/review',
+    ]);
+    expect(described.nodes.describe).toMatchObject({ type: 'agent' });
+    expect(described.artifacts.description).toBe('describe');
+  });
+
   it('loops through review and fix nodes until the condition exits', async () => {
     const reviewOutputs = ['issues', 'clean'];
     mocks.runAgent.mockImplementation(async (_config, agent, options) => {
@@ -3322,14 +3347,12 @@ describe('workflow runner', () => {
         reviewFix: {
           nodes: {
             review: { agent: 'task/review', input: 'review', output: 'review' },
-            shouldFix: {
-              control: 'condition',
+            fix: {
+              agent: 'task/fix',
               needs: ['review'],
               if: '{{artifacts.review}} != clean',
-              then: 'fix',
-              else: 'done',
+              input: 'fix {{artifacts.review}}',
             },
-            fix: { agent: 'task/fix', input: 'fix {{artifacts.review}}' },
             repeat: {
               control: 'loop',
               needs: ['fix'],
@@ -3380,14 +3403,12 @@ describe('workflow runner', () => {
         reviewFix: {
           nodes: {
             review: { agent: 'task/review', input: 'review', output: 'review' },
-            shouldFix: {
-              control: 'condition',
+            fix: {
+              agent: 'task/fix',
               needs: ['review'],
               if: '{{artifacts.review}} != clean',
-              then: 'fix',
-              else: 'done',
+              input: 'fix {{artifacts.review}}',
             },
-            fix: { agent: 'task/fix', input: 'fix {{artifacts.review}}' },
             repeat: {
               control: 'loop',
               needs: ['fix'],
@@ -3578,15 +3599,13 @@ describe('workflow runner', () => {
           output: 'result',
           nodes: {
             start: { action: 'write', input: 'hello', writes: 'out.txt', output: 'result' },
-            gate: {
+            done: {
               needs: ['start'],
-              control: 'condition',
+              agent: 'task/review',
               if: '${{ inputs.enabled }}',
-              then: 'done',
-              else: 'stop',
+              input: '${{ artifacts.result }}',
             },
-            done: { needs: ['gate'], agent: 'task/review', input: '${{ artifacts.result }}' },
-            stop: { needs: ['gate'], control: 'end' },
+            stop: { control: 'end' },
           },
         },
       },
@@ -3608,12 +3627,11 @@ describe('workflow runner', () => {
     expect(detail.nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'gate',
-          kind: 'control',
+          id: 'done',
+          kind: 'agent',
           needs: ['start'],
-          control: 'condition',
+          agent: 'task/review',
           if: '${{ inputs.enabled }}',
-          routes: { then: 'done', else: 'stop' },
         }),
       ])
     );

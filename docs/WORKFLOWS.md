@@ -504,20 +504,16 @@ nodes:
       repo: "{{inputs.repo}}"
       pr: "{{inputs.pr}}"
     output: change
-  should-describe:
-    control: condition
-    needs: [change]
-    if: "{{inputs.describe}} == true"
-    then: describe
-    else: review
   describe:
     action: describe
+    needs: [change]
+    if: "{{inputs.describe}} == true"
     with:
       source: change
       post: true
   review:
     action: review
-    needs: [describe]
+    needs: [change]
     with:
       source: change
     output: review

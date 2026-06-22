@@ -127,25 +127,14 @@ describe('Config', () => {
         codeQuality: 'false',
         codeQualityReport: 'gl-code-quality-report.json',
       });
-      expect(config.workflows?.['github-pr-review']?.nodes['continue-review']?.control).toBe(
-        'passThrough'
-      );
-      expect(config.workflows?.['github-pr-review']?.nodes['continue-review']?.target).toBe(
-        'should-post'
-      );
-      expect(config.workflows?.['gitlab-mr-review']?.nodes['continue-review']?.control).toBe(
-        'passThrough'
-      );
-      expect(config.workflows?.['gitlab-mr-review']?.nodes['continue-review']?.target).toBe(
-        'should-post'
-      );
       expect(config.workflows?.['github-pr-review']?.inputs).toMatchObject({
         visual: 'false',
         visualOutputPath: '.drs/visual-pr-explainer.html',
       });
       expect(config.workflows?.['github-pr-review']?.nodes.visual).toMatchObject({
         agent: 'visual/pr-explainer',
-        needs: ['change', 'review'],
+        needs: ['change', 'review', 'save-review-artifact'],
+        if: '{{inputs.visual}} == true',
         writes: '{{inputs.visualOutputPath}}',
       });
       expect(config.workflows?.['github-pr-visual-explain']).toMatchObject({
@@ -166,9 +155,6 @@ describe('Config', () => {
       });
       expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
-      expect(config.workflows?.['github-pr-review']?.nodes['should-visual']?.needs).toEqual([
-        'save-review-artifact',
-      ]);
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
       ]);
@@ -177,10 +163,11 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.needs).toEqual([
         'change',
         'review',
-      ]);
-      expect(config.workflows?.['gitlab-mr-review']?.nodes['should-visual']?.needs).toEqual([
         'save-review-artifact',
       ]);
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.if).toBe(
+        '{{inputs.visual}} == true'
+      );
       expect(config.workflows?.['gitlab-mr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
       ]);

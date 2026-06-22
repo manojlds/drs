@@ -27,18 +27,12 @@ nodes:
       allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
-  should-stack:
-    control: condition
-    needs:
-      - guard
-    if: '{{artifacts.stackGuard.allowed}} == true'
-    then: review
-    else: done
-
   review:
     action: review
     needs:
       - change
+      - guard
+    if: '{{artifacts.stackGuard.allowed}} == true'
     with:
       source: change
     output: review
@@ -72,16 +66,11 @@ nodes:
       minIssues: '{{inputs.minIssues}}'
     output: reviewThreshold
 
-  should-fix:
-    control: condition
+  branch:
+    action: git-branch
     needs:
       - threshold
     if: '{{artifacts.reviewThreshold.matched}} == true'
-    then: branch
-    else: done
-
-  branch:
-    action: git-branch
     with:
       name: '{{inputs.branchPrefix}}{{inputs.mr}}'
       force: true
@@ -124,16 +113,11 @@ nodes:
       - mark-fix-attempted
     output: fixDiff
 
-  should-create:
-    control: condition
+  commit:
+    action: git-commit
     needs:
       - diff
     if: '{{artifacts.fixDiff.changed}} == true'
-    then: commit
-    else: done
-
-  commit:
-    action: git-commit
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
@@ -181,14 +165,6 @@ nodes:
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
-
-  finish:
-    control: condition
-    needs:
-      - post-fix-status
-    if: 'true'
-    then: done
-    else: done
 
   done:
     control: end

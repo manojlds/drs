@@ -279,8 +279,6 @@ function getNodeNeeds(node: WorkflowNodeConfig): string[] {
 
 function getControlTargets(node: WorkflowNodeConfig): string[] {
   const targets: string[] = [];
-  if (node.then) targets.push(node.then);
-  if (node.else) targets.push(node.else);
   if (node.target) targets.push(node.target);
   if (node.exit) targets.push(node.exit);
   if (node.default) targets.push(node.default);
@@ -3415,6 +3413,22 @@ function compareWorkflowValues(left: unknown, operator: string, right: unknown):
 
 function evaluateWorkflowExpression(expression: string, context: WorkflowTemplateContext): boolean {
   const rendered = renderTemplate(expression, context).trim();
+  if (rendered.includes('&&')) {
+    return rendered.split(/\s+&&\s+/).every((part) =>
+      evaluateWorkflowExpression(part, {
+        ...context,
+        inputs: context.inputs,
+      })
+    );
+  }
+  if (rendered.includes('||')) {
+    return rendered.split(/\s+\|\|\s+/).some((part) =>
+      evaluateWorkflowExpression(part, {
+        ...context,
+        inputs: context.inputs,
+      })
+    );
+  }
   const match = rendered.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
   if (!match) {
     return isWorkflowTruthy(parseWorkflowExpressionValue(rendered));
@@ -3512,6 +3526,21 @@ function createSkippedWorkflowNodeResult(nodeId: string): WorkflowNodeResult {
     response: '',
     output: undefined,
   };
+}
+
+function getWorkflowNodeRunCondition(node: WorkflowNodeConfig): string | undefined {
+  if (node.control !== undefined) {
+    return undefined;
+  }
+
+  return node.if ?? node.condition;
+}
+
+function hasSkippedWorkflowDependency(
+  node: WorkflowNodeConfig,
+  nodes: Record<string, WorkflowNodeResult>
+): boolean {
+  return getNodeNeeds(node).some((dependency) => nodes[dependency]?.status === 'skipped');
 }
 
 function recordWorkflowNodeResult(
@@ -3648,32 +3677,6 @@ function runControlWorkflowNode(
   node: WorkflowNodeConfig,
   context: WorkflowTemplateContext
 ): { result: WorkflowNodeResult; nextNodeId?: string; ended?: boolean } {
-  if (node.control === 'condition') {
-    if (!node.if) {
-      throw new Error(`Workflow condition node "${nodeId}" must define if.`);
-    }
-    const matched = evaluateWorkflowExpression(node.if, context);
-    const nextNodeId = matched ? node.then : node.else;
-    if (!nextNodeId) {
-      throw new Error(
-        `Workflow condition node "${nodeId}" must define ${matched ? 'then' : 'else'}.`
-      );
-    }
-    return {
-      nextNodeId,
-      result: {
-        id: nodeId,
-        type: 'control',
-        status: 'success',
-        control: node.control,
-        decision: matched ? 'then' : 'else',
-        target: nextNodeId,
-        response: String(matched),
-        output: { matched, target: nextNodeId },
-      },
-    };
-  }
-
   if (node.control === 'loop') {
     const expression = node.condition ?? node.if;
     if (!expression) {
@@ -3848,7 +3851,9 @@ async function runControlWorkflow(
                 : undefined,
           ended: (existing.output as { ended?: unknown } | undefined)?.ended === true,
         }
-      : runControlWorkflowNode(segment.nodeId, node, context);
+      : hasSkippedWorkflowDependency(node, context.nodes)
+        ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
+        : runControlWorkflowNode(segment.nodeId, node, context);
     const { result, nextNodeId, ended } = controlResult;
     recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
     if (executionContext.checkpoint) {
@@ -3896,6 +3901,15 @@ async function runSingleWorkflowNode(
   executionContext: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const kind = getNodeKind(node);
+
+  if (hasSkippedWorkflowDependency(node, context.nodes)) {
+    return createSkippedWorkflowNodeResult(nodeId);
+  }
+
+  const condition = getWorkflowNodeRunCondition(node);
+  if (condition !== undefined && !evaluateWorkflowExpression(condition, context)) {
+    return createSkippedWorkflowNodeResult(nodeId);
+  }
 
   if (kind === 'agent') {
     return runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
@@ -4229,9 +4243,6 @@ export function listWorkflows(
 }
 
 function getWorkflowNodeRoutes(node: WorkflowNodeConfig): WorkflowNodeDetail['routes'] {
-  if (node.control === 'condition') {
-    return { then: node.then, else: node.else };
-  }
   if (node.control === 'loop') {
     return { target: node.target, exit: node.exit };
   }
