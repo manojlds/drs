@@ -28,28 +28,15 @@ nodes:
       mr: '{{inputs.mr}}'
     output: change
 
-  should-describe:
-    control: condition
-    needs:
-      - change
-    if: '{{inputs.describe}} == true'
-    then: describe
-    else: review
-
   describe:
     action: describe
     needs:
       - change
+    if: '{{inputs.describe}} == true'
     with:
       source: change
       post: true
     output: description
-
-  continue-visual:
-    control: passThrough
-    needs:
-      - describe
-    target: review
 
   review:
     action: review
@@ -78,19 +65,13 @@ nodes:
       artifact: reviewArtifact
     output: persistedReviewArtifact
 
-  should-visual:
-    control: condition
-    needs:
-      - save-review-artifact
-    if: '{{inputs.visual}} == true'
-    then: visual
-    else: should-post
-
   visual:
     agent: visual/pr-explainer
     needs:
       - change
       - review
+      - save-review-artifact
+    if: '{{inputs.visual}} == true'
     input: |
       Generate a visual MR explainer HTML artifact.
 
@@ -107,103 +88,54 @@ nodes:
     writes: '{{inputs.visualOutputPath}}'
     output: visualExplainer
 
-  continue-review:
-    control: passThrough
-    needs:
-      - visual
-    target: should-post
-
-  should-post:
-    control: condition
-    needs:
-      - review
-    if: '{{inputs.post}} == true'
-    then: post-comments
-    else: should-code-quality
-
   post-comments:
     action: post-review-comments
     needs:
       - review
+    if: '{{inputs.post}} == true'
     with:
       source: change
       review: review
     output: postedReview
 
-  continue-code-quality:
-    control: passThrough
-    needs:
-      - post-comments
-    target: should-code-quality
-
-  should-code-quality:
-    control: condition
-    needs:
-      - review
-    if: '{{inputs.codeQuality}} == true'
-    then: code-quality
-    else: should-fix-enabled
-
   code-quality:
     action: code-quality-report
     needs:
       - review
+    if: '{{inputs.codeQuality}} == true'
     with:
       review: review
       path: '{{inputs.codeQualityReport}}'
     output: codeQualityReport
 
-  continue-fix:
-    control: passThrough
-    needs:
-      - code-quality
-    target: should-fix-enabled
-
-  should-fix-enabled:
-    control: condition
-    needs:
-      - save-review-artifact
-    if: '{{inputs.fix}} == true'
-    then: stack-guard
-    else: done
-
   stack-guard:
     action: stack-guard
     needs:
       - change
+      - save-review-artifact
+    if: '{{inputs.fix}} == true'
     with:
       source: change
       allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
-  should-stack:
-    control: condition
-    needs:
-      - stack-guard
-    if: '{{artifacts.stackGuard.allowed}} == true'
-    then: fix-threshold
-    else: done
-
   fix-threshold:
     action: review-threshold
     needs:
       - review
+      - stack-guard
+    if: '{{artifacts.stackGuard.allowed}} == true'
     with:
       review: review
       severity: '{{inputs.fixSeverity}}'
       minIssues: '{{inputs.fixMinIssues}}'
     output: reviewThreshold
 
-  should-fix:
-    control: condition
+  fix-branch:
+    action: git-branch
     needs:
       - fix-threshold
     if: '{{artifacts.reviewThreshold.matched}} == true'
-    then: fix-branch
-    else: done
-
-  fix-branch:
-    action: git-branch
     with:
       name: '{{inputs.fixBranchPrefix}}{{inputs.mr}}'
       force: true
@@ -229,18 +161,11 @@ nodes:
       {{artifacts.change}}
     output: fixes
 
-  should-internal-loop:
-    control: condition
-    needs:
-      - fix-issues
-    if: '{{inputs.fixMode}} == internal'
-    then: stage-fixes
-    else: mark-fix-attempted
-
   stage-fixes:
     action: git-add
     needs:
       - fix-issues
+    if: '{{inputs.fixMode}} == internal'
     with:
       paths: '.'
     output: stagedFixes
@@ -294,22 +219,15 @@ nodes:
       - verify-fix
     condition: '{{artifacts.verify-fix.shouldContinue}} == true'
     target: fix-issues
-    exit: fix-done
+    exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'
     onMaxIterations: exit
-
-  fix-done:
-    control: condition
-    needs:
-      - verify-fix
-    if: '{{inputs.fixMode}} == internal'
-    then: post-fix-status-internal
-    else: mark-fix-attempted
 
   post-fix-status-internal:
     action: post-fix-status
     needs:
       - verify-fix
+    if: '{{inputs.fixMode}} == internal'
     with:
       platform: gitlab
       project: '{{inputs.project}}'
@@ -322,26 +240,11 @@ nodes:
       marker: drs-fix-status
     output: fixStatus
 
-  should-done-internal:
-    control: condition
-    needs:
-      - post-fix-status-internal
-    if: '{{artifacts.verify-fix.shouldContinue}} == false'
-    then: should-push-internal-fix
-    else: done
-
-  should-push-internal-fix:
-    control: condition
-    needs:
-      - should-done-internal
-    if: '{{artifacts.verify-fix.fixFiles}} > 0'
-    then: commit-internal-fix
-    else: done
-
   commit-internal-fix:
     action: git-commit
     needs:
-      - should-push-internal-fix
+      - post-fix-status-internal
+    if: '{{artifacts.verify-fix.shouldContinue}} == false && {{artifacts.verify-fix.fixFiles}} > 0'
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
@@ -357,16 +260,11 @@ nodes:
       setUpstream: false
     output: internalFixPush
 
-  done-after-internal-push:
-    control: passThrough
-    needs:
-      - push-internal-fix
-    target: done
-
   mark-fix-attempted:
     action: review-artifact-update-findings
     needs:
       - fix-issues
+    if: '{{inputs.fixMode}} != internal'
     with:
       artifact: persistedReviewArtifact
       severity: '{{inputs.fixSeverity}}'
@@ -380,26 +278,11 @@ nodes:
       - mark-fix-attempted
     output: fixDiff
 
-  should-create-fix-mr:
-    control: condition
-    needs:
-      - fix-diff
-    if: '{{artifacts.fixDiff.changed}} == true'
-    then: should-create-fix-change-request
-    else: done
-
-  should-create-fix-change-request:
-    control: condition
-    needs:
-      - should-create-fix-mr
-    if: '{{inputs.fixCreateChangeRequest}} == true'
-    then: fix-commit
-    else: done
-
   fix-commit:
     action: git-commit
     needs:
-      - should-create-fix-change-request
+      - fix-diff
+    if: '{{artifacts.fixDiff.changed}} == true && {{inputs.fixCreateChangeRequest}} == true'
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
@@ -465,12 +348,6 @@ nodes:
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
-
-  finish-stacked:
-    control: passThrough
-    needs:
-      - post-fix-status-stacked
-    target: done
 
   done:
     control: end

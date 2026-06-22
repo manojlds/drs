@@ -26,16 +26,11 @@ nodes:
       allowStackedSource: '{{inputs.allowStackedSource}}'
     output: stackGuard
 
-  should-stack:
-    control: condition
+  branch:
+    action: git-branch
     needs:
       - guard
     if: '{{artifacts.stackGuard.allowed}} == true'
-    then: branch
-    else: done
-
-  branch:
-    action: git-branch
     with:
       name: '{{inputs.branchPrefix}}{{inputs.mr}}'
       force: true
@@ -65,16 +60,11 @@ nodes:
       paths: '{{inputs.paths}}'
     output: guidanceDiff
 
-  should-create:
-    control: condition
+  commit:
+    action: git-commit
     needs:
       - diff
     if: '{{artifacts.guidanceDiff.changed}} == true'
-    then: commit
-    else: done
-
-  commit:
-    action: git-commit
     with:
       message: 'docs: update agent guidance for MR !{{inputs.mr}}'
       paths: '{{inputs.paths}}'

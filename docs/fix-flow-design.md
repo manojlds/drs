@@ -81,20 +81,12 @@ nodes:
 
   # --- Internal mode: re-review loop ---
 
-  # Branch on fix mode
-  should-internal-loop:
-    control: condition
-    needs:
-      - fix-issues
-    if: "{{inputs.fixMode}} == internal"
-    then: stage-fixes
-    else: fix-diff
-
   # Stage fixer changes for fix change-source
   stage-fixes:
     action: git-add
     needs:
       - fix-issues
+    if: "{{inputs.fixMode}} == internal"
     with:
       paths: "."
     output: stagedFixes
@@ -136,16 +128,8 @@ nodes:
       - re-threshold
     condition: "{{artifacts.reThreshold.matched}} == true"
     target: fix-issues
-    exit: fix-done
+    exit: post-fix-status-internal
     maxIterations: "{{inputs.fixMaxIterations}}"
-
-  fix-done:
-    control: condition
-    needs:
-      - re-threshold
-    if: "{{inputs.fixMode}} == stacked"
-    then: fix-diff
-    else: done
 
   # --- Stacked mode: commit, push, create PR ---
 
@@ -153,26 +137,14 @@ nodes:
     action: has-diff
     needs:
       - fix-issues
+    if: "{{inputs.fixMode}} == stacked"
     output: fixDiff
-
-  should-create-fix-pr:
-    control: condition
-    needs:
-      - fix-diff
-    if: "{{artifacts.fixDiff.changed}} == true"
-    then: should-create-fix-change-request
-    else: done
-
-  should-create-fix-change-request:
-    control: condition
-    needs:
-      - fix-diff
-    if: "{{inputs.fixCreateChangeRequest}} == true"
-    then: fix-commit
-    else: done
 
   fix-commit:
     action: git-commit
+    needs:
+      - fix-diff
+    if: "{{artifacts.fixDiff.changed}} == true && {{inputs.fixCreateChangeRequest}} == true"
     with:
       message: "fix: address DRS review issues for PR #{{inputs.pr}}"
       paths: "."
