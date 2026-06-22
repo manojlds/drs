@@ -2966,9 +2966,12 @@ function reconcileReviewArtifactFindings(
     const verdict = verdicts.get(finding.id);
     const disposition = getVerificationDisposition(finding, verdict, thresholdRank);
     const issue = isReviewIssue(verdict?.issue) ? verdict.issue : finding.issue;
+    const fingerprint =
+      issue === finding.issue ? finding.fingerprint : createIssueFingerprint(issue);
     return {
       ...finding,
       issue,
+      fingerprint,
       state: disposition === 'resolved' ? ('resolved' as const) : ('open' as const),
       disposition,
       updatedAt: now,

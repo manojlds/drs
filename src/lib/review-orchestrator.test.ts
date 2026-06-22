@@ -412,7 +412,8 @@ describe('review-orchestrator', () => {
         'Staged changes',
         expect.anything(),
         'git diff --cached -- <file>',
-        null
+        null,
+        undefined
       );
     });
 
@@ -432,7 +433,8 @@ describe('review-orchestrator', () => {
         'Unstaged changes',
         expect.anything(),
         'git diff -- <file>',
-        null
+        null,
+        undefined
       );
     });
 

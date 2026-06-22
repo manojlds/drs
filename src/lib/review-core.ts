@@ -86,7 +86,8 @@ export function buildBaseInstructions(
   label: string,
   files: FileWithDiff[],
   diffCommand?: string,
-  compressionSummary?: string
+  compressionSummary?: string,
+  verificationContext?: ReviewVerificationContext
 ): string {
   // Check if we have actual diff content
   const filesWithDiffs = files.filter((f) => f.patch);
@@ -150,7 +151,7 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
       "references": ["https://link1", "https://link2"],
       "agent": "security" | "quality" | "style" | "performance" | "documentation" | "unified"
     }
-  ]
+  ]${verificationContext ? buildVerificationSchemaSnippet() : ''}
 }
 
 **Analysis approach:**
@@ -210,7 +211,7 @@ Output requirements:
       "references": ["https://link1", "https://link2"],
       "agent": "security" | "quality" | "style" | "performance" | "documentation" | "unified"
     }
-  ]
+  ]${verificationContext ? buildVerificationSchemaSnippet() : ''}
 }
 
 **Instructions:**
@@ -220,6 +221,20 @@ Output requirements:
 4. Analyze the changed code for issues in your specialty area
 5. Populate summary counts based on the issues you report (use 0 when none).
 6. Focus on the changes - only report issues for newly added or modified lines.`;
+}
+
+function buildVerificationSchemaSnippet(): string {
+  return `,
+  "verification": {
+    "findings": [
+      {
+        "id": "F001",
+        "disposition": "resolved",
+        "rationale": "short explanation",
+        "issue": null
+      }
+    ]
+  }`;
 }
 
 /**

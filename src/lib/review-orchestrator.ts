@@ -304,18 +304,19 @@ export async function executeReview(
     }
 
     // ── Review pass ──────────────────────────────────────────────────────
-    const baseInstructions = buildBaseInstructions(
-      source.name,
-      compression.files,
-      diffCommand,
-      compressionSummary
-    );
-
-    // Run agents using shared core logic
     const verificationContext = isReviewVerificationContext(source.context.verification)
       ? source.context.verification
       : undefined;
 
+    const baseInstructions = buildBaseInstructions(
+      source.name,
+      compression.files,
+      diffCommand,
+      compressionSummary,
+      verificationContext
+    );
+
+    // Run agents using shared core logic
     const result = await runReviewPipeline(
       runtimeClient,
       config,

@@ -156,13 +156,15 @@ In your review output JSON, include this additional top-level field:
     "findings": [
       {
         "id": "F001",
-        "disposition": "resolved" | "still_open" | "partial",
+        "disposition": "resolved",
         "rationale": "short explanation",
-        "issue": { "optional": "updated ReviewIssue object when still_open or partial" }
+        "issue": null
       }
     ]
   }
 }
+
+The allowed disposition values are: resolved, still_open, partial.
 
 The normal top-level "issues" array should contain only new regressions introduced by the fix, not the original findings being verified.
 
