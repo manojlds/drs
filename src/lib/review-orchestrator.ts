@@ -8,7 +8,6 @@
 import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
-import { exitProcess } from './exit.js';
 import {
   shouldIgnoreFile,
   getReviewAgentIds,
@@ -307,13 +306,6 @@ export async function executeReview(
       filesReviewed: result.filesReviewed,
       usage: result.usage ?? createEmptyReviewUsageSummary(),
     };
-  } catch (error) {
-    // Handle "all agents failed" error
-    if (error instanceof Error && error.message === 'All review agents failed') {
-      await runtimeClient.shutdown();
-      exitProcess(1);
-    }
-    throw error;
   } finally {
     // Always shut down Pi runtime client
     await runtimeClient.shutdown();

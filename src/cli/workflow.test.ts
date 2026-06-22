@@ -3,7 +3,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, SUPPORTED_WORKFLOW_ACTIONS, type DRSConfig } from '../lib/config.js';
-import { exitProcess } from '../lib/exit.js';
 import { runWorkflow, listWorkflows, showWorkflow } from './workflow.js';
 
 const mocks = vi.hoisted(() => {
@@ -80,22 +79,6 @@ const mocks = vi.hoisted(() => {
         filesReviewed: source.files.length,
       })
     ),
-    executeUnifiedReview: vi.fn(
-      async (_config: unknown, options: { changedFiles?: Array<{ status: string }> }) => {
-        const filesReviewed =
-          options.changedFiles?.filter((file) => file.status !== 'removed').length ?? 0;
-        return {
-          issues: [] as unknown[],
-          summary: {
-            filesReviewed,
-            issuesFound: 0,
-            bySeverity: {},
-            byCategory: {},
-          },
-          filesReviewed,
-        };
-      }
-    ),
     runAgent: vi.fn(async (_config, agent: string, options: { prompt?: string }) => ({
       timestamp: '2026-06-16T00:00:00.000Z',
       agent,
@@ -152,10 +135,6 @@ vi.mock('../lib/review-orchestrator.js', () => ({
   executeReview: mocks.executeReview,
   filterIgnoredFiles: (files: string[], config: DRSConfig) =>
     files.filter((file) => !(config.review.ignorePatterns ?? []).includes(file)),
-}));
-
-vi.mock('../lib/unified-review-executor.js', () => ({
-  executeUnifiedReview: mocks.executeUnifiedReview,
 }));
 
 vi.mock('../lib/description-executor.js', () => ({
@@ -1300,7 +1279,7 @@ describe('workflow runner', () => {
 
   it('matches review issues at or above a configured severity threshold', async () => {
     const projectRoot = createTempDir('drs-workflow-review-threshold-');
-    mocks.executeUnifiedReview.mockResolvedValue({
+    mocks.executeReview.mockResolvedValue({
       issues: [
         { severity: 'LOW', category: 'STYLE', file: 'a.ts', line: 1, message: 'low' },
         { severity: 'HIGH', category: 'BUG', file: 'b.ts', line: 2, message: 'high' },
@@ -1343,7 +1322,7 @@ describe('workflow runner', () => {
 
   it('creates, saves, loads, and summarizes review artifacts', async () => {
     const projectRoot = createTempDir('drs-workflow-artifact-');
-    mocks.executeUnifiedReview.mockResolvedValue({
+    mocks.executeReview.mockResolvedValue({
       issues: [
         {
           severity: 'HIGH',
@@ -1443,7 +1422,7 @@ describe('workflow runner', () => {
 
   it('mutates review artifacts and persists envelope updates', async () => {
     const projectRoot = createTempDir('drs-workflow-artifact-mutate-');
-    mocks.executeUnifiedReview.mockResolvedValue({
+    mocks.executeReview.mockResolvedValue({
       issues: [
         {
           severity: 'HIGH',
@@ -2099,9 +2078,9 @@ describe('workflow runner', () => {
     expect(console.log).toBe(logSpy);
   });
 
-  it('converts review action process exits into workflow errors', async () => {
+  it('propagates review action failures as workflow errors', async () => {
     mocks.executeReview.mockImplementation(async () => {
-      exitProcess(1);
+      throw new Error('All review agents failed');
     });
 
     const config = {
@@ -2123,9 +2102,7 @@ describe('workflow runner', () => {
       },
     } as unknown as DRSConfig;
 
-    await expect(runWorkflow(config, 'localReview')).rejects.toThrow(
-      'Workflow review node "review" failed: all review agents failed.'
-    );
+    await expect(runWorkflow(config, 'localReview')).rejects.toThrow('All review agents failed');
   });
 
   it('loads a GitHub PR change source and reviews it', async () => {
@@ -2169,35 +2146,29 @@ describe('workflow runner', () => {
     expect(mocks.GitHubPlatformAdapter).toHaveBeenCalled();
     expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledWith('octocat/hello-world', 7);
     expect(mocks.githubAdapter.getChangedFiles).toHaveBeenCalledWith('octocat/hello-world', 7);
-    expect(mocks.enforceRepoBranchMatch).toHaveBeenCalledWith(
-      process.cwd(),
-      'octocat/hello-world',
-      expect.objectContaining({ number: 7 }),
-      {
-        skipRepoCheck: undefined,
-        skipBranchCheck: undefined,
-      }
-    );
-    expect(mocks.executeUnifiedReview).toHaveBeenCalledWith(
+    expect(mocks.enforceRepoBranchMatch).not.toHaveBeenCalled();
+    expect(mocks.executeReview).toHaveBeenCalledWith(
       config,
       expect.objectContaining({
-        projectId: 'octocat/hello-world',
-        prNumber: 7,
-        pullRequest: expect.objectContaining({ number: 7 }),
-        changedFiles: [
-          expect.objectContaining({ filename: 'src/github.ts', patch: '@@ +1 @@\n+github' }),
-        ],
-        postComments: false,
+        name: 'GitHub PR octocat/hello-world#7',
+        files: ['src/github.ts'],
         workingDir: process.cwd(),
+        context: expect.objectContaining({
+          platform: 'github',
+          projectId: 'octocat/hello-world',
+          pullRequest: expect.objectContaining({ number: 7 }),
+          changedFiles: [
+            expect.objectContaining({ filename: 'src/github.ts', patch: '@@ +1 @@\n+github' }),
+          ],
+        }),
       })
     );
-    expect(mocks.executeReview).not.toHaveBeenCalled();
   });
 
   it('runs packaged GitHub PR review visual explainer when enabled', async () => {
     const projectRoot = createTempDir('drs-workflow-github-visual-');
     const config = loadConfig(projectRoot);
-    mocks.executeUnifiedReview.mockResolvedValue({
+    mocks.executeReview.mockResolvedValue({
       issues: [
         {
           category: 'QUALITY',
@@ -2251,8 +2222,8 @@ describe('workflow runner', () => {
     expect(readFileSync(join(projectRoot, '.drs', 'pr-visual.html'), 'utf-8')).toContain(
       '<!DOCTYPE html>'
     );
-    expect(mocks.executeUnifiedReview).toHaveBeenCalled();
-    expect(mocks.executeUnifiedReview.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.executeReview).toHaveBeenCalled();
+    expect(mocks.executeReview.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runAgent.mock.invocationCallOrder[0] ?? 0
     );
     expect(result.nodes.visual?.writes).toBe('.drs/pr-visual.html');
@@ -2264,9 +2235,10 @@ describe('workflow runner', () => {
     const originalIssue = createMockReviewIssue('Original issue');
     const remainingIssue = createMockReviewIssue('Original issue');
     const reReviewResults = [createMockReviewResult([remainingIssue]), createMockReviewResult([])];
-    mocks.executeUnifiedReview.mockResolvedValue(createMockReviewResult([originalIssue]));
-    mocks.executeReview.mockImplementation(
-      async () => reReviewResults.shift() ?? createMockReviewResult([])
+    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
+      source.staged
+        ? (reReviewResults.shift() ?? createMockReviewResult([]))
+        : createMockReviewResult([originalIssue])
     );
 
     const result = await runWorkflow(config, 'github-pr-review', {
@@ -2313,7 +2285,6 @@ describe('workflow runner', () => {
     const projectRoot = createTempDir('drs-workflow-github-fix-max-');
     const config = loadConfig(projectRoot);
     const issue = createMockReviewIssue('Persistent issue');
-    mocks.executeUnifiedReview.mockResolvedValue(createMockReviewResult([issue]));
     mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
 
     const result = await runWorkflow(config, 'github-pr-review', {
@@ -2356,7 +2327,6 @@ describe('workflow runner', () => {
     const projectRoot = createTempDir('drs-workflow-github-fix-one-iter-');
     const config = loadConfig(projectRoot);
     const issue = createMockReviewIssue('One-iter divergent issue');
-    mocks.executeUnifiedReview.mockResolvedValue(createMockReviewResult([issue]));
     mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
 
     const result = await runWorkflow(config, 'github-pr-review', {
@@ -2399,7 +2369,6 @@ describe('workflow runner', () => {
     const config = loadConfig(projectRoot);
     const issue = createMockReviewIssue('Resumable issue');
     let failReReview = true;
-    mocks.executeUnifiedReview.mockResolvedValue(createMockReviewResult([issue]));
     mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) => {
       if (source.staged) {
         if (failReReview) {
@@ -2408,7 +2377,7 @@ describe('workflow runner', () => {
         }
         return createMockReviewResult([]);
       }
-      return createMockReviewResult([]);
+      return createMockReviewResult([issue]);
     });
 
     const inputs = {
@@ -2654,7 +2623,7 @@ describe('workflow runner', () => {
         patch: '@@ -0,0 +1 @@\n+github',
       },
     ]);
-    mocks.executeUnifiedReview.mockImplementation(async () => ({
+    mocks.executeReview.mockImplementation(async () => ({
       issues: [
         {
           category: 'QUALITY',
@@ -2747,7 +2716,7 @@ describe('workflow runner', () => {
 
   it('writes a GitLab code quality report from workflow review artifacts', async () => {
     const projectRoot = createTempDir('drs-workflow-code-quality-');
-    mocks.executeUnifiedReview.mockImplementation(async () => ({
+    mocks.executeReview.mockImplementation(async () => ({
       issues: [
         {
           category: 'QUALITY',
@@ -2867,29 +2836,23 @@ describe('workflow runner', () => {
     expect(mocks.GitLabPlatformAdapter).toHaveBeenCalled();
     expect(mocks.gitlabAdapter.getPullRequest).toHaveBeenCalledWith('group/repo', 8);
     expect(mocks.gitlabAdapter.getChangedFiles).toHaveBeenCalledWith('group/repo', 8);
-    expect(mocks.enforceRepoBranchMatch).toHaveBeenCalledWith(
-      process.cwd(),
-      'group/repo',
-      expect.objectContaining({ number: 8 }),
-      {
-        skipRepoCheck: true,
-        skipBranchCheck: true,
-      }
-    );
-    expect(mocks.executeUnifiedReview).toHaveBeenCalledWith(
+    expect(mocks.enforceRepoBranchMatch).not.toHaveBeenCalled();
+    expect(mocks.executeReview).toHaveBeenCalledWith(
       config,
       expect.objectContaining({
-        projectId: 'group/repo',
-        prNumber: 8,
-        pullRequest: expect.objectContaining({ number: 8 }),
-        changedFiles: [
-          expect.objectContaining({ filename: 'src/gitlab.ts', patch: '@@ +1 @@\n+gitlab' }),
-        ],
-        postComments: false,
+        name: 'GitLab MR group/repo!8',
+        files: ['src/gitlab.ts'],
         workingDir: process.cwd(),
+        context: expect.objectContaining({
+          platform: 'gitlab',
+          projectId: 'group/repo',
+          pullRequest: expect.objectContaining({ number: 8 }),
+          changedFiles: [
+            expect.objectContaining({ filename: 'src/gitlab.ts', patch: '@@ +1 @@\n+gitlab' }),
+          ],
+        }),
       })
     );
-    expect(mocks.executeReview).not.toHaveBeenCalled();
   });
 
   it('rejects empty GitLab MR aliases without falling through to mrIid', async () => {
@@ -3460,27 +3423,6 @@ describe('workflow runner', () => {
 
   it('posts a fix-status comment comparing original findings against re-review', async () => {
     const projectRoot = createTempDir('drs-workflow-fix-status-');
-    mocks.executeUnifiedReview.mockResolvedValue({
-      issues: [
-        {
-          severity: 'HIGH',
-          category: 'QUALITY',
-          title: 'Truncation corrupts state',
-          file: 'src/cli/workflow.ts',
-          line: 566,
-          problem: 'Truncation',
-          solution: 'Use file size guard',
-          agent: 'unified',
-        },
-      ],
-      summary: {
-        filesReviewed: 1,
-        issuesFound: 1,
-        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
-        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
-      },
-      filesReviewed: 1,
-    });
     mocks.executeReview.mockImplementation(
       async (_config, source: { files: string[]; staged?: boolean }) => {
         if (source.staged) {
@@ -3506,7 +3448,27 @@ describe('workflow runner', () => {
             filesReviewed: 1,
           };
         }
-        return createMockReviewResult([]);
+        return {
+          issues: [
+            {
+              severity: 'HIGH',
+              category: 'QUALITY',
+              title: 'Truncation corrupts state',
+              file: 'src/cli/workflow.ts',
+              line: 566,
+              problem: 'Truncation',
+              solution: 'Use file size guard',
+              agent: 'unified',
+            },
+          ],
+          summary: {
+            filesReviewed: 1,
+            issuesFound: 1,
+            bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+            byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+          },
+          filesReviewed: 1,
+        };
       }
     );
     mocks.git.diff.mockResolvedValue('diff --git a/src/cli/workflow.ts b/src/cli/workflow.ts');
@@ -3601,7 +3563,7 @@ describe('workflow runner', () => {
 
   it('posts fix-status with attempted disposition when no re-review is provided', async () => {
     const projectRoot = createTempDir('drs-workflow-fix-status-attempted-');
-    mocks.executeUnifiedReview.mockResolvedValue({
+    mocks.executeReview.mockResolvedValue({
       issues: [
         {
           severity: 'HIGH',
