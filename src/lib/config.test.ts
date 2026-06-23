@@ -88,6 +88,37 @@ describe('Config', () => {
     });
   });
 
+  it('should load fix.checks when provided', () => {
+    const config = loadConfig(process.cwd(), {
+      fix: {
+        checks: [
+          {
+            name: 'typecheck',
+            command: 'npm run type-check',
+            matchPaths: ['src/**/*.ts'],
+            timeoutMs: 60000,
+          },
+          {
+            name: 'lint',
+            command: 'npm run lint',
+          },
+        ],
+      },
+    });
+
+    expect(config.fix?.checks).toHaveLength(2);
+    expect(config.fix?.checks?.[0]).toEqual({
+      name: 'typecheck',
+      command: 'npm run type-check',
+      matchPaths: ['src/**/*.ts'],
+      timeoutMs: 60000,
+    });
+    expect(config.fix?.checks?.[1]).toEqual({
+      name: 'lint',
+      command: 'npm run lint',
+    });
+  });
+
   it('loads built-in workflow files', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'drs-workflow-builtins-'));
 

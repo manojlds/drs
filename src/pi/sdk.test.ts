@@ -759,4 +759,245 @@ describe('pi/sdk', () => {
 
     runtime.server.close();
   });
+
+  it('read_artifact returns compact manifest without findingId and full detail with findingId', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-read-artifact-'));
+    try {
+      const artifactPayload = {
+        schemaVersion: 1 as const,
+        reviewId: 'rev_test',
+        reviewedAt: '2024-01-01T00:00:00.000Z',
+        summary: {
+          filesReviewed: 2,
+          issuesFound: 3,
+          bySeverity: { CRITICAL: 0, HIGH: 2, MEDIUM: 1, LOW: 0 },
+          byCategory: { SECURITY: 0, QUALITY: 2, STYLE: 1, PERFORMANCE: 0, DOCUMENTATION: 0 },
+        },
+        findings: [
+          {
+            id: 'R1',
+            fingerprint: 'fp1',
+            issue: {
+              category: 'QUALITY',
+              severity: 'HIGH',
+              title: 'Missing error handling',
+              file: 'src/app.ts',
+              line: 42,
+              problem: 'Unhandled promise rejection',
+              solution: 'Add try-catch',
+              agent: 'unified',
+            },
+            state: 'open' as const,
+            disposition: 'still_open' as const,
+            source: 'agent' as const,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+            verification: {
+              disposition: 'still_open' as const,
+              rationale: 'Still no try-catch',
+              verifiedAt: '2024-01-01T00:00:00.000Z',
+            },
+          },
+          {
+            id: 'R2',
+            fingerprint: 'fp2',
+            issue: {
+              category: 'STYLE',
+              severity: 'LOW',
+              title: 'Inconsistent naming',
+              file: 'src/utils.ts',
+              line: 10,
+              problem: 'camelCase mismatch',
+              solution: 'Rename to camelCase',
+              agent: 'unified',
+            },
+            state: 'open' as const,
+            disposition: 'confirmed' as const,
+            source: 'agent' as const,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+      const envelope = {
+        schemaVersion: 1,
+        kind: 'review',
+        id: 'rev_test',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        scope: { platform: 'local' },
+        payload: artifactPayload,
+      };
+      const artifactDir = join(
+        workdir,
+        '.drs',
+        'artifacts',
+        'local',
+        'project',
+        'subject',
+        'review'
+      );
+      const { mkdir } = await import('fs/promises');
+      await mkdir(artifactDir, { recursive: true });
+      const artifactPath = join(artifactDir, 'latest.json');
+      await writeFile(artifactPath, JSON.stringify(envelope, null, 2), 'utf-8');
+
+      const runtime = await createPiInProcessServer({
+        config: {
+          agent: {
+            'task/review-issue-fixer': {
+              tools: { read_artifact: true },
+            },
+          },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: {
+          agent: 'task/review-issue-fixer',
+          parts: [{ type: 'text', text: 'Fix' }],
+        },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+        customTools?: Array<{
+          name: string;
+          execute: (
+            toolCallId: string,
+            params: Record<string, unknown>
+          ) => Promise<{ details?: Record<string, unknown> }>;
+        }>;
+      };
+      const readArtifact = createArgs.customTools?.find((t) => t.name === 'read_artifact');
+      expect(readArtifact).toBeDefined();
+
+      const relativePath = '.drs/artifacts/local/project/subject/review/latest.json';
+
+      const manifest = await readArtifact?.execute('tool-1', { artifactPath: relativePath });
+      expect(manifest?.details?.ok).toBe(true);
+      expect(manifest?.details?.totalFindings).toBe(2);
+      expect(manifest?.details?.actionableFindings).toBe(1);
+      expect(manifest?.details?.findings).toHaveLength(2);
+      expect((manifest?.details?.findings as unknown[])[0]).toMatchObject({
+        id: 'R1',
+        severity: 'HIGH',
+        state: 'open',
+        disposition: 'still_open',
+        file: 'src/app.ts',
+        line: 42,
+      });
+
+      const detail = await readArtifact?.execute('tool-2', {
+        artifactPath: relativePath,
+        findingId: 'R1',
+      });
+      expect(detail?.details?.ok).toBe(true);
+      expect(detail?.details?.finding).toMatchObject({
+        id: 'R1',
+        issue: { file: 'src/app.ts', line: 42, title: 'Missing error handling' },
+        verification: { disposition: 'still_open', rationale: 'Still no try-catch' },
+      });
+
+      const notFound = await readArtifact?.execute('tool-3', {
+        artifactPath: relativePath,
+        findingId: 'R999',
+      });
+      expect(notFound?.details?.ok).toBe(false);
+      expect(String(notFound?.details?.error)).toContain('R999');
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it('drs_check runs configured checks filtered by matchPaths', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-check-'));
+    try {
+      await execFileAsync('git', ['init'], { cwd: workdir });
+      await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: workdir });
+      await execFileAsync('git', ['config', 'user.name', 'Test User'], { cwd: workdir });
+      await writeFile(join(workdir, 'app.ts'), 'export const value = 1;\n');
+      await execFileAsync('git', ['add', 'app.ts'], { cwd: workdir });
+      await execFileAsync('git', ['commit', '-m', 'initial'], { cwd: workdir });
+      await writeFile(join(workdir, 'app.ts'), 'export const value = 2;\n');
+
+      await writeFile(join(workdir, 'check.sh'), 'echo "check passed"\n');
+      await execFileAsync('chmod', ['+x', 'check.sh'], { cwd: workdir });
+
+      const runtime = await createPiInProcessServer({
+        config: {
+          agent: {
+            'task/review-issue-fixer': {
+              tools: { drs_check: true },
+            },
+          },
+          fixChecks: [
+            {
+              name: 'always-check',
+              command: 'echo ok',
+            },
+            {
+              name: 'ts-check',
+              command: 'echo ts-ok',
+              matchPaths: ['*.ts'],
+            },
+            {
+              name: 'py-check',
+              command: 'echo py-ok',
+              matchPaths: ['*.py'],
+            },
+          ],
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: {
+          agent: 'task/review-issue-fixer',
+          parts: [{ type: 'text', text: 'Fix' }],
+        },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as {
+        customTools?: Array<{
+          name: string;
+          execute: (
+            toolCallId: string,
+            params: Record<string, unknown>
+          ) => Promise<{ details?: Record<string, unknown> }>;
+        }>;
+      };
+      const drsCheck = createArgs.customTools?.find((t) => t.name === 'drs_check');
+      expect(drsCheck).toBeDefined();
+
+      const allResults = await drsCheck?.execute('tool-1', {});
+      const checks = allResults?.details?.checks as Array<{
+        name: string;
+        exitCode: number | null;
+      }>;
+      expect(checks).toHaveLength(2);
+      const names = checks.map((c) => c.name).sort();
+      expect(names).toEqual(['always-check', 'ts-check']);
+      expect(checks.every((c) => c.exitCode === 0)).toBe(true);
+
+      const singleResult = await drsCheck?.execute('tool-2', { name: 'ts-check' });
+      const singleChecks = singleResult?.details?.checks as Array<{ name: string }>;
+      expect(singleChecks).toHaveLength(1);
+      expect(singleChecks[0].name).toBe('ts-check');
+
+      const notFound = await drsCheck?.execute('tool-3', { name: 'nonexistent' });
+      expect(notFound?.details?.ok).toBe(false);
+      expect(String(notFound?.details?.error)).toContain('nonexistent');
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
 });

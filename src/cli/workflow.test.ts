@@ -2445,9 +2445,9 @@ describe('workflow runner', () => {
       'task/review-issue-fixer',
     ]);
     const secondFixPrompt = mocks.runAgent.mock.calls[1]?.[2]?.prompt ?? '';
-    expect(secondFixPrompt).toContain('Current review artifact');
-    expect(secondFixPrompt).toContain('"disposition": "still_open"');
-    expect(secondFixPrompt).toContain('The whitelist still rejects git-branch with.from.');
+    expect(secondFixPrompt).toContain('Review artifact path:');
+    expect(secondFixPrompt).toContain('read_artifact');
+    expect(secondFixPrompt).toContain('drs_check');
     expect(result.loop['fix-loop']).toMatchObject({
       iteration: 2,
       maxIterations: 3,

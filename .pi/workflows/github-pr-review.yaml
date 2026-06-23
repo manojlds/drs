@@ -166,14 +166,14 @@ nodes:
 
       Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
 
-      Current review artifact, including any verifier feedback from previous fix attempts:
-      {{artifacts.persistedReviewArtifact}}
+      Review artifact path: {{artifacts.persistedReviewArtifact.path}}
 
-      Persisted artifact envelope:
-      {{artifacts.persistedReviewArtifact}}
+      Use the read_artifact tool with this path to get the finding manifest, then pull full details for specific findings by id. Do not assume the review JSON is in this prompt — call the tool.
 
-      Current PR change source:
-      {{artifacts.change}}
+      Current PR change source files (read these as needed):
+      {{artifacts.change.files}}
+
+      Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
   stage-fixes:

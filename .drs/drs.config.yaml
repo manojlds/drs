@@ -58,3 +58,21 @@ contextCompression:
   softBufferTokens: 1500
   hardBufferTokens: 1000
   tokenEstimateDivisor: 4
+
+fix:
+  checks:
+    - name: typecheck
+      command: npm run type-check
+      matchPaths:
+        - "src/**/*.ts"
+      timeoutMs: 60000
+    - name: lint
+      command: npm run lint
+      matchPaths:
+        - "src/**/*.ts"
+      timeoutMs: 60000
+    - name: tests
+      command: npm test
+      matchPaths:
+        - "src/**/*.ts"
+      timeoutMs: 120000
