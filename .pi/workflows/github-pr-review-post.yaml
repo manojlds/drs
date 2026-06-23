@@ -30,31 +30,13 @@ nodes:
       - describe
     with:
       source: change
+      artifact: persistedReviewArtifact
     output: review
-
-  review-artifact:
-    action: create-review-artifact
-    needs:
-      - review
-    with:
-      source: change
-      review: review
-    output: reviewArtifact
-
-  save-review-artifact:
-    action: save-artifact
-    needs:
-      - review-artifact
-    with:
-      kind: review
-      source: change
-      artifact: reviewArtifact
-    output: persistedReviewArtifact
 
   post-comments:
     action: post-review-comments
     needs:
-      - save-review-artifact
+      - review
     with:
       source: change
       review: review

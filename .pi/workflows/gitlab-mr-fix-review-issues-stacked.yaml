@@ -35,26 +35,8 @@ nodes:
     if: '{{artifacts.stackGuard.allowed}} == true'
     with:
       source: change
+      artifact: persistedReviewArtifact
     output: review
-
-  review-artifact:
-    action: create-review-artifact
-    needs:
-      - review
-    with:
-      source: change
-      review: review
-    output: reviewArtifact
-
-  save-review-artifact:
-    action: save-artifact
-    needs:
-      - review-artifact
-    with:
-      kind: review
-      source: change
-      artifact: reviewArtifact
-    output: persistedReviewArtifact
 
   threshold:
     action: review-threshold
@@ -80,8 +62,7 @@ nodes:
     agent: task/review-issue-fixer
     needs:
       - branch
-      - review-artifact
-      - save-review-artifact
+      - review
     input: |
       Fix actionable issues from this DRS review artifact for GitLab MR !{{inputs.mr}}.
 
@@ -156,7 +137,7 @@ nodes:
     action: post-fix-status
     needs:
       - create
-      - save-review-artifact
+      - review
     with:
       platform: gitlab
       project: '{{inputs.project}}'

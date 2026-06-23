@@ -308,10 +308,13 @@ nodes:
     needs: [change]
     with:
       source: change
+      artifact: persistedReviewArtifact
     output: review
 ```
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
+
+Set `with.artifact` to also create and save a review artifact under that output name. The raw review remains available through `output`, while the persisted review artifact envelope is available as `artifacts.<artifact>`.
 
 ### `review-context`
 

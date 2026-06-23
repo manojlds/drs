@@ -82,33 +82,14 @@ nodes:
       - change
     with:
       source: change
+      artifact: persistedReviewArtifact
     output: review
-
-  review-artifact:
-    action: create-review-artifact
-    needs:
-      - review
-    with:
-      source: change
-      review: review
-    output: reviewArtifact
-
-  save-review-artifact:
-    action: save-artifact
-    needs:
-      - review-artifact
-    with:
-      kind: review
-      source: change
-      artifact: reviewArtifact
-    output: persistedReviewArtifact
 
   visual:
     agent: visual/pr-explainer
     needs:
       - change
       - review
-      - save-review-artifact
     if: inputs.visual == true
     input: |
       Generate a visual MR explainer HTML artifact.
@@ -150,7 +131,7 @@ nodes:
     action: stack-guard
     needs:
       - change
-      - save-review-artifact
+      - review
     if: inputs.fix == true
     with:
       source: change
@@ -183,7 +164,7 @@ nodes:
     agent: task/review-issue-fixer
     needs:
       - fix-branch
-      - review-artifact
+      - review
     input: |
       Fix actionable issues from this DRS review artifact for GitLab MR !{{inputs.mr}}.
 
@@ -241,7 +222,6 @@ nodes:
     action: verify-fix
     needs:
       - re-review
-      - save-review-artifact
       - fix-change
     with:
       artifact: persistedReviewArtifact
@@ -375,7 +355,7 @@ nodes:
     action: post-fix-status
     needs:
       - create-fix-mr
-      - save-review-artifact
+      - review
     with:
       platform: gitlab
       project: '{{inputs.project}}'
