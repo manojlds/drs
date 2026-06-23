@@ -68,6 +68,26 @@ describe('GitHubPlatformAdapter', () => {
     expect(client.deletePRReviewComment).toHaveBeenCalledWith('octocat', 'hello', 123);
   });
 
+  it('retries transient GitHub comment list failures', async () => {
+    const client = {
+      listPRComments: vi
+        .fn()
+        .mockRejectedValueOnce({
+          status: 503,
+          message: 'upstream connect error: remote connection failure',
+        })
+        .mockResolvedValueOnce([{ id: 123, body: 'Existing comment' }]),
+    };
+
+    const adapter = new GitHubPlatformAdapter(client as any);
+
+    await expect(adapter.getComments('octocat/hello', 7)).resolves.toEqual([
+      { id: 123, body: 'Existing comment' },
+    ]);
+    expect(client.listPRComments).toHaveBeenCalledTimes(2);
+    expect(client.listPRComments).toHaveBeenCalledWith('octocat', 'hello', 7);
+  });
+
   it('finds an open pull request by source and target branches', async () => {
     const client = {
       listOpenPullRequests: vi.fn().mockResolvedValue({

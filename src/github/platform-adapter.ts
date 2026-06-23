@@ -55,7 +55,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
   async getComments(projectId: string, prNumber: number): Promise<Comment[]> {
     const [owner, repo] = this.parseProjectId(projectId);
-    const comments = await this.client.listPRComments(owner, repo, prNumber);
+    const comments = await this.withTransientRetry('list PR comments', () =>
+      this.client.listPRComments(owner, repo, prNumber)
+    );
 
     return comments.map((c) => ({
       id: c.id,
@@ -65,7 +67,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
   async getInlineComments(projectId: string, prNumber: number): Promise<Comment[]> {
     const [owner, repo] = this.parseProjectId(projectId);
-    const comments = await this.client.listPRReviewComments(owner, repo, prNumber);
+    const comments = await this.withTransientRetry('list PR review comments', () =>
+      this.client.listPRReviewComments(owner, repo, prNumber)
+    );
 
     return comments.map((c) => ({
       id: c.id,
@@ -75,7 +79,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
   async createComment(projectId: string, prNumber: number, body: string): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
-    await this.client.createPRComment(owner, repo, prNumber, body);
+    await this.withTransientRetry('create PR comment', () =>
+      this.client.createPRComment(owner, repo, prNumber, body)
+    );
   }
 
   async updateComment(
@@ -85,7 +91,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
     body: string
   ): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
-    await this.client.updateComment(owner, repo, Number(commentId), body);
+    await this.withTransientRetry('update PR comment', () =>
+      this.client.updateComment(owner, repo, Number(commentId), body)
+    );
   }
 
   async deleteComment(
@@ -95,12 +103,16 @@ export class GitHubPlatformAdapter implements PlatformClient {
   ): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
     try {
-      await this.client.deleteComment(owner, repo, Number(commentId));
+      await this.withTransientRetry('delete PR comment', () =>
+        this.client.deleteComment(owner, repo, Number(commentId))
+      );
     } catch (error) {
       if (!this.isNotFoundError(error)) {
         throw error;
       }
-      await this.client.deletePRReviewComment(owner, repo, Number(commentId));
+      await this.withTransientRetry('delete PR review comment', () =>
+        this.client.deletePRReviewComment(owner, repo, Number(commentId))
+      );
     }
   }
 
@@ -115,14 +127,16 @@ export class GitHubPlatformAdapter implements PlatformClient {
     // Validate position requirements for GitHub
     validatePositionOrThrow(position, this.positionValidator);
 
-    await this.client.createPRReviewComment(
-      owner,
-      repo,
-      prNumber,
-      body,
-      position.commitSha!,
-      position.path,
-      position.line
+    await this.withTransientRetry('create PR review comment', () =>
+      this.client.createPRReviewComment(
+        owner,
+        repo,
+        prNumber,
+        body,
+        position.commitSha!,
+        position.path,
+        position.line
+      )
     );
   }
 
@@ -150,14 +164,16 @@ export class GitHubPlatformAdapter implements PlatformClient {
     }));
 
     try {
-      await this.client.createPRReview(
-        owner,
-        repo,
-        prNumber,
-        commitSha,
-        `Found ${comments.length} critical/high priority issue(s) that need attention.`,
-        'COMMENT',
-        reviewComments
+      await this.withTransientRetry('create PR review', () =>
+        this.client.createPRReview(
+          owner,
+          repo,
+          prNumber,
+          commitSha,
+          `Found ${comments.length} critical/high priority issue(s) that need attention.`,
+          'COMMENT',
+          reviewComments
+        )
       );
       console.log(chalk.green(`✓ Posted ${comments.length} inline comment(s) in a single review`));
     } catch (error) {
@@ -194,7 +210,9 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
   async addLabels(projectId: string, prNumber: number, labels: string[]): Promise<void> {
     const [owner, repo] = this.parseProjectId(projectId);
-    await this.client.addLabels(owner, repo, prNumber, labels);
+    await this.withTransientRetry('add PR labels', () =>
+      this.client.addLabels(owner, repo, prNumber, labels)
+    );
   }
 
   async hasLabel(projectId: string, prNumber: number, label: string): Promise<boolean> {
@@ -260,6 +278,46 @@ export class GitHubPlatformAdapter implements PlatformClient {
       error !== null &&
       'status' in error &&
       (error as { status?: unknown }).status === 404
+    );
+  }
+
+  private async withTransientRetry<T>(operation: string, task: () => Promise<T>): Promise<T> {
+    const maxAttempts = 3;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await task();
+      } catch (error) {
+        lastError = error;
+        if (attempt === maxAttempts || !this.isTransientError(error)) {
+          throw error;
+        }
+        const delayMs = process.env.NODE_ENV === 'test' ? 0 : 500 * 2 ** (attempt - 1);
+        console.warn(
+          chalk.yellow(
+            `⚠ GitHub ${operation} failed transiently; retrying (${attempt}/${maxAttempts})`
+          )
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    throw lastError;
+  }
+
+  private isTransientError(error: unknown): boolean {
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+    if (status === 429 || status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|timeout|upstream connect error|remote connection failure/i.test(
+      message
     );
   }
 }
