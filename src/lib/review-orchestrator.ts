@@ -36,6 +36,7 @@ import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review
 import { runDescribeAgent, type PreCompressedDiffs } from './description-executor.js';
 import { formatDescribeSummary } from './description-formatter.js';
 import type { ReviewFinding } from './review-artifact.js';
+import type { TraceCollector } from './trace-collector.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -131,6 +132,7 @@ export interface ConnectOptions {
   debug?: boolean;
   modelOverrides?: ModelOverrides;
   thinkingLevel?: string;
+  traceCollector?: TraceCollector;
 }
 
 /**
@@ -165,6 +167,7 @@ export async function connectToRuntime(
       config,
       debug: options?.debug,
       thinkingLevel,
+      traceCollector: options?.traceCollector,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to Pi runtime'));
@@ -233,6 +236,7 @@ export async function executeReview(
     debug: source.debug,
     modelOverrides: reviewOverrides,
     thinkingLevel: source.thinkingLevel,
+    traceCollector: source.context.traceCollector as TraceCollector | undefined,
   });
 
   try {

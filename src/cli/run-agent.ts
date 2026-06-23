@@ -13,6 +13,7 @@ import type { AgentUsageSummary } from '../lib/review-usage.js';
 import { getLogger } from '../lib/logger.js';
 import { getAgent } from '../runtime/agent-loader.js';
 import { createRuntimeClientInstance, type Session } from '../runtime/client.js';
+import type { TraceCollector } from '../lib/trace-collector.js';
 
 export interface RunAgentOptions {
   prompt?: string;
@@ -27,6 +28,7 @@ export interface RunAgentOptions {
   quiet?: boolean;
   allowImplicitStdin?: boolean;
   ignoreConfiguredOutput?: boolean;
+  traceCollector?: TraceCollector;
 }
 
 export interface AgentRunResult {
@@ -125,7 +127,12 @@ export async function runAgent(
     debug: options.debug,
     thinkingLevel: effectiveOptions.thinkingLevel,
     modelOverrides: options.model ? { [agentId]: options.model } : undefined,
+    traceCollector: options.traceCollector,
   });
+
+  if (options.traceCollector) {
+    options.traceCollector.setContext('run-agent', agentId, prompt);
+  }
 
   let session: Session | undefined;
   let usage = createAgentUsageSummary(agentId);
