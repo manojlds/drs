@@ -61,7 +61,14 @@ inputs:
   fixMaxIterations: "3"
 
 nodes:
-  # ... review, review-artifact, save-review-artifact, threshold as before ...
+  review:
+    action: review
+    with:
+      source: change
+      artifact: persistedReviewArtifact
+    output: review
+
+  # ... threshold as before ...
 
   fix-branch:
     action: git-branch
@@ -73,10 +80,10 @@ nodes:
     agent: task/review-issue-fixer
     needs:
       - fix-branch
-      - review-artifact
+      - review
     input: |
       Fix actionable issues...
-      Review artifact: {{artifacts.reviewArtifact}}
+      Review artifact: {{artifacts.persistedReviewArtifact}}
     output: fixes
 
   # --- Internal mode: re-review loop ---
@@ -226,7 +233,7 @@ A new `post-fix-status` action handles this:
 post-fix-status:
   action: post-fix-status
   needs:
-    - review-artifact
+    - review
     - re-review       # or review if stacked mode (no re-review)
     - fix-change      # fix change-source with the fix diff
   with:

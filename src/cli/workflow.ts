@@ -102,6 +102,7 @@ export interface WorkflowNodeResult {
   response?: string;
   responses?: AgentRunResult[];
   output?: unknown;
+  outputs?: Record<string, unknown>;
   writes?: string;
 }
 
@@ -512,7 +513,7 @@ const ACTION_OPTION_FIELDS: Partial<
     'source',
     'fixChange',
   ]),
-  review: new Set(['source', 'reviewArtifact', 'severity']),
+  review: new Set(['source', 'reviewArtifact', 'severity', 'artifact']),
   'review-context': new Set(['source', 'file', 'baseBranch']),
   describe: new Set(['source', 'post', 'postDescription']),
   'code-quality-report': new Set(['review', 'path']),
@@ -3662,12 +3663,28 @@ async function runReviewWorkflowNode(
     await writeWorkflowFile(workingDir, writes, JSON.stringify(reviewResult, null, 2));
   }
 
+  const artifactOutput = getStringActionOption(node, 'artifact', context)?.trim();
+  const outputs: Record<string, unknown> = {};
+  let artifactResponse = '';
+  if (artifactOutput) {
+    const reviewArtifact = createReviewArtifactPayload(reviewResult, source);
+    const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
+    const saved = await saveWorkflowArtifact(workingDir, {
+      kind: 'review',
+      scope,
+      payload: reviewArtifact,
+    });
+    outputs[artifactOutput] = { ...saved.artifact, path: saved.path, latestPath: saved.latestPath };
+    artifactResponse = `\nSaved review artifact ${saved.artifact.id}.`;
+  }
+
   return {
     id: nodeId,
     type: 'action',
     action: node.action,
-    response: JSON.stringify(reviewResult.summary, null, 2),
+    response: `${JSON.stringify(reviewResult.summary, null, 2)}${artifactResponse}`,
     output: reviewResult,
+    outputs,
     writes,
   };
 }
@@ -3682,6 +3699,11 @@ function recordNodeArtifact(
   artifacts[nodeId] = artifactValue;
   if (node.output) {
     artifacts[node.output] = artifactValue;
+  }
+  if (result.outputs) {
+    for (const [name, value] of Object.entries(result.outputs)) {
+      artifacts[name] = value;
+    }
   }
 }
 

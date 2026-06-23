@@ -3869,20 +3869,8 @@ describe('workflow runner', () => {
             review: {
               action: 'review',
               needs: ['change'],
-              with: { source: 'change' },
+              with: { source: 'change', artifact: 'persistedReviewArtifact' },
               output: 'review',
-            },
-            'review-artifact': {
-              action: 'create-review-artifact',
-              needs: ['review'],
-              with: { source: 'change', review: 'review' },
-              output: 'reviewArtifact',
-            },
-            'save-review-artifact': {
-              action: 'save-artifact',
-              needs: ['review-artifact'],
-              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
-              output: 'persistedReviewArtifact',
             },
             'fix-change': {
               action: 'change-source',
@@ -3914,7 +3902,7 @@ describe('workflow runner', () => {
             },
             verify: {
               action: 'verify-fix',
-              needs: ['re-review', 'save-review-artifact', 'fix-change'],
+              needs: ['re-review', 'review', 'fix-change'],
               with: {
                 artifact: 'persistedReviewArtifact',
                 review: 'reReview',
@@ -3990,20 +3978,8 @@ describe('workflow runner', () => {
             review: {
               action: 'review',
               needs: ['change'],
-              with: { source: 'change' },
+              with: { source: 'change', artifact: 'persistedReviewArtifact' },
               output: 'review',
-            },
-            'review-artifact': {
-              action: 'create-review-artifact',
-              needs: ['review'],
-              with: { source: 'change', review: 'review' },
-              output: 'reviewArtifact',
-            },
-            'save-review-artifact': {
-              action: 'save-artifact',
-              needs: ['review-artifact'],
-              with: { kind: 'review', source: 'change', artifact: 'reviewArtifact' },
-              output: 'persistedReviewArtifact',
             },
             'fix-change': {
               action: 'change-source',
@@ -4012,7 +3988,7 @@ describe('workflow runner', () => {
             },
             'post-status': {
               action: 'post-fix-status',
-              needs: ['save-review-artifact'],
+              needs: ['review'],
               with: {
                 platform: 'github',
                 owner: 'octocat',
