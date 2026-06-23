@@ -136,11 +136,22 @@ Follow these steps **in order** before reporting any issues:
       "references": ["https://link1", "https://link2"],
       "agent": "unified"
     }
-  ]
+  ],
+  "verification": {
+    "findings": [
+      {
+        "id": "F001",
+        "disposition": "resolved" | "still_open" | "partial",
+        "rationale": "Short explanation of the verification result",
+        "issue": null
+      }
+    ]
+  }
 }
 ```
 
 If there are no issues, set `issues` to `[]` and keep summary counts at `0`.
+Only include `verification` when the prompt includes a Fix Verification Context. In that mode, include one verdict for every relevant original finding at or above the requested severity before reporting new regressions in `issues`.
 
 ### Important Constraints
 - **Only report issues on changed or added lines** (lines starting with `+` in the diff). Never flag existing unchanged code.

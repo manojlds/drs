@@ -2276,6 +2276,7 @@ async function runVerifyFixWorkflowNode(
         file: statusItem.finding.issue.file,
         line: statusItem.finding.issue.line,
         title: statusItem.finding.issue.title,
+        verificationMissing: statusItem.verificationMissing === true,
       })),
     },
     shouldContinue: reconciliation.shouldContinue,
@@ -3249,6 +3250,7 @@ interface FixFindingStatus {
   finding: ReviewFinding;
   disposition: 'resolved' | 'partial' | 'still-open' | 'regression' | 'attempted';
   diffSnippet?: string;
+  verificationMissing?: boolean;
 }
 
 function getFixStatusDisposition(finding: ReviewFinding): FixFindingStatus['disposition'] {
@@ -3331,11 +3333,13 @@ function reconcileReviewArtifactFindings(
   const updatedArtifact = { ...artifact, findings: reconciledFindings };
   const statuses = updatedArtifact.findings.map((finding) => {
     const disposition = getFixStatusDisposition(finding);
+    const verificationMissing =
+      severityRank(finding.issue.severity) >= thresholdRank && !verdicts.has(finding.id);
     const diffSnippet =
       disposition === 'resolved' || disposition === 'regression'
         ? extractDiffSnippet(options.fixSource, finding.issue.file, finding.issue.line)
         : undefined;
-    return { finding, disposition, diffSnippet };
+    return { finding, disposition, diffSnippet, verificationMissing };
   });
 
   const actionableOpen = updatedArtifact.findings.filter(
@@ -3417,7 +3421,9 @@ function formatFixStatusComment(statuses: FixFindingStatus[], stackedPrUrl?: str
             ? '🔴 Regression'
             : s.disposition === 'attempted'
               ? '🔧 Attempted'
-              : '⚪ Still Open';
+              : s.verificationMissing
+                ? '⚠️ Verification Missing'
+                : '⚪ Still Open';
     const file = `${s.finding.issue.file}${s.finding.issue.line ? `:${s.finding.issue.line}` : ''}`;
     lines.push(
       `| ${i + 1} | ${s.finding.issue.severity} | ${file} | ${s.finding.issue.title} | ${statusIcon} |`
