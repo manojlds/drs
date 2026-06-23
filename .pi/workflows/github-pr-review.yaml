@@ -259,7 +259,7 @@ nodes:
     action: git-commit
     needs:
       - post-fix-status-internal
-    if: artifacts.verify-fix.shouldContinue == false && artifacts.verify-fix.fixFiles > 0
+    if: artifacts.verify-fix.fixFiles > 0
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'

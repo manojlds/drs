@@ -2525,11 +2525,12 @@ function combineVerificationPatch(originalPatch?: string, fixPatch?: string): st
   return sections.join('\n\n');
 }
 
-function loadFixVerificationChangeSource(
+async function loadFixVerificationChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
+  workingDir: string,
   context: WorkflowTemplateContext
-): ReviewSource {
+): Promise<ReviewSource> {
   const sourceName = getStringActionOption(node, 'source', context) ?? 'change';
   const source = context.artifacts[sourceName];
   if (!isReviewSource(source)) {
@@ -2547,21 +2548,26 @@ function loadFixVerificationChangeSource(
   }
 
   const files = [...new Set([...source.files, ...fixChange.files])];
-  const originalDiffs = new Map(
-    (source.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
-  );
-  const fixDiffs = new Map(
-    (fixChange.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
-  );
+
+  const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
+  const baseRef =
+    pullRequest?.targetBranch ?? (source.context.baseBranch as string | undefined) ?? 'HEAD~1';
+
+  const realDiffs = await tryGetRealPostFixDiff(workingDir, files, baseRef);
 
   return {
     ...source,
     name: `${source.name} with local fixes`,
     files,
-    filesWithDiffs: files.map((filename) => ({
-      filename,
-      patch: combineVerificationPatch(originalDiffs.get(filename), fixDiffs.get(filename)),
-    })),
+    filesWithDiffs:
+      realDiffs ??
+      files.map((filename) => ({
+        filename,
+        patch: combineVerificationPatch(
+          (source.filesWithDiffs ?? []).find((f) => f.filename === filename)?.patch,
+          (fixChange.filesWithDiffs ?? []).find((f) => f.filename === filename)?.patch
+        ),
+      })),
     context: {
       ...source.context,
       sourceType: 'fix-verification',
@@ -2569,6 +2575,25 @@ function loadFixVerificationChangeSource(
     },
     staged: fixChange.staged,
   };
+}
+
+async function tryGetRealPostFixDiff(
+  workingDir: string,
+  files: string[],
+  baseRef: string
+): Promise<Array<{ filename: string; patch: string }> | undefined> {
+  try {
+    const git = simpleGit({ baseDir: workingDir });
+    const isRepo = await git.checkIsRepo();
+    if (!isRepo) return undefined;
+
+    const diffText = await git.diff(['--no-ext-diff', '-M', baseRef, '--', ...files]);
+    if (!diffText.trim()) return undefined;
+
+    return getFilesWithDiffs(parseDiff(diffText));
+  } catch {
+    return undefined;
+  }
 }
 
 async function runChangeSourceWorkflowNode(
@@ -2589,7 +2614,7 @@ async function runChangeSourceWorkflowNode(
   } else if (type === 'gitlab-mr') {
     source = await loadGitLabChangeSource(nodeId, node, workingDir, context, executionContext);
   } else if (type === 'fix-verification') {
-    source = loadFixVerificationChangeSource(nodeId, node, context);
+    source = await loadFixVerificationChangeSource(nodeId, node, workingDir, context);
   } else {
     throw new Error(
       `Unsupported workflow change-source type "${type}" in node "${nodeId}". ` +
@@ -3272,6 +3297,9 @@ function getVerificationDisposition(
     return finding.disposition;
   }
   if (!verdict) {
+    if (finding.disposition === 'regression') {
+      return 'regression';
+    }
     return 'still_open';
   }
   return verdict.disposition === 'still_open' ? 'still_open' : verdict.disposition;
@@ -3614,9 +3642,16 @@ async function runReviewWorkflowNode(
   }
 
   const reviewArtifactName = getStringActionOption(node, 'reviewArtifact', context);
-  const reviewArtifact = reviewArtifactName
-    ? getReviewArtifactPayloadFromValue(nodeId, context.artifacts[reviewArtifactName])
+  const reviewArtifactEnvelope = reviewArtifactName
+    ? context.artifacts[reviewArtifactName]
     : undefined;
+  const reviewArtifact = reviewArtifactName
+    ? getReviewArtifactPayloadFromValue(nodeId, reviewArtifactEnvelope)
+    : undefined;
+  const reviewArtifactPath =
+    reviewArtifactEnvelope && typeof reviewArtifactEnvelope === 'object'
+      ? (reviewArtifactEnvelope as { path?: string }).path
+      : undefined;
   const severity = getStringActionOption(node, 'severity', context)?.toUpperCase();
   const sourceForReview: ReviewSource = reviewArtifact
     ? {
@@ -3628,6 +3663,7 @@ async function runReviewWorkflowNode(
               reviewId: reviewArtifact.reviewId,
               findings: reviewArtifact.findings,
             },
+            artifactPath: reviewArtifactPath,
             severity,
           },
         },

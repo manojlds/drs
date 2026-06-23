@@ -5,6 +5,15 @@ import { requireAgentId } from './agent-id.js';
 import { resolveAgentPaths } from '../runtime/path-config.js';
 import type { ReviewVerificationContext } from './review-orchestrator.js';
 
+function severityRankValue(severity: string): number {
+  const normalized = severity.trim().toUpperCase();
+  if (normalized === 'CRITICAL') return 4;
+  if (normalized === 'HIGH') return 3;
+  if (normalized === 'MEDIUM') return 2;
+  if (normalized === 'LOW') return 1;
+  return 0;
+}
+
 export interface AgentContext {
   /**
    * Source of the agent definition
@@ -139,23 +148,51 @@ export function buildReviewPrompt(
 
 function formatVerificationContext(context: ReviewVerificationContext): string {
   const severityText = context.severity ? ` at or above ${context.severity}` : '';
-  return `# Fix Verification Context
+  const thresholdRank = context.severity ? severityRankValue(context.severity) : 0;
+  const findingsToVerify = context.artifact.findings.filter(
+    (f) => !thresholdRank || severityRankValue(f.issue.severity) >= thresholdRank
+  );
+  const findingIds = findingsToVerify.map((f) => f.id).join(', ');
+  const manifest = findingsToVerify
+    .map(
+      (f) =>
+        `- ${f.id} | ${f.issue.severity} | ${f.issue.file}${f.issue.line ? `:${f.issue.line}` : ''} | ${f.disposition} | ${f.issue.title}`
+    )
+    .join('\n');
+
+  let prompt = `# Fix Verification Context
 
 This is a verification review over the full post-fix diff. Verify the existing review findings${severityText} before reporting anything else.
 
-For each relevant original finding, decide whether it is:
-- resolved: the original issue no longer exists in the full post-fix diff
+You MUST output a verification finding for EACH of these IDs: ${findingIds}
+
+Missing verdicts will be treated as still_open. Do not skip any finding.
+
+For each finding, decide whether it is:
+- resolved: the original issue no longer exists in the current code
 - still_open: the same issue still exists
 - partial: the fix attempted the issue but is incomplete or moved the problem
 
 Do not mark a finding resolved just because it is absent from a narrower local fix diff. Use the full diff and surrounding code as needed.
 
-In your review output JSON, include this additional top-level field:
+## Findings to verify
+
+${manifest}
+
+`;
+
+  if (context.artifactPath) {
+    prompt += `Use the read_artifact tool with artifact path "${context.artifactPath}" and a specific findingId to pull full issue details (problem, solution, verification rationale) for any finding you need to examine more closely.
+
+`;
+  }
+
+  prompt += `In your review output JSON, include this additional top-level field:
 {
   "verification": {
     "findings": [
       {
-        "id": "F001",
+        "id": "${findingsToVerify[0]?.id ?? 'F001'}",
         "disposition": "resolved",
         "rationale": "short explanation",
         "issue": null
@@ -168,9 +205,7 @@ The allowed disposition values are: resolved, still_open, partial.
 
 The normal top-level "issues" array should contain only new regressions introduced by the fix, not the original findings being verified.
 
-Existing review artifact:
-
-${JSON.stringify(context.artifact, null, 2)}
-
 `;
+
+  return prompt;
 }

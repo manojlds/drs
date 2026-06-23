@@ -77,6 +77,7 @@ export interface ReviewVerificationContext {
     reviewId: string;
     findings: ReviewFinding[];
   };
+  artifactPath?: string;
   severity?: string;
 }
 
@@ -275,9 +276,13 @@ export async function executeReview(
       console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
     }
 
-    // ── Describe pass (optional) ─────────────────────────────────────────
+    const verificationContext = isReviewVerificationContext(source.context.verification)
+      ? source.context.verification
+      : undefined;
+
+    // ── Describe pass (optional, skipped in verification mode) ──────────
     let describeSummary: string | undefined;
-    if (describeEnabled && filesForInstructions.some((f) => f.patch)) {
+    if (describeEnabled && !verificationContext && filesForInstructions.some((f) => f.patch)) {
       try {
         console.log(chalk.bold.blue('🔍 Running describe pass for change context\n'));
         const preCompressed: PreCompressedDiffs = {
@@ -304,10 +309,6 @@ export async function executeReview(
     }
 
     // ── Review pass ──────────────────────────────────────────────────────
-    const verificationContext = isReviewVerificationContext(source.context.verification)
-      ? source.context.verification
-      : undefined;
-
     const baseInstructions = buildBaseInstructions(
       source.name,
       compression.files,
