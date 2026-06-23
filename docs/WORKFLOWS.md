@@ -89,9 +89,12 @@ drs workflow list
 drs workflow list --json
 drs workflow show github-pr-review
 drs workflow show github-pr-review --json
+drs workflow validate
+drs workflow validate github-pr-review
+drs workflow validate github-pr-review --json
 ```
 
-This shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one.
+`list` shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one. `validate` checks workflow schema, dependencies, action options, control targets, and execution waves without running nodes.
 
 Use `drs workflow show <name>` or `drs workflow get <name>` to inspect one workflow's description, inputs, output artifact, and nodes before running it.
 
@@ -150,11 +153,24 @@ workflow:
 
 ## Inputs
 
-Workflow inputs are strings. They can be configured inline or read from repo-relative files:
+Workflow inputs can use a shorthand string value or typed metadata. CLI values override configured defaults:
 
 ```yaml
 inputs:
-  title: Upcoming release
+  title:
+    type: string
+    default: Upcoming release
+    description: Release title
+  publish:
+    type: boolean
+    default: false
+  severity:
+    type: enum
+    values: [critical, high, medium, low]
+    default: high
+  pr:
+    type: number
+    required: true
   diff:
     file: .drs/diff.md
   instructions:
@@ -175,7 +191,7 @@ Every node must define exactly one execution type:
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
-| `action` | Run a built-in action. Currently supports `write`, `git-diff`, `git-add`, `git-commit`, `change-source`, `review`, `review-context`, `describe`, `code-quality-report`, `post-comment`, and `post-review-comments` |
+| `action` | Run a built-in action. Supported actions are validated from the DRS action registry, including git operations, change sources, review/describe/post actions, artifact actions, fix verification, and change-request creation |
 
 Common node fields:
 
@@ -187,6 +203,32 @@ Common node fields:
 | `writes` | Repo-relative path to write the node output/content |
 | `json` | For agent nodes, write JSON when `writes` is set |
 | `with` | Action-specific options |
+
+Workflow files are strictly validated. A node must use exactly one of `agent`, `agentsFrom`, `action`, or `control`; unknown node fields and unknown action options are rejected before execution.
+
+## Conditions
+
+Executable nodes support `if` or `condition`. Loop control nodes support `if` or `condition`; other control nodes do not.
+
+Conditions can reference values directly:
+
+```yaml
+if: inputs.post == true
+if: artifacts.reviewThreshold.matched == true
+if: artifacts.verify-fix.fixFiles > 0
+```
+
+The template-wrapped form is also accepted:
+
+```yaml
+if: "{{inputs.post}} == true"
+```
+
+Use quotes when comparing values that may contain operators or whitespace:
+
+```yaml
+if: '"{{inputs.mode}}" == "safe && fast"'
+```
 
 ## Built-In Actions
 

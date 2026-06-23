@@ -1,22 +1,66 @@
 name: github-pr-review
 description: Review a GitHub pull request, optionally posting a description, DRS comments, a visual HTML explainer, and a stacked fix PR
 inputs:
-  owner: ''
-  repo: ''
-  pr: ''
-  describe: 'false'
-  post: 'false'
-  visual: 'false'
-  fix: 'false'
-  fixMode: 'stacked'
-  fixSeverity: 'high'
-  fixMinIssues: '1'
-  fixBranchPrefix: 'drs-fix/pr-'
-  fixCreateChangeRequest: 'false'
-  fixMaxIterations: '3'
-  allowStackedSource: 'false'
-  fixDraft: 'false'
-  visualOutputPath: '.drs/visual-pr-explainer.html'
+  owner:
+    type: string
+    required: true
+    description: GitHub repository owner
+  repo:
+    type: string
+    required: true
+    description: GitHub repository name
+  pr:
+    type: number
+    required: true
+    description: Pull request number
+  describe:
+    type: boolean
+    default: false
+    description: Generate and post a PR description
+  post:
+    type: boolean
+    default: false
+    description: Post DRS review comments to the PR
+  visual:
+    type: boolean
+    default: false
+    description: Generate a visual HTML explainer artifact
+  fix:
+    type: boolean
+    default: false
+    description: Attempt to fix qualifying review findings
+  fixMode:
+    type: enum
+    values: [stacked, internal]
+    default: stacked
+    description: Create stacked fix PR or push verified fixes to the source branch
+  fixSeverity:
+    type: enum
+    values: [critical, high, medium, low]
+    default: high
+    description: Minimum finding severity to fix
+  fixMinIssues:
+    type: number
+    default: 1
+    description: Minimum matching issues required before fixing
+  fixBranchPrefix:
+    type: string
+    default: drs-fix/pr-
+  fixCreateChangeRequest:
+    type: boolean
+    default: false
+  fixMaxIterations:
+    type: number
+    default: 3
+  allowStackedSource:
+    type: boolean
+    default: false
+  fixDraft:
+    type: boolean
+    default: false
+  visualOutputPath:
+    type: string
+    default: .drs/visual-pr-explainer.html
 output: review
 nodes:
   change:
@@ -32,7 +76,7 @@ nodes:
     action: describe
     needs:
       - change
-    if: '{{inputs.describe}} == true'
+    if: inputs.describe == true
     with:
       source: change
       post: true
@@ -71,7 +115,7 @@ nodes:
       - change
       - review
       - save-review-artifact
-    if: '{{inputs.visual}} == true'
+    if: inputs.visual == true
     input: |
       Generate a visual PR explainer HTML artifact.
 
@@ -92,7 +136,7 @@ nodes:
     action: post-review-comments
     needs:
       - review
-    if: '{{inputs.post}} == true'
+    if: inputs.post == true
     with:
       source: change
       review: review
@@ -103,7 +147,7 @@ nodes:
     needs:
       - change
       - save-review-artifact
-    if: '{{inputs.fix}} == true'
+    if: inputs.fix == true
     with:
       source: change
       allowStackedSource: '{{inputs.allowStackedSource}}'
@@ -114,7 +158,7 @@ nodes:
     needs:
       - review
       - stack-guard
-    if: '{{artifacts.stackGuard.allowed}} == true'
+    if: artifacts.stackGuard.allowed == true
     with:
       review: review
       severity: '{{inputs.fixSeverity}}'
@@ -125,7 +169,7 @@ nodes:
     action: git-branch
     needs:
       - fix-threshold
-    if: '{{artifacts.reviewThreshold.matched}} == true'
+    if: artifacts.reviewThreshold.matched == true
     with:
       name: '{{inputs.fixBranchPrefix}}{{inputs.pr}}'
       force: true
@@ -155,7 +199,7 @@ nodes:
     action: git-add
     needs:
       - fix-issues
-    if: '{{inputs.fixMode}} == internal'
+    if: inputs.fixMode == internal
     with:
       paths: '.'
     output: stagedFixes
@@ -207,7 +251,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    condition: '{{artifacts.verify-fix.shouldContinue}} == true'
+    condition: artifacts.verify-fix.shouldContinue == true
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'
@@ -217,7 +261,7 @@ nodes:
     action: post-fix-status
     needs:
       - verify-fix
-    if: '{{inputs.fixMode}} == internal'
+    if: inputs.fixMode == internal
     with:
       platform: github
       owner: '{{inputs.owner}}'
@@ -235,7 +279,7 @@ nodes:
     action: git-commit
     needs:
       - post-fix-status-internal
-    if: '{{artifacts.verify-fix.shouldContinue}} == false && {{artifacts.verify-fix.fixFiles}} > 0'
+    if: artifacts.verify-fix.shouldContinue == false && artifacts.verify-fix.fixFiles > 0
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
@@ -255,7 +299,7 @@ nodes:
     action: review-artifact-update-findings
     needs:
       - fix-issues
-    if: '{{inputs.fixMode}} != internal'
+    if: inputs.fixMode != internal
     with:
       artifact: persistedReviewArtifact
       severity: '{{inputs.fixSeverity}}'
@@ -273,7 +317,7 @@ nodes:
     action: git-commit
     needs:
       - fix-diff
-    if: '{{artifacts.fixDiff.changed}} == true && {{inputs.fixCreateChangeRequest}} == true'
+    if: artifacts.fixDiff.changed == true && inputs.fixCreateChangeRequest == true
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'

@@ -1,10 +1,19 @@
 name: local-fix-review-issues
 description: Fix actionable issues from a saved local DRS review artifact with verification loop
 inputs:
-  review: ''
-  staged: 'false'
-  fixSeverity: 'high'
-  fixMaxIterations: '3'
+  review:
+    type: string
+    description: Saved review artifact id; empty loads the latest artifact for the current scope
+  staged:
+    type: boolean
+    default: false
+  fixSeverity:
+    type: enum
+    values: [critical, high, medium, low]
+    default: high
+  fixMaxIterations:
+    type: number
+    default: 3
 output: persistedReviewArtifact
 nodes:
   change:
@@ -87,7 +96,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    condition: '{{artifacts.verify-fix.shouldContinue}} == true'
+    condition: artifacts.verify-fix.shouldContinue == true
     target: fix-issues
     exit: done
     maxIterations: '{{inputs.fixMaxIterations}}'

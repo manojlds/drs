@@ -97,7 +97,10 @@ describe('Config', () => {
       expect(config.workflows?.['local-review']).toMatchObject({
         description: 'Review local git diff',
         inputs: {
-          staged: 'false',
+          staged: {
+            type: 'boolean',
+            default: false,
+          },
         },
         nodes: {
           change: {
@@ -108,33 +111,25 @@ describe('Config', () => {
           },
         },
       });
-      expect(config.workflows?.['gitlab-mr-review']?.inputs).toEqual({
-        project: '',
-        mr: '',
-        describe: 'false',
-        post: 'false',
-        visual: 'false',
-        fix: 'false',
-        fixMode: 'stacked',
-        fixSeverity: 'high',
-        fixMinIssues: '1',
-        fixBranchPrefix: 'drs-fix/mr-',
-        fixCreateChangeRequest: 'false',
-        fixMaxIterations: '3',
-        allowStackedSource: 'false',
-        fixDraft: 'false',
-        visualOutputPath: '.drs/visual-mr-explainer.html',
-        codeQuality: 'false',
-        codeQualityReport: 'gl-code-quality-report.json',
+      expect(config.workflows?.['gitlab-mr-review']?.inputs).toMatchObject({
+        project: { type: 'string', required: true },
+        mr: { type: 'number', required: true },
+        describe: { type: 'boolean', default: false },
+        post: { type: 'boolean', default: false },
+        visual: { type: 'boolean', default: false },
+        fixMode: { type: 'enum', default: 'stacked' },
+        fixSeverity: { type: 'enum', default: 'high' },
+        visualOutputPath: { type: 'string', default: '.drs/visual-mr-explainer.html' },
+        codeQuality: { type: 'boolean', default: false },
       });
       expect(config.workflows?.['github-pr-review']?.inputs).toMatchObject({
-        visual: 'false',
-        visualOutputPath: '.drs/visual-pr-explainer.html',
+        visual: { type: 'boolean', default: false },
+        visualOutputPath: { type: 'string', default: '.drs/visual-pr-explainer.html' },
       });
       expect(config.workflows?.['github-pr-review']?.nodes.visual).toMatchObject({
         agent: 'visual/pr-explainer',
         needs: ['change', 'review', 'save-review-artifact'],
-        if: '{{inputs.visual}} == true',
+        if: 'inputs.visual == true',
         writes: '{{inputs.visualOutputPath}}',
       });
       expect(config.workflows?.['github-pr-visual-explain']).toMatchObject({
@@ -166,7 +161,7 @@ describe('Config', () => {
         'save-review-artifact',
       ]);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.if).toBe(
-        '{{inputs.visual}} == true'
+        'inputs.visual == true'
       );
       expect(config.workflows?.['gitlab-mr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
@@ -216,9 +211,9 @@ describe('Config', () => {
         description:
           'Fix actionable issues from a saved local DRS review artifact with verification loop',
         inputs: {
-          review: '',
-          fixSeverity: 'high',
-          fixMaxIterations: '3',
+          review: { type: 'string' },
+          fixSeverity: { type: 'enum', default: 'high' },
+          fixMaxIterations: { type: 'number', default: 3 },
         },
         nodes: {
           'fix-issues': {

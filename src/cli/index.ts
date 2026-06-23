@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import { runWorkflow, listWorkflows, showWorkflow } from './workflow.js';
+import { runWorkflow, listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
 import { loadConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -196,6 +196,27 @@ workflowCommand
         json: options.json ?? false,
         workingDir: process.cwd(),
       });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('validate [name]')
+  .description('Validate workflow definitions without running them')
+  .option('--json', 'Output as JSON')
+  .action((name: string | undefined, options) => {
+    try {
+      const config = loadConfig(process.cwd());
+      const results = validateWorkflows(config, name, {
+        json: options.json ?? false,
+        workingDir: process.cwd(),
+      });
+      if (results.some((result) => !result.valid)) {
+        process.exit(1);
+      }
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

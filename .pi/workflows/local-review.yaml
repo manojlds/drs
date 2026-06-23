@@ -1,7 +1,10 @@
 name: local-review
 description: Review local git diff
 inputs:
-  staged: 'false'
+  staged:
+    type: boolean
+    default: false
+    description: Review staged changes instead of unstaged changes
 output: review
 nodes:
   change:

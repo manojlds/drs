@@ -322,9 +322,290 @@ function validateWorkflowPassThroughShape(nodeId: string, node: WorkflowNodeConf
     );
   }
 }
+
+const WORKFLOW_NODE_FIELDS = new Set([
+  'agent',
+  'agentsFrom',
+  'control',
+  'action',
+  'with',
+  'needs',
+  'if',
+  'condition',
+  'target',
+  'exit',
+  'maxIterations',
+  'onMaxIterations',
+  'value',
+  'cases',
+  'default',
+  'input',
+  'output',
+  'writes',
+  'json',
+]);
+
+const EXECUTABLE_NODE_FIELDS = new Set([
+  'agent',
+  'agentsFrom',
+  'action',
+  'with',
+  'needs',
+  'if',
+  'condition',
+  'input',
+  'output',
+  'writes',
+  'json',
+]);
+
+const CONTROL_NODE_FIELDS: Record<string, Set<string>> = {
+  loop: new Set([
+    'control',
+    'needs',
+    'if',
+    'condition',
+    'target',
+    'exit',
+    'maxIterations',
+    'onMaxIterations',
+    'output',
+  ]),
+  switch: new Set(['control', 'needs', 'value', 'cases', 'default', 'output']),
+  end: new Set(['control', 'needs', 'output']),
+  passThrough: new Set(['control', 'needs', 'target', 'output']),
+};
+
+const ACTION_OPTION_FIELDS: Partial<
+  Record<NonNullable<WorkflowNodeConfig['action']>, Set<string>>
+> = {
+  write: new Set(),
+  'git-diff': new Set(['staged']),
+  'git-add': new Set(['path', 'paths']),
+  'git-branch': new Set(['name', 'force']),
+  'git-commit': new Set(['message', 'path', 'paths']),
+  'git-push': new Set(['remote', 'branch', 'remoteBranch', 'setUpstream', 'force']),
+  'has-diff': new Set(['path', 'paths']),
+  'stack-guard': new Set(['source', 'allowStackedSource', 'reservedPrefixes']),
+  'review-threshold': new Set(['review', 'severity', 'minIssues']),
+  'save-artifact': new Set([
+    'kind',
+    'source',
+    'artifact',
+    'payload',
+    'platform',
+    'project',
+    'projectId',
+    'owner',
+    'repo',
+    'subject',
+    'changeKind',
+    'changeNumber',
+    'pr',
+    'mr',
+    'branch',
+  ]),
+  'load-artifact': new Set([
+    'kind',
+    'source',
+    'id',
+    'platform',
+    'project',
+    'projectId',
+    'owner',
+    'repo',
+    'subject',
+    'changeKind',
+    'changeNumber',
+    'pr',
+    'mr',
+    'branch',
+  ]),
+  'artifact-exists': new Set([
+    'kind',
+    'source',
+    'id',
+    'platform',
+    'project',
+    'projectId',
+    'owner',
+    'repo',
+    'subject',
+    'changeKind',
+    'changeNumber',
+    'pr',
+    'mr',
+    'branch',
+  ]),
+  'create-review-artifact': new Set(['source', 'review']),
+  'review-artifact-status': new Set(['artifact']),
+  'review-artifact-add-finding': new Set(['artifact', 'issue', 'source']),
+  'review-artifact-update-findings': new Set([
+    'artifact',
+    'state',
+    'disposition',
+    'ids',
+    'fingerprints',
+    'severity',
+  ]),
+  'review-artifact-promote-finding': new Set(['artifact', 'ids', 'fingerprints', 'severity']),
+  'review-artifact-resolve-finding': new Set(['artifact', 'ids', 'fingerprints', 'severity']),
+  'verify-fix': new Set(['artifact', 'review', 'fixChange', 'severity', 'minIssues']),
+  'create-change-request': new Set([
+    'platform',
+    'owner',
+    'repo',
+    'project',
+    'projectId',
+    'sourceBranch',
+    'head',
+    'targetBranch',
+    'base',
+    'title',
+    'body',
+    'draft',
+    'reuseExisting',
+  ]),
+  'create-pr': new Set([
+    'platform',
+    'owner',
+    'repo',
+    'project',
+    'projectId',
+    'sourceBranch',
+    'head',
+    'targetBranch',
+    'base',
+    'title',
+    'body',
+    'draft',
+    'reuseExisting',
+  ]),
+  'create-mr': new Set([
+    'platform',
+    'owner',
+    'repo',
+    'project',
+    'projectId',
+    'sourceBranch',
+    'head',
+    'targetBranch',
+    'base',
+    'title',
+    'body',
+    'draft',
+    'reuseExisting',
+  ]),
+  'change-source': new Set([
+    'type',
+    'staged',
+    'from',
+    'to',
+    'includePrereleaseFrom',
+    'owner',
+    'repo',
+    'pr',
+    'project',
+    'projectId',
+    'mr',
+    'mrIid',
+    'source',
+    'fixChange',
+  ]),
+  review: new Set(['source', 'reviewArtifact', 'severity']),
+  'review-context': new Set(['source', 'file', 'baseBranch']),
+  describe: new Set(['source', 'post', 'postDescription']),
+  'code-quality-report': new Set(['review', 'path']),
+  'post-comment': new Set([
+    'source',
+    'platform',
+    'owner',
+    'repo',
+    'project',
+    'projectId',
+    'pr',
+    'mr',
+    'prNumber',
+    'mrIid',
+    'body',
+    'marker',
+  ]),
+  'post-review-comments': new Set(['source', 'review', 'removeErrorComment']),
+  'post-fix-status': new Set([
+    'platform',
+    'owner',
+    'repo',
+    'project',
+    'projectId',
+    'pr',
+    'mr',
+    'source',
+    'reviewArtifact',
+    'fixReview',
+    'fixChange',
+    'severity',
+    'stackedPrUrl',
+    'marker',
+  ]),
+};
+
+function validateAllowedFields(
+  nodeId: string,
+  value: Record<string, unknown>,
+  allowed: Set<string>,
+  subject: string
+): void {
+  const unknownFields = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknownFields.length > 0) {
+    throw new Error(
+      `Workflow ${subject} "${nodeId}" has unsupported field(s): ${unknownFields.join(', ')}.`
+    );
+  }
+}
+
+function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConfig): void {
+  validateAllowedFields(
+    nodeId,
+    node as unknown as Record<string, unknown>,
+    WORKFLOW_NODE_FIELDS,
+    'node'
+  );
+  const kind = getNodeKind(node);
+
+  if (kind === 'control') {
+    const control = node.control;
+    if (!control || !CONTROL_NODE_FIELDS[control]) {
+      throw new Error(
+        `Workflow control node "${nodeId}" has unsupported control "${String(control)}".`
+      );
+    }
+    validateAllowedFields(
+      nodeId,
+      node as unknown as Record<string, unknown>,
+      CONTROL_NODE_FIELDS[control],
+      'control node'
+    );
+    return;
+  }
+
+  validateAllowedFields(
+    nodeId,
+    node as unknown as Record<string, unknown>,
+    EXECUTABLE_NODE_FIELDS,
+    'node'
+  );
+  if (node.action && node.with) {
+    const allowed = ACTION_OPTION_FIELDS[node.action];
+    if (!allowed) {
+      throw new Error(`Workflow action node "${nodeId}" has unsupported action "${node.action}".`);
+    }
+    validateAllowedFields(nodeId, node.with, allowed, `node "${nodeId}" with`);
+  }
+}
+
 function validateWorkflowNodeKinds(nodes: Record<string, WorkflowNodeConfig>): void {
   for (const [nodeId, node] of Object.entries(nodes)) {
-    getNodeKind(node);
+    validateWorkflowNodeShape(nodeId, node);
     validateWorkflowPassThroughShape(nodeId, node);
   }
 }
@@ -684,20 +965,69 @@ async function resolveWorkflowInput(
     return input;
   }
 
-  const hasValue = input.value !== undefined;
+  const hasValue = input.value !== undefined || input.default !== undefined;
   const hasFile = input.file !== undefined;
   if (hasValue && hasFile) {
-    throw new Error(`Workflow input "${key}" cannot define both value and file.`);
+    throw new Error(`Workflow input "${key}" cannot define both value/default and file.`);
   }
   if (hasValue) {
-    return input.value ?? '';
+    return String(input.value ?? input.default ?? '');
   }
   if (hasFile) {
     const inputPath = resolveWithinWorkingDir(workingDir, input.file ?? '', 'read');
     return readFile(inputPath, 'utf-8');
   }
 
-  throw new Error(`Workflow input "${key}" must define value or file.`);
+  if (input.required === true) {
+    return '';
+  }
+
+  return '';
+}
+
+function getWorkflowInputConfigType(input: WorkflowInputConfig): string {
+  return typeof input === 'string' ? 'string' : (input.type ?? 'string');
+}
+
+function validateResolvedWorkflowInput(
+  key: string,
+  input: WorkflowInputConfig,
+  value: string
+): void {
+  if (typeof input === 'string') {
+    return;
+  }
+
+  if (input.required === true && value.trim() === '') {
+    throw new Error(`Workflow input "${key}" is required.`);
+  }
+
+  const type = getWorkflowInputConfigType(input);
+  if (type === 'boolean') {
+    if (normalizeWorkflowBooleanLike(value) === undefined) {
+      throw new Error(`Workflow input "${key}" must be a boolean value.`);
+    }
+    return;
+  }
+  if (type === 'number') {
+    if (value.trim() === '' || !Number.isFinite(Number(value))) {
+      throw new Error(`Workflow input "${key}" must be a number.`);
+    }
+    return;
+  }
+  if (type === 'enum') {
+    const allowedValues = input.values?.map(String) ?? [];
+    if (allowedValues.length === 0) {
+      throw new Error(`Workflow input "${key}" with type enum must define values.`);
+    }
+    if (!allowedValues.includes(value)) {
+      throw new Error(`Workflow input "${key}" must be one of: ${allowedValues.join(', ')}.`);
+    }
+    return;
+  }
+  if (type !== 'string') {
+    throw new Error(`Workflow input "${key}" has unsupported type "${type}".`);
+  }
 }
 
 async function resolveWorkflowInputs(
@@ -718,6 +1048,10 @@ async function resolveWorkflowInputs(
   for (const [key, filePath] of Object.entries(options.inputFiles ?? {})) {
     const resolvedPath = resolveWithinWorkingDir(workingDir, filePath, 'read');
     values[key] = await readFile(resolvedPath, 'utf-8');
+  }
+
+  for (const [key, input] of Object.entries(workflow.inputs ?? {})) {
+    validateResolvedWorkflowInput(key, input, values[key] ?? '');
   }
 
   return values;
@@ -3338,9 +3672,18 @@ type WorkflowSegment =
   | { type: 'dag'; nodeIds: string[]; activeNodeIds?: Set<string> }
   | { type: 'control'; nodeId: string };
 
-function parseWorkflowExpressionValue(value: string): unknown {
+function parseWorkflowExpressionValue(value: string, context?: WorkflowTemplateContext): unknown {
   const trimmed = value.trim();
   if (!trimmed) return '';
+  const templateReference = trimmed.match(/^\{\{\s*([^}]+?)\s*\}\}$/);
+  if (templateReference && context) {
+    const path = templateReference[1]?.trim() ?? '';
+    const resolved = getPathValue(context, path);
+    if (resolved === undefined) {
+      throw new Error(`Unknown workflow template value "{{${path}}}".`);
+    }
+    return resolved;
+  }
   if (trimmed === 'true') return true;
   if (trimmed === 'false') return false;
   if (trimmed === 'null') return null;
@@ -3349,7 +3692,15 @@ function parseWorkflowExpressionValue(value: string): unknown {
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
-    return trimmed.slice(1, -1);
+    const inner = trimmed.slice(1, -1);
+    return context ? renderTemplate(inner, context) : inner;
+  }
+  if (context && /^(inputs|nodes|artifacts|loop)\.[A-Za-z0-9_.-]+$/.test(trimmed)) {
+    const resolved = getPathValue(context, trimmed);
+    if (resolved === undefined) {
+      throw new Error(`Unknown workflow expression value "${trimmed}".`);
+    }
+    return resolved;
   }
   try {
     return JSON.parse(trimmed) as unknown;
@@ -3476,32 +3827,35 @@ function stripWorkflowExpressionParens(expression: string): string {
   return trimmed.slice(1, -1).trim();
 }
 
-function evaluateRenderedWorkflowExpression(rendered: string): boolean {
+function evaluateWorkflowExpressionText(
+  rendered: string,
+  context: WorkflowTemplateContext
+): boolean {
   rendered = stripWorkflowExpressionParens(rendered);
   const orParts = splitWorkflowExpressionOperator(rendered, '||');
   if (orParts.length > 1) {
-    return orParts.some((part) => evaluateRenderedWorkflowExpression(part));
+    return orParts.some((part) => evaluateWorkflowExpressionText(part, context));
   }
 
   const andParts = splitWorkflowExpressionOperator(rendered, '&&');
   if (andParts.length > 1) {
-    return andParts.every((part) => evaluateRenderedWorkflowExpression(part));
+    return andParts.every((part) => evaluateWorkflowExpressionText(part, context));
   }
 
   const match = rendered.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
   if (!match) {
-    return isWorkflowTruthy(parseWorkflowExpressionValue(rendered));
+    return isWorkflowTruthy(parseWorkflowExpressionValue(rendered, context));
   }
 
   return compareWorkflowValues(
-    parseWorkflowExpressionValue(match[1] ?? ''),
+    parseWorkflowExpressionValue(match[1] ?? '', context),
     match[2] ?? '',
-    parseWorkflowExpressionValue(match[3] ?? '')
+    parseWorkflowExpressionValue(match[3] ?? '', context)
   );
 }
 
 function evaluateWorkflowExpression(expression: string, context: WorkflowTemplateContext): boolean {
-  return evaluateRenderedWorkflowExpression(renderTemplate(expression, context).trim());
+  return evaluateWorkflowExpressionText(expression.trim(), context);
 }
 
 function splitWorkflowSegments(
@@ -4293,6 +4647,19 @@ export interface WorkflowShowOptions {
   workingDir?: string;
 }
 
+export interface WorkflowValidateOptions {
+  json?: boolean;
+  workingDir?: string;
+}
+
+export interface WorkflowValidationEntry {
+  name: string;
+  valid: boolean;
+  source?: WorkflowSource;
+  waves?: string[][];
+  error?: string;
+}
+
 /**
  * List available workflows and their source origin.
  *
@@ -4471,4 +4838,66 @@ export function showWorkflow(
   console.log('');
 
   return detail;
+}
+
+function validateSingleWorkflow(
+  config: DRSConfig,
+  workflowName: string,
+  workingDir: string
+): WorkflowValidationEntry {
+  const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    return { name: workflowName, valid: false, error: `Unknown workflow "${workflowName}".` };
+  }
+
+  try {
+    const sourceInfo = loadWorkflowSourceInfo(workingDir);
+    const workflowNodes = getWorkflowNodes(workflowName, workflow);
+    const executionOrder = getWorkflowExecutionOrder(workflowNodes);
+    return {
+      name: workflowName,
+      valid: true,
+      source: sourceInfo[workflowName]?.source ?? 'packaged',
+      waves: getWorkflowExecutionWaves(workflowNodes, executionOrder),
+    };
+  } catch (error) {
+    return {
+      name: workflowName,
+      valid: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function validateWorkflows(
+  config: DRSConfig,
+  workflowName: string | undefined,
+  options: WorkflowValidateOptions = {}
+): WorkflowValidationEntry[] {
+  const workingDir = options.workingDir ?? process.cwd();
+  const names = workflowName ? [workflowName] : Object.keys(config.workflows ?? {}).sort();
+  const results = names.map((name) => validateSingleWorkflow(config, name, workingDir));
+
+  if (options.json) {
+    console.log(JSON.stringify(results, null, 2));
+    return results;
+  }
+
+  console.log(chalk.bold('\nWorkflow Validation:\n'));
+  for (const result of results) {
+    if (result.valid) {
+      console.log(`  ${chalk.green('✓')} ${result.name}`);
+      if (result.waves) {
+        console.log(
+          `    waves: ${result.waves.map((wave) => `[${wave.join(', ')}]`).join(' -> ')}`
+        );
+      }
+    } else {
+      console.log(`  ${chalk.red('✗')} ${result.name}`);
+      console.log(`    ${chalk.red(result.error ?? 'invalid workflow')}`);
+    }
+  }
+  console.log('');
+
+  return results;
 }
