@@ -18,6 +18,7 @@ import { writeArtifactOutput } from '../lib/html-artifact.js';
 import type { FixCheckConfig } from '../lib/config.js';
 import { isReviewArtifactPayload } from '../lib/review-artifact.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
+import type { TraceCollector } from '../lib/trace-collector.js';
 
 const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
 const HARD_GIT_DIFF_MAX_BYTES = 500_000;
@@ -86,6 +87,7 @@ interface PiRuntimeConfig {
   agentSkills?: Record<string, string[]>;
   thinkingLevel?: string;
   fixChecks?: FixCheckConfig[];
+  traceCollector?: TraceCollector;
   retry?: {
     provider?: {
       timeoutMs?: number;
@@ -844,6 +846,7 @@ class PiSessionRuntime {
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
       thinkingLevel: asString(config.thinkingLevel),
       fixChecks: parseFixChecks(config.fixChecks),
+      traceCollector: config.traceCollector as TraceCollector | undefined,
       retry: asRecord(config.retry),
     };
 
@@ -1448,6 +1451,9 @@ class PiSessionRuntime {
         record.session = await this.createAgentSession(cwd, input.body.agent);
         record.agent = input.body.agent;
         record.cwd = cwd;
+        if (this.runtimeConfig.traceCollector) {
+          this.runtimeConfig.traceCollector.attachSession(record.session, record.id);
+        }
       }
 
       record.error = undefined;
@@ -1456,6 +1462,10 @@ class PiSessionRuntime {
     } catch (error) {
       record.error = error;
       return { ok: false };
+    } finally {
+      if (this.runtimeConfig.traceCollector && record.session) {
+        this.runtimeConfig.traceCollector.finalizeCurrentTrace();
+      }
     }
   }
 

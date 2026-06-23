@@ -10,6 +10,7 @@ import type {
 } from '../lib/config.js';
 import {
   getDescriberModelOverride,
+  getReviewAgentIds,
   loadWorkflowSourceInfo,
   normalizeAgentConfig,
   resolveAgentRunConfig,
@@ -75,6 +76,8 @@ import {
 } from '../lib/review-artifact.js';
 import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
 import { runAgent } from './run-agent.js';
+import { TraceCollector } from '../lib/trace-collector.js';
+import { renderTraceHtml } from '../lib/trace-html.js';
 
 export interface WorkflowRunOptions {
   inputs?: Record<string, string>;
@@ -87,6 +90,7 @@ export interface WorkflowRunOptions {
   resume?: boolean;
   checkpointKey?: string;
   checkpointCleanup?: boolean;
+  trace?: boolean;
 }
 
 export interface WorkflowNodeResult {
@@ -134,6 +138,7 @@ interface WorkflowExecutionContext {
   platformClients: Partial<Record<WorkflowPlatform, PlatformClient>>;
   checkpoint?: WorkflowCheckpointContext;
   restoredNodeIds?: Set<string>;
+  traceCollector?: TraceCollector;
   locks: {
     exit: WorkflowLock;
     console: WorkflowLock;
@@ -1186,7 +1191,8 @@ async function runAgentWorkflowNode(
   node: WorkflowNodeConfig,
   options: WorkflowRunOptions,
   workingDir: string,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  executionContext?: WorkflowExecutionContext
 ): Promise<WorkflowNodeResult> {
   const agentId = node.agent;
   if (!agentId) {
@@ -1201,7 +1207,13 @@ async function runAgentWorkflowNode(
     );
   }
 
-  const result = await runAgent(config, agentId, createAgentOptions(prompt, options, workingDir));
+  const agentOptions = createAgentOptions(prompt, options, workingDir);
+  if (executionContext?.traceCollector && prompt) {
+    agentOptions.traceCollector = executionContext.traceCollector;
+    executionContext.traceCollector.setContext(nodeId, agentId, prompt);
+  }
+
+  const result = await runAgent(config, agentId, agentOptions);
   const writes = renderNodeWritesPath(nodeId, node, context);
   const output = writes
     ? await formatWorkflowNodeWriteContent(
@@ -3653,6 +3665,7 @@ async function runReviewWorkflowNode(
       ? (reviewArtifactEnvelope as { path?: string }).path
       : undefined;
   const severity = getStringActionOption(node, 'severity', context)?.toUpperCase();
+  const traceCollector = executionContext.traceCollector;
   const sourceForReview: ReviewSource = reviewArtifact
     ? {
         ...source,
@@ -3666,9 +3679,21 @@ async function runReviewWorkflowNode(
             artifactPath: reviewArtifactPath,
             severity,
           },
+          traceCollector,
         },
       }
-    : source;
+    : {
+        ...source,
+        context: {
+          ...source.context,
+          traceCollector,
+        },
+      };
+
+  if (traceCollector) {
+    const agentIds = getReviewAgentIds(config);
+    traceCollector.setContext(nodeId, agentIds[0] ?? 'review/unified-reviewer', '');
+  }
 
   const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
     const originalLog = console.log;
@@ -4440,7 +4465,15 @@ async function runSingleWorkflowNode(
   }
 
   if (kind === 'agent') {
-    return runAgentWorkflowNode(config, nodeId, node, options, workingDir, context);
+    return runAgentWorkflowNode(
+      config,
+      nodeId,
+      node,
+      options,
+      workingDir,
+      context,
+      executionContext
+    );
   }
   if (kind === 'agents') {
     return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
@@ -4490,6 +4523,7 @@ export async function runWorkflow(
       checkpointKey && checkpointPath
         ? { key: checkpointKey, path: checkpointPath, workflow: workflowName, inputs }
         : undefined,
+    traceCollector: options.trace ? new TraceCollector() : undefined,
     locks: {
       exit: createWorkflowLock(),
       console: createWorkflowLock(),
@@ -4665,6 +4699,32 @@ export async function runWorkflow(
     await writeWorkflowFile(workingDir, options.outputPath, formatWorkflowJson(result));
     if (!options.jsonOutput) {
       console.log(chalk.green(`\n✓ Workflow output saved to ${options.outputPath}`));
+    }
+  }
+
+  if (executionContext.traceCollector && executionContext.traceCollector.getTraces().length > 0) {
+    const startedAt = result.timestamp;
+    const workflowTrace = executionContext.traceCollector.buildWorkflowTrace(
+      workflowName,
+      inputs,
+      startedAt
+    );
+    const scope = {
+      platform: 'local',
+      projectId: workflowName,
+      subject: 'trace',
+    };
+    const savedJson = await saveWorkflowArtifact(workingDir, {
+      kind: 'trace',
+      scope,
+      payload: workflowTrace,
+    });
+    const traceHtmlPath = join(dirname(savedJson.path), 'trace.html');
+    const html = renderTraceHtml(workflowTrace);
+    await writeWorkflowFile(workingDir, traceHtmlPath, html);
+    if (!options.jsonOutput) {
+      console.log(chalk.green(`\n✓ Trace saved to ${savedJson.latestPath}`));
+      console.log(chalk.green(`✓ Trace viewer saved to ${traceHtmlPath}`));
     }
   }
 

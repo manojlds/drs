@@ -17,17 +17,19 @@ import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient } from '../pi/sdk.js';
+import type { TraceCollector } from '../lib/trace-collector.js';
 
 export interface RuntimeClientConfig {
   directory?: string;
   modelOverrides?: Record<string, string>; // Model overrides from DRS config
   provider?: Record<string, CustomProvider>; // Custom provider config from DRS config
-  debug?: boolean; // Print runtime config for debugging
+  debug?: boolean; // Print Pi runtime config for debugging
   config?: DRSConfig;
   thinkingLevel?: string;
   operationTimeoutMs?: number;
   streamTimeoutMs?: number;
   streamPollIntervalMs?: number;
+  traceCollector?: TraceCollector;
   providerRetry?: {
     timeoutMs?: number;
     maxRetries?: number;
@@ -342,6 +344,10 @@ export class RuntimeClient {
     }
 
     runtimeConfig.skillSearchPaths = agentPaths.skillSearchPaths;
+
+    if (this.config.traceCollector) {
+      runtimeConfig.traceCollector = this.config.traceCollector;
+    }
 
     if (this.config.config?.fix?.checks && this.config.config.fix.checks.length > 0) {
       runtimeConfig.fixChecks = this.config.config.fix.checks;

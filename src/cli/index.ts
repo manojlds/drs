@@ -126,6 +126,7 @@ workflowCommand
   .option('--checkpoint-key <key>', 'Checkpoint key to use with --resume')
   .option('--no-checkpoint-cleanup', 'Keep checkpoint file after successful workflow completion')
   .option('--debug', 'Print Pi runtime configuration for debugging')
+  .option('--trace', 'Collect agent traces and save as trace artifact + HTML viewer')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
   .option(
     '--reasoning-effort <level>',
@@ -153,6 +154,7 @@ workflowCommand
         outputPath: options.output,
         jsonOutput: options.json,
         debug: options.debug ?? false,
+        trace: options.trace ?? false,
         thinkingLevel,
         workingDir: process.cwd(),
         resume: options.resume ?? false,
