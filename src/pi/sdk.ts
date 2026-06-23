@@ -15,6 +15,9 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
 import { writeArtifactOutput } from '../lib/html-artifact.js';
+import type { FixCheckConfig } from '../lib/config.js';
+import { isReviewArtifactPayload } from '../lib/review-artifact.js';
+import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 
 const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
 const HARD_GIT_DIFF_MAX_BYTES = 500_000;
@@ -82,6 +85,7 @@ interface PiRuntimeConfig {
   skillSearchPaths?: string[];
   agentSkills?: Record<string, string[]>;
   thinkingLevel?: string;
+  fixChecks?: FixCheckConfig[];
   retry?: {
     provider?: {
       timeoutMs?: number;
@@ -490,6 +494,237 @@ function normalizeAgentSkills(value: Record<string, unknown>): Record<string, st
   return normalized;
 }
 
+function parseFixChecks(value: unknown): FixCheckConfig[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const checks: FixCheckConfig[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    const name = asString(record.name);
+    const command = asString(record.command);
+    if (!name || !command) {
+      continue;
+    }
+    const check: FixCheckConfig = { name, command };
+    const matchPaths = asStringArray(record.matchPaths);
+    if (matchPaths && matchPaths.length > 0) {
+      check.matchPaths = matchPaths;
+    }
+    const timeoutMs = asNumber(record.timeoutMs);
+    if (timeoutMs !== undefined) {
+      check.timeoutMs = timeoutMs;
+    }
+    checks.push(check);
+  }
+
+  return checks.length > 0 ? checks : undefined;
+}
+
+const DEFAULT_CHECK_TIMEOUT_MS = 120_000;
+const HARD_CHECK_TIMEOUT_MS = 600_000;
+const CHECK_OUTPUT_MAX_BYTES = 64_000;
+
+function normalizeCheckTimeout(timeoutMs: number | undefined): number {
+  if (!timeoutMs || !Number.isFinite(timeoutMs)) {
+    return DEFAULT_CHECK_TIMEOUT_MS;
+  }
+  return Math.max(1_000, Math.min(Math.floor(timeoutMs), HARD_CHECK_TIMEOUT_MS));
+}
+
+function globToRegex(pattern: string): RegExp {
+  let regex = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const char = pattern[i];
+    if (char === '*' && pattern[i + 1] === '*') {
+      regex += '.*';
+      i += 2;
+      if (pattern[i] === '/') {
+        i++;
+      }
+    } else if (char === '*') {
+      regex += '[^/]*';
+      i++;
+    } else if (char === '?') {
+      regex += '[^/]';
+      i++;
+    } else if ('.+^${}()|[]\\'.includes(char)) {
+      regex += '\\' + char;
+      i++;
+    } else {
+      regex += char;
+      i++;
+    }
+  }
+  return new RegExp('^' + regex + '$');
+}
+
+function fileMatchesGlobs(filePath: string, patterns: string[] | undefined): boolean {
+  if (!patterns || patterns.length === 0) {
+    return true;
+  }
+  return patterns.some((pattern) => globToRegex(pattern).test(filePath));
+}
+
+async function getChangedFiles(workingDir: string): Promise<string[]> {
+  return new Promise((resolvePromise) => {
+    const child = spawn('git', ['status', '--porcelain', '--no-renames'], {
+      cwd: workingDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.on('error', () => resolvePromise([]));
+    child.on('close', () => {
+      const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      resolvePromise(
+        output
+          ? output
+              .split('\n')
+              .map((line) => line.slice(3).trim())
+              .filter(Boolean)
+          : []
+      );
+    });
+  });
+}
+
+interface CheckResult {
+  name: string;
+  command: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  skipped: boolean;
+  durationMs: number;
+}
+
+function runCheckCommand(workingDir: string, check: FixCheckConfig): Promise<CheckResult> {
+  return new Promise((resolvePromise) => {
+    const timeoutMs = normalizeCheckTimeout(check.timeoutMs);
+    const child = spawn(check.command, {
+      cwd: workingDir,
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let truncated = false;
+    let timedOut = false;
+    const startTime = Date.now();
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      truncated = appendCappedChunk(stdoutChunks, chunk, CHECK_OUTPUT_MAX_BYTES) || truncated;
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      appendCappedChunk(stderrChunks, chunk, CHECK_OUTPUT_MAX_BYTES);
+    });
+
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolvePromise({
+        name: check.name,
+        command: check.command,
+        exitCode: null,
+        stdout: '',
+        stderr: `Failed to spawn: ${check.command}`,
+        truncated: false,
+        skipped: false,
+        durationMs: Date.now() - startTime,
+      });
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolvePromise({
+        name: check.name,
+        command: check.command,
+        exitCode: timedOut ? null : code,
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr:
+          (timedOut ? `Timed out after ${timeoutMs}ms\n` : '') +
+          Buffer.concat(stderrChunks).toString('utf8'),
+        truncated,
+        skipped: false,
+        durationMs: Date.now() - startTime,
+      });
+    });
+  });
+}
+
+function findingIdParamProvided(params: { findingId?: string }): boolean {
+  return typeof params.findingId === 'string' && params.findingId.trim().length > 0;
+}
+
+function extractFindingFromArtifact(raw: unknown, findingId: string): unknown {
+  const envelope = raw as { payload?: unknown };
+  const payload = envelope?.payload ?? raw;
+  if (!isReviewArtifactPayload(payload)) {
+    return undefined;
+  }
+  return payload.findings.find((f) => f.id === findingId);
+}
+
+function buildArtifactManifest(
+  raw: unknown,
+  artifactPath: string
+): {
+  artifactPath: string;
+  ok: boolean;
+  reviewId?: string;
+  totalFindings: number;
+  actionableFindings: number;
+  findings: Array<{
+    id: string;
+    severity: string;
+    state: string;
+    disposition: string;
+    file: string;
+    line?: number;
+    title: string;
+  }>;
+} {
+  const envelope = raw as { payload?: unknown };
+  const payload = envelope?.payload ?? raw;
+  if (!isReviewArtifactPayload(payload)) {
+    return { artifactPath, ok: false, totalFindings: 0, actionableFindings: 0, findings: [] };
+  }
+  const findings = payload.findings.map((f) => ({
+    id: f.id,
+    severity: f.issue.severity,
+    state: f.state,
+    disposition: f.disposition,
+    file: f.issue.file,
+    line: f.issue.line,
+    title: f.issue.title,
+  }));
+  const actionableFindings = findings.filter(
+    (f) =>
+      f.state === 'open' &&
+      (f.disposition === 'still_open' ||
+        f.disposition === 'partial' ||
+        f.disposition === 'regression')
+  ).length;
+  return {
+    artifactPath,
+    ok: true,
+    reviewId: payload.reviewId,
+    totalFindings: findings.length,
+    actionableFindings,
+    findings,
+  };
+}
+
 function normalizeSkillPath(cwd: string, skillPath: string): string {
   return isAbsolute(skillPath) ? resolve(skillPath) : resolve(cwd, skillPath);
 }
@@ -608,6 +843,7 @@ class PiSessionRuntime {
       skillSearchPaths: asStringArray(config.skillSearchPaths),
       agentSkills: normalizeAgentSkills(asRecord(config.agentSkills)),
       thinkingLevel: asString(config.thinkingLevel),
+      fixChecks: parseFixChecks(config.fixChecks),
       retry: asRecord(config.retry),
     };
 
@@ -937,6 +1173,143 @@ class PiSessionRuntime {
             diff,
           };
 
+          return {
+            content: [{ type: 'text', text: JSON.stringify(details) }],
+            details,
+          };
+        },
+      });
+    }
+
+    if (this.isToolEnabled('read_artifact', false, agentTools)) {
+      customTools.push({
+        name: 'read_artifact',
+        label: 'read_artifact',
+        description:
+          'Read a DRS review artifact from a file path. ' +
+          'Without findingId: returns a compact manifest of all findings (id, severity, state, disposition, file, line, title). ' +
+          'With findingId: returns the full finding detail including issue, verification rationale, and fingerprint.',
+        parameters: Type.Object({
+          artifactPath: Type.String({ minLength: 1 }),
+          findingId: Type.Optional(Type.String({ minLength: 1 })),
+        }),
+        execute: async (_toolCallId, params: { artifactPath: string; findingId?: string }) => {
+          const { readFile } = await import('fs/promises');
+          try {
+            const fullPath = resolveWithinWorkingDir(workingDir, params.artifactPath, 'read');
+            const raw = JSON.parse(await readFile(fullPath, 'utf-8')) as unknown;
+
+            if (findingIdParamProvided(params)) {
+              const finding = extractFindingFromArtifact(raw, params.findingId!);
+              if (!finding) {
+                const details = {
+                  artifactPath: params.artifactPath,
+                  findingId: params.findingId,
+                  ok: false,
+                  error: `Finding "${params.findingId}" not found in artifact`,
+                };
+                return {
+                  content: [{ type: 'text', text: JSON.stringify(details) }],
+                  details,
+                };
+              }
+              const details = {
+                artifactPath: params.artifactPath,
+                findingId: params.findingId,
+                ok: true,
+                finding,
+              };
+              return {
+                content: [{ type: 'text', text: JSON.stringify(details) }],
+                details,
+              };
+            }
+
+            const manifest = buildArtifactManifest(raw, params.artifactPath);
+            return {
+              content: [{ type: 'text', text: JSON.stringify(manifest) }],
+              details: manifest,
+            };
+          } catch (caught) {
+            const error = formatUnknownError(caught);
+            const details = {
+              artifactPath: params.artifactPath,
+              findingId: params.findingId,
+              ok: false,
+              error,
+            };
+            return {
+              content: [{ type: 'text', text: JSON.stringify(details) }],
+              details,
+            };
+          }
+        },
+      });
+    }
+
+    if (this.isToolEnabled('drs_check', false, agentTools) && this.runtimeConfig.fixChecks) {
+      const configuredChecks = this.runtimeConfig.fixChecks;
+      customTools.push({
+        name: 'drs_check',
+        label: 'drs_check',
+        description:
+          'Run configured DRS fix checks (type-check, lint, tests, etc.). ' +
+          'Without name: runs all applicable checks (filtered by matchPaths against changed files). ' +
+          'With name: runs a single named check. ' +
+          'Returns exit code, stdout, and stderr for each check.',
+        parameters: Type.Object({
+          name: Type.Optional(Type.String({ minLength: 1 })),
+        }),
+        execute: async (_toolCallId, params: { name?: string }) => {
+          const changedFiles = await getChangedFiles(workingDir);
+          let checksToRun: FixCheckConfig[];
+
+          if (params.name) {
+            const match = configuredChecks.find((c) => c.name === params.name);
+            if (!match) {
+              const details = {
+                ok: false,
+                error: `No check named "${params.name}" is configured`,
+                availableChecks: configuredChecks.map((c) => c.name),
+              };
+              return {
+                content: [{ type: 'text', text: JSON.stringify(details) }],
+                details,
+              };
+            }
+            checksToRun = [match];
+          } else {
+            checksToRun = configuredChecks.filter(
+              (check) =>
+                !check.matchPaths ||
+                check.matchPaths.length === 0 ||
+                changedFiles.some((f) => fileMatchesGlobs(f, check.matchPaths))
+            );
+          }
+
+          if (checksToRun.length === 0) {
+            const details = {
+              ok: true,
+              checks: [] as CheckResult[],
+              changedFiles,
+              skipped: 'No applicable checks for changed files',
+            };
+            return {
+              content: [{ type: 'text', text: JSON.stringify(details) }],
+              details,
+            };
+          }
+
+          const results: CheckResult[] = [];
+          for (const check of checksToRun) {
+            results.push(await runCheckCommand(workingDir, check));
+          }
+
+          const details = {
+            ok: results.every((r) => r.exitCode === 0),
+            checks: results,
+            changedFiles,
+          };
           return {
             content: [{ type: 'text', text: JSON.stringify(details) }],
             details,

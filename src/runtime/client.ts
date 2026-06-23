@@ -343,6 +343,10 @@ export class RuntimeClient {
 
     runtimeConfig.skillSearchPaths = agentPaths.skillSearchPaths;
 
+    if (this.config.config?.fix?.checks && this.config.config.fix.checks.length > 0) {
+      runtimeConfig.fixChecks = this.config.config.fix.checks;
+    }
+
     if (this.config.config) {
       const agentSkills = buildAgentSkillConfiguration(this.config.config, runtimeAgents);
 

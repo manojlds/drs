@@ -336,6 +336,20 @@ export interface DRSConfig {
   pricing?: {
     models?: Record<string, ModelPricingConfig>;
   };
+
+  // Fix pipeline configuration (review-issue-fixer agent)
+  fix?: FixConfig;
+}
+
+export interface FixCheckConfig {
+  name: string;
+  command: string;
+  matchPaths?: string[];
+  timeoutMs?: number;
+}
+
+export interface FixConfig {
+  checks?: FixCheckConfig[];
 }
 
 const DEFAULT_CONFIG: DRSConfig = {
@@ -819,6 +833,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     describe: mergeSection(base.describe, override.describe),
     contextCompression: mergeSection(base.contextCompression, override.contextCompression),
     pricing: mergeSection(base.pricing, override.pricing),
+    fix: mergeSection(base.fix, override.fix),
   };
 }
 

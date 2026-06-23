@@ -129,7 +129,7 @@ jobs:
             --input fix=true \
             --input fixMode=internal \
             --input fixSeverity=medium \
-            --input fixMaxIterations=2 \
+            --input fixMaxIterations=1 \
             --input visualOutputPath=".drs/visual-pr-explainer.html"
 
       - name: Upload visual explainer artifact
