@@ -130,7 +130,8 @@ jobs:
             --input fixMode=internal \
             --input fixSeverity=medium \
             --input fixMaxIterations=1 \
-            --input visualOutputPath=".drs/visual-pr-explainer.html"
+            --input visualOutputPath=".drs/visual-pr-explainer.html" \
+            --trace
 
       - name: Upload visual explainer artifact
         if: always()
@@ -146,6 +147,14 @@ jobs:
         with:
           name: drs-workflow-artifacts-trusted
           path: .drs/artifacts/**
+          if-no-files-found: ignore
+
+      - name: Upload trace viewer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-viewer-trusted
+          path: .drs/artifacts/**/trace.html
           if-no-files-found: ignore
 
   # Review for external contributors - requires environment approval OR safe-to-review label
@@ -228,7 +237,8 @@ jobs:
             --input post=true \
             --input visual=true \
             --input fix=false \
-            --input visualOutputPath=".drs/visual-pr-explainer.html"
+            --input visualOutputPath=".drs/visual-pr-explainer.html" \
+            --trace
 
       - name: Upload visual explainer artifact
         if: always()
@@ -244,6 +254,14 @@ jobs:
         with:
           name: drs-workflow-artifacts-external
           path: .drs/artifacts/**
+          if-no-files-found: ignore
+
+      - name: Upload trace viewer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-viewer-external
+          path: .drs/artifacts/**/trace.html
           if-no-files-found: ignore
 
   # Notify when external PR is waiting for approval
