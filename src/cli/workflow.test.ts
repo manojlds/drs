@@ -2401,7 +2401,15 @@ describe('workflow runner', () => {
     const reReviewResults = [
       {
         ...createMockReviewResult([]),
-        verification: { findings: [{ id: 'F001', disposition: 'still_open' }] },
+        verification: {
+          findings: [
+            {
+              id: 'F001',
+              disposition: 'still_open',
+              rationale: 'The whitelist still rejects git-branch with.from.',
+            },
+          ],
+        },
       },
       {
         ...createMockReviewResult([]),
@@ -2436,6 +2444,10 @@ describe('workflow runner', () => {
       'task/review-issue-fixer',
       'task/review-issue-fixer',
     ]);
+    const secondFixPrompt = mocks.runAgent.mock.calls[1]?.[2]?.prompt ?? '';
+    expect(secondFixPrompt).toContain('Current review artifact');
+    expect(secondFixPrompt).toContain('"disposition": "still_open"');
+    expect(secondFixPrompt).toContain('The whitelist still rejects git-branch with.from.');
     expect(result.loop['fix-loop']).toMatchObject({
       iteration: 2,
       maxIterations: 3,

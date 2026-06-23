@@ -62,9 +62,16 @@ export interface AgentRunConfig {
 export type WorkflowInputConfig =
   | string
   | {
+      type?: 'string' | 'boolean' | 'number' | 'enum';
       value?: string;
       file?: string;
+      default?: string | number | boolean;
+      required?: boolean;
+      values?: Array<string | number | boolean>;
+      description?: string;
     };
+
+export type WorkflowControl = 'loop' | 'switch' | 'end' | 'passThrough';
 
 export interface WorkflowNodeConfig {
   /** Agent id to run, for example "task/docs-updater". */
@@ -72,7 +79,7 @@ export interface WorkflowNodeConfig {
   /** Config path resolving to an agent list. Currently supports "review.agents". */
   agentsFrom?: string;
   /** Built-in workflow control node. */
-  control?: 'loop' | 'switch' | 'end' | 'passThrough';
+  control?: WorkflowControl;
   /** Built-in workflow action. */
   action?: WorkflowAction;
   /** Action-specific options. */
@@ -460,6 +467,68 @@ export function validateWorkflowActions(
     );
   }
 }
+
+function validateWorkflowInputs(workflowName: string, inputs: unknown): void {
+  if (inputs === undefined) return;
+  if (!isRecord(inputs)) {
+    throw new Error(`Workflow "${workflowName}" inputs must be an object.`);
+  }
+
+  for (const [inputName, input] of Object.entries(inputs)) {
+    if (typeof input === 'string') continue;
+    if (!isRecord(input)) {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" must be a string or object.`
+      );
+    }
+
+    const allowed = new Set([
+      'type',
+      'value',
+      'file',
+      'default',
+      'required',
+      'values',
+      'description',
+    ]);
+    const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+    if (unknown.length > 0) {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" has unsupported field(s): ${unknown.join(', ')}.`
+      );
+    }
+
+    const rawType = input.type;
+    if (rawType !== undefined && typeof rawType !== 'string') {
+      throw new Error(`Workflow "${workflowName}" input "${inputName}" type must be a string.`);
+    }
+    const type = rawType ?? 'string';
+    if (!['string', 'boolean', 'number', 'enum'].includes(type)) {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" has unsupported type "${type}".`
+      );
+    }
+    if (input.file !== undefined && (input.value !== undefined || input.default !== undefined)) {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" cannot define file with value/default.`
+      );
+    }
+    if (input.required !== undefined && typeof input.required !== 'boolean') {
+      throw new Error(`Workflow "${workflowName}" input "${inputName}" required must be boolean.`);
+    }
+    if (input.description !== undefined && typeof input.description !== 'string') {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" description must be string.`
+      );
+    }
+    if (type === 'enum' && (!Array.isArray(input.values) || input.values.length === 0)) {
+      throw new Error(
+        `Workflow "${workflowName}" input "${inputName}" type enum must define values.`
+      );
+    }
+  }
+}
+
 function validateWorkflowDefinition(
   workflowName: string,
   workflow: unknown,
@@ -470,6 +539,7 @@ function validateWorkflowDefinition(
   }
 
   const typed = workflow as unknown as WorkflowConfig;
+  validateWorkflowInputs(workflowName, typed.inputs);
   validateWorkflowActions(workflowName, typed.nodes);
   return typed;
 }

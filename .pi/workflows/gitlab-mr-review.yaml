@@ -1,23 +1,61 @@
 name: gitlab-mr-review
 description: Review a GitLab merge request, optionally posting a description, DRS comments, Code Quality, and a visual HTML explainer
 inputs:
-  project: ''
-  mr: ''
-  describe: 'false'
-  post: 'false'
-  visual: 'false'
-  fix: 'false'
-  fixMode: 'stacked'
-  fixSeverity: 'high'
-  fixMinIssues: '1'
-  fixBranchPrefix: 'drs-fix/mr-'
-  fixCreateChangeRequest: 'false'
-  fixMaxIterations: '3'
-  allowStackedSource: 'false'
-  fixDraft: 'false'
-  visualOutputPath: '.drs/visual-mr-explainer.html'
-  codeQuality: 'false'
-  codeQualityReport: gl-code-quality-report.json
+  project:
+    type: string
+    required: true
+    description: GitLab project path or id
+  mr:
+    type: number
+    required: true
+    description: Merge request IID
+  describe:
+    type: boolean
+    default: false
+  post:
+    type: boolean
+    default: false
+  visual:
+    type: boolean
+    default: false
+  fix:
+    type: boolean
+    default: false
+  fixMode:
+    type: enum
+    values: [stacked, internal]
+    default: stacked
+  fixSeverity:
+    type: enum
+    values: [critical, high, medium, low]
+    default: high
+  fixMinIssues:
+    type: number
+    default: 1
+  fixBranchPrefix:
+    type: string
+    default: drs-fix/mr-
+  fixCreateChangeRequest:
+    type: boolean
+    default: false
+  fixMaxIterations:
+    type: number
+    default: 3
+  allowStackedSource:
+    type: boolean
+    default: false
+  fixDraft:
+    type: boolean
+    default: false
+  visualOutputPath:
+    type: string
+    default: .drs/visual-mr-explainer.html
+  codeQuality:
+    type: boolean
+    default: false
+  codeQualityReport:
+    type: string
+    default: gl-code-quality-report.json
 output: review
 nodes:
   change:
@@ -32,7 +70,7 @@ nodes:
     action: describe
     needs:
       - change
-    if: '{{inputs.describe}} == true'
+    if: inputs.describe == true
     with:
       source: change
       post: true
@@ -71,7 +109,7 @@ nodes:
       - change
       - review
       - save-review-artifact
-    if: '{{inputs.visual}} == true'
+    if: inputs.visual == true
     input: |
       Generate a visual MR explainer HTML artifact.
 
@@ -92,7 +130,7 @@ nodes:
     action: post-review-comments
     needs:
       - review
-    if: '{{inputs.post}} == true'
+    if: inputs.post == true
     with:
       source: change
       review: review
@@ -102,7 +140,7 @@ nodes:
     action: code-quality-report
     needs:
       - review
-    if: '{{inputs.codeQuality}} == true'
+    if: inputs.codeQuality == true
     with:
       review: review
       path: '{{inputs.codeQualityReport}}'
@@ -113,7 +151,7 @@ nodes:
     needs:
       - change
       - save-review-artifact
-    if: '{{inputs.fix}} == true'
+    if: inputs.fix == true
     with:
       source: change
       allowStackedSource: '{{inputs.allowStackedSource}}'
@@ -124,7 +162,7 @@ nodes:
     needs:
       - review
       - stack-guard
-    if: '{{artifacts.stackGuard.allowed}} == true'
+    if: artifacts.stackGuard.allowed == true
     with:
       review: review
       severity: '{{inputs.fixSeverity}}'
@@ -135,7 +173,7 @@ nodes:
     action: git-branch
     needs:
       - fix-threshold
-    if: '{{artifacts.reviewThreshold.matched}} == true'
+    if: artifacts.reviewThreshold.matched == true
     with:
       name: '{{inputs.fixBranchPrefix}}{{inputs.mr}}'
       force: true
@@ -151,8 +189,8 @@ nodes:
 
       Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review artifact:
-      {{artifacts.reviewArtifact}}
+      Current review artifact, including any verifier feedback from previous fix attempts:
+      {{artifacts.persistedReviewArtifact}}
 
       Persisted artifact envelope:
       {{artifacts.persistedReviewArtifact}}
@@ -165,7 +203,7 @@ nodes:
     action: git-add
     needs:
       - fix-issues
-    if: '{{inputs.fixMode}} == internal'
+    if: inputs.fixMode == internal
     with:
       paths: '.'
     output: stagedFixes
@@ -217,7 +255,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    condition: '{{artifacts.verify-fix.shouldContinue}} == true'
+    condition: artifacts.verify-fix.shouldContinue == true
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'
@@ -227,7 +265,7 @@ nodes:
     action: post-fix-status
     needs:
       - verify-fix
-    if: '{{inputs.fixMode}} == internal'
+    if: inputs.fixMode == internal
     with:
       platform: gitlab
       project: '{{inputs.project}}'
@@ -244,7 +282,7 @@ nodes:
     action: git-commit
     needs:
       - post-fix-status-internal
-    if: '{{artifacts.verify-fix.shouldContinue}} == false && {{artifacts.verify-fix.fixFiles}} > 0'
+    if: artifacts.verify-fix.shouldContinue == false && artifacts.verify-fix.fixFiles > 0
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
