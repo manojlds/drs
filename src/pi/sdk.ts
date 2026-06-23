@@ -570,7 +570,7 @@ function fileMatchesGlobs(filePath: string, patterns: string[] | undefined): boo
 
 async function getChangedFiles(workingDir: string): Promise<string[]> {
   return new Promise((resolvePromise) => {
-    const child = spawn('git', ['diff', '--name-only', 'HEAD'], {
+    const child = spawn('git', ['status', '--porcelain', '--no-renames'], {
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -580,7 +580,14 @@ async function getChangedFiles(workingDir: string): Promise<string[]> {
     child.on('error', () => resolvePromise([]));
     child.on('close', () => {
       const output = Buffer.concat(stdoutChunks).toString('utf8').trim();
-      resolvePromise(output ? output.split('\n').filter(Boolean) : []);
+      resolvePromise(
+        output
+          ? output
+              .split('\n')
+              .map((line) => line.slice(3).trim())
+              .filter(Boolean)
+          : []
+      );
     });
   });
 }
@@ -1188,40 +1195,54 @@ class PiSessionRuntime {
         }),
         execute: async (_toolCallId, params: { artifactPath: string; findingId?: string }) => {
           const { readFile } = await import('fs/promises');
-          const fullPath = resolveWithinWorkingDir(workingDir, params.artifactPath, 'read');
-          const raw = JSON.parse(await readFile(fullPath, 'utf-8')) as unknown;
+          try {
+            const fullPath = resolveWithinWorkingDir(workingDir, params.artifactPath, 'read');
+            const raw = JSON.parse(await readFile(fullPath, 'utf-8')) as unknown;
 
-          if (findingIdParamProvided(params)) {
-            const finding = extractFindingFromArtifact(raw, params.findingId!);
-            if (!finding) {
+            if (findingIdParamProvided(params)) {
+              const finding = extractFindingFromArtifact(raw, params.findingId!);
+              if (!finding) {
+                const details = {
+                  artifactPath: params.artifactPath,
+                  findingId: params.findingId,
+                  ok: false,
+                  error: `Finding "${params.findingId}" not found in artifact`,
+                };
+                return {
+                  content: [{ type: 'text', text: JSON.stringify(details) }],
+                  details,
+                };
+              }
               const details = {
                 artifactPath: params.artifactPath,
                 findingId: params.findingId,
-                ok: false,
-                error: `Finding "${params.findingId}" not found in artifact`,
+                ok: true,
+                finding,
               };
               return {
                 content: [{ type: 'text', text: JSON.stringify(details) }],
                 details,
               };
             }
+
+            const manifest = buildArtifactManifest(raw, params.artifactPath);
+            return {
+              content: [{ type: 'text', text: JSON.stringify(manifest) }],
+              details: manifest,
+            };
+          } catch (caught) {
+            const error = formatUnknownError(caught);
             const details = {
               artifactPath: params.artifactPath,
               findingId: params.findingId,
-              ok: true,
-              finding,
+              ok: false,
+              error,
             };
             return {
               content: [{ type: 'text', text: JSON.stringify(details) }],
               details,
             };
           }
-
-          const manifest = buildArtifactManifest(raw, params.artifactPath);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(manifest) }],
-            details: manifest,
-          };
         },
       });
     }
