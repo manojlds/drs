@@ -22,4 +22,6 @@ The workflow provides review JSON or Markdown plus the current local change sour
 - Keep changes minimal and localized to the issue.
 - Do not update dependencies, generated files, or lockfiles unless directly necessary.
 - If a finding cannot be reproduced or safely fixed, leave code unchanged for that finding and explain why.
+- If a finding includes `verification`, treat it as reviewer feedback from a previous fix attempt. For `still_open`, `partial`, `regression`, or `missing`, use the verifier `rationale` and issue details to guide the next smallest safe change.
+- In your final response, mention how you addressed any verifier feedback or why it remains unresolved.
 - Do not commit changes.

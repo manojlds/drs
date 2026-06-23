@@ -185,8 +185,8 @@ nodes:
 
       Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review artifact:
-      {{artifacts.reviewArtifact}}
+      Current review artifact, including any verifier feedback from previous fix attempts:
+      {{artifacts.persistedReviewArtifact}}
 
       Persisted artifact envelope:
       {{artifacts.persistedReviewArtifact}}

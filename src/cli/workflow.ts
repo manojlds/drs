@@ -2277,6 +2277,7 @@ async function runVerifyFixWorkflowNode(
         line: statusItem.finding.issue.line,
         title: statusItem.finding.issue.title,
         verificationMissing: statusItem.verificationMissing === true,
+        verificationRationale: statusItem.finding.verification?.rationale,
       })),
     },
     shouldContinue: reconciliation.shouldContinue,
@@ -3302,12 +3303,21 @@ function reconcileReviewArtifactFindings(
     const issue = isReviewIssue(verdict?.issue) ? verdict.issue : finding.issue;
     const fingerprint =
       issue === finding.issue ? finding.fingerprint : createIssueFingerprint(issue);
+    const shouldVerify = severityRank(finding.issue.severity) >= thresholdRank;
+    const verification = shouldVerify
+      ? {
+          disposition: verdict?.disposition ?? ('missing' as const),
+          rationale: verdict?.rationale,
+          verifiedAt: now,
+        }
+      : finding.verification;
     return {
       ...finding,
       issue,
       fingerprint,
       state: disposition === 'resolved' ? ('resolved' as const) : ('open' as const),
       disposition,
+      verification,
       updatedAt: now,
     };
   });
@@ -3324,6 +3334,7 @@ function reconcileReviewArtifactFindings(
       issue,
       state: 'open',
       disposition: 'regression',
+      verification: undefined,
       source: 'agent',
       createdAt: now,
       updatedAt: now,

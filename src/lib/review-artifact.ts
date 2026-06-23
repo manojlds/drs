@@ -14,6 +14,12 @@ export type ReviewFindingDisposition =
   | 'resolved';
 export type ReviewFindingSource = 'agent' | 'manual' | 'external';
 
+export interface ReviewFindingVerification {
+  disposition: 'resolved' | 'still_open' | 'partial' | 'regression' | 'missing';
+  rationale?: string;
+  verifiedAt: string;
+}
+
 export interface ReviewFinding {
   id: string;
   fingerprint: string;
@@ -23,6 +29,7 @@ export interface ReviewFinding {
   source: ReviewFindingSource;
   createdAt: string;
   updatedAt: string;
+  verification?: ReviewFindingVerification;
 }
 
 export interface ReviewArtifactPayload {
