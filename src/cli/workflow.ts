@@ -1208,9 +1208,9 @@ async function runAgentWorkflowNode(
   }
 
   const agentOptions = createAgentOptions(prompt, options, workingDir);
-  if (executionContext?.traceCollector && prompt) {
+  if (executionContext?.traceCollector) {
     agentOptions.traceCollector = executionContext.traceCollector;
-    executionContext.traceCollector.setContext(nodeId, agentId, prompt);
+    agentOptions.nodeId = nodeId;
   }
 
   const result = await runAgent(config, agentId, agentOptions);

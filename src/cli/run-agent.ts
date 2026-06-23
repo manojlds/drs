@@ -29,6 +29,7 @@ export interface RunAgentOptions {
   allowImplicitStdin?: boolean;
   ignoreConfiguredOutput?: boolean;
   traceCollector?: TraceCollector;
+  nodeId?: string;
 }
 
 export interface AgentRunResult {
@@ -131,7 +132,7 @@ export async function runAgent(
   });
 
   if (options.traceCollector) {
-    options.traceCollector.setContext('run-agent', agentId, prompt);
+    options.traceCollector.setContext(options.nodeId ?? 'run-agent', agentId, prompt);
   }
 
   let session: Session | undefined;

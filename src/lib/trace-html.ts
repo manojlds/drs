@@ -12,6 +12,9 @@ export function renderTraceHtml(trace: WorkflowTrace): string {
 
   const invocationNodes = traces.map((t, i) => renderInvocationNode(t, i)).join('');
 
+  const traceData = JSON.stringify(trace).replace(/</g, '\\u003c');
+  const traceScript = TRACE_JS.replace('"@@TRACE_DATA@@"', traceData);
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,7 +56,7 @@ ${TRACE_CSS}
   </main>
 </div>
 <script>
-${TRACE_JS}
+${traceScript}
 </script>
 </body>
 </html>`;
@@ -165,7 +168,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 `;
 
 const TRACE_JS = `
-const TRACE_DATA = ${JSON.stringify('@@TRACE_DATA@@')};
+const TRACE_DATA = "@@TRACE_DATA@@";
 
 function selectNode(event, type, nodeId) {
   event.stopPropagation();

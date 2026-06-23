@@ -94,10 +94,10 @@ interface ActiveTurn {
 
 export class TraceCollector {
   private traces: AgentTrace[] = [];
-  private currentTrace: AgentTrace | null = null;
-  private currentTurn: ActiveTurn | null = null;
-  private currentTurnIndex = -1;
-  private unsubscribe: (() => void) | null = null;
+  private activeTraces = new Map<string, AgentTrace>();
+  private activeTurns = new Map<string, ActiveTurn>();
+  private activeTurnIndices = new Map<string, number>();
+  private activeSubscriptions = new Map<string, () => void>();
   private promptText = '';
   private nodeId = '';
   private agentId = '';
@@ -119,7 +119,7 @@ export class TraceCollector {
     },
     sessionId: string
   ): void {
-    this.currentTrace = {
+    const trace: AgentTrace = {
       id: randomUUID(),
       nodeId: this.nodeId,
       agentId: this.agentId,
@@ -135,35 +135,38 @@ export class TraceCollector {
       workflowIteration: this.workflowIteration,
     };
 
-    this.currentTurn = null;
-    this.currentTurnIndex = -1;
+    this.activeTraces.set(sessionId, trace);
+    this.activeTurns.delete(sessionId);
+    this.activeTurnIndices.set(sessionId, -1);
 
-    this.unsubscribe = session.subscribe((event: PiEvent) => {
-      this.handleEvent(event);
+    const unsubscribe = session.subscribe((event: PiEvent) => {
+      this.handleEvent(sessionId, event);
     });
+    this.activeSubscriptions.set(sessionId, unsubscribe);
   }
 
-  private handleEvent(event: PiEvent): void {
-    if (!this.currentTrace) return;
+  private handleEvent(sessionId: string, event: PiEvent): void {
+    const trace = this.activeTraces.get(sessionId);
+    if (!trace) return;
 
     switch (event.type) {
       case 'turn_start':
-        this.startTurn(event);
+        this.startTurn(sessionId, event);
         break;
       case 'turn_end':
-        this.endTurn(event);
+        this.endTurn(sessionId, event);
         break;
       case 'tool_execution_start':
-        this.startToolCall(event);
+        this.startToolCall(sessionId, event);
         break;
       case 'tool_execution_end':
-        this.endToolCall(event);
+        this.endToolCall(sessionId, event);
         break;
       case 'message_end':
-        this.captureMessage(event);
+        this.captureMessage(sessionId, event);
         break;
       case 'agent_end':
-        this.completeTrace(event);
+        this.completeTrace(sessionId, event);
         break;
       case 'compaction_start':
       case 'compaction_end':
@@ -173,19 +176,22 @@ export class TraceCollector {
     }
   }
 
-  private startTurn(event: PiEvent): void {
-    const turnIndex = (event.turnIndex as number) ?? ++this.currentTurnIndex;
-    this.currentTurnIndex = turnIndex;
-    this.currentTurn = {
+  private startTurn(sessionId: string, event: PiEvent): void {
+    const currentIndex = this.activeTurnIndices.get(sessionId) ?? -1;
+    const turnIndex = (event.turnIndex as number) ?? currentIndex + 1;
+    this.activeTurnIndices.set(sessionId, turnIndex);
+    this.activeTurns.set(sessionId, {
       turnIndex,
       startedAt: new Date().toISOString(),
       toolCalls: [],
       activeToolCalls: new Map(),
-    };
+    });
   }
 
-  private endTurn(event: PiEvent): void {
-    if (!this.currentTrace || !this.currentTurn) return;
+  private endTurn(sessionId: string, event: PiEvent): void {
+    const trace = this.activeTraces.get(sessionId);
+    const activeTurn = this.activeTurns.get(sessionId);
+    if (!trace || !activeTurn) return;
 
     const message = event.message as
       | {
@@ -201,8 +207,7 @@ export class TraceCollector {
       | undefined;
 
     const completedAt = new Date().toISOString();
-    const durationMs =
-      new Date(completedAt).getTime() - new Date(this.currentTurn.startedAt).getTime();
+    const durationMs = new Date(completedAt).getTime() - new Date(activeTurn.startedAt).getTime();
 
     let assistantContent = '';
     let thinkingContent = '';
@@ -218,8 +223,8 @@ export class TraceCollector {
     }
 
     const turn: TraceTurn = {
-      turnIndex: this.currentTurn.turnIndex,
-      startedAt: this.currentTurn.startedAt,
+      turnIndex: activeTurn.turnIndex,
+      startedAt: activeTurn.startedAt,
       completedAt,
       durationMs,
       model: message?.model,
@@ -230,22 +235,23 @@ export class TraceCollector {
       usage: message?.usage,
       assistantContent: assistantContent || undefined,
       thinkingContent: thinkingContent || undefined,
-      toolCalls: [...this.currentTurn.toolCalls],
+      toolCalls: [...activeTurn.toolCalls],
     };
 
-    this.currentTrace.turns.push(turn);
-    this.currentTrace.toolCallCount += turn.toolCalls.length;
-    this.currentTurn = null;
+    trace.turns.push(turn);
+    trace.toolCallCount += turn.toolCalls.length;
+    this.activeTurns.delete(sessionId);
   }
 
-  private startToolCall(event: PiEvent): void {
-    if (!this.currentTurn) return;
+  private startToolCall(sessionId: string, event: PiEvent): void {
+    const activeTurn = this.activeTurns.get(sessionId);
+    if (!activeTurn) return;
     const toolCallId = event.toolCallId as string;
     const toolName = event.toolName as string;
     const args = event.args;
     const startedAt = new Date().toISOString();
 
-    this.currentTurn.activeToolCalls.set(toolCallId, {
+    activeTurn.activeToolCalls.set(toolCallId, {
       toolCallId,
       toolName,
       args,
@@ -253,10 +259,11 @@ export class TraceCollector {
     });
   }
 
-  private endToolCall(event: PiEvent): void {
-    if (!this.currentTurn) return;
+  private endToolCall(sessionId: string, event: PiEvent): void {
+    const activeTurn = this.activeTurns.get(sessionId);
+    if (!activeTurn) return;
     const toolCallId = event.toolCallId as string;
-    const active = this.currentTurn.activeToolCalls.get(toolCallId);
+    const active = activeTurn.activeToolCalls.get(toolCallId);
     if (!active) return;
 
     const completedAt = new Date().toISOString();
@@ -273,16 +280,18 @@ export class TraceCollector {
       durationMs,
     };
 
-    this.currentTurn.toolCalls.push(toolCall);
-    this.currentTurn.activeToolCalls.delete(toolCallId);
+    activeTurn.toolCalls.push(toolCall);
+    activeTurn.activeToolCalls.delete(toolCallId);
 
+    const trace = this.activeTraces.get(sessionId);
     if (
-      active.toolName === 'skill' ||
-      (active.toolName === 'read' && typeof active.args === 'object' && active.args !== null)
+      trace &&
+      (active.toolName === 'skill' ||
+        (active.toolName === 'read' && typeof active.args === 'object' && active.args !== null))
     ) {
       const skillName = this.extractSkillName(active.args, event.result);
-      if (skillName && this.currentTrace && !this.currentTrace.skillsLoaded.includes(skillName)) {
-        this.currentTrace.skillsLoaded.push(skillName);
+      if (skillName && !trace.skillsLoaded.includes(skillName)) {
+        trace.skillsLoaded.push(skillName);
       }
     }
   }
@@ -300,21 +309,22 @@ export class TraceCollector {
     return undefined;
   }
 
-  private captureMessage(event: PiEvent): void {
-    if (!this.currentTrace) return;
+  private captureMessage(sessionId: string, event: PiEvent): void {
+    const trace = this.activeTraces.get(sessionId);
+    if (!trace) return;
     const message = event.message as { usage?: TraceUsage } | undefined;
-    if (message?.usage && !this.currentTrace.totalUsage) {
-      this.currentTrace.totalUsage = message.usage;
+    if (message?.usage && !trace.totalUsage) {
+      trace.totalUsage = message.usage;
     }
   }
 
-  private completeTrace(event: PiEvent): void {
-    if (!this.currentTrace) return;
+  private completeTrace(sessionId: string, event: PiEvent): void {
+    const trace = this.activeTraces.get(sessionId);
+    if (!trace) return;
 
     const completedAt = new Date().toISOString();
-    this.currentTrace.completedAt = completedAt;
-    this.currentTrace.durationMs =
-      new Date(completedAt).getTime() - new Date(this.currentTrace.startedAt).getTime();
+    trace.completedAt = completedAt;
+    trace.durationMs = new Date(completedAt).getTime() - new Date(trace.startedAt).getTime();
 
     if (event.messages && Array.isArray(event.messages)) {
       const lastAssistant = [...event.messages]
@@ -323,34 +333,34 @@ export class TraceCollector {
       if (lastAssistant) {
         const usage = (lastAssistant as { usage?: TraceUsage }).usage;
         if (usage) {
-          this.currentTrace.totalUsage = usage;
+          trace.totalUsage = usage;
         }
       }
     }
 
-    this.currentTrace.errorMessage = event.willRetry ? 'Agent ended with retry pending' : undefined;
+    trace.errorMessage = event.willRetry ? 'Agent ended with retry pending' : undefined;
   }
 
-  finalizeCurrentTrace(): AgentTrace | undefined {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
+  finalizeSession(sessionId: string): AgentTrace | undefined {
+    const unsubscribe = this.activeSubscriptions.get(sessionId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.activeSubscriptions.delete(sessionId);
     }
 
-    if (this.currentTrace) {
-      if (!this.currentTrace.completedAt) {
-        const now = new Date().toISOString();
-        this.currentTrace.completedAt = now;
-        this.currentTrace.durationMs =
-          new Date(now).getTime() - new Date(this.currentTrace.startedAt).getTime();
-      }
-      this.traces.push(this.currentTrace);
-      const trace = this.currentTrace;
-      this.currentTrace = null;
-      this.currentTurn = null;
-      return trace;
+    const trace = this.activeTraces.get(sessionId);
+    if (!trace) return undefined;
+
+    if (!trace.completedAt) {
+      const now = new Date().toISOString();
+      trace.completedAt = now;
+      trace.durationMs = new Date(now).getTime() - new Date(trace.startedAt).getTime();
     }
-    return undefined;
+    this.traces.push(trace);
+    this.activeTraces.delete(sessionId);
+    this.activeTurns.delete(sessionId);
+    this.activeTurnIndices.delete(sessionId);
+    return trace;
   }
 
   getTraces(): AgentTrace[] {
@@ -373,9 +383,13 @@ export class TraceCollector {
   }
 
   clear(): void {
+    for (const unsubscribe of this.activeSubscriptions.values()) {
+      unsubscribe();
+    }
     this.traces = [];
-    this.currentTrace = null;
-    this.currentTurn = null;
-    this.unsubscribe = null;
+    this.activeTraces.clear();
+    this.activeTurns.clear();
+    this.activeTurnIndices.clear();
+    this.activeSubscriptions.clear();
   }
 }
