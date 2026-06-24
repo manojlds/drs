@@ -1464,7 +1464,7 @@ class PiSessionRuntime {
       return { ok: false };
     } finally {
       if (this.runtimeConfig.traceCollector && record.session) {
-        this.runtimeConfig.traceCollector.finalizeCurrentTrace();
+        this.runtimeConfig.traceCollector.finalizeSession(record.id);
       }
     }
   }

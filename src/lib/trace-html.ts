@@ -12,6 +12,8 @@ export function renderTraceHtml(trace: WorkflowTrace): string {
 
   const invocationNodes = traces.map((t, i) => renderInvocationNode(t, i)).join('');
 
+  const traceDataJson = JSON.stringify(trace).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,7 +55,7 @@ ${TRACE_CSS}
   </main>
 </div>
 <script>
-${TRACE_JS}
+${buildTraceJs(traceDataJson)}
 </script>
 </body>
 </html>`;
@@ -164,8 +166,9 @@ main { display: flex; flex: 1; overflow: hidden; }
 .tool-result-error { color: #ff6666; }
 `;
 
-const TRACE_JS = `
-const TRACE_DATA = ${JSON.stringify('@@TRACE_DATA@@')};
+function buildTraceJs(traceDataJson: string): string {
+  return `
+const TRACE_DATA = ${traceDataJson};
 
 function selectNode(event, type, nodeId) {
   event.stopPropagation();
@@ -332,6 +335,7 @@ function filterTree(query) {
   });
 }
 `;
+}
 
 function escapeHtml(str: string): string {
   if (str === null || str === undefined) return '';
