@@ -120,5 +120,40 @@ export const reviewOutputSchema = {
         },
       },
     },
+    verification: {
+      type: 'object',
+      properties: {
+        findings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'disposition'],
+            properties: {
+              id: { type: 'string', minLength: 1 },
+              disposition: {
+                type: 'string',
+                enum: ['resolved', 'still_open', 'partial'],
+              },
+              rationale: { type: 'string' },
+              issue: {
+                type: ['object', 'null'],
+                properties: {
+                  category: { type: 'string' },
+                  severity: { type: 'string' },
+                  title: { type: 'string' },
+                  file: { type: 'string' },
+                  line: { type: 'number' },
+                  problem: { type: 'string' },
+                  solution: { type: 'string' },
+                  references: { type: 'array', items: { type: 'string' } },
+                  agent: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 } as const;
