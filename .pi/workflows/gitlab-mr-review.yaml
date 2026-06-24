@@ -180,32 +180,15 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
-  stage-fixes:
-    action: git-add
+  verification-change:
+    action: change-source
     needs:
       - fix-issues
     if: inputs.fixMode == internal
     with:
-      paths: '.'
-    output: stagedFixes
-
-  fix-change:
-    action: change-source
-    needs:
-      - stage-fixes
-    with:
-      type: local
-      staged: true
-    output: fixChange
-
-  verification-change:
-    action: change-source
-    needs:
-      - fix-change
-    with:
       type: fix-verification
       source: change
-      fixChange: fixChange
+      staged: true
     output: verificationChange
 
   re-review:
@@ -222,11 +205,10 @@ nodes:
     action: verify-fix
     needs:
       - re-review
-      - fix-change
     with:
       artifact: persistedReviewArtifact
       review: reReview
-      fixChange: fixChange
+      fixChange: verificationChange
       severity: '{{inputs.fixSeverity}}'
       minIssues: '1'
     output: persistedReviewArtifact
@@ -235,6 +217,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
+    if: inputs.fixMode == internal
     condition: artifacts.verify-fix.shouldContinue == true
     target: fix-issues
     exit: post-fix-status-internal
@@ -253,7 +236,7 @@ nodes:
       source: change
       reviewArtifact: persistedReviewArtifact
       fixReview: reReview
-      fixChange: fixChange
+      fixChange: verificationChange
       severity: '{{inputs.fixSeverity}}'
       marker: drs-fix-status
     output: fixStatus

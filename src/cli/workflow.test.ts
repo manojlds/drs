@@ -2616,7 +2616,7 @@ describe('workflow runner', () => {
       workflow: 'github-pr-review',
       nodes: {
         'fix-issues': { status: 'success' },
-        'fix-change': { status: 'success' },
+        'verification-change': { status: 'success' },
       },
       failure: { nodeId: 're-review', message: 'temporary re-review failure' },
     });

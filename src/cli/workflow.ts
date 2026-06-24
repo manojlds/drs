@@ -2256,6 +2256,9 @@ async function runVerifyFixWorkflowNode(
   const fixChangeName = getStringActionOption(node, 'fixChange', context);
   const fixChange = fixChangeName ? context.artifacts[fixChangeName] : undefined;
   const fixSource = isReviewSource(fixChange) ? fixChange : undefined;
+  const fixFilesList =
+    (fixSource?.context?.fixFiles as string[] | undefined) ?? fixSource?.files ?? [];
+  const fixFilesCount = fixFilesList.length;
 
   const reconciliation = reconcileReviewArtifactFindings(artifact, review, {
     severity,
@@ -2276,7 +2279,7 @@ async function runVerifyFixWorkflowNode(
       minIssues,
       shouldContinue: reconciliation.shouldContinue,
       actionableOpen: reconciliation.actionableOpen,
-      fixFiles: fixSource?.files.length ?? 0,
+      fixFiles: fixFilesCount,
       resolved: reconciliation.resolved,
       partial: reconciliation.partial,
       stillOpen: reconciliation.stillOpen,
@@ -2295,7 +2298,7 @@ async function runVerifyFixWorkflowNode(
     },
     shouldContinue: reconciliation.shouldContinue,
     actionableOpen: reconciliation.actionableOpen,
-    fixFiles: fixSource?.files.length ?? 0,
+    fixFiles: fixFilesCount,
     updatedIds: reconciliation.statuses.map((statusItem) => statusItem.finding.id),
     status,
   };
@@ -2537,6 +2540,20 @@ function combineVerificationPatch(originalPatch?: string, fixPatch?: string): st
   return sections.join('\n\n');
 }
 
+async function readChangedFileNames(workingDir: string, staged: boolean): Promise<string[]> {
+  const git = simpleGit({ baseDir: workingDir });
+  const args = staged ? ['--name-only', '--cached'] : ['--name-only'];
+  try {
+    const output = await git.diff(args);
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 async function loadFixVerificationChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -2551,15 +2568,23 @@ async function loadFixVerificationChangeSource(
     );
   }
 
-  const fixChangeName = getStringActionOption(node, 'fixChange', context) ?? 'fixChange';
-  const fixChange = context.artifacts[fixChangeName];
-  if (!isReviewSource(fixChange)) {
-    throw new Error(
-      `Workflow fix-verification change-source node "${nodeId}" needs a fixChange ReviewSource artifact.`
-    );
+  const fixChangeName = getStringActionOption(node, 'fixChange', context);
+  const explicitFixChange = fixChangeName ? context.artifacts[fixChangeName] : undefined;
+  const stagedOpt = getBooleanActionOption(node, 'staged', context);
+
+  let fixFiles: string[];
+  let fixPatches: Array<{ filename: string; patch: string }> | undefined;
+  let fixStaged: boolean | undefined;
+  if (isReviewSource(explicitFixChange)) {
+    fixFiles = explicitFixChange.files;
+    fixPatches = explicitFixChange.filesWithDiffs;
+    fixStaged = explicitFixChange.staged;
+  } else {
+    fixFiles = await readChangedFileNames(workingDir, stagedOpt);
+    fixStaged = stagedOpt;
   }
 
-  const files = [...new Set([...source.files, ...fixChange.files])];
+  const files = [...new Set([...source.files, ...fixFiles])];
 
   const pullRequest = isPullRequest(source.context.pullRequest) ? source.context.pullRequest : null;
   const baseRef =
@@ -2577,15 +2602,15 @@ async function loadFixVerificationChangeSource(
         filename,
         patch: combineVerificationPatch(
           (source.filesWithDiffs ?? []).find((f) => f.filename === filename)?.patch,
-          (fixChange.filesWithDiffs ?? []).find((f) => f.filename === filename)?.patch
+          fixPatches?.find((f) => f.filename === filename)?.patch
         ),
       })),
     context: {
       ...source.context,
       sourceType: 'fix-verification',
-      fixFiles: fixChange.files,
+      fixFiles,
     },
-    staged: fixChange.staged,
+    staged: fixStaged ?? source.staged,
   };
 }
 

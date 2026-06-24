@@ -52,23 +52,14 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
-  final-change:
+  verification-change:
     action: change-source
     needs:
       - fix-issues
     with:
-      type: local
-      staged: '{{inputs.staged}}'
-    output: finalChange
-
-  verification-change:
-    action: change-source
-    needs:
-      - final-change
-    with:
       type: fix-verification
       source: change
-      fixChange: finalChange
+      staged: '{{inputs.staged}}'
     output: verificationChange
 
   re-review:
@@ -86,11 +77,10 @@ nodes:
     needs:
       - re-review
       - load-review-artifact
-      - final-change
     with:
       artifact: persistedReviewArtifact
       review: reReview
-      fixChange: finalChange
+      fixChange: verificationChange
       severity: '{{inputs.fixSeverity}}'
       minIssues: '1'
     output: persistedReviewArtifact
