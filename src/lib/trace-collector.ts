@@ -184,7 +184,7 @@ export class TraceCollector {
     }
   }
 
-  private startTurn(sessionId: string, active: ActiveSession, event: PiEvent): void {
+  private startTurn(_sessionId: string, active: ActiveSession, event: PiEvent): void {
     const turnIndex = (event.turnIndex as number) ?? ++active.currentTurnIndex;
     active.currentTurnIndex = turnIndex;
     active.currentTurn = {
@@ -195,7 +195,7 @@ export class TraceCollector {
     };
   }
 
-  private endTurn(sessionId: string, active: ActiveSession, event: PiEvent): void {
+  private endTurn(_sessionId: string, active: ActiveSession, event: PiEvent): void {
     if (!active.currentTurn) return;
 
     const message = event.message as
@@ -341,27 +341,36 @@ export class TraceCollector {
     active.trace.errorMessage = event.willRetry ? 'Agent ended with retry pending' : undefined;
   }
 
-  finalizeCurrentTrace(): AgentTrace | undefined {
-    const entries = Array.from(this.activeSessions.values());
-    for (const active of entries) {
-      if (active.unsubscribe) {
-        active.unsubscribe();
-        active.unsubscribe = null;
-      }
-      if (!active.trace.completedAt) {
-        const now = new Date().toISOString();
-        active.trace.completedAt = now;
-        active.trace.durationMs =
-          new Date(now).getTime() - new Date(active.trace.startedAt).getTime();
-      }
-      this.traces.push(active.trace);
-    }
-    this.activeSessions.clear();
+  finalizeSession(sessionId: string): AgentTrace | undefined {
+    const active = this.activeSessions.get(sessionId);
+    if (!active) return undefined;
 
-    if (entries.length > 0) {
-      return entries[entries.length - 1].trace;
+    if (active.unsubscribe) {
+      active.unsubscribe();
+      active.unsubscribe = null;
     }
-    return undefined;
+    if (!active.trace.completedAt) {
+      const now = new Date().toISOString();
+      active.trace.completedAt = now;
+      active.trace.durationMs =
+        new Date(now).getTime() - new Date(active.trace.startedAt).getTime();
+    }
+    this.traces.push(active.trace);
+    this.activeSessions.delete(sessionId);
+
+    return active.trace;
+  }
+
+  finalizeCurrentTrace(): AgentTrace | undefined {
+    const sessionIds = Array.from(this.activeSessions.keys());
+    let lastTrace: AgentTrace | undefined;
+    for (const sessionId of sessionIds) {
+      const trace = this.finalizeSession(sessionId);
+      if (trace) {
+        lastTrace = trace;
+      }
+    }
+    return lastTrace;
   }
 
   getTraces(): AgentTrace[] {

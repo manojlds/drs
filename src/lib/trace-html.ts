@@ -12,7 +12,7 @@ export function renderTraceHtml(trace: WorkflowTrace): string {
 
   const invocationNodes = traces.map((t, i) => renderInvocationNode(t, i)).join('');
 
-  const traceDataJson = JSON.stringify(trace).replace(/</g, '\\u003c').replace(/</g, '\\u003e');
+  const traceDataJson = JSON.stringify(trace).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 
   return `<!DOCTYPE html>
 <html lang="en">
