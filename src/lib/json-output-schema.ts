@@ -120,5 +120,45 @@ export const reviewOutputSchema = {
         },
       },
     },
+    verification: {
+      type: 'object',
+      properties: {
+        findings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'disposition'],
+            properties: {
+              id: { type: 'string', minLength: 1 },
+              disposition: {
+                type: 'string',
+                enum: ['resolved', 'still_open', 'partial'],
+              },
+              rationale: { type: 'string' },
+              issue: {
+                type: ['object', 'null'],
+                additionalProperties: false,
+                required: ['category', 'severity', 'title', 'file', 'problem', 'solution', 'agent'],
+                properties: {
+                  category: {
+                    type: 'string',
+                    enum: ['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE', 'DOCUMENTATION'],
+                  },
+                  severity: { type: 'string', enum: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] },
+                  title: { type: 'string', minLength: 1 },
+                  file: { type: 'string', minLength: 1 },
+                  line: { type: 'number' },
+                  problem: { type: 'string', minLength: 1 },
+                  solution: { type: 'string', minLength: 1 },
+                  references: { type: 'array', items: { type: 'string' } },
+                  agent: { type: 'string', minLength: 1 },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 } as const;
