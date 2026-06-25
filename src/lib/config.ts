@@ -86,10 +86,8 @@ export interface WorkflowNodeConfig {
   with?: Record<string, string | number | boolean | undefined>;
   /** Node ids that must complete before this node starts. */
   needs?: string[];
-  /** Expression evaluated before running executable nodes. */
+  /** Expression evaluated before running executable nodes and loop control nodes. */
   if?: string;
-  /** Alias for if on executable and loop nodes. */
-  condition?: string;
   /** Target node when a loop continues. */
   target?: string;
   /** Target node when a loop exits. */

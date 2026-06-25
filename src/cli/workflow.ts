@@ -313,7 +313,6 @@ function validateWorkflowPassThroughShape(nodeId: string, node: WorkflowNodeConf
     'if',
     'then',
     'else',
-    'condition',
     'exit',
     'cases',
     'default',
@@ -337,7 +336,6 @@ const WORKFLOW_NODE_FIELDS = new Set([
   'with',
   'needs',
   'if',
-  'condition',
   'target',
   'exit',
   'maxIterations',
@@ -358,7 +356,6 @@ const EXECUTABLE_NODE_FIELDS = new Set([
   'with',
   'needs',
   'if',
-  'condition',
   'input',
   'output',
   'writes',
@@ -370,7 +367,6 @@ const CONTROL_NODE_FIELDS: Record<string, Set<string>> = {
     'control',
     'needs',
     'if',
-    'condition',
     'target',
     'exit',
     'maxIterations',
@@ -4053,7 +4049,7 @@ function getWorkflowNodeRunCondition(node: WorkflowNodeConfig): string | undefin
     return undefined;
   }
 
-  return node.if ?? node.condition;
+  return node.if;
 }
 
 function getSkippedWorkflowDependencies(
@@ -4072,9 +4068,9 @@ function getWorkflowNodeSkipReason(
     return `dependency skipped: ${skippedDependencies.join(', ')}`;
   }
 
-  const condition = getWorkflowNodeRunCondition(node);
-  if (condition !== undefined && !evaluateWorkflowExpression(condition, context)) {
-    return `condition false: ${condition}`;
+  const ifExpression = getWorkflowNodeRunCondition(node);
+  if (ifExpression !== undefined && !evaluateWorkflowExpression(ifExpression, context)) {
+    return `if false: ${ifExpression}`;
   }
 
   return undefined;
@@ -4233,9 +4229,9 @@ function runControlWorkflowNode(
   context: WorkflowTemplateContext
 ): { result: WorkflowNodeResult; nextNodeId?: string; ended?: boolean } {
   if (node.control === 'loop') {
-    const expression = node.condition ?? node.if;
+    const expression = node.if;
     if (!expression) {
-      throw new Error(`Workflow loop node "${nodeId}" must define condition or if.`);
+      throw new Error(`Workflow loop node "${nodeId}" must define if.`);
     }
     if (!node.target || !node.exit) {
       throw new Error(`Workflow loop node "${nodeId}" must define target and exit.`);
@@ -4758,7 +4754,6 @@ export interface WorkflowNodeDetail {
   action?: string;
   control?: string;
   if?: string;
-  condition?: string;
   input?: string;
   with?: Record<string, string | number | boolean | undefined>;
   output?: string;
@@ -4898,7 +4893,6 @@ function buildWorkflowDetail(
       action: node.action,
       control: node.control,
       if: node.if,
-      condition: node.condition,
       input: node.input,
       with: node.with,
       output: node.output,
@@ -4959,7 +4953,6 @@ export function showWorkflow(
     if (node.action) console.log(`    action: ${node.action}`);
     if (node.control) console.log(`    control: ${node.control}`);
     if (node.if) console.log(`    if: ${node.if}`);
-    if (node.condition) console.log(`    condition: ${node.condition}`);
     if (node.output) console.log(`    output: ${node.output}`);
     if (node.writes) console.log(`    writes: ${node.writes}`);
     if (node.input) console.log(`    input: ${node.input.split('\n')[0]}`);

@@ -133,7 +133,7 @@ nodes:
     control: loop
     needs:
       - re-threshold
-    condition: "{{artifacts.reThreshold.matched}} == true"
+    if: "{{artifacts.reThreshold.matched}} == true"
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: "{{inputs.fixMaxIterations}}"

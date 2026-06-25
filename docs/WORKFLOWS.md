@@ -208,7 +208,7 @@ Workflow files are strictly validated. A node must use exactly one of `agent`, `
 
 ## Conditions
 
-Executable nodes support `if` or `condition`. Loop control nodes support `if` or `condition`; other control nodes do not.
+Executable nodes and `control: loop` nodes support `if`. Other control nodes do not.
 
 Conditions can reference values directly:
 

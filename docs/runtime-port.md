@@ -35,7 +35,7 @@ runtime (long-running review loops, retries, audit, multi-day fix flows).
 | Artifact persistence (`.drs/artifacts/`) | yes (local FS) | — |
 | **Cycle detection** (`getWorkflowExecutionOrder`) | — | yes |
 | **Wave / step scheduling** | — | yes |
-| **Control evaluation** (`condition`, `loop`, `switch`, `passThrough`, `end`) | — | yes |
+| **Control evaluation** (`if`, `loop`, `switch`, `passThrough`, `end`) | — | yes |
 | **Template binding** (`{{inputs.x}}`, `{{nodes.id.…}}`, `{{artifacts.x}}`) | DRS-owned lexing | runtime dispatches |
 | **Checkpoint / resume state** | local FS schema | runtime persistence |
 
