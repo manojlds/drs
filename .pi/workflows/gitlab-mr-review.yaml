@@ -235,7 +235,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    condition: artifacts.verify-fix.shouldContinue == true
+    if: artifacts.verify-fix.shouldContinue == true
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'

@@ -3235,7 +3235,7 @@ describe('workflow runner', () => {
     expect(logs.some((log) => log.includes('Running node start...'))).toBe(true);
     expect(
       logs.some((log) =>
-        log.includes('Skipping node optional (condition false: {{inputs.enabled}} == true)')
+        log.includes('Skipping node optional (if false: {{inputs.enabled}} == true)')
       )
     ).toBe(true);
     expect(
@@ -3449,7 +3449,7 @@ describe('workflow runner', () => {
             repeat: {
               control: 'loop',
               needs: ['fix'],
-              condition: '{{artifacts.review}} != clean',
+              if: '{{artifacts.review}} != clean',
               target: 'review',
               exit: 'done',
               maxIterations: 3,
@@ -3505,7 +3505,7 @@ describe('workflow runner', () => {
             repeat: {
               control: 'loop',
               needs: ['fix'],
-              condition: '{{artifacts.review}} != clean',
+              if: '{{artifacts.review}} != clean',
               target: 'review',
               exit: 'done',
               maxIterations: 2,
@@ -3564,7 +3564,7 @@ describe('workflow runner', () => {
             repeat: {
               control: 'loop',
               needs: ['check'],
-              condition: '{{artifacts.check}} != done',
+              if: '{{artifacts.check}} != done',
               target: 'fix',
               exit: 'done',
               maxIterations: 2,
