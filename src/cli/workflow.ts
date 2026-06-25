@@ -2237,7 +2237,7 @@ async function runReviewArtifactUpdateFindingsWorkflowNode(
   const { artifact: updated, updatedIds } = updateReviewArtifactFindings(artifact, {
     ids: parseListActionOption(node, 'ids', context),
     fingerprints: parseListActionOption(node, 'fingerprints', context),
-    severity: getStringActionOption(node, 'severity', context)?.trim(),
+    severity: getStringActionOption(node, 'severity', context)?.trim().toUpperCase(),
     state,
     disposition,
   });
