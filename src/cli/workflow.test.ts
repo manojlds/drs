@@ -1999,6 +1999,77 @@ describe('workflow runner', () => {
     expect(verificationSource?.context?.verification?.artifact?.reviewId).toMatch(/^rev_/);
   });
 
+  it('does not re-run upstream change-source or load-artifact when a fix loop iterates', async () => {
+    const projectRoot = createTempDir('drs-workflow-local-fix-loop-cache-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Local cache test');
+    const reReviewResults = [
+      {
+        ...createMockReviewResult([]),
+        verification: {
+          findings: [{ id: 'F001', disposition: 'still_open', rationale: 'still open' }],
+        },
+      },
+      {
+        ...createMockReviewResult([]),
+        verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+      },
+    ];
+    mocks.executeReview.mockImplementation(
+      async (_config, source: { files?: string[]; context?: { sourceType?: string } }) => {
+        if (source.context?.sourceType === 'fix-verification') {
+          return reReviewResults.shift() ?? createMockReviewResult([]);
+        }
+        return createMockReviewResult([issue]);
+      }
+    );
+
+    await runWorkflow(config, 'local-review', {
+      inputs: { staged: 'false' },
+      workingDir: projectRoot,
+    });
+
+    mocks.getChangedFiles.mockClear();
+    mocks.runAgent.mockClear();
+    mocks.executeReview.mockClear();
+
+    const result = await runWorkflow(config, 'local-fix-review-issues', {
+      inputs: { staged: 'false', fixSeverity: 'high', fixMaxIterations: '3' },
+      workingDir: projectRoot,
+    });
+
+    expect(result.loop['fix-loop']).toMatchObject({ iteration: 2, lastDecision: 'exit' });
+
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review-issue-fixer',
+      'task/review-issue-fixer',
+    ]);
+
+    // `getChangedFiles` (the diff-parser mock) is invoked from
+    // `loadLocalChangeSource` for both the initial `change` node and the
+    // per-iteration `final-change` node. The cache must keep the upstream
+    // `change` to a single call across two loop iterations, while the
+    // downstream `final-change` re-runs once per iteration.
+    expect(mocks.getChangedFiles).toHaveBeenCalledTimes(3);
+
+    // `re-review` runs once per iteration, so two calls total.
+    expect(mocks.executeReview).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.executeReview.mock.calls.every(
+        (call) =>
+          (call[1] as { context?: { sourceType?: string } }).context?.sourceType ===
+          'fix-verification'
+      )
+    ).toBe(true);
+
+    // Upstream `change` and `load-review-artifact` results are preserved
+    // across loop iterations, not overwritten with skipped results.
+    expect(result.nodes.change).toMatchObject({ status: 'success' });
+    expect(result.nodes['load-review-artifact']).toMatchObject({ status: 'success' });
+    expect(result.nodes['fix-issues']).toMatchObject({ status: 'success' });
+    expect(result.nodes['final-change']).toMatchObject({ status: 'success' });
+  });
+
   it('loads a git range change source from explicit refs', async () => {
     const projectRoot = createTempDir('drs-workflow-git-range-');
     const config = {
