@@ -34,6 +34,7 @@ If a check fails, read the output, fix the issue, and re-run the check. Do not r
 - Do not make speculative rewrites for vague, stylistic, or low-confidence findings.
 - Preserve existing architecture, formatting, naming, and public behavior unless the review issue requires a behavior change.
 - Keep changes minimal and localized to the issue.
+- Prefer `Edit` over `Write`. Only use `Write` when the issue requires a brand new file (e.g. adding a missing module, test, or asset). Never rewrite an existing file in full via `Write`; that destroys the file's history and risks regressing unrelated lines.
 - Do not update dependencies, generated files, or lockfiles unless directly necessary.
 - If a finding cannot be reproduced or safely fixed, leave code unchanged for that finding and explain why.
 - If a finding includes `verification`, treat it as reviewer feedback from a previous fix attempt. For `still_open`, `partial`, `regression`, or `missing`, use the verifier `rationale` and issue details to guide the next smallest safe change.

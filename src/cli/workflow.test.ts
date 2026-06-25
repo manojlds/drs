@@ -2705,6 +2705,80 @@ describe('workflow runner', () => {
     expect(() => readFileSync(checkpointPath, 'utf-8')).toThrow();
   });
 
+  it('runs packaged GitHub stacked fix flow without entering the internal fix loop', async () => {
+    const projectRoot = createTempDir('drs-workflow-github-fix-stacked-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Stacked fix issue');
+    mocks.getChangedFiles.mockReturnValue(['src/github.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/github.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
+    ]);
+    mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
+    mocks.githubAdapter.findChangeRequest.mockResolvedValue(undefined);
+    mocks.githubAdapter.createChangeRequest.mockResolvedValue({
+      number: 99,
+      url: 'https://github.com/octocat/hello-world/pull/99',
+      sourceBranch: 'drs-fix/pr-7',
+      targetBranch: 'feature',
+    });
+
+    const result = await runWorkflow(config, 'github-pr-review', {
+      inputs: {
+        owner: 'octocat',
+        repo: 'hello-world',
+        pr: '7',
+        fix: 'true',
+        fixMode: 'stacked',
+        fixSeverity: 'high',
+        fixMinIssues: '1',
+        fixBranchPrefix: 'drs-fix/pr-',
+        fixCreateChangeRequest: 'true',
+        allowStackedSource: 'true',
+        draft: 'false',
+      },
+      workingDir: projectRoot,
+    });
+
+    // The fix agent runs once (no internal fix loop, since fixMode is
+    // 'stacked' rather than 'internal').
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.runAgent.mock.calls[0]?.[1]).toBe('task/review-issue-fixer');
+
+    // No internal-mode fix loop was entered.
+    expect(result.loop['fix-loop']).toBeUndefined();
+
+    // The stacked-mode chain ran: mark-fix-attempted, fix-diff, fix-commit,
+    // fix-push, create-fix-pr.
+    expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
+      '.',
+    ]);
+    expect(mocks.git.raw).toHaveBeenCalledWith([
+      'push',
+      '-u',
+      'origin',
+      'drs-fix/pr-7:drs-fix/pr-7',
+    ]);
+    expect(mocks.githubAdapter.createChangeRequest).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      expect.objectContaining({
+        sourceBranch: 'drs-fix/pr-7',
+        title: 'fix: address DRS review issues for PR #7',
+      })
+    );
+
+    // The notify-fix-pr and post-fix-status-stacked nodes posted comments.
+    const createCommentCalls = mocks.githubAdapter.createComment.mock.calls.map(
+      (call) => call[1] as string
+    );
+    expect(createCommentCalls.length).toBeGreaterThanOrEqual(2);
+
+    // mark-fix-attempted ran and persisted an updated envelope (the
+    // action's severity matching is case-sensitive and the workflow passes
+    // the lowercased `{{inputs.fixSeverity}}`, so this assertion only
+    // verifies that the action ran, not that the findings mutated).
+    expect(result.nodes['mark-fix-attempted']).toMatchObject({ status: 'success' });
+  });
+
   it('shows GitHub PR review context with embedded diff content', async () => {
     const config = {
       ...baseConfig,
@@ -3656,6 +3730,49 @@ describe('workflow runner', () => {
       'task/check',
       'task/done',
     ]);
+  });
+
+  it('passThrough skips nodes outside the active branch on re-entry', async () => {
+    mocks.runAgent.mockImplementation(async (_config, agent, options) =>
+      createMockAgentResult(agent, options.prompt ?? agent)
+    );
+
+    const config = {
+      ...baseConfig,
+      workflows: {
+        passThroughBranch: {
+          nodes: {
+            a: { agent: 'task/a', input: 'a', output: 'a' },
+            gate: {
+              control: 'passThrough',
+              needs: ['a'],
+              target: 'c',
+            },
+            b: { agent: 'task/b', needs: ['a'], input: 'b', output: 'b' },
+            c: { agent: 'task/c', needs: ['gate'], input: 'c', output: 'c' },
+            done: { control: 'end', needs: ['c'] },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'passThroughBranch');
+
+    // `passThrough` sits in its own segment between the segments containing `a`
+    // and `[b, c]`. On the first pass, only `a` runs. Then `gate` jumps
+    // directly to `c` and the [b, c] segment is re-entered with an active set
+    // that excludes `b`. So `b` is never executed.
+    expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual(['task/a', 'task/c']);
+
+    expect(result.nodes.gate).toMatchObject({
+      type: 'control',
+      control: 'passThrough',
+      decision: 'pass',
+      target: 'c',
+    });
+    expect(result.nodes.b).toMatchObject({ type: 'skipped', status: 'skipped' });
+    expect(result.nodes.a).toMatchObject({ status: 'success' });
+    expect(result.nodes.c).toMatchObject({ status: 'success' });
   });
 
   it('uses explicit workflow output when a control end node is last', async () => {
