@@ -932,6 +932,34 @@ async function cleanupWorkflowCheckpoint(
   }
 }
 
+async function flushWorkflowTrace(
+  traceCollector: TraceCollector,
+  workflowName: string,
+  inputs: Record<string, string>,
+  startedAt: string,
+  workingDir: string,
+  options: WorkflowRunOptions
+): Promise<void> {
+  const workflowTrace = traceCollector.buildWorkflowTrace(workflowName, inputs, startedAt);
+  const scope = {
+    platform: 'local' as const,
+    projectId: workflowName,
+    subject: 'trace',
+  };
+  const savedJson = await saveWorkflowArtifact(workingDir, {
+    kind: 'trace',
+    scope,
+    payload: workflowTrace,
+  });
+  const traceHtmlPath = join(dirname(savedJson.path), 'trace.html');
+  const html = renderTraceHtml(workflowTrace);
+  await writeWorkflowFile(workingDir, traceHtmlPath, html);
+  if (!options.jsonOutput) {
+    console.log(chalk.green(`\n✓ Trace saved to ${savedJson.latestPath}`));
+    console.log(chalk.green(`✓ Trace viewer saved to ${traceHtmlPath}`));
+  }
+}
+
 function restoreWorkflowCheckpoint(
   checkpoint: WorkflowCheckpoint,
   context: WorkflowTemplateContext
@@ -4660,6 +4688,24 @@ export async function runWorkflow(
         );
       }
     }
+    if (executionContext.traceCollector && executionContext.traceCollector.getTraces().length > 0) {
+      try {
+        await flushWorkflowTrace(
+          executionContext.traceCollector,
+          workflowName,
+          inputs,
+          new Date().toISOString(),
+          workingDir,
+          options
+        );
+      } catch (flushError) {
+        console.error(
+          chalk.yellow('Warning:'),
+          'Failed to persist workflow trace on failure:',
+          flushError instanceof Error ? flushError.message : String(flushError)
+        );
+      }
+    }
     throw error;
   }
 
@@ -4699,29 +4745,14 @@ export async function runWorkflow(
   }
 
   if (executionContext.traceCollector && executionContext.traceCollector.getTraces().length > 0) {
-    const startedAt = result.timestamp;
-    const workflowTrace = executionContext.traceCollector.buildWorkflowTrace(
+    await flushWorkflowTrace(
+      executionContext.traceCollector,
       workflowName,
       inputs,
-      startedAt
+      result.timestamp,
+      workingDir,
+      options
     );
-    const scope = {
-      platform: 'local',
-      projectId: workflowName,
-      subject: 'trace',
-    };
-    const savedJson = await saveWorkflowArtifact(workingDir, {
-      kind: 'trace',
-      scope,
-      payload: workflowTrace,
-    });
-    const traceHtmlPath = join(dirname(savedJson.path), 'trace.html');
-    const html = renderTraceHtml(workflowTrace);
-    await writeWorkflowFile(workingDir, traceHtmlPath, html);
-    if (!options.jsonOutput) {
-      console.log(chalk.green(`\n✓ Trace saved to ${savedJson.latestPath}`));
-      console.log(chalk.green(`✓ Trace viewer saved to ${traceHtmlPath}`));
-    }
   }
 
   if (options.jsonOutput) {
