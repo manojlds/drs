@@ -10,10 +10,10 @@ source of truth; the runtime is a swappable backend.
 ## Why now
 
 Today `runWorkflow` lives in `src/cli/workflow.ts` as a single procedural pass
-that mixes DAG scheduling, template rendering, action execution, artifact
-persistence, and checkpointing. Any of these is reasonable to run on a worker,
-but **scheduling + state machine** is the part that benefits most from a durable
-runtime (long-running review loops, retries, audit, multi-day fix flows).
+that mixes DAG scheduling, template rendering, action execution, and artifact
+persistence. Any of these is reasonable to run on a worker, but **scheduling
++ state machine** is the part that benefits most from a durable runtime
+(long-running review loops, retries, audit, multi-day fix flows).
 
 ## Non-goals
 
@@ -37,7 +37,6 @@ runtime (long-running review loops, retries, audit, multi-day fix flows).
 | **Wave / step scheduling** | — | yes |
 | **Control evaluation** (`if`, `loop`, `switch`, `passThrough`, `end`) | — | yes |
 | **Template binding** (`{{inputs.x}}`, `{{nodes.id.…}}`, `{{artifacts.x}}`) | DRS-owned lexing | runtime dispatches |
-| **Checkpoint / resume state** | local FS schema | runtime persistence |
 
 DRS stays a **worker**: when the runtime says "execute node X", DRS runs the
 declared action locally and returns a serialised `WorkflowNodeResult`.

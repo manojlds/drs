@@ -7,42 +7,9 @@
 
 ---
 
-## 1. Workflow Checkpoint/Resume Hardening
+## 1. ~~Workflow Checkpoint/Resume Hardening~~ (removed in #151)
 
-### 1.1 Avoid saving huge or circular context in checkpoints
-- [ ] Sanitize or truncate large artifact payloads before writing checkpoint JSON
-- [ ] Detect circular references in node results/artifacts and omit or stub them
-- [ ] Consider a max checkpoint file size guard
-
-**Context**: `saveWorkflowCheckpoint` in `src/cli/workflow.ts:534` serializes the full `context.nodes`, `context.artifacts`, and `context.loop` on every node completion. Large review outputs, diffs, or HTML artifacts could produce oversized checkpoint files.
-
-### 1.2 Improve failure metadata
-- [ ] Track the active node id at the outer catch site so failure records identify which node was running
-- [ ] Optionally include node type (agent/action/control) in failure metadata
-- [ ] Consider including a short stack trace or error class in the checkpoint failure record
-
-**Context**: The outer `catch` in `runWorkflow` (`src/cli/workflow.ts:3428`) does not know which node was executing when the error occurred. The `WorkflowCheckpointFailure` interface was simplified to only `message` and `failedAt` after the review feedback, but identifying the failing node would improve debugging.
-
-### 1.3 Checkpoint cleanup/retention policy
-- [ ] Add an optional `--checkpoint-retain <count>` or `--checkpoint-ttl <duration>` CLI flag
-- [ ] Or add a `workflow.checkpointRetention` config option
-- [ ] Implement cleanup of stale checkpoint files on successful workflow completion or on next run start
-- [ ] Document the retention behavior
-
-**Context**: PR review recommended a cleanup policy. Checkpoints accumulate under `.drs/checkpoints/` and are currently never removed.
-
-### 1.4 Document checkpoint schema
-- [ ] Add a `docs/CHECKPOINTS.md` or extend `docs/WORKFLOWS.md` with the checkpoint JSON schema
-- [ ] Document `schemaVersion`, `workflow`, `key`, `updatedAt`, `inputs`, `nodes`, `artifacts`, `loop`, `failure` fields
-- [ ] Note that checkpoint files are gitignored generated state, not committed source
-
-**Context**: PR review noted the checkpoint schema is undocumented. `docs/WORKFLOWS.md` now has a resume usage section but no schema reference.
-
-### 1.5 Full quality gate for latest review-fix commits
-- [ ] Run `npm run check:all` after all review-fix commits are settled
-- [ ] Verify the `.gitignore` change does not break any test that writes to `.drs/`
-
-**Context**: Focused tests were run for individual review fixes, but `npm run check:all` was not re-run after commits `a687c0c`, `a592df2`, and `2179fcb`.
+The entire checkpoint / resume subsystem was removed in PR #151 — no production caller, the only "real" use was local debugging, and `concurrency: cancel-in-progress` in the CI workflows already covered the recovery story better. See "What was removed" in the PR body for the full list.
 
 ---
 
@@ -163,18 +130,14 @@
 - [x] External wrapper passes `fix=false`
 - [x] Visual explainer artifacts uploaded
 - [x] `.drs/artifacts/**` uploaded
-- [ ] Add `--resume` to the trusted wrapper so transient failures can retry
 - [ ] Verify `pull_request_target` runs workflow YAML from `main` (not PR branch)
 
-**Context**: `.github/workflows/pr-review.yml` is the active PR automation wrapper. Adding `--resume` would allow failed review runs to retry from checkpoint without re-running completed nodes.
+**Context**: `.github/workflows/pr-review.yml` is the active PR automation wrapper. (`--resume` was removed in #151 along with the checkpoint subsystem.)
 
 ### 6.2 Manual stacked workflow wrappers
 - [x] `.github/workflows/drs-guidance-stacked.yml` exists
 - [x] `.github/workflows/drs-fix-stacked.yml` exists
-- [ ] Add `--resume` support to manual wrappers
 - [ ] Document manual wrapper usage
-
-**Context**: Manual dispatch wrappers exist for stacked guidance and stacked fix workflows but do not support checkpoint resume.
 
 ---
 
@@ -187,8 +150,7 @@
 - [ ] Verify dogfood review runs against the merged `main`
 
 ### 7.2 Post-merge cleanup
-- [ ] Delete `workflow-checkpoints-resume` branch after merge
-- [ ] Verify checkpoint files are not committed (`.gitignore` covers them)
+- [x] Delete `workflow-checkpoints-resume` branch after merge
 - [ ] Run a dogfood PR review to confirm the merged code works end-to-end
 
 ---
@@ -197,9 +159,7 @@
 
 1. **PR #124 finalization** (Section 7) — unblock all downstream work
 2. **Full quality gate** (Section 1.5) — ensure current branch is clean
-3. **Checkpoint hardening** (Section 1.1-1.4) — make resume production-safe
-4. **Artifact-aware fix verification** (Section 2) — close the fix feedback loop
-5. **Stacked workflow improvements** (Section 3) — make stacked fixes reliable
-6. **CI resume support** (Section 6.1) — enable retry on transient failures
-7. **Model reliability** (Section 4) — ensure stable dogfood runs
-8. **adamsreview adoption** (Section 5) — incremental quality improvements
+3. **Artifact-aware fix verification** (Section 2) — close the fix feedback loop
+4. **Stacked workflow improvements** (Section 3) — make stacked fixes reliable
+5. **Model reliability** (Section 4) — ensure stable dogfood runs
+6. **adamsreview adoption** (Section 5) — incremental quality improvements

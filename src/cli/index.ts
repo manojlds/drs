@@ -122,9 +122,6 @@ workflowCommand
   .option('--input-file <key=path>', 'Read workflow input value from a file', collectOption, [])
   .option('-o, --output <path>', 'Write workflow result JSON to a file')
   .option('--json', 'Output workflow result as JSON to console')
-  .option('--resume', 'Resume from a workflow checkpoint when available')
-  .option('--checkpoint-key <key>', 'Checkpoint key to use with --resume')
-  .option('--no-checkpoint-cleanup', 'Keep checkpoint file after successful workflow completion')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--trace', 'Collect agent traces and save as trace artifact + HTML viewer')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
@@ -157,9 +154,6 @@ workflowCommand
         trace: options.trace ?? false,
         thinkingLevel,
         workingDir: process.cwd(),
-        resume: options.resume ?? false,
-        checkpointKey: options.checkpointKey,
-        checkpointCleanup: options.checkpointCleanup !== false,
       });
       process.exit(0);
     } catch (error) {
