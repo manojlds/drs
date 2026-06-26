@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import simpleGit from 'simple-git';
 import chalk from 'chalk';
@@ -87,9 +87,6 @@ export interface WorkflowRunOptions {
   debug?: boolean;
   thinkingLevel?: string;
   workingDir?: string;
-  resume?: boolean;
-  checkpointKey?: string;
-  checkpointCleanup?: boolean;
   trace?: boolean;
 }
 
@@ -136,8 +133,6 @@ interface WorkflowTemplateContext {
 interface WorkflowExecutionContext {
   gitClients: Map<string, ReturnType<typeof simpleGit>>;
   platformClients: Partial<Record<WorkflowPlatform, PlatformClient>>;
-  checkpoint?: WorkflowCheckpointContext;
-  restoredNodeIds?: Set<string>;
   traceCollector?: TraceCollector;
   locks: {
     exit: WorkflowLock;
@@ -171,31 +166,6 @@ interface GitRangeCommit {
 
 interface WorkflowLock {
   current: Promise<void>;
-}
-
-interface WorkflowCheckpointContext {
-  key: string;
-  path: string;
-  workflow: string;
-  inputs: Record<string, string>;
-}
-
-interface WorkflowCheckpointFailure {
-  nodeId?: string;
-  message: string;
-  failedAt: string;
-}
-
-interface WorkflowCheckpoint {
-  schemaVersion: 1;
-  workflow: string;
-  key: string;
-  updatedAt: string;
-  inputs: Record<string, string>;
-  nodes: Record<string, WorkflowNodeResult>;
-  artifacts: Record<string, unknown>;
-  loop: Record<string, WorkflowLoopState>;
-  failure?: WorkflowCheckpointFailure;
 }
 
 function createWorkflowLock(): WorkflowLock {
@@ -738,200 +708,6 @@ function renderTemplate(template: string, context: WorkflowTemplateContext): str
   });
 }
 
-function checkpointSegment(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/[^A-Za-z0-9._-]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'checkpoint'
-  );
-}
-
-function getWorkflowCheckpointPath(workingDir: string, key: string): string {
-  return resolveWithinWorkingDir(
-    workingDir,
-    join('.drs', 'checkpoints', `${checkpointSegment(key)}.json`),
-    'write'
-  );
-}
-
-function getDefaultWorkflowCheckpointKey(
-  workflowName: string,
-  inputs: Record<string, string>
-): string {
-  const explicit = inputs.checkpointKey?.trim();
-  if (explicit) {
-    return explicit;
-  }
-  const owner = inputs.owner?.trim();
-  const repo = inputs.repo?.trim();
-  const pr = inputs.pr?.trim();
-  const headSha = (inputs.headSha ?? inputs.sha)?.trim();
-  if (owner && repo && pr) {
-    return [workflowName, 'github', owner, repo, `pr-${pr}`, headSha].filter(Boolean).join('-');
-  }
-  const projectInput = (inputs.project ?? inputs.projectId)?.trim();
-  const project = projectInput ? encodeURIComponent(projectInput) : undefined;
-  const mr = inputs.mr?.trim();
-  if (project && mr) {
-    return [workflowName, 'gitlab', project, `mr-${mr}`, headSha].filter(Boolean).join('-');
-  }
-  return [workflowName, headSha].filter(Boolean).join('-');
-}
-
-function stringifyWorkflowCheckpointInputs(inputs: Record<string, string>): string {
-  return JSON.stringify(
-    Object.fromEntries(Object.entries(inputs).sort(([left], [right]) => left.localeCompare(right)))
-  );
-}
-
-function checkpointInputsMatch(
-  checkpointInputs: Record<string, string>,
-  currentInputs: Record<string, string>
-): boolean {
-  return (
-    stringifyWorkflowCheckpointInputs(checkpointInputs) ===
-    stringifyWorkflowCheckpointInputs(currentInputs)
-  );
-}
-
-function isResumeEnabled(options: WorkflowRunOptions, inputs: Record<string, string>): boolean {
-  if (options.resume !== undefined) {
-    return options.resume;
-  }
-  return normalizeWorkflowBooleanLike(inputs.resume) === true;
-}
-
-function assertWorkflowCheckpoint(value: unknown): asserts value is WorkflowCheckpoint {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Workflow checkpoint is not an object.');
-  }
-  const candidate = value as Partial<WorkflowCheckpoint>;
-  if (
-    candidate.schemaVersion !== 1 ||
-    typeof candidate.workflow !== 'string' ||
-    typeof candidate.key !== 'string' ||
-    typeof candidate.updatedAt !== 'string' ||
-    !candidate.inputs ||
-    typeof candidate.inputs !== 'object' ||
-    !candidate.nodes ||
-    typeof candidate.nodes !== 'object' ||
-    !candidate.artifacts ||
-    typeof candidate.artifacts !== 'object' ||
-    !candidate.loop ||
-    typeof candidate.loop !== 'object'
-  ) {
-    throw new Error('Workflow checkpoint is invalid.');
-  }
-}
-
-async function loadWorkflowCheckpoint(path: string): Promise<WorkflowCheckpoint | undefined> {
-  try {
-    const parsed = JSON.parse(await readFile(path, 'utf-8')) as unknown;
-    assertWorkflowCheckpoint(parsed);
-    return parsed;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-const CHECKPOINT_MAX_FILE_SIZE = 50 * 1024 * 1024;
-
-function sanitizeCheckpointValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (value === null || typeof value !== 'object') {
-    return value;
-  }
-  if (seen.has(value)) {
-    return '[circular]';
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const result = value.map((item) => sanitizeCheckpointValue(item, seen));
-    seen.delete(value);
-    return result;
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    result[key] = sanitizeCheckpointValue(val, seen);
-  }
-  seen.delete(value);
-  return result;
-}
-
-async function saveWorkflowCheckpoint(
-  checkpoint: WorkflowCheckpointContext | undefined,
-  context: WorkflowTemplateContext,
-  failure?: WorkflowCheckpointFailure
-): Promise<void> {
-  if (!checkpoint) {
-    return;
-  }
-  const payload: WorkflowCheckpoint = {
-    schemaVersion: 1,
-    workflow: checkpoint.workflow,
-    key: checkpoint.key,
-    updatedAt: new Date().toISOString(),
-    inputs: checkpoint.inputs,
-    nodes: sanitizeCheckpointValue(context.nodes) as Record<string, WorkflowNodeResult>,
-    artifacts: sanitizeCheckpointValue(context.artifacts) as Record<string, unknown>,
-    loop: context.loop,
-    failure,
-  };
-  const payloadText = `${JSON.stringify(payload, null, 2)}\n`;
-  const payloadBytes = Buffer.byteLength(payloadText, 'utf-8');
-  if (payloadBytes > CHECKPOINT_MAX_FILE_SIZE) {
-    console.warn(
-      chalk.yellow('Warning:'),
-      `Checkpoint payload too large (${payloadBytes} bytes); skipping checkpoint write.`
-    );
-    return;
-  }
-  await mkdir(dirname(checkpoint.path), { recursive: true });
-  const tempPath = `${checkpoint.path}.tmp`;
-  await writeFile(tempPath, payloadText, 'utf-8');
-  await rename(tempPath, checkpoint.path);
-}
-
-interface WorkflowNodeError extends Error {
-  nodeId?: string;
-}
-
-function tagWorkflowNodeError(error: unknown, nodeId: string): unknown {
-  if (error instanceof Error) {
-    const tagged = error as WorkflowNodeError;
-    tagged.nodeId = nodeId;
-    return tagged;
-  }
-  const wrapped = new Error(String(error)) as WorkflowNodeError;
-  wrapped.nodeId = nodeId;
-  return wrapped;
-}
-
-function getWorkflowNodeErrorId(reason: unknown): string | undefined {
-  if (reason instanceof Error) {
-    return (reason as WorkflowNodeError).nodeId;
-  }
-  return undefined;
-}
-
-async function cleanupWorkflowCheckpoint(
-  checkpoint: WorkflowCheckpointContext | undefined
-): Promise<void> {
-  if (!checkpoint) {
-    return;
-  }
-  try {
-    await unlink(checkpoint.path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error;
-    }
-  }
-}
-
 async function flushWorkflowTrace(
   traceCollector: TraceCollector,
   workflowName: string,
@@ -958,32 +734,6 @@ async function flushWorkflowTrace(
     console.log(chalk.green(`\n✓ Trace saved to ${savedJson.latestPath}`));
     console.log(chalk.green(`✓ Trace viewer saved to ${traceHtmlPath}`));
   }
-}
-
-function restoreWorkflowCheckpoint(
-  checkpoint: WorkflowCheckpoint,
-  context: WorkflowTemplateContext
-): Set<string> {
-  Object.assign(context.nodes, checkpoint.nodes);
-  Object.assign(context.artifacts, checkpoint.artifacts);
-  Object.assign(context.loop, checkpoint.loop);
-  return new Set(
-    Object.entries(checkpoint.nodes)
-      .filter(([, result]) => result.status === 'success')
-      .map(([nodeId]) => nodeId)
-  );
-}
-
-function shouldReuseRestoredWorkflowNode(
-  nodeId: string,
-  existing: WorkflowNodeResult | undefined,
-  executionContext: WorkflowExecutionContext
-): existing is WorkflowNodeResult {
-  if (existing?.status !== 'success' || !executionContext.restoredNodeIds?.has(nodeId)) {
-    return false;
-  }
-  executionContext.restoredNodeIds.delete(nodeId);
-  return true;
 }
 
 async function resolveWorkflowInput(
@@ -4143,13 +3893,6 @@ async function runWorkflowDagSegment(
   const completed = new Set<string>();
   const segmentNodeIds = new Set(nodeIds);
 
-  for (const nodeId of nodeIds) {
-    const existing = context.nodes[nodeId];
-    if (shouldReuseRestoredWorkflowNode(nodeId, existing, executionContext)) {
-      completed.add(nodeId);
-    }
-  }
-
   if (activeNodeIds) {
     for (const nodeId of nodeIds) {
       if (!activeNodeIds.has(nodeId)) {
@@ -4183,27 +3926,23 @@ async function runWorkflowDagSegment(
           throw new Error(`Workflow references unknown node "${nodeId}".`);
         }
 
-        try {
-          const skipReason = getWorkflowNodeSkipReason(node, context);
-          if (skipReason) {
-            logWorkflowNodeSkipped(nodeId, skipReason, options);
-            return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
-          }
-
-          logWorkflowNodeRunning(nodeId, options);
-          const result = await runSingleWorkflowNode(
-            config,
-            nodeId,
-            node,
-            options,
-            workingDir,
-            context,
-            executionContext
-          );
-          return { nodeId, node, result };
-        } catch (error) {
-          throw tagWorkflowNodeError(error, nodeId);
+        const skipReason = getWorkflowNodeSkipReason(node, context);
+        if (skipReason) {
+          logWorkflowNodeSkipped(nodeId, skipReason, options);
+          return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
         }
+
+        logWorkflowNodeRunning(nodeId, options);
+        const result = await runSingleWorkflowNode(
+          config,
+          nodeId,
+          node,
+          options,
+          workingDir,
+          context,
+          executionContext
+        );
+        return { nodeId, node, result };
       })
     );
 
@@ -4211,24 +3950,6 @@ async function runWorkflowDagSegment(
       (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected'
     );
     if (firstRejection) {
-      if (executionContext.checkpoint) {
-        try {
-          await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-            nodeId: getWorkflowNodeErrorId(firstRejection.reason),
-            message:
-              firstRejection.reason instanceof Error
-                ? firstRejection.reason.message
-                : String(firstRejection.reason),
-            failedAt: new Date().toISOString(),
-          });
-        } catch (saveError) {
-          console.error(
-            chalk.yellow('Warning:'),
-            'Failed to persist workflow checkpoint:',
-            saveError instanceof Error ? saveError.message : String(saveError)
-          );
-        }
-      }
       throw firstRejection.reason instanceof Error
         ? firstRejection.reason
         : new Error(String(firstRejection.reason));
@@ -4244,9 +3965,6 @@ async function runWorkflowDagSegment(
       ).value;
       completed.add(nodeId);
       recordWorkflowNodeResult(nodeId, node, result, context.nodes, context.artifacts);
-      if (executionContext.checkpoint) {
-        await saveWorkflowCheckpoint(executionContext.checkpoint, context);
-      }
     }
   }
 }
@@ -4411,35 +4129,16 @@ async function runControlWorkflow(
     if (!node) {
       throw new Error(`Workflow references unknown node "${segment.nodeId}".`);
     }
-    const existing = context.nodes[segment.nodeId];
-    const restored = shouldReuseRestoredWorkflowNode(segment.nodeId, existing, executionContext);
-    const skipReason = restored ? undefined : getWorkflowNodeSkipReason(node, context);
-    if (!restored) {
-      if (skipReason) {
-        logWorkflowNodeSkipped(segment.nodeId, skipReason, options);
-      } else {
-        logWorkflowNodeRunning(segment.nodeId, options);
-      }
+    const skipReason = getWorkflowNodeSkipReason(node, context);
+    if (skipReason) {
+      logWorkflowNodeSkipped(segment.nodeId, skipReason, options);
+    } else {
+      logWorkflowNodeRunning(segment.nodeId, options);
     }
-    const controlResult = restored
-      ? {
-          result: existing,
-          nextNodeId:
-            typeof existing.target === 'string'
-              ? existing.target
-              : typeof (existing.output as { target?: unknown } | undefined)?.target === 'string'
-                ? (existing.output as { target: string }).target
-                : undefined,
-          ended: (existing.output as { ended?: unknown } | undefined)?.ended === true,
-        }
-      : skipReason
-        ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
-        : runControlWorkflowNode(segment.nodeId, node, context);
-    const { result, nextNodeId, ended } = controlResult;
+    const { result, nextNodeId, ended } = skipReason
+      ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
+      : runControlWorkflowNode(segment.nodeId, node, context);
     recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
-    if (executionContext.checkpoint) {
-      await saveWorkflowCheckpoint(executionContext.checkpoint, context);
-    }
 
     if (ended) {
       return;
@@ -4533,20 +4232,9 @@ export async function runWorkflow(
   const artifacts: Record<string, unknown> = {};
   const loop: Record<string, WorkflowLoopState> = {};
   const context: WorkflowTemplateContext = { inputs, nodes, artifacts, loop };
-  const checkpointEnabled = isResumeEnabled(options, inputs);
-  const checkpointKey = checkpointEnabled
-    ? (options.checkpointKey ?? getDefaultWorkflowCheckpointKey(workflowName, inputs))
-    : undefined;
-  const checkpointPath = checkpointKey
-    ? getWorkflowCheckpointPath(workingDir, checkpointKey)
-    : undefined;
   const executionContext: WorkflowExecutionContext = {
     gitClients: new Map(),
     platformClients: {},
-    checkpoint:
-      checkpointKey && checkpointPath
-        ? { key: checkpointKey, path: checkpointPath, workflow: workflowName, inputs }
-        : undefined,
     traceCollector: options.trace ? new TraceCollector() : undefined,
     locks: {
       exit: createWorkflowLock(),
@@ -4558,27 +4246,6 @@ export async function runWorkflow(
 
   if (!options.jsonOutput) {
     console.log(chalk.gray(`Running workflow ${workflowName}...\n`));
-  }
-
-  if (checkpointEnabled) {
-    if (!checkpointKey || !checkpointPath) {
-      throw new Error('Workflow resume requires a checkpoint key.');
-    }
-    const checkpoint = await loadWorkflowCheckpoint(checkpointPath);
-    if (checkpoint) {
-      if (checkpoint.workflow !== workflowName || checkpoint.key !== checkpointKey) {
-        throw new Error(`Workflow checkpoint "${checkpointKey}" does not match this workflow run.`);
-      }
-      if (!checkpointInputsMatch(checkpoint.inputs, inputs)) {
-        throw new Error(
-          `Workflow checkpoint "${checkpointKey}" was created with different inputs; refusing to resume.`
-        );
-      }
-      executionContext.restoredNodeIds = restoreWorkflowCheckpoint(checkpoint, context);
-      if (!options.jsonOutput) {
-        console.log(chalk.gray(`Resuming from checkpoint ${checkpointPath}\n`));
-      }
-    }
   }
 
   try {
@@ -4601,32 +4268,23 @@ export async function runWorkflow(
               throw new Error(`Workflow references unknown node "${nodeId}".`);
             }
 
-            const existing = nodes[nodeId];
-            if (shouldReuseRestoredWorkflowNode(nodeId, existing, executionContext)) {
-              return { nodeId, node, result: existing };
+            const skipReason = getWorkflowNodeSkipReason(node, context);
+            if (skipReason) {
+              logWorkflowNodeSkipped(nodeId, skipReason, options);
+              return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
             }
 
-            try {
-              const skipReason = getWorkflowNodeSkipReason(node, context);
-              if (skipReason) {
-                logWorkflowNodeSkipped(nodeId, skipReason, options);
-                return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
-              }
-
-              logWorkflowNodeRunning(nodeId, options);
-              const result = await runSingleWorkflowNode(
-                config,
-                nodeId,
-                node,
-                options,
-                workingDir,
-                context,
-                executionContext
-              );
-              return { nodeId, node, result };
-            } catch (error) {
-              throw tagWorkflowNodeError(error, nodeId);
-            }
+            logWorkflowNodeRunning(nodeId, options);
+            const result = await runSingleWorkflowNode(
+              config,
+              nodeId,
+              node,
+              options,
+              workingDir,
+              context,
+              executionContext
+            );
+            return { nodeId, node, result };
           })
         );
 
@@ -4634,24 +4292,6 @@ export async function runWorkflow(
           (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected'
         );
         if (firstRejection) {
-          if (executionContext.checkpoint) {
-            try {
-              await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-                nodeId: getWorkflowNodeErrorId(firstRejection.reason),
-                message:
-                  firstRejection.reason instanceof Error
-                    ? firstRejection.reason.message
-                    : String(firstRejection.reason),
-                failedAt: new Date().toISOString(),
-              });
-            } catch (saveError) {
-              console.error(
-                chalk.yellow('Warning:'),
-                'Failed to persist workflow checkpoint:',
-                saveError instanceof Error ? saveError.message : String(saveError)
-              );
-            }
-          }
           throw firstRejection.reason instanceof Error
             ? firstRejection.reason
             : new Error(String(firstRejection.reason));
@@ -4666,28 +4306,10 @@ export async function runWorkflow(
             }>
           ).value;
           recordWorkflowNodeResult(nodeId, node, result, nodes, artifacts);
-          if (executionContext.checkpoint) {
-            await saveWorkflowCheckpoint(executionContext.checkpoint, context);
-          }
         }
       }
     }
   } catch (error) {
-    if (executionContext.checkpoint) {
-      try {
-        await saveWorkflowCheckpoint(executionContext.checkpoint, context, {
-          nodeId: getWorkflowNodeErrorId(error),
-          message: error instanceof Error ? error.message : String(error),
-          failedAt: new Date().toISOString(),
-        });
-      } catch (saveError) {
-        console.error(
-          chalk.yellow('Warning:'),
-          'Failed to persist workflow checkpoint:',
-          saveError instanceof Error ? saveError.message : String(saveError)
-        );
-      }
-    }
     if (executionContext.traceCollector && executionContext.traceCollector.getTraces().length > 0) {
       try {
         await flushWorkflowTrace(
@@ -4707,21 +4329,6 @@ export async function runWorkflow(
       }
     }
     throw error;
-  }
-
-  const shouldCleanupCheckpoint =
-    options.checkpointCleanup !== false &&
-    normalizeWorkflowBooleanLike(inputs.checkpointCleanup) !== false;
-  if (shouldCleanupCheckpoint && executionContext.checkpoint) {
-    try {
-      await cleanupWorkflowCheckpoint(executionContext.checkpoint);
-    } catch (cleanupError) {
-      console.warn(
-        chalk.yellow('Warning:'),
-        'Failed to clean up workflow checkpoint:',
-        cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-      );
-    }
   }
 
   const lastNodeId = executionOrder[executionOrder.length - 1];

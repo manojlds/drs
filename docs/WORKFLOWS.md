@@ -36,51 +36,9 @@ drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --in
 
 ## Resume Failed Workflows
 
-Use `--resume` to save workflow checkpoints under `.drs/checkpoints/` and reuse completed node results on a retry:
+> **Note:** DRS 4.0 does not currently support workflow resume. If a workflow fails, re-run it from the start — review and fix nodes are LLM calls and are cheap to re-execute. The legacy `--resume` and `--checkpoint-*` flags from the 3.x series have been removed.
 
-```bash
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume
-```
-
-DRS derives a checkpoint key from the workflow name and PR/MR inputs when possible. Use `--checkpoint-key` when you need an explicit key:
-
-```bash
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume --checkpoint-key pr-456-review
-```
-
-Resume refuses to load a checkpoint if the workflow inputs differ from the inputs saved in the checkpoint.
-
-By default, DRS deletes the checkpoint file after a successful workflow completion. Pass `--no-checkpoint-cleanup` to keep the checkpoint file:
-
-```bash
-drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --resume --no-checkpoint-cleanup
-```
-
-### Checkpoint Schema
-
-Checkpoint files are JSON documents stored at `.drs/checkpoints/<key>.json`. They are generated runtime state and are excluded from version control via `.gitignore`.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `schemaVersion` | `number` | Always `1` |
-| `workflow` | `string` | Workflow name |
-| `key` | `string` | Checkpoint key |
-| `updatedAt` | `string` | ISO 8601 timestamp of last checkpoint write |
-| `inputs` | `Record<string, string>` | Workflow inputs used for this run |
-| `nodes` | `Record<string, WorkflowNodeResult>` | Node results keyed by node id |
-| `artifacts` | `Record<string, unknown>` | Workflow artifacts keyed by output name |
-| `loop` | `Record<string, WorkflowLoopState>` | Loop control state keyed by loop node id |
-| `failure` | `object \| undefined` | Present only when the workflow failed |
-
-The `failure` object:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `nodeId` | `string \| undefined` | Node id that was running when the failure occurred |
-| `message` | `string` | Error message |
-| `failedAt` | `string` | ISO 8601 timestamp of the failure |
-
-Circular references are replaced with `[circular]`. Checkpoint writes are skipped (with a warning) when the serialized payload exceeds 50 MB, so workflow state is never truncated for resume.
+If you have a long-running workflow (for example, a multi-iteration fix loop) and want failure recovery without re-running completed work, run the workflow in smaller pieces: dispatch each iteration as its own workflow run with a fixed `fixMaxIterations: '1'` input, and re-dispatch the next iteration only if the previous one failed.
 
 ## List Workflows
 
