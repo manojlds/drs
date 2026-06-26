@@ -184,6 +184,7 @@ nodes:
     action: change-source
     needs:
       - fix-issues
+    if: inputs.fixMode == internal
     with:
       type: local
       staged: false
@@ -202,6 +203,7 @@ nodes:
     action: change-source
     needs:
       - fix-change
+    if: inputs.fixMode == internal
     with:
       type: fix-verification
       source: change
@@ -212,6 +214,7 @@ nodes:
     action: review
     needs:
       - verification-change
+    if: inputs.fixMode == internal
     with:
       source: verificationChange
       reviewArtifact: persistedReviewArtifact
@@ -223,6 +226,7 @@ nodes:
     needs:
       - re-review
       - fix-change
+    if: inputs.fixMode == internal
     with:
       artifact: persistedReviewArtifact
       review: reReview
@@ -281,7 +285,7 @@ nodes:
   fix-diff:
     action: has-diff
     needs:
-      - verify-fix
+      - fix-issues
     output: fixDiff
 
   fix-commit:
@@ -342,15 +346,14 @@ nodes:
   post-fix-status-stacked:
     action: post-fix-status
     needs:
-      - create-fix-mr
-      - verify-fix
+      - create-fix-pr
+      - review
     with:
       platform: gitlab
       project: '{{inputs.project}}'
       mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
-      fixReview: reReview
       severity: '{{inputs.fixSeverity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status

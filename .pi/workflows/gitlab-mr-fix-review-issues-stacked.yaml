@@ -78,52 +78,10 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
-  fix-change:
-    action: change-source
-    needs:
-      - fix-issues
-    with:
-      type: local
-      staged: false
-    output: fixChange
-
-  verification-change:
-    action: change-source
-    needs:
-      - fix-change
-    with:
-      type: fix-verification
-      source: change
-      fixChange: fixChange
-    output: verificationChange
-
-  re-review:
-    action: review
-    needs:
-      - verification-change
-    with:
-      source: verificationChange
-      reviewArtifact: persistedReviewArtifact
-      severity: '{{inputs.severity}}'
-    output: reReview
-
-  verify-fix:
-    action: verify-fix
-    needs:
-      - re-review
-      - fix-change
-    with:
-      artifact: persistedReviewArtifact
-      review: reReview
-      fixChange: fixChange
-      severity: '{{inputs.severity}}'
-      minIssues: '{{inputs.minIssues}}'
-    output: persistedReviewArtifact
-
   diff:
     action: has-diff
     needs:
-      - verify-fix
+      - fix-issues
     output: fixDiff
 
   commit:
@@ -170,14 +128,13 @@ nodes:
     action: post-fix-status
     needs:
       - create
-      - verify-fix
+      - review
     with:
       platform: gitlab
       project: '{{inputs.project}}'
       mr: '{{inputs.mr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
-      fixReview: reReview
       severity: '{{inputs.severity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status

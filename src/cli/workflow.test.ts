@@ -2608,16 +2608,24 @@ describe('workflow runner', () => {
     expect(mocks.runAgent).toHaveBeenCalledTimes(1);
     expect(mocks.runAgent.mock.calls[0]?.[1]).toBe('task/review-issue-fixer');
 
-    // The fix-loop is skipped entirely in stacked mode: the loop's
-    // `if: ... && inputs.fixMode == internal` clause makes the runner
-    // treat the node as skipped (no jump to its exit, no activeNodeIds on
-    // the post-internal segment).
+    // The fix-loop never runs in stacked mode: the verify-fix chain that
+    // feeds it is gated by `if: fixMode == internal`, so shouldContinue
+    // is undefined and the loop is skipped.
     expect(result.loop['fix-loop']).toBeUndefined();
 
+    // No re-review in stacked mode: the verify-fix chain is internal-only
+    // since the stacked PR is for human review, not DRS self-verification.
+    expect(result.nodes['verify-fix']).toMatchObject({ type: 'skipped' });
+    expect(mocks.executeReview).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.executeReview.mock.calls.every(
+        (call) =>
+          (call[1] as { context?: { sourceType?: string } }).context?.sourceType !==
+          'fix-verification'
+      )
+    ).toBe(true);
+
     // The stacked-mode chain ran: fix-diff, fix-commit, fix-push, create-fix-pr.
-    // mark-fix-attempted is no longer in the workflow; the verify-fix
-    // chain now provides the artifact verdicts.
-    expect(result.nodes['verify-fix']).toMatchObject({ status: 'success' });
     expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
       '.',
     ]);
@@ -2641,16 +2649,15 @@ describe('workflow runner', () => {
     );
     expect(createCommentCalls.length).toBeGreaterThanOrEqual(2);
 
-    // The verify-fix chain updated the artifact with proper verdicts. In
-    // stacked mode the mock returns no verification findings, so the
-    // reconciliation defaults F001 to state=open / disposition=still_open.
+    // The artifact stays as the original review (no verify-fix to reconcile).
+    // F001 was open/confirmed in the initial review and remains so.
     expect(result.artifacts.persistedReviewArtifact).toMatchObject({
       payload: {
         findings: [
           expect.objectContaining({
             id: 'F001',
             state: 'open',
-            disposition: 'still_open',
+            disposition: 'confirmed',
           }),
         ],
       },
