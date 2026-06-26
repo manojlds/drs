@@ -176,23 +176,23 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
+  fix-change:
+    action: change-source
+    needs:
+      - fix-issues
+    with:
+      type: local
+      staged: false
+    output: fixChange
+
   stage-fixes:
     action: git-add
     needs:
-      - fix-issues
+      - fix-change
     if: inputs.fixMode == internal
     with:
       paths: '.'
     output: stagedFixes
-
-  fix-change:
-    action: change-source
-    needs:
-      - stage-fixes
-    with:
-      type: local
-      staged: true
-    output: fixChange
 
   verification-change:
     action: change-source
@@ -231,7 +231,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    if: artifacts.verify-fix.shouldContinue == true
+    if: artifacts.verify-fix.shouldContinue == true && inputs.fixMode == internal
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'
@@ -275,22 +275,10 @@ nodes:
       setUpstream: false
     output: internalFixPush
 
-  mark-fix-attempted:
-    action: review-artifact-update-findings
-    needs:
-      - fix-issues
-    if: inputs.fixMode != internal
-    with:
-      artifact: persistedReviewArtifact
-      severity: '{{inputs.fixSeverity}}'
-      state: attempted
-      disposition: partial
-    output: persistedReviewArtifact
-
   fix-diff:
     action: has-diff
     needs:
-      - mark-fix-attempted
+      - verify-fix
     output: fixDiff
 
   fix-commit:
@@ -354,7 +342,7 @@ nodes:
     action: post-fix-status
     needs:
       - create-fix-pr
-      - review
+      - verify-fix
     with:
       platform: github
       owner: '{{inputs.owner}}'
@@ -362,6 +350,7 @@ nodes:
       pr: '{{inputs.pr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
+      fixReview: reReview
       severity: '{{inputs.fixSeverity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status

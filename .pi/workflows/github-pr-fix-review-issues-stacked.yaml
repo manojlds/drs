@@ -80,21 +80,52 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
-  mark-fix-attempted:
-    action: review-artifact-update-findings
+  fix-change:
+    action: change-source
     needs:
       - fix-issues
     with:
-      artifact: persistedReviewArtifact
+      type: local
+      staged: false
+    output: fixChange
+
+  verification-change:
+    action: change-source
+    needs:
+      - fix-change
+    with:
+      type: fix-verification
+      source: change
+      fixChange: fixChange
+    output: verificationChange
+
+  re-review:
+    action: review
+    needs:
+      - verification-change
+    with:
+      source: verificationChange
+      reviewArtifact: persistedReviewArtifact
       severity: '{{inputs.severity}}'
-      state: attempted
-      disposition: partial
+    output: reReview
+
+  verify-fix:
+    action: verify-fix
+    needs:
+      - re-review
+      - fix-change
+    with:
+      artifact: persistedReviewArtifact
+      review: reReview
+      fixChange: fixChange
+      severity: '{{inputs.severity}}'
+      minIssues: '{{inputs.minIssues}}'
     output: persistedReviewArtifact
 
   diff:
     action: has-diff
     needs:
-      - mark-fix-attempted
+      - verify-fix
     output: fixDiff
 
   commit:
@@ -132,6 +163,8 @@ nodes:
 
         Threshold: {{inputs.severity}}, minimum issues: {{inputs.minIssues}}
 
+        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+
         <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
         <!-- drs-stack-kind: fix -->
     output: changeRequest
@@ -140,7 +173,7 @@ nodes:
     action: post-fix-status
     needs:
       - create
-      - review
+      - verify-fix
     with:
       platform: github
       owner: '{{inputs.owner}}'
@@ -148,6 +181,8 @@ nodes:
       pr: '{{inputs.pr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
+      fixReview: reReview
+      severity: '{{inputs.severity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus
