@@ -80,21 +80,10 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
-  mark-fix-attempted:
-    action: review-artifact-update-findings
-    needs:
-      - fix-issues
-    with:
-      artifact: persistedReviewArtifact
-      severity: '{{inputs.severity}}'
-      state: attempted
-      disposition: partial
-    output: persistedReviewArtifact
-
   diff:
     action: has-diff
     needs:
-      - mark-fix-attempted
+      - fix-issues
     output: fixDiff
 
   commit:
@@ -132,6 +121,8 @@ nodes:
 
         Threshold: {{inputs.severity}}, minimum issues: {{inputs.minIssues}}
 
+        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+
         <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
         <!-- drs-stack-kind: fix -->
     output: changeRequest
@@ -148,6 +139,7 @@ nodes:
       pr: '{{inputs.pr}}'
       source: change
       reviewArtifact: persistedReviewArtifact
+      severity: '{{inputs.severity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status
     output: fixStatus

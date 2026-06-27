@@ -1859,7 +1859,14 @@ describe('workflow runner', () => {
       agent: 'unified',
     };
     mocks.executeReview.mockImplementation(
-      async (_config, source: { files: string[]; context?: Record<string, unknown> }) => {
+      async (
+        _config,
+        source: {
+          files: string[];
+          staged?: boolean;
+          context?: Record<string, unknown>;
+        }
+      ) => {
         if (source.context?.sourceType === 'fix-verification') {
           return {
             ...createMockReviewResult([]),
@@ -1887,7 +1894,7 @@ describe('workflow runner', () => {
         prompt: expect.stringContaining('saved local DRS review artifact'),
       })
     );
-    expect(result.loop['fix-loop']).toMatchObject({ iteration: 1, lastDecision: 'exit' });
+    expect(result.loop['fix-loop']).toBeUndefined();
     expect(result.artifacts.persistedReviewArtifact).toMatchObject({
       shouldContinue: false,
       actionableOpen: 0,
@@ -1912,20 +1919,20 @@ describe('workflow runner', () => {
     const projectRoot = createTempDir('drs-workflow-local-fix-loop-cache-');
     const config = loadConfig(projectRoot);
     const issue = createMockReviewIssue('Local cache test');
-    const reReviewResults = [
-      {
-        ...createMockReviewResult([]),
-        verification: {
-          findings: [{ id: 'F001', disposition: 'still_open', rationale: 'still open' }],
-        },
+    // Always returns still_open so the loop keeps iterating (the cache
+    // check needs at least two iterations to be meaningful). After the loop
+    // exhausts maxIterations, shouldContinue is irrelevant.
+    const reReviewResults = Array.from({ length: 5 }, () => ({
+      ...createMockReviewResult([]),
+      verification: {
+        findings: [{ id: 'F001', disposition: 'still_open', rationale: 'still open' }],
       },
-      {
-        ...createMockReviewResult([]),
-        verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
-      },
-    ];
+    }));
     mocks.executeReview.mockImplementation(
-      async (_config, source: { files?: string[]; context?: { sourceType?: string } }) => {
+      async (
+        _config,
+        source: { files: string[]; staged?: boolean; context?: { sourceType?: string } }
+      ) => {
         if (source.context?.sourceType === 'fix-verification') {
           return reReviewResults.shift() ?? createMockReviewResult([]);
         }
@@ -1947,9 +1954,10 @@ describe('workflow runner', () => {
       workingDir: projectRoot,
     });
 
-    expect(result.loop['fix-loop']).toMatchObject({ iteration: 2, lastDecision: 'exit' });
+    expect(result.loop['fix-loop']).toMatchObject({ iteration: 3, lastDecision: 'exit' });
 
     expect(mocks.runAgent.mock.calls.map((call) => call[1])).toEqual([
+      'task/review-issue-fixer',
       'task/review-issue-fixer',
       'task/review-issue-fixer',
     ]);
@@ -1957,12 +1965,12 @@ describe('workflow runner', () => {
     // `getChangedFiles` (the diff-parser mock) is invoked from
     // `loadLocalChangeSource` for both the initial `change` node and the
     // per-iteration `final-change` node. The cache must keep the upstream
-    // `change` to a single call across two loop iterations, while the
+    // `change` to a single call across the loop iterations, while the
     // downstream `final-change` re-runs once per iteration.
-    expect(mocks.getChangedFiles).toHaveBeenCalledTimes(3);
+    expect(mocks.getChangedFiles).toHaveBeenCalledTimes(4);
 
-    // `re-review` runs once per iteration, so two calls total.
-    expect(mocks.executeReview).toHaveBeenCalledTimes(2);
+    // `re-review` runs once per iteration, so three calls total.
+    expect(mocks.executeReview).toHaveBeenCalledTimes(3);
     expect(
       mocks.executeReview.mock.calls.every(
         (call) =>
@@ -2395,14 +2403,29 @@ describe('workflow runner', () => {
         verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
       },
     ];
+    // The third re-review is what the loop would get if it kept iterating
+    // (e.g. on max iterations). Returning an empty array would reset the
+    // finding back to `still_open` (no verdict defaults to "still_open"),
+    // so we return a resolved verdict to simulate "the fix stuck".
     mocks.getChangedFiles.mockReturnValue(['src/github.ts']);
     mocks.getFilesWithDiffs.mockReturnValue([
       { filename: 'src/github.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
     ]);
-    mocks.executeReview.mockImplementation(async (_config, source: { staged?: boolean }) =>
-      source.staged
-        ? (reReviewResults.shift() ?? createMockReviewResult([]))
-        : createMockReviewResult([originalIssue])
+    mocks.executeReview.mockImplementation(
+      async (
+        _config,
+        source: { files: string[]; staged?: boolean; context?: { sourceType?: string } }
+      ) => {
+        if (source.context?.sourceType === 'fix-verification') {
+          return (
+            reReviewResults.shift() ?? {
+              ...createMockReviewResult([]),
+              verification: { findings: [{ id: 'F001', disposition: 'resolved' }] },
+            }
+          );
+        }
+        return createMockReviewResult([originalIssue]);
+      }
     );
 
     const result = await runWorkflow(config, 'github-pr-review', {
@@ -2430,7 +2453,7 @@ describe('workflow runner', () => {
     expect(result.loop['fix-loop']).toMatchObject({
       iteration: 2,
       maxIterations: 3,
-      lastDecision: 'exit',
+      lastDecision: 'loop',
     });
     expect(result.artifacts.fixStatus).toMatchObject({
       resolved: 1,
@@ -2585,11 +2608,24 @@ describe('workflow runner', () => {
     expect(mocks.runAgent).toHaveBeenCalledTimes(1);
     expect(mocks.runAgent.mock.calls[0]?.[1]).toBe('task/review-issue-fixer');
 
-    // No internal-mode fix loop was entered.
+    // The fix-loop never runs in stacked mode: the verify-fix chain that
+    // feeds it is gated by `if: fixMode == internal`, so shouldContinue
+    // is undefined and the loop is skipped.
     expect(result.loop['fix-loop']).toBeUndefined();
 
-    // The stacked-mode chain ran: mark-fix-attempted, fix-diff, fix-commit,
-    // fix-push, create-fix-pr.
+    // No re-review in stacked mode: the verify-fix chain is internal-only
+    // since the stacked PR is for human review, not DRS self-verification.
+    expect(result.nodes['verify-fix']).toMatchObject({ type: 'skipped' });
+    expect(mocks.executeReview).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.executeReview.mock.calls.every(
+        (call) =>
+          (call[1] as { context?: { sourceType?: string } }).context?.sourceType !==
+          'fix-verification'
+      )
+    ).toBe(true);
+
+    // The stacked-mode chain ran: fix-diff, fix-commit, fix-push, create-fix-pr.
     expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for PR #7', [
       '.',
     ]);
@@ -2613,16 +2649,91 @@ describe('workflow runner', () => {
     );
     expect(createCommentCalls.length).toBeGreaterThanOrEqual(2);
 
-    // mark-fix-attempted set state=attempted / disposition=partial on the
-    // severity-matching findings; verify by inspecting the persisted artifact.
-    expect(result.nodes['mark-fix-attempted']).toMatchObject({ status: 'success' });
+    // The artifact stays as the original review (no verify-fix to reconcile).
+    // F001 was open/confirmed in the initial review and remains so.
     expect(result.artifacts.persistedReviewArtifact).toMatchObject({
       payload: {
         findings: [
           expect.objectContaining({
             id: 'F001',
-            state: 'attempted',
-            disposition: 'partial',
+            state: 'open',
+            disposition: 'confirmed',
+          }),
+        ],
+      },
+    });
+  });
+
+  it('runs packaged GitLab stacked fix flow without entering the internal fix loop', async () => {
+    const projectRoot = createTempDir('drs-workflow-gitlab-fix-stacked-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Stacked GitLab fix issue');
+    mocks.getChangedFiles.mockReturnValue(['src/gitlab.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/gitlab.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
+    ]);
+    mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
+    mocks.gitlabAdapter.findChangeRequest.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.createChangeRequest.mockResolvedValue({
+      number: 77,
+      url: 'https://gitlab.com/group/repo/-/merge_requests/77',
+      sourceBranch: 'drs-fix/mr-8',
+      targetBranch: 'feature',
+    });
+
+    const result = await runWorkflow(config, 'gitlab-mr-review', {
+      inputs: {
+        project: 'group/repo',
+        mr: '8',
+        fix: 'true',
+        fixMode: 'stacked',
+        fixSeverity: 'high',
+        fixMinIssues: '1',
+        fixBranchPrefix: 'drs-fix/mr-',
+        fixCreateChangeRequest: 'true',
+        allowStackedSource: 'true',
+        draft: 'false',
+      },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.runAgent.mock.calls[0]?.[1]).toBe('task/review-issue-fixer');
+    expect(result.loop['fix-loop']).toBeUndefined();
+    expect(result.nodes['verify-fix']).toMatchObject({ type: 'skipped' });
+    expect(mocks.executeReview).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.executeReview.mock.calls.every(
+        (call) =>
+          (call[1] as { context?: { sourceType?: string } }).context?.sourceType !==
+          'fix-verification'
+      )
+    ).toBe(true);
+
+    expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for MR !8', [
+      '.',
+    ]);
+    expect(mocks.git.raw).toHaveBeenCalledWith([
+      'push',
+      '-u',
+      'origin',
+      'drs-fix/mr-8:drs-fix/mr-8',
+    ]);
+    expect(mocks.gitlabAdapter.createChangeRequest).toHaveBeenCalledWith(
+      'group/repo',
+      expect.objectContaining({
+        sourceBranch: 'drs-fix/mr-8',
+        title: 'fix: address DRS review issues for MR !8',
+      })
+    );
+    expect(mocks.gitlabAdapter.createComment.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+      payload: {
+        findings: [
+          expect.objectContaining({
+            id: 'F001',
+            state: 'open',
+            disposition: 'confirmed',
           }),
         ],
       },

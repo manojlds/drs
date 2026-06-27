@@ -3823,10 +3823,6 @@ function createSkippedWorkflowNodeResult(nodeId: string): WorkflowNodeResult {
 }
 
 function getWorkflowNodeRunCondition(node: WorkflowNodeConfig): string | undefined {
-  if (node.control !== undefined) {
-    return undefined;
-  }
-
   return node.if;
 }
 

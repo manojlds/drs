@@ -176,28 +176,30 @@ nodes:
       Use the drs_check tool after making changes to run configured validation checks before returning.
     output: fixes
 
+  fix-change:
+    action: change-source
+    needs:
+      - fix-issues
+    if: inputs.fixMode == internal
+    with:
+      type: local
+      staged: false
+    output: fixChange
+
   stage-fixes:
     action: git-add
     needs:
-      - fix-issues
+      - fix-change
     if: inputs.fixMode == internal
     with:
       paths: '.'
     output: stagedFixes
 
-  fix-change:
-    action: change-source
-    needs:
-      - stage-fixes
-    with:
-      type: local
-      staged: true
-    output: fixChange
-
   verification-change:
     action: change-source
     needs:
       - fix-change
+    if: inputs.fixMode == internal
     with:
       type: fix-verification
       source: change
@@ -208,6 +210,7 @@ nodes:
     action: review
     needs:
       - verification-change
+    if: inputs.fixMode == internal
     with:
       source: verificationChange
       reviewArtifact: persistedReviewArtifact
@@ -219,6 +222,7 @@ nodes:
     needs:
       - re-review
       - fix-change
+    if: inputs.fixMode == internal
     with:
       artifact: persistedReviewArtifact
       review: reReview
@@ -231,7 +235,7 @@ nodes:
     control: loop
     needs:
       - verify-fix
-    if: artifacts.verify-fix.shouldContinue == true
+    if: artifacts.verify-fix.shouldContinue == true && inputs.fixMode == internal
     target: fix-issues
     exit: post-fix-status-internal
     maxIterations: '{{inputs.fixMaxIterations}}'
@@ -275,29 +279,18 @@ nodes:
       setUpstream: false
     output: internalFixPush
 
-  mark-fix-attempted:
-    action: review-artifact-update-findings
-    needs:
-      - fix-issues
-    if: inputs.fixMode != internal
-    with:
-      artifact: persistedReviewArtifact
-      severity: '{{inputs.fixSeverity}}'
-      state: attempted
-      disposition: partial
-    output: persistedReviewArtifact
-
   fix-diff:
     action: has-diff
     needs:
-      - mark-fix-attempted
+      - fix-issues
+    if: inputs.fixMode != internal
     output: fixDiff
 
   fix-commit:
     action: git-commit
     needs:
       - fix-diff
-    if: artifacts.fixDiff.changed == true && inputs.fixCreateChangeRequest == true
+    if: artifacts.fixDiff.changed == true && inputs.fixCreateChangeRequest == true && inputs.fixMode != internal
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
