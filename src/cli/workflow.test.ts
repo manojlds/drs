@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, SUPPORTED_WORKFLOW_ACTIONS, type DRSConfig } from '../lib/config.js';
-import { runWorkflow, listWorkflows, showWorkflow } from './workflow.js';
+import { runWorkflow, listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
 
 const mocks = vi.hoisted(() => {
   const githubAdapter = {
@@ -3734,6 +3734,30 @@ describe('workflow runner', () => {
     expect(result.nodes.b).toMatchObject({ type: 'skipped', status: 'skipped' });
     expect(result.nodes.a).toMatchObject({ status: 'success' });
     expect(result.nodes.c).toMatchObject({ status: 'success' });
+  });
+
+  it('rejects non-loop control nodes that jump backward', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        cyclicPassThrough: {
+          nodes: {
+            start: { agent: 'task/start', input: 'start' },
+            gate: {
+              control: 'passThrough',
+              needs: ['start'],
+              target: 'start',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    expect(validateWorkflows(config, 'cyclicPassThrough', { json: true })[0]).toMatchObject({
+      valid: false,
+      error: expect.stringContaining('cannot jump backward'),
+    });
+    await expect(runWorkflow(config, 'cyclicPassThrough')).rejects.toThrow('cannot jump backward');
   });
 
   it('uses explicit workflow output when a control end node is last', async () => {

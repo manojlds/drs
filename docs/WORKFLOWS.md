@@ -17,7 +17,7 @@ drs workflow run local-review --input staged=true --json -o .drs/local-review.js
 # Built-in local maintenance workflows
 drs workflow run local-changelog-update
 drs workflow run tag-changelog-update
-drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md
 
 # DRS project-local changelog workflow
@@ -150,6 +150,7 @@ Every node must define exactly one execution type:
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
 | `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
 | `action` | Run a built-in action. Supported actions are validated from the DRS action registry, including git operations, change sources, review/describe/post actions, artifact actions, fix verification, and change-request creation |
+| `control` | Route workflow execution with `loop`, `switch`, `passThrough`, or `end` |
 
 Common node fields:
 
@@ -166,7 +167,7 @@ Workflow files are strictly validated. A node must use exactly one of `agent`, `
 
 ## Conditions
 
-Executable nodes and `control: loop` nodes support `if`. Other control nodes do not.
+Executable nodes and `control: loop` nodes support `if`. Other control nodes do not. Use `control: loop` for repeated execution; `switch` and `passThrough` are branch routers and can only jump forward.
 
 Conditions can reference values directly:
 
@@ -540,7 +541,7 @@ Examples:
 ```bash
 drs workflow run local-changelog-update
 drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
-drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md --input path=AGENTS.md
 ```
 

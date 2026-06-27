@@ -27,8 +27,8 @@
 
     # DRS uses in-process Pi runtime (no remote runtime endpoint needed)
 
-    # Review agents to use (optional, defaults to review/unified-reviewer)
-    # REVIEW_AGENTS: "review/unified-reviewer,review/my-project-reviewer"
+    # Review agents are normally configured in .drs/drs.config.yaml via review.agents.
+    # REVIEW_AGENTS is still accepted as a compatibility alias.
 
   # Allow job to fail without blocking pipeline
   allow_failure: true

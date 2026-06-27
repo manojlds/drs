@@ -272,6 +272,31 @@ function validateWorkflowControlTargets(nodes: Record<string, WorkflowNodeConfig
   }
 }
 
+function validateWorkflowControlRouteDirection(
+  nodes: Record<string, WorkflowNodeConfig>,
+  executionOrder: string[]
+): void {
+  const segments = splitWorkflowSegments(nodes, executionOrder);
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = segments[segmentIndex];
+    if (segment.type !== 'control') {
+      continue;
+    }
+    const node = nodes[segment.nodeId];
+    if (!node || node.control === 'loop') {
+      continue;
+    }
+    for (const target of getControlTargets(node)) {
+      const targetIndex = findWorkflowSegmentIndex(segments, target);
+      if (targetIndex <= segmentIndex) {
+        throw new Error(
+          `Workflow control node "${segment.nodeId}" cannot jump backward to "${target}". Use control: loop with maxIterations for repeated execution.`
+        );
+      }
+    }
+  }
+}
+
 function validateWorkflowPassThroughShape(nodeId: string, node: WorkflowNodeConfig): void {
   if (node.control !== 'passThrough') {
     return;
@@ -628,7 +653,9 @@ function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): s
     (nodeId) => nodes[nodeId]?.control === 'end' && getNodeNeeds(nodes[nodeId] ?? {}).length === 0
   );
   const nonStandaloneEndNodes = order.filter((nodeId) => !standaloneEndNodes.includes(nodeId));
-  return [...nonStandaloneEndNodes, ...standaloneEndNodes];
+  const executionOrder = [...nonStandaloneEndNodes, ...standaloneEndNodes];
+  validateWorkflowControlRouteDirection(nodes, executionOrder);
+  return executionOrder;
 }
 
 function getWorkflowNodes(
@@ -4149,6 +4176,11 @@ async function runControlWorkflow(
     if (targetIndex < 0) {
       throw new Error(
         `Workflow control node "${segment.nodeId}" targets unknown node "${nextNodeId}".`
+      );
+    }
+    if (node.control !== 'loop' && targetIndex <= segmentIndex) {
+      throw new Error(
+        `Workflow control node "${segment.nodeId}" cannot jump backward to "${nextNodeId}". Use control: loop with maxIterations for repeated execution.`
       );
     }
     const targetSegment = segments[targetIndex];
