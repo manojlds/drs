@@ -2664,6 +2664,82 @@ describe('workflow runner', () => {
     });
   });
 
+  it('runs packaged GitLab stacked fix flow without entering the internal fix loop', async () => {
+    const projectRoot = createTempDir('drs-workflow-gitlab-fix-stacked-');
+    const config = loadConfig(projectRoot);
+    const issue = createMockReviewIssue('Stacked GitLab fix issue');
+    mocks.getChangedFiles.mockReturnValue(['src/gitlab.ts']);
+    mocks.getFilesWithDiffs.mockReturnValue([
+      { filename: 'src/gitlab.ts', patch: '@@ -1,1 +1,1 @@\n-old\n+new' },
+    ]);
+    mocks.executeReview.mockResolvedValue(createMockReviewResult([issue]));
+    mocks.gitlabAdapter.findChangeRequest.mockResolvedValue(undefined);
+    mocks.gitlabAdapter.createChangeRequest.mockResolvedValue({
+      number: 77,
+      url: 'https://gitlab.com/group/repo/-/merge_requests/77',
+      sourceBranch: 'drs-fix/mr-8',
+      targetBranch: 'feature',
+    });
+
+    const result = await runWorkflow(config, 'gitlab-mr-review', {
+      inputs: {
+        project: 'group/repo',
+        mr: '8',
+        fix: 'true',
+        fixMode: 'stacked',
+        fixSeverity: 'high',
+        fixMinIssues: '1',
+        fixBranchPrefix: 'drs-fix/mr-',
+        fixCreateChangeRequest: 'true',
+        allowStackedSource: 'true',
+        draft: 'false',
+      },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.runAgent.mock.calls[0]?.[1]).toBe('task/review-issue-fixer');
+    expect(result.loop['fix-loop']).toBeUndefined();
+    expect(result.nodes['verify-fix']).toMatchObject({ type: 'skipped' });
+    expect(mocks.executeReview).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.executeReview.mock.calls.every(
+        (call) =>
+          (call[1] as { context?: { sourceType?: string } }).context?.sourceType !==
+          'fix-verification'
+      )
+    ).toBe(true);
+
+    expect(mocks.git.commit).toHaveBeenCalledWith('fix: address DRS review issues for MR !8', [
+      '.',
+    ]);
+    expect(mocks.git.raw).toHaveBeenCalledWith([
+      'push',
+      '-u',
+      'origin',
+      'drs-fix/mr-8:drs-fix/mr-8',
+    ]);
+    expect(mocks.gitlabAdapter.createChangeRequest).toHaveBeenCalledWith(
+      'group/repo',
+      expect.objectContaining({
+        sourceBranch: 'drs-fix/mr-8',
+        title: 'fix: address DRS review issues for MR !8',
+      })
+    );
+    expect(mocks.gitlabAdapter.createComment.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+      payload: {
+        findings: [
+          expect.objectContaining({
+            id: 'F001',
+            state: 'open',
+            disposition: 'confirmed',
+          }),
+        ],
+      },
+    });
+  });
+
   it('shows GitHub PR review context with embedded diff content', async () => {
     const config = {
       ...baseConfig,

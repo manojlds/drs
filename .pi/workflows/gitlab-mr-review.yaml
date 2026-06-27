@@ -346,7 +346,7 @@ nodes:
   post-fix-status-stacked:
     action: post-fix-status
     needs:
-      - create-fix-pr
+      - create-fix-mr
       - review
     with:
       platform: gitlab
