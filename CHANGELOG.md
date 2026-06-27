@@ -1,26 +1,8 @@
-## Unreleased
-
-### Removed
-
-- Migration-cruft env-var handlers and validation blocks in `loadConfig` that only existed to smooth a 3.x → 4.0.0 transition. Since 4.0.0 has not shipped, there is no public stability surface to warn about — drop them now. Concretely:
-  - `process.env.REVIEW_MODE` handler and the `config.review.mode` validation warn.
-  - `process.env.REVIEW_UNIFIED_THRESHOLD` handler and the `config.review.unified.severityThreshold` validation warn.
-  - Compatibility aliases for `REVIEW_AGENTS`, `REVIEW_DEFAULT_MODEL`, and `REVIEW_AGENT_<ID>_MODEL` remain supported for review-era CI environments; prefer `review.agents`, `DRS_DEFAULT_MODEL`, and `DRS_AGENT_<ID>_MODEL` for new 4.0 configuration.
-- The `scripts/` directory is moved out of tracked source (added to `.gitignore`); ad-hoc apply helpers used during 4.0.0 prep were noise, not repo assets.
-- Inert `DRSConfig.review` schema removed: `mode?: ReviewMode`, the `ReviewMode` type, `unified.severityThreshold?: ReviewSeverity`, and the `ReviewSeverity` type. No production runtime path reads these fields — the env-var handlers and validators were already gone (commit 1b9ae4d); this commit drops the type-schema accidents left behind. Configure via `review.agents` ordering instead. Stray `mode:` or `severityThreshold:` keys in `.drs/drs.config.yaml` still parse (YAML has no static type checker) and are silently ignored.
-- `runUnifiedReviewAgent` exported helper dropped from `src/lib/review-core.ts` along with its dedicated test block. After workflow-first, production review runs go through `runReviewPipeline` -> `runReviewAgents` -> `executeSingleAgent`; the dedicated single-agent unified path had zero callers outside its own tests.
-
-### Added
-
-- Validate every workflow node's `action` value at config load time via `loadConfig`, producing a did-you-mean error before any wave executor runs. A small Levenshtein distance picks the closest supported action for near-miss typos; wholly unknown actions get a list of every supported action.
-### Added
-
-- Expose `output.updatedIds` on `review-artifact-update-findings` and `verify-fix`. The two helpers mean slightly different things by design: `review-artifact-update-findings` returns only the IDs whose `state` or `disposition` actually changed; `verify-fix` returns the IDs of every finding currently in the artifact after reconciliation (including new regressions added this iteration). Field shape is identical (`string[]` of finding IDs).
 # Changelog
 
 All notable changes to DRS are documented in this file.
 
-## 4.0.0
+## 4.0.0 - 2026-06-28
 
 ### Added
 
@@ -37,6 +19,9 @@ All notable changes to DRS are documented in this file.
 - Add runtime timeout and provider retry controls (`pi.runtime.*`, `pi.retry.provider.*`) with `DRS_RUNTIME_*` environment overrides.
 - Include reviewed commit SHA and branch metadata in posted review summary comments.
 - Add `docs/WORKFLOWS.md` with the full workflow configuration reference.
+- Expose `output.updatedIds` on `review-artifact-update-findings` and `verify-fix` for fix-verification reconciliation reporting.
+- Validate every workflow node's `action` value at config load time with did-you-mean suggestions for near-miss typos.
+- Add a manual pre-tag release changelog workflow and packaged `release-changelog-finalize` workflow so final release tags can include the finalized changelog before npm publish.
 
 ### Changed
 
@@ -48,6 +33,13 @@ All notable changes to DRS are documented in this file.
 - Update the CLI banner, help text, and package metadata for the 4.0.0 breaking release.
 - Update GitHub Actions and GitLab CI templates to run packaged workflows.
 - Upgrade bundled Pi SDK to 0.73.1.
+- Document workflow-first 4.0 configuration and clarify that `switch` and `passThrough` are forward-only routers.
+
+### Fixed
+
+- Fix GitLab stacked-mode fix status dependencies so stacked fix MRs notify after creation.
+- Reject non-loop backward workflow control routes at validation/runtime to prevent unbounded graph jumps.
+- Exclude compiled test files from the published npm package while preserving packaged `.pi` agents and workflows.
 
 ### Removed
 
@@ -56,6 +48,10 @@ All notable changes to DRS are documented in this file.
 - Remove the standalone `post-comments` CLI command; use review-post workflows or `post-review-comments` workflow actions instead.
 - Remove the standalone `show-changes` CLI command; use `github-pr-show-changes` or `gitlab-mr-show-changes` workflows instead.
 - Remove inline `workflows:` map support in `.drs/drs.config.yaml`; workflows must be defined as separate files under `.drs/workflows/*.yaml`.
+- Remove migration-only `REVIEW_MODE` and `REVIEW_UNIFIED_THRESHOLD` env-var handlers and related validation warnings. Compatibility aliases for `REVIEW_AGENTS`, `REVIEW_DEFAULT_MODEL`, and `REVIEW_AGENT_<ID>_MODEL` remain supported.
+- Remove inert 3.x review schema fields that no production runtime path reads (`mode`, `unified.severityThreshold`, and related types).
+- Remove the exported `runUnifiedReviewAgent` helper; workflow-first review runs through the normal review pipeline.
+- Move ad-hoc release-prep helper scripts out of tracked source.
 
 ## 3.3.1 - 2026-05-04
 
