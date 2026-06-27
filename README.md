@@ -50,8 +50,8 @@ drs init
 ### 4. Configure Environment
 
 ```bash
-# Copy example env file
-cp .env.example .env
+# Create a local env file
+touch .env
 
 # Edit .env and set:
 # - GITLAB_TOKEN: Your GitLab access token (for GitLab MRs)
@@ -83,8 +83,8 @@ drs workflow run local-changelog-update
 # Update CHANGELOG.md from the previous tag to the current tag, or explicit refs
 drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
 
-# Fix issues from a saved workflow review result
-drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json
+# Fix issues from the latest saved local review artifact
+drs workflow run local-fix-review-issues
 
 # Refresh AGENTS.md or equivalent repository guidance
 drs workflow run local-update-agents-md
@@ -101,7 +101,7 @@ drs workflow run local-update-agents-md
 | Review local staged changes | `drs workflow run local-review --input staged=true` |
 | Update changelog from local changes | `drs workflow run local-changelog-update` |
 | Update changelog from tag range | `drs workflow run tag-changelog-update` |
-| Fix issues from saved review output | `drs workflow run local-fix-review-issues --input-file review=.drs/local-review.json` |
+| Fix issues from latest saved local review artifact | `drs workflow run local-fix-review-issues` |
 | Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
@@ -761,8 +761,9 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 # Optional
 GITLAB_URL=https://gitlab.com
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
-DRS_AGENT_REVIEW_SECURITY_MODEL=anthropic/claude-opus-4-5-20251101
-REVIEW_AGENTS=review/unified-reviewer
+DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
+# Configure review agents in .drs/drs.config.yaml via review.agents.
+# Legacy REVIEW_AGENTS is still accepted as a compatibility alias.
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 
