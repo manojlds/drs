@@ -2,7 +2,7 @@
 
 All notable changes to DRS are documented in this file.
 
-## 4.0.0 - 2026-06-28
+## 4.0.1 - 2026-06-28
 
 ### Added
 
