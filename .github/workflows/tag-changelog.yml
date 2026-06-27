@@ -3,7 +3,7 @@ name: Update changelog from tag
 on:
   push:
     tags:
-      - "v*"
+      - "v*-rc.*"
 
 permissions:
   contents: write

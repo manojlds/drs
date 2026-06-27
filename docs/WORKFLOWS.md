@@ -533,6 +533,7 @@ DRS 4.0 ships maintenance workflows alongside review workflows:
 |----------|---------|
 | `local-changelog-update` | Update `CHANGELOG.md` from local unstaged changes using `task/changelog-updater` |
 | `tag-changelog-update` | Update `CHANGELOG.md` from changes between the previous tag and current tag, or explicit refs |
+| `release-changelog-finalize` | Finalize `CHANGELOG.md` for a release from an explicit git range before tagging |
 | `local-fix-review-issues` | Fix actionable issues from a saved DRS review result using `task/review-issue-fixer`, then re-run local review |
 | `local-update-agents-md` | Update `AGENTS.md` or equivalent agent guidance using `task/agents-md-updater` |
 
@@ -541,15 +542,30 @@ Examples:
 ```bash
 drs workflow run local-changelog-update
 drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
+drs workflow run release-changelog-finalize --input from=v3.3.1 --input to=HEAD --input version=4.0.0 --input date=2026-06-27
 drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md --input path=AGENTS.md
 ```
 
 These workflows are intentionally local and do not commit changes. Compose them with `git-add`, `git-commit`, review, or platform posting nodes in project workflows when your repository wants stronger automation.
 
-### Tag Changelog In GitHub Actions
+### Release Changelog In GitHub Actions
 
-`tag-changelog-update` is designed for tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable stable semver tag. This means `v4.0.0-rc.1` compares against the previous stable tag, not an older release-candidate tag.
+For final releases, use `.github/workflows/release-changelog.yml` before publishing. It is manually triggered, runs `release-changelog-finalize`, commits the changelog to the default branch, and can optionally create the final `v<version>` tag after the changelog commit. The tag push then triggers the publish workflow from a commit that already contains the finalized changelog.
+
+Typical final release inputs:
+
+```text
+version: 4.0.0
+from: v3.3.1
+to: HEAD
+releaseDate: 2026-06-27
+createTag: true
+```
+
+### RC Tag Changelog In GitHub Actions
+
+`tag-changelog-update` is designed for release-candidate tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable stable semver tag. This means `v4.0.0-rc.1` compares against the previous stable tag, not an older release-candidate tag. Final releases should use the manual release changelog workflow above so the final tag includes the changelog commit.
 
 ```yaml
 name: Update changelog from tag
@@ -557,7 +573,7 @@ name: Update changelog from tag
 on:
   push:
     tags:
-      - "v*"
+      - "v*-rc.*"
 
 jobs:
   changelog:
