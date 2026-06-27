@@ -1,0 +1,47 @@
+name: release-changelog-finalize
+description: Finalize CHANGELOG.md for a release from an explicit git range
+inputs:
+  from:
+    type: string
+    description: Base ref or previous release tag
+    required: true
+  to:
+    type: string
+    default: HEAD
+    description: Release candidate ref, final release commit, or HEAD
+  version:
+    type: string
+    description: Release version without leading v, for example 4.0.0
+    required: true
+  date:
+    type: string
+    description: Release date in YYYY-MM-DD format
+    required: true
+output: changelog
+nodes:
+  release-change:
+    action: change-source
+    with:
+      type: git-range
+      from: '{{inputs.from}}'
+      to: '{{inputs.to}}'
+    output: change
+
+  finalize-changelog:
+    agent: task/changelog-updater
+    needs:
+      - release-change
+    input: |
+      Finalize CHANGELOG.md for release {{inputs.version}} dated {{inputs.date}}.
+
+      Use this git range change source as the authoritative release diff:
+      {{artifacts.change}}
+
+      Requirements:
+      - Ensure the file starts with `# Changelog` followed by the standard introduction.
+      - Move release-worthy `## Unreleased` entries into `## {{inputs.version}} - {{inputs.date}}`.
+      - Create `## {{inputs.version}} - {{inputs.date}}` directly above the previous released version if it does not exist.
+      - Keep `## Unreleased` above the release section only if there are remaining unreleased entries; otherwise remove empty duplicate/unneeded headings.
+      - Preserve existing older release sections.
+      - Do not create git tags, publish packages, or edit files other than CHANGELOG.md.
+    output: changelog
