@@ -6,17 +6,12 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import {
-  listWorkflows,
-  showWorkflow,
-  validateWorkflows,
-  LocalWorkflowExecutor,
-} from './workflow.js';
+import { listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { loadConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
-import { TemporalWorkflowExecutor } from '../temporal/executor.js';
 import { runTemporalWorker } from '../temporal/worker.js';
+import { createWorkflowExecutor } from './workflow-executor-selection.js';
 import { config as loadDotenv } from 'dotenv';
 
 // Load environment variables from .env in current working directory (if present)
@@ -155,18 +150,10 @@ workflowCommand
         throw new Error('Provide a workflow name or set workflow.default in .drs/drs.config.yaml.');
       }
 
-      const executorName = String(options.executor ?? 'local');
-      if (executorName !== 'temporal' && options.wait === false) {
-        throw new Error('--no-wait is only supported with --executor temporal.');
-      }
-      const executor: WorkflowExecutor =
-        executorName === 'temporal'
-          ? new TemporalWorkflowExecutor()
-          : executorName === 'local'
-            ? new LocalWorkflowExecutor()
-            : (() => {
-                throw new Error(`Unsupported workflow executor "${executorName}".`);
-              })();
+      const executor: WorkflowExecutor = createWorkflowExecutor(
+        String(options.executor ?? 'local'),
+        options.wait !== false
+      );
       await executor.run(config, workflowName, {
         inputs: parseKeyValueOptions(options.input, '--input'),
         inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),

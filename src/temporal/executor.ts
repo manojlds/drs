@@ -116,62 +116,66 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
     const inputs = await resolveCompiledPlanInputs(plan.inputs, options, workingDir);
 
     const connection = await Connection.connect({ address: temporal.address });
-    const client = new Client({ connection, namespace: temporal.namespace });
-    const workflowId = `${temporal.workflowIdPrefix}-${workflowName}-${randomUUID()}`;
-    const workflowInput: TemporalWorkflowInput = {
-      plan,
-      inputs,
-      workingDir,
-      options: {
-        debug: options.debug,
-        thinkingLevel: options.thinkingLevel,
-      },
-    };
-
-    const handle = await client.workflow.start('drsWorkflow', {
-      taskQueue: temporal.taskQueue,
-      workflowId,
-      args: [workflowInput],
-    });
-
-    if (options.wait === false) {
-      const result: WorkflowRunResult = {
-        timestamp: new Date().toISOString(),
-        workflow: workflowName,
+    try {
+      const client = new Client({ connection, namespace: temporal.namespace });
+      const workflowId = `${temporal.workflowIdPrefix}-${workflowName}-${randomUUID()}`;
+      const workflowInput: TemporalWorkflowInput = {
+        plan,
         inputs,
-        nodes: {},
-        artifacts: {},
-        loop: {},
-        output: {
-          workflowId: handle.workflowId,
-          runId: handle.firstExecutionRunId,
+        workingDir,
+        options: {
+          debug: options.debug,
+          thinkingLevel: options.thinkingLevel,
         },
       };
+
+      const handle = await client.workflow.start('drsWorkflow', {
+        taskQueue: temporal.taskQueue,
+        workflowId,
+        args: [workflowInput],
+      });
+
+      if (options.wait === false) {
+        const result: WorkflowRunResult = {
+          timestamp: new Date().toISOString(),
+          workflow: workflowName,
+          inputs,
+          nodes: {},
+          artifacts: {},
+          loop: {},
+          output: {
+            workflowId: handle.workflowId,
+            runId: handle.firstExecutionRunId,
+          },
+        };
+        if (options.jsonOutput) {
+          console.log(formatWorkflowJson(result));
+        } else {
+          console.log(
+            `Temporal workflow started: ${handle.workflowId} (run ${handle.firstExecutionRunId})`
+          );
+        }
+        return result;
+      }
+
+      const result = await handle.result();
+
+      if (options.outputPath) {
+        await writeWorkflowFile(workingDir, options.outputPath, formatWorkflowJson(result));
+        if (!options.jsonOutput) {
+          console.log(chalk.green(`\n✓ Workflow output saved to ${options.outputPath}`));
+        }
+      }
+
       if (options.jsonOutput) {
         console.log(formatWorkflowJson(result));
-      } else {
-        console.log(
-          `Temporal workflow started: ${handle.workflowId} (run ${handle.firstExecutionRunId})`
-        );
+      } else if (typeof result.output === 'string' && result.output.trim()) {
+        console.log(`\n${result.output}`);
       }
+
       return result;
+    } finally {
+      await connection.close();
     }
-
-    const result = await handle.result();
-
-    if (options.outputPath) {
-      await writeWorkflowFile(workingDir, options.outputPath, formatWorkflowJson(result));
-      if (!options.jsonOutput) {
-        console.log(chalk.green(`\n✓ Workflow output saved to ${options.outputPath}`));
-      }
-    }
-
-    if (options.jsonOutput) {
-      console.log(formatWorkflowJson(result));
-    } else if (typeof result.output === 'string' && result.output.trim()) {
-      console.log(`\n${result.output}`);
-    }
-
-    return result;
   }
 }
