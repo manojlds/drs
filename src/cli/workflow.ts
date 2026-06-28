@@ -111,7 +111,21 @@ import {
   normalizeWorkflowBooleanLike,
   renderTemplate,
   splitWorkflowSegments,
+  type WorkflowSegment,
 } from '../lib/workflow/planning.js';
+import type {
+  CompiledWorkflowPlan,
+  CompiledWorkflowSegment,
+} from '../lib/workflow/compiled-plan.js';
+import { getWorkflowInputConfigType } from '../lib/workflow/input.js';
+export {
+  compileWorkflowPlan,
+  type CompiledWorkflowPlan,
+  type CompiledWorkflowSegment,
+  type CompiledWorkflowNode,
+  type CompiledWorkflowInput,
+  type CompileWorkflowPlanOptions,
+} from '../lib/workflow/compiled-plan.js';
 
 interface WorkflowExecutionContext {
   gitClients: Map<string, ReturnType<typeof simpleGit>>;
@@ -279,10 +293,6 @@ async function resolveWorkflowInput(
   }
 
   return '';
-}
-
-function getWorkflowInputConfigType(input: WorkflowInputConfig): string {
-  return typeof input === 'string' ? 'string' : (input.type ?? 'string');
 }
 
 function validateResolvedWorkflowInput(
@@ -3280,7 +3290,31 @@ async function runControlWorkflow(
   context: WorkflowTemplateContext,
   nodeExecutor: NodeExecutor
 ): Promise<void> {
-  const segments = splitWorkflowSegments(workflowNodes, executionOrder);
+  await runControlWorkflowFromSegments(
+    workflowNodes,
+    splitWorkflowSegments(workflowNodes, executionOrder),
+    options,
+    context,
+    nodeExecutor
+  );
+}
+
+async function runControlWorkflowFromSegments(
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  compiledSegments: WorkflowSegment[],
+  options: WorkflowRunOptions,
+  context: WorkflowTemplateContext,
+  nodeExecutor: NodeExecutor
+): Promise<void> {
+  const segments: WorkflowSegment[] = compiledSegments.map((segment) =>
+    segment.type === 'control'
+      ? { type: 'control', nodeId: segment.nodeId }
+      : {
+          type: 'dag',
+          nodeIds: [...segment.nodeIds],
+          ...(segment.activeNodeIds ? { activeNodeIds: new Set(segment.activeNodeIds) } : {}),
+        }
+  );
   let segmentIndex = 0;
 
   while (segmentIndex < segments.length) {
@@ -3436,7 +3470,78 @@ export async function runWorkflow(
     throw new Error(`Unknown workflow "${workflowName}".`);
   }
   const workflowNodes = getWorkflowNodes(workflowName, workflow);
+  const executionOrder = getWorkflowExecutionOrder(workflowNodes);
+  const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
+  return executeWorkflowRun(
+    config,
+    workflowName,
+    workflowNodes,
+    executionOrder,
+    executionWaves,
+    workflow.output,
+    hasWorkflowControlNodes(workflowNodes),
+    options
+  );
+}
+
+/**
+ * Run a workflow from a previously compiled {@link CompiledWorkflowPlan}.
+ *
+ * The plan supplies the scheduling data (nodes, execution order, waves,
+ * segments, output key) so the caller does not need to reload repo config to
+ * drive execution. `config` is still required because agent/action node
+ * execution needs agent and review configuration that lives outside the
+ * compiled plan.
+ */
+export async function runWorkflowFromCompiledPlan(
+  config: DRSConfig,
+  plan: CompiledWorkflowPlan,
+  options: WorkflowRunOptions = {}
+): Promise<WorkflowRunResult> {
+  const executionSegments: CompiledWorkflowSegment[] = plan.hasControlNodes ? plan.segments : [];
+  if (plan.hasControlNodes) {
+    const workflowNodes = plan.nodes;
+    const order = plan.executionOrder;
+    return executeWorkflowRun(
+      config,
+      plan.workflowName,
+      workflowNodes,
+      order,
+      plan.waves,
+      plan.output,
+      true,
+      options,
+      executionSegments
+    );
+  }
+  return executeWorkflowRun(
+    config,
+    plan.workflowName,
+    plan.nodes,
+    plan.executionOrder,
+    plan.waves,
+    plan.output,
+    false,
+    options
+  );
+}
+
+async function executeWorkflowRun(
+  config: DRSConfig,
+  workflowName: string,
+  workflowNodes: Record<string, WorkflowNodeConfig>,
+  executionOrder: string[],
+  executionWaves: string[][],
+  workflowOutput: string | undefined,
+  hasControl: boolean,
+  options: WorkflowRunOptions,
+  controlSegments?: CompiledWorkflowSegment[]
+): Promise<WorkflowRunResult> {
+  const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    throw new Error(`Unknown workflow "${workflowName}".`);
+  }
   const workingDir = options.workingDir ?? process.cwd();
   const inputs = await resolveWorkflowInputs(workflow, options, workingDir);
   const nodes: Record<string, WorkflowNodeResult> = {};
@@ -3453,16 +3558,33 @@ export async function runWorkflow(
     },
   };
   const nodeExecutor = new LocalNodeExecutor(config, options, workingDir, executionContext);
-  const executionOrder = getWorkflowExecutionOrder(workflowNodes);
-  const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
   if (!options.jsonOutput) {
     console.log(chalk.gray(`Running workflow ${workflowName}...\n`));
   }
 
   try {
-    if (hasWorkflowControlNodes(workflowNodes)) {
-      await runControlWorkflow(workflowNodes, executionOrder, options, context, nodeExecutor);
+    if (hasControl) {
+      if (controlSegments) {
+        const internalSegments: WorkflowSegment[] = controlSegments.map((segment) =>
+          segment.type === 'control'
+            ? { type: 'control', nodeId: segment.nodeId }
+            : {
+                type: 'dag',
+                nodeIds: segment.nodeIds,
+                ...(segment.activeNodeIds ? { activeNodeIds: new Set(segment.activeNodeIds) } : {}),
+              }
+        );
+        await runControlWorkflowFromSegments(
+          workflowNodes,
+          internalSegments,
+          options,
+          context,
+          nodeExecutor
+        );
+      } else {
+        await runControlWorkflow(workflowNodes, executionOrder, options, context, nodeExecutor);
+      }
     } else {
       for (const wave of executionWaves) {
         const settled = await Promise.allSettled(
@@ -3529,7 +3651,7 @@ export async function runWorkflow(
 
   const lastNodeId = executionOrder[executionOrder.length - 1];
   const lastNode = workflowNodes[lastNodeId];
-  const outputKey = workflow.output ?? lastNode.output ?? lastNodeId;
+  const outputKey = workflowOutput ?? lastNode.output ?? lastNodeId;
   const result: WorkflowRunResult = {
     timestamp: new Date().toISOString(),
     workflow: workflowName,

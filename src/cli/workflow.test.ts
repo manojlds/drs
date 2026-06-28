@@ -3,7 +3,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, SUPPORTED_WORKFLOW_ACTIONS, type DRSConfig } from '../lib/config.js';
-import { runWorkflow, listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
+import {
+  runWorkflow,
+  runWorkflowFromCompiledPlan,
+  listWorkflows,
+  showWorkflow,
+  validateWorkflows,
+} from './workflow.js';
+import { compileWorkflowPlan } from '../lib/workflow/compiled-plan.js';
 
 const mocks = vi.hoisted(() => {
   const githubAdapter = {
@@ -4187,6 +4194,150 @@ describe('workflow runner', () => {
       attempted: 1,
       resolved: 0,
     });
+  });
+});
+
+describe('compiled plan execution', () => {
+  it('runs a workflow from a CompiledWorkflowPlan with the same output as runWorkflow', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        release: {
+          inputs: { diff: 'Diff text' },
+          nodes: {
+            summarize: {
+              agent: 'task/summarizer',
+              input: 'Summarize {{inputs.diff}}',
+              output: 'summary',
+            },
+            writeSummary: {
+              action: 'write',
+              needs: ['summarize'],
+              input: 'Summary:\n{{artifacts.summary}}',
+              writes: 'out/summary.md',
+              output: 'written',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const planWorkingDir = process.cwd();
+    const plan = compileWorkflowPlan(config, 'release', { workingDir: planWorkingDir });
+    expect(plan.hasControlNodes).toBe(false);
+    expect(plan.executionOrder).toEqual(['summarize', 'writeSummary']);
+
+    mocks.runAgent.mockImplementation(async (_c, agent: string, options: { prompt?: string }) => ({
+      timestamp: '2026-06-16T00:00:00.000Z',
+      agent,
+      response: `${agent}: ${options.prompt ?? 'prompt'}`,
+      usage: {
+        agent,
+        success: true,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 2,
+        cost: 0,
+        messages: 1,
+      },
+    }));
+
+    const planResult = await runWorkflowFromCompiledPlan(config, plan, {
+      workingDir: planWorkingDir,
+    });
+    expect(planResult.workflow).toBe('release');
+    expect(planResult.output).toBe('Summary:\ntask/summarizer: Summarize Diff text');
+    expect(Object.keys(planResult.nodes).sort()).toEqual(['summarize', 'writeSummary']);
+  });
+
+  it('drives control-flow segments from a compiled plan', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        routed: {
+          inputs: { mode: 'fast' },
+          nodes: {
+            check: {
+              agent: 'task/checker',
+              input: 'checked',
+              output: 'checked',
+            },
+            gate: {
+              control: 'switch',
+              needs: ['check'],
+              value: '{{inputs.mode}}',
+              cases: { fast: 'finished', slow: 'finished' },
+              output: 'routed',
+            },
+            finished: { control: 'end', needs: ['gate'] },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const plan = compileWorkflowPlan(config, 'routed', { workingDir: process.cwd() });
+    expect(plan.hasControlNodes).toBe(true);
+    const controlIds = plan.segments
+      .filter((s) => s.type === 'control')
+      .map((s) => (s.type === 'control' ? s.nodeId : ''));
+    expect(controlIds).toEqual(['gate', 'finished']);
+
+    mocks.runAgent.mockImplementation(async (_c, agent: string, options: { prompt?: string }) => ({
+      timestamp: '2026-06-16T00:00:00.000Z',
+      agent,
+      response: `${agent}: ${options.prompt ?? 'prompt'}`,
+      usage: {
+        agent,
+        success: true,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 2,
+        cost: 0,
+        messages: 1,
+      },
+    }));
+
+    const result = await runWorkflowFromCompiledPlan(config, plan, {
+      workingDir: process.cwd(),
+    });
+    expect(result.workflow).toBe('routed');
+    expect(result.nodes.gate).toMatchObject({ control: 'switch', decision: 'fast' });
+    expect(result.nodes.finished).toMatchObject({ control: 'end' });
+  });
+
+  it('throws when the compiled plan workflow is missing from config', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {},
+    } as unknown as DRSConfig;
+
+    const plan = compileWorkflowPlan(
+      {
+        ...config,
+        workflows: {
+          release: {
+            inputs: { diff: 'Diff text' },
+            nodes: {
+              summarize: {
+                agent: 'task/summarizer',
+                input: 'Summarize {{inputs.diff}}',
+                output: 'summary',
+              },
+            },
+          },
+        },
+      },
+      'release',
+      { workingDir: process.cwd() }
+    );
+
+    await expect(runWorkflowFromCompiledPlan(config, plan)).rejects.toThrow(
+      'Unknown workflow "release".'
+    );
   });
 });
 
