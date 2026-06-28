@@ -74,61 +74,25 @@ import {
   type ReviewFindingState,
   type ReviewArtifactPayload,
 } from '../lib/review-artifact.js';
-import type { AgentRunResult, RunAgentOptions } from './run-agent.js';
+import type { RunAgentOptions } from './run-agent.js';
 import { runAgent } from './run-agent.js';
 import { TraceCollector } from '../lib/trace-collector.js';
 import { renderTraceHtml } from '../lib/trace-html.js';
+import type {
+  WorkflowRunOptions,
+  WorkflowNodeResult,
+  WorkflowLoopState,
+  WorkflowRunResult,
+  WorkflowTemplateContext,
+} from '../lib/workflow/types.js';
 
-export interface WorkflowRunOptions {
-  inputs?: Record<string, string>;
-  inputFiles?: Record<string, string>;
-  outputPath?: string;
-  jsonOutput?: boolean;
-  debug?: boolean;
-  thinkingLevel?: string;
-  workingDir?: string;
-  trace?: boolean;
-}
-
-export interface WorkflowNodeResult {
-  id: string;
-  type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
-  status?: 'success' | 'skipped';
-  agent?: string;
-  agents?: string[];
-  action?: string;
-  control?: string;
-  decision?: string;
-  target?: string;
-  response?: string;
-  responses?: AgentRunResult[];
-  output?: unknown;
-  outputs?: Record<string, unknown>;
-  writes?: string;
-}
-
-export interface WorkflowLoopState {
-  iteration: number;
-  maxIterations: number;
-  lastDecision?: 'loop' | 'exit';
-}
-
-export interface WorkflowRunResult {
-  timestamp: string;
-  workflow: string;
-  inputs: Record<string, string>;
-  nodes: Record<string, WorkflowNodeResult>;
-  artifacts: Record<string, unknown>;
-  loop: Record<string, WorkflowLoopState>;
-  output?: unknown;
-}
-
-interface WorkflowTemplateContext {
-  inputs: Record<string, string>;
-  nodes: Record<string, WorkflowNodeResult>;
-  artifacts: Record<string, unknown>;
-  loop: Record<string, WorkflowLoopState>;
-}
+export type {
+  WorkflowRunOptions,
+  WorkflowNodeResult,
+  WorkflowLoopState,
+  WorkflowRunResult,
+} from '../lib/workflow/types.js';
+export type { WorkflowExecutor } from '../lib/workflow/executor.js';
 
 interface WorkflowExecutionContext {
   gitClients: Map<string, ReturnType<typeof simpleGit>>;
