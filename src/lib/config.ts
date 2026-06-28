@@ -276,6 +276,14 @@ export interface DRSConfig {
     default?: string;
   };
 
+  // Temporal execution backend configuration.
+  temporal?: {
+    address?: string;
+    namespace?: string;
+    taskQueue?: string;
+    workflowIdPrefix?: string;
+  };
+
   /**
    * @deprecated Use `pi` instead. Kept as a compatibility alias for legacy configs.
    */
