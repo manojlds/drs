@@ -26,6 +26,17 @@ export interface RunWorkflowNodeActivityInput {
   node: WorkflowNodeConfig;
   context: WorkflowTemplateContext;
   options?: Pick<WorkflowRunOptions, 'debug' | 'thinkingLevel'>;
+  /**
+   * When true, the activity constructs a LocalWorkflowArtifactStore for the
+   * worker's working directory and offloads large node outputs as refs so
+   * they stay out of Temporal event history.
+   */
+  offloadArtifacts?: boolean;
+  /**
+   * Inline size threshold in bytes. Values larger than this become refs when
+   * offloadArtifacts is true. Defaults to 64KB.
+   */
+  artifactInlineMaxBytes?: number;
 }
 
 export type TemporalWorkflowResult = WorkflowRunResult;

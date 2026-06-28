@@ -8,7 +8,7 @@ import type { WorkflowNodeConfig } from '../lib/config.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
 import type { TemporalWorkflowInput, TemporalWorkflowResult } from './types.js';
 
-const { runWorkflowNodeActivity } = proxyActivities<typeof activities>({
+const { runWorkflowNodeActivity, hydrateContextActivity } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
 });
 
@@ -63,6 +63,14 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   };
 
   for (const wave of plan.waves) {
+    // Hydrate any artifact refs in the context before this wave's nodes
+    // render templates that reference prior artifact values. This runs as an
+    // activity so the worker process can read from the artifact store.
+    await hydrateContextActivity({
+      workingDir: input.workingDir,
+      context,
+    });
+
     const results = await Promise.all(
       wave.map(async (nodeId) => {
         const node = plan.nodes[nodeId];
@@ -81,6 +89,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
           node,
           context,
           options: input.options,
+          offloadArtifacts: true,
         });
         return { nodeId, node, result };
       })
