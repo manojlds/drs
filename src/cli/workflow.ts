@@ -117,6 +117,7 @@ import type {
   CompiledWorkflowPlan,
   CompiledWorkflowSegment,
 } from '../lib/workflow/compiled-plan.js';
+import { getWorkflowInputConfigType } from '../lib/workflow/input.js';
 export {
   compileWorkflowPlan,
   type CompiledWorkflowPlan,
@@ -292,10 +293,6 @@ async function resolveWorkflowInput(
   }
 
   return '';
-}
-
-function getWorkflowInputConfigType(input: WorkflowInputConfig): string {
-  return typeof input === 'string' ? 'string' : (input.type ?? 'string');
 }
 
 function validateResolvedWorkflowInput(

@@ -12,11 +12,13 @@ import {
   hasWorkflowControlNodes,
   splitWorkflowSegments,
 } from './planning.js';
+import { getWorkflowInputConfigType } from './input.js';
 
 /**
- * Workflow node as it appears in a compiled plan: a shallow copy of the
- * WorkflowNodeConfig with optional sources stripped so the value stays a plain
- * JSON object. Every property carries primitive/JSON-friendly values only.
+ * Workflow node as it appears in a compiled plan.
+ *
+ * This is currently an API-facing alias for WorkflowNodeConfig so future plan
+ * schema changes can evolve independently from raw workflow config types.
  */
 export type CompiledWorkflowNode = WorkflowNodeConfig;
 
@@ -94,12 +96,6 @@ export interface CompiledWorkflowPlan {
  */
 export interface CompileWorkflowPlanOptions {
   workingDir?: string;
-}
-
-export function getWorkflowInputConfigType(
-  input: WorkflowInputConfig
-): 'string' | 'boolean' | 'number' | 'enum' {
-  return typeof input === 'string' ? 'string' : (input.type ?? 'string');
 }
 
 function normalizeWorkflowInput(input: WorkflowInputConfig): CompiledWorkflowInput {
