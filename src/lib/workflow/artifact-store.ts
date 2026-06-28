@@ -110,6 +110,23 @@ function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
 }
 
+function slugSegment(value: string, fallback: string): string {
+  const raw = value === undefined || value === '' ? fallback : String(value);
+  const slug = raw
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || fallback;
+}
+
+function sanitizeKey(key: string): string {
+  const segments = key.split('/').map((seg) => slugSegment(seg, 'segment'));
+  if (segments.some((seg) => seg === '..' || seg === '.')) {
+    throw new Error(`Refusing to put artifact with unsafe key: ${key}`);
+  }
+  return segments.join('/');
+}
+
 /**
  * Local filesystem artifact store.
  *
@@ -123,9 +140,10 @@ export class LocalWorkflowArtifactStore implements WorkflowArtifactStore {
 
   constructor(
     private readonly workingDir: string,
-    private readonly namespace = 'default'
+    namespace = 'default'
   ) {
-    this.baseDir = `.drs/artifacts/temporal/${namespace}`;
+    const slug = slugSegment(namespace, 'default');
+    this.baseDir = `.drs/artifacts/temporal/${slug}`;
   }
 
   async put(
@@ -136,7 +154,7 @@ export class LocalWorkflowArtifactStore implements WorkflowArtifactStore {
     const { bytes, contentType } = serialize(value);
     const resolvedContentType = metadata?.contentType ?? contentType;
     const hash = sha256(bytes);
-    const safeKey = key.replace(/[^A-Za-z0-9._/-]+/g, '-');
+    const safeKey = sanitizeKey(key);
     const relativePath = join(this.baseDir, `${safeKey}.json`);
     const fullPath = resolveWithinWorkingDir(this.workingDir, relativePath, 'write');
 
@@ -164,8 +182,9 @@ export class LocalWorkflowArtifactStore implements WorkflowArtifactStore {
       const fullPath = resolveWithinWorkingDir(this.workingDir, ref.uri, 'read');
       await readFile(fullPath);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
     }
   }
 }

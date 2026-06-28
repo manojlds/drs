@@ -142,6 +142,33 @@ describe('artifact store', () => {
         expect(await store.get(ref)).toBe('value');
       });
     });
+
+    describe('path traversal protection', () => {
+      it('rejects keys with .. segments', async () => {
+        const store = new LocalWorkflowArtifactStore(tempDir, 'test');
+        await expect(store.put('../../etc/passwd', 'evil')).rejects.toThrow(/unsafe key/);
+      });
+
+      it('rejects keys with . segments', async () => {
+        const store = new LocalWorkflowArtifactStore(tempDir, 'test');
+        await expect(store.put('./foo', 'evil')).rejects.toThrow(/unsafe key/);
+      });
+
+      it('sanitizes unsafe namespace characters', async () => {
+        const store = new LocalWorkflowArtifactStore(tempDir, '../../etc');
+        const ref = await store.put('safe', 'value');
+        const segments = ref.uri.split('/');
+        expect(segments.some((s) => s === '..' || s === '.')).toBe(false);
+        expect(await store.get(ref)).toBe('value');
+      });
+
+      it('still allows slash-separated keys without .. or .', async () => {
+        const store = new LocalWorkflowArtifactStore(tempDir, 'test');
+        const ref = await store.put('my/nested/key', 'value');
+        expect(ref.uri).toContain('my/nested/key');
+        expect(await store.get(ref)).toBe('value');
+      });
+    });
   });
 
   describe('DEFAULT_ARTIFACT_POLICY', () => {
