@@ -1,4 +1,4 @@
-import type { AgentRunResult } from '../../cli/run-agent.js';
+import type { AgentRunResult } from '../agent-result.js';
 
 export interface WorkflowRunOptions {
   inputs?: Record<string, string>;
