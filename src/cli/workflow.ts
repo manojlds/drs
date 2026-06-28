@@ -85,6 +85,7 @@ import type {
   WorkflowRunResult,
   WorkflowTemplateContext,
 } from '../lib/workflow/types.js';
+import type { NodeExecutor } from '../lib/workflow/node-executor.js';
 
 export type {
   WorkflowRunOptions,
@@ -94,7 +95,6 @@ export type {
 } from '../lib/workflow/types.js';
 export type { WorkflowExecutor } from '../lib/workflow/executor.js';
 export type { NodeExecutor } from '../lib/workflow/node-executor.js';
-import type { NodeExecutor } from '../lib/workflow/node-executor.js';
 import {
   computeActiveWorkflowNodes,
   createSkippedWorkflowNodeResult,
