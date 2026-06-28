@@ -1,7 +1,6 @@
 import type { WorkflowNodeConfig } from '../lib/config.js';
 import type { CompiledWorkflowPlan } from '../lib/workflow/compiled-plan.js';
 import type {
-  WorkflowNodeResult,
   WorkflowRunOptions,
   WorkflowRunResult,
   WorkflowTemplateContext,
@@ -19,21 +18,6 @@ export interface TemporalWorkflowInput {
   inputs: Record<string, string>;
   workingDir: string;
   options?: Pick<WorkflowRunOptions, 'debug' | 'thinkingLevel'>;
-}
-
-export interface TemporalWorkflowDispatchResult {
-  workflowId: string;
-  runId: string;
-}
-
-export interface TemporalWorkflowNoWaitResult extends TemporalWorkflowDispatchResult {
-  timestamp: string;
-  workflow: string;
-  inputs: Record<string, string>;
-  nodes: Record<string, WorkflowNodeResult>;
-  artifacts: Record<string, unknown>;
-  loop: Record<string, never>;
-  output?: unknown;
 }
 
 export interface RunWorkflowNodeActivityInput {
