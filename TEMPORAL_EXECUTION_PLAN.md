@@ -16,11 +16,11 @@ Do not generate TypeScript Temporal workflow source for each DRS workflow. Use o
 
 ## Design Constraints
 
-- [ ] Keep the existing DRS workflow DSL as the source of truth; do not create a second Temporal-specific DSL.
-- [ ] Keep Temporal workflow code deterministic.
-- [ ] Put side effects in activities only.
-- [ ] Run agents, built-in actions, git operations, platform calls, file writes, artifact operations, and Pi runtime calls as activities.
-- [ ] Avoid storing large diffs, review outputs, or model responses directly in Temporal history.
+- [x] Keep the existing DRS workflow DSL as the source of truth; do not create a second Temporal-specific DSL.
+- [x] Keep Temporal workflow code deterministic.
+- [x] Put side effects in activities only.
+- [x] Run agents, built-in actions, git operations, platform calls, file writes, artifact operations, and Pi runtime calls as activities.
+- [x] Avoid storing large diffs, review outputs, or model responses directly in Temporal history.
 - [ ] Treat side-effecting activities as retryable only after idempotency behavior is explicit.
 
 ## Temporal Workflow Responsibilities
@@ -48,11 +48,11 @@ Do not generate TypeScript Temporal workflow source for each DRS workflow. Use o
 
 ## Phase 0: Design Spike
 
-- [ ] Pick Temporal SDK package/version and supported Node runtime.
-- [ ] Define `CompiledWorkflowPlan` with normalized nodes, execution order, waves, segments, output key, input metadata, and workflow source metadata.
-- [ ] Define artifact reference format for large payloads.
-- [ ] Decide MVP workflow set.
-- [ ] Document initial non-goals.
+- [x] Pick Temporal SDK package/version and supported Node runtime.
+- [x] Define `CompiledWorkflowPlan` with normalized nodes, execution order, waves, segments, output key, input metadata, and workflow source metadata.
+- [x] Define artifact reference format for large payloads.
+- [x] Decide MVP workflow set.
+- [x] Document initial non-goals.
 
 Recommended MVP workflows:
 
@@ -71,11 +71,11 @@ Done when: agents can point to a short design note that explains the Temporal ar
 
 ## Phase 1: Executor Abstraction
 
-- [ ] Introduce a `WorkflowExecutor` interface for workflow backends.
-- [ ] Move the current runner into a `LocalWorkflowExecutor` without behavior changes.
-- [ ] Extract deterministic planning helpers from `src/cli/workflow.ts`.
-- [ ] Extract side-effecting node execution behind a `NodeExecutor` boundary.
-- [ ] Preserve current `drs workflow run` behavior as the default local executor.
+- [x] Introduce a `WorkflowExecutor` interface for workflow backends.
+- [x] Move the current runner into a `LocalWorkflowExecutor` without behavior changes.
+- [x] Extract deterministic planning helpers from `src/cli/workflow.ts`.
+- [x] Extract side-effecting node execution behind a `NodeExecutor` boundary.
+- [x] Preserve current `drs workflow run` behavior as the default local executor.
 
 Helpers to extract:
 
@@ -90,23 +90,23 @@ Done when: all existing tests pass and `drs workflow run <name>` is behaviorally
 
 ## Phase 2: Compiled Workflow Plan
 
-- [ ] Add `compileWorkflowPlan(config, workflowName, options)`.
-- [ ] Ensure the compiled plan is JSON-serializable and does not embed process-local objects, clients, or functions.
-- [ ] Include enough data for Temporal workflow code to schedule nodes without loading repo config again.
-- [ ] Add tests for plan stability across packaged and project workflows.
+- [x] Add `compileWorkflowPlan(config, workflowName, options)`.
+- [x] Ensure the compiled plan is JSON-serializable and does not embed process-local objects, clients, or functions.
+- [x] Include enough data for Temporal workflow code to schedule nodes without loading repo config again.
+- [x] Add tests for plan stability across packaged and project workflows.
 - [ ] Consider exposing plan metadata through `drs workflow show --json` or `drs workflow validate --json`.
 
 Done when: local execution can optionally run from `CompiledWorkflowPlan`, and plan tests cover DAG-only and control-flow workflows.
 
 ## Phase 3: Temporal MVP Runner
 
-- [ ] Add Temporal dependencies behind the Temporal executor path.
-- [ ] Add `drs temporal worker` command.
-- [ ] Register one generic Temporal workflow, for example `drsWorkflow`.
-- [ ] Register `runWorkflowNodeActivity`.
-- [ ] Add CLI option: `drs workflow run <name> --executor temporal`.
-- [ ] Support wait-for-result mode by default.
-- [ ] Add `--no-wait` for async dispatch.
+- [x] Add Temporal dependencies behind the Temporal executor path.
+- [x] Add `drs temporal worker` command.
+- [x] Register one generic Temporal workflow, for example `drsWorkflow`.
+- [x] Register `runWorkflowNodeActivity`.
+- [x] Add CLI option: `drs workflow run <name> --executor temporal`.
+- [x] Support wait-for-result mode by default.
+- [x] Add `--no-wait` for async dispatch.
 
 Proposed config fields:
 
@@ -122,12 +122,12 @@ Done when: a read-only workflow runs end-to-end through Temporal and returns the
 
 ## Phase 4: Artifact Store
 
-- [ ] Add `WorkflowArtifactStore` abstraction.
-- [ ] Add local filesystem store for development under `.drs/artifacts/temporal/<workflowId>/...`.
+- [x] Add `WorkflowArtifactStore` abstraction.
+- [x] Add local filesystem store for development under `.drs/artifacts/temporal/<workflowId>/...`.
 - [ ] Add an object-store design for CI/production, preferably S3-compatible.
-- [ ] Add an inline-size threshold so small artifacts can remain in Temporal history and large artifacts become refs.
-- [ ] Hydrate artifact refs when template rendering needs artifact content.
-- [ ] Persist enough metadata to verify artifact integrity with `sha256`.
+- [x] Add an inline-size threshold so small artifacts can remain in Temporal history and large artifacts become refs.
+- [x] Hydrate artifact refs when template rendering needs artifact content.
+- [x] Persist enough metadata to verify artifact integrity with `sha256`.
 
 Suggested ref shape:
 
