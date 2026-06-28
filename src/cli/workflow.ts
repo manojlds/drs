@@ -3542,12 +3542,11 @@ async function executeWorkflowRun(
   controlSegments?: CompiledWorkflowSegment[]
 ): Promise<WorkflowRunResult> {
   const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    throw new Error(`Unknown workflow "${workflowName}".`);
+  }
   const workingDir = options.workingDir ?? process.cwd();
-  const inputs = await resolveWorkflowInputs(
-    workflow ?? { nodes: workflowNodes, inputs: {} },
-    options,
-    workingDir
-  );
+  const inputs = await resolveWorkflowInputs(workflow, options, workingDir);
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const loop: Record<string, WorkflowLoopState> = {};

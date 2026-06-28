@@ -4308,6 +4308,37 @@ describe('compiled plan execution', () => {
     expect(result.nodes.gate).toMatchObject({ control: 'switch', decision: 'fast' });
     expect(result.nodes.finished).toMatchObject({ control: 'end' });
   });
+
+  it('throws when the compiled plan workflow is missing from config', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {},
+    } as unknown as DRSConfig;
+
+    const plan = compileWorkflowPlan(
+      {
+        ...config,
+        workflows: {
+          release: {
+            inputs: { diff: 'Diff text' },
+            nodes: {
+              summarize: {
+                agent: 'task/summarizer',
+                input: 'Summarize {{inputs.diff}}',
+                output: 'summary',
+              },
+            },
+          },
+        },
+      },
+      'release',
+      { workingDir: process.cwd() }
+    );
+
+    await expect(runWorkflowFromCompiledPlan(config, plan)).rejects.toThrow(
+      'Unknown workflow "release".'
+    );
+  });
 });
 
 describe('dispatch ↔ validator drift', () => {
