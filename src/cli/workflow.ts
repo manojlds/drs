@@ -93,6 +93,8 @@ export type {
   WorkflowRunResult,
 } from '../lib/workflow/types.js';
 export type { WorkflowExecutor } from '../lib/workflow/executor.js';
+export type { NodeExecutor } from '../lib/workflow/node-executor.js';
+import type { NodeExecutor } from '../lib/workflow/node-executor.js';
 import {
   computeActiveWorkflowNodes,
   createSkippedWorkflowNodeResult,
@@ -3065,14 +3067,12 @@ function recordWorkflowNodeResult(
 }
 
 async function runWorkflowDagSegment(
-  config: DRSConfig,
   workflowNodes: Record<string, WorkflowNodeConfig>,
   nodeIds: string[],
   activeNodeIds: Set<string> | undefined,
   options: WorkflowRunOptions,
-  workingDir: string,
   context: WorkflowTemplateContext,
-  executionContext: WorkflowExecutionContext
+  nodeExecutor: NodeExecutor
 ): Promise<void> {
   const completed = new Set<string>();
   const segmentNodeIds = new Set(nodeIds);
@@ -3117,15 +3117,7 @@ async function runWorkflowDagSegment(
         }
 
         logWorkflowNodeRunning(nodeId, options);
-        const result = await runSingleWorkflowNode(
-          config,
-          nodeId,
-          node,
-          options,
-          workingDir,
-          context,
-          executionContext
-        );
+        const result = await nodeExecutor.runNode(nodeId, node, context);
         return { nodeId, node, result };
       })
     );
@@ -3281,13 +3273,11 @@ function runControlWorkflowNode(
 }
 
 async function runControlWorkflow(
-  config: DRSConfig,
   workflowNodes: Record<string, WorkflowNodeConfig>,
   executionOrder: string[],
   options: WorkflowRunOptions,
-  workingDir: string,
   context: WorkflowTemplateContext,
-  executionContext: WorkflowExecutionContext
+  nodeExecutor: NodeExecutor
 ): Promise<void> {
   const segments = splitWorkflowSegments(workflowNodes, executionOrder);
   let segmentIndex = 0;
@@ -3296,14 +3286,12 @@ async function runControlWorkflow(
     const segment = segments[segmentIndex];
     if (segment.type === 'dag') {
       await runWorkflowDagSegment(
-        config,
         workflowNodes,
         segment.nodeIds,
         segment.activeNodeIds,
         options,
-        workingDir,
         context,
-        executionContext
+        nodeExecutor
       );
       segmentIndex += 1;
       continue;
@@ -3404,6 +3392,39 @@ async function runSingleWorkflowNode(
   );
 }
 
+/**
+ * In-process {@link NodeExecutor} that dispatches a single non-control node
+ * to the existing side-effecting runner functions. Constructed once per
+ * workflow run so git/platform clients and locks are shared across nodes.
+ *
+ * The Temporal executor will provide its own NodeExecutor whose `runNode`
+ * schedules a Temporal activity instead of executing in-process.
+ */
+class LocalNodeExecutor implements NodeExecutor {
+  constructor(
+    private readonly config: DRSConfig,
+    private readonly options: WorkflowRunOptions,
+    private readonly workingDir: string,
+    private readonly executionContext: WorkflowExecutionContext
+  ) {}
+
+  async runNode(
+    nodeId: string,
+    node: WorkflowNodeConfig,
+    context: WorkflowTemplateContext
+  ): Promise<WorkflowNodeResult> {
+    return runSingleWorkflowNode(
+      this.config,
+      nodeId,
+      node,
+      this.options,
+      this.workingDir,
+      context,
+      this.executionContext
+    );
+  }
+}
+
 export async function runWorkflow(
   config: DRSConfig,
   workflowName: string,
@@ -3430,6 +3451,7 @@ export async function runWorkflow(
       console: createWorkflowLock(),
     },
   };
+  const nodeExecutor = new LocalNodeExecutor(config, options, workingDir, executionContext);
   const executionOrder = getWorkflowExecutionOrder(workflowNodes);
   const executionWaves = getWorkflowExecutionWaves(workflowNodes, executionOrder);
 
@@ -3439,15 +3461,7 @@ export async function runWorkflow(
 
   try {
     if (hasWorkflowControlNodes(workflowNodes)) {
-      await runControlWorkflow(
-        config,
-        workflowNodes,
-        executionOrder,
-        options,
-        workingDir,
-        context,
-        executionContext
-      );
+      await runControlWorkflow(workflowNodes, executionOrder, options, context, nodeExecutor);
     } else {
       for (const wave of executionWaves) {
         const settled = await Promise.allSettled(
@@ -3464,15 +3478,7 @@ export async function runWorkflow(
             }
 
             logWorkflowNodeRunning(nodeId, options);
-            const result = await runSingleWorkflowNode(
-              config,
-              nodeId,
-              node,
-              options,
-              workingDir,
-              context,
-              executionContext
-            );
+            const result = await nodeExecutor.runNode(nodeId, node, context);
             return { nodeId, node, result };
           })
         );
