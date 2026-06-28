@@ -9,7 +9,8 @@ import {
 import { requireAgentId } from '../lib/agent-id.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { applyUsageMessage, createAgentUsageSummary } from '../lib/review-usage.js';
-import type { AgentUsageSummary } from '../lib/review-usage.js';
+import type { AgentRunResult } from '../lib/agent-result.js';
+export type { AgentRunResult } from '../lib/agent-result.js';
 import { getLogger } from '../lib/logger.js';
 import { getAgent } from '../runtime/agent-loader.js';
 import { createRuntimeClientInstance, type Session } from '../runtime/client.js';
@@ -29,13 +30,6 @@ export interface RunAgentOptions {
   allowImplicitStdin?: boolean;
   ignoreConfiguredOutput?: boolean;
   traceCollector?: TraceCollector;
-}
-
-export interface AgentRunResult {
-  timestamp: string;
-  agent: string;
-  response: string;
-  usage: AgentUsageSummary;
 }
 
 async function readStdin(): Promise<string> {
