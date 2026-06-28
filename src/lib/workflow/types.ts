@@ -9,6 +9,7 @@ export interface WorkflowRunOptions {
   thinkingLevel?: string;
   workingDir?: string;
   trace?: boolean;
+  wait?: boolean;
 }
 
 export interface WorkflowNodeResult {

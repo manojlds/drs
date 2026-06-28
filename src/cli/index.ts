@@ -6,15 +6,12 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import {
-  listWorkflows,
-  showWorkflow,
-  validateWorkflows,
-  LocalWorkflowExecutor,
-} from './workflow.js';
+import { listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { loadConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
+import { runTemporalWorker } from '../temporal/worker.js';
+import { createWorkflowExecutor } from './workflow-executor-selection.js';
 import { config as loadDotenv } from 'dotenv';
 
 // Load environment variables from .env in current working directory (if present)
@@ -128,6 +125,8 @@ workflowCommand
   .option('--input-file <key=path>', 'Read workflow input value from a file', collectOption, [])
   .option('-o, --output <path>', 'Write workflow result JSON to a file')
   .option('--json', 'Output workflow result as JSON to console')
+  .option('--executor <executor>', 'Workflow executor: local or temporal', 'local')
+  .option('--no-wait', 'Dispatch Temporal workflow and return immediately')
   .option('--debug', 'Print Pi runtime configuration for debugging')
   .option('--trace', 'Collect agent traces and save as trace artifact + HTML viewer')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
@@ -151,7 +150,10 @@ workflowCommand
         throw new Error('Provide a workflow name or set workflow.default in .drs/drs.config.yaml.');
       }
 
-      const executor: WorkflowExecutor = new LocalWorkflowExecutor();
+      const executor: WorkflowExecutor = createWorkflowExecutor(
+        String(options.executor ?? 'local'),
+        options.wait !== false
+      );
       await executor.run(config, workflowName, {
         inputs: parseKeyValueOptions(options.input, '--input'),
         inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),
@@ -160,6 +162,7 @@ workflowCommand
         debug: options.debug ?? false,
         trace: options.trace ?? false,
         thinkingLevel,
+        wait: options.wait !== false,
         workingDir: process.cwd(),
       });
       process.exit(0);
@@ -227,7 +230,30 @@ workflowCommand
     }
   });
 
+const temporalCommand = new Command('temporal').description('Run Temporal workflow workers');
+
+temporalCommand
+  .command('worker')
+  .description('Run a Temporal worker for DRS workflows')
+  .option('--debug', 'Print debug logs')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .action(async (options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'error',
+        format: (options.logFormat as LogFormat) ?? 'human',
+        timestamps: options.logFormat === 'json',
+      });
+      const config = loadConfig(process.cwd());
+      await runTemporalWorker(config);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
 program.addCommand(workflowCommand);
+program.addCommand(temporalCommand);
 
 program
   .command('list-agents')

@@ -519,6 +519,36 @@ workflow:
 
 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the full workflow configuration reference.
 
+### Temporal Execution (Experimental)
+
+DRS can dispatch DAG-only workflows through Temporal. The workflow YAML remains the source of truth; DRS compiles it to a JSON plan, runs deterministic scheduling in a generic Temporal workflow, and executes workflow nodes as Temporal activities.
+
+Configure Temporal in `.drs/drs.config.yaml` when the defaults do not match your environment:
+
+```yaml
+temporal:
+  address: localhost:7233
+  namespace: default
+  taskQueue: drs-workflows
+  workflowIdPrefix: drs
+```
+
+Start a worker in the repository where node activities should execute:
+
+```bash
+drs temporal worker
+```
+
+Run a supported DAG-only workflow through Temporal:
+
+```bash
+drs workflow run local-review --executor temporal
+drs workflow run github-pr-show-changes --executor temporal --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run local-review --executor temporal --no-wait
+```
+
+Temporal mode is experimental. The MVP supports DAG-only workflows; DRS control-flow nodes (`loop`, `switch`, `passThrough`, `end`), artifact-reference storage for large payloads, and side-effect idempotency hardening are planned follow-up phases. See [TEMPORAL_EXECUTION_PLAN.md](TEMPORAL_EXECUTION_PLAN.md) for the rollout plan.
+
 ### Configure Review Behavior
 
 Edit `.drs/drs.config.yaml`:
