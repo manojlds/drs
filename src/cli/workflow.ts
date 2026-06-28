@@ -94,6 +94,7 @@ export type {
   WorkflowRunResult,
 } from '../lib/workflow/types.js';
 export type { WorkflowExecutor } from '../lib/workflow/executor.js';
+import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 export type { NodeExecutor } from '../lib/workflow/node-executor.js';
 import {
   computeActiveWorkflowNodes,
@@ -3861,4 +3862,20 @@ export function validateWorkflows(
   console.log('');
 
   return results;
+}
+
+/**
+ * Default in-process {@link WorkflowExecutor}. Delegates to {@link runWorkflow}.
+ *
+ * The Temporal executor will implement the same interface so `drs workflow run`
+ * can dispatch through either backend once `--executor temporal` is added.
+ */
+export class LocalWorkflowExecutor implements WorkflowExecutor {
+  async run(
+    config: DRSConfig,
+    workflowName: string,
+    options: WorkflowRunOptions = {}
+  ): Promise<WorkflowRunResult> {
+    return runWorkflow(config, workflowName, options);
+  }
 }

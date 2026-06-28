@@ -6,7 +6,13 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import { runWorkflow, listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
+import {
+  listWorkflows,
+  showWorkflow,
+  validateWorkflows,
+  LocalWorkflowExecutor,
+} from './workflow.js';
+import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { loadConfig } from '../lib/config.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { config as loadDotenv } from 'dotenv';
@@ -145,7 +151,8 @@ workflowCommand
         throw new Error('Provide a workflow name or set workflow.default in .drs/drs.config.yaml.');
       }
 
-      await runWorkflow(config, workflowName, {
+      const executor: WorkflowExecutor = new LocalWorkflowExecutor();
+      await executor.run(config, workflowName, {
         inputs: parseKeyValueOptions(options.input, '--input'),
         inputFiles: parseKeyValueOptions(options.inputFile, '--input-file'),
         outputPath: options.output,
