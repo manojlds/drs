@@ -3463,6 +3463,34 @@ class LocalNodeExecutor implements NodeExecutor {
   }
 }
 
+export async function runWorkflowNodeLocally(
+  config: DRSConfig,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  options: WorkflowRunOptions,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const executionContext: WorkflowExecutionContext = {
+    gitClients: new Map(),
+    platformClients: {},
+    traceCollector: options.trace ? new TraceCollector() : undefined,
+    locks: {
+      exit: createWorkflowLock(),
+      console: createWorkflowLock(),
+    },
+  };
+  return runSingleWorkflowNode(
+    config,
+    nodeId,
+    node,
+    options,
+    workingDir,
+    context,
+    executionContext
+  );
+}
+
 export async function runWorkflow(
   config: DRSConfig,
   workflowName: string,
