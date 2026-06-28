@@ -66,10 +66,13 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
     // Hydrate any artifact refs in the context before this wave's nodes
     // render templates that reference prior artifact values. This runs as an
     // activity so the worker process can read from the artifact store.
-    await hydrateContextActivity({
+    // Activities receive a copy of the input, so we merge the returned
+    // hydrated artifacts back into the workflow-owned context.
+    const hydrated = await hydrateContextActivity({
       workingDir: input.workingDir,
       context,
     });
+    Object.assign(context.artifacts, hydrated.artifacts);
 
     const results = await Promise.all(
       wave.map(async (nodeId) => {

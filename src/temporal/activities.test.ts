@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runWorkflowNodeActivity, hydrateContextActivity } from './activities.js';
+import { runWorkflowNodeActivity, hydrateContextActivity, hydrateContext } from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
@@ -150,7 +150,7 @@ describe('hydrateContextActivity', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('hydrates artifact refs in context artifacts in-place', async () => {
+  it('returns hydrated artifact refs without mutating input', async () => {
     const store = new LocalWorkflowArtifactStore(tempDir, 'temporal');
     const originalValue = 'large content';
     const ref = await store.put('node-output', originalValue);
@@ -162,8 +162,9 @@ describe('hydrateContextActivity', () => {
       loop: {},
     };
 
-    await hydrateContextActivity({ workingDir: tempDir, context });
-    expect(context.artifacts['review']).toBe(originalValue);
+    const hydrated = await hydrateContextActivity({ workingDir: tempDir, context });
+    expect(hydrated.artifacts['review']).toBe(originalValue);
+    expect(context.artifacts['review']).toBe(ref);
   });
 
   it('leaves non-ref artifacts unchanged', async () => {
@@ -174,8 +175,38 @@ describe('hydrateContextActivity', () => {
       loop: {},
     };
 
-    await hydrateContextActivity({ workingDir: tempDir, context });
-    expect(context.artifacts['count']).toBe(42);
-    expect(context.artifacts['name']).toBe('test');
+    const hydrated = await hydrateContextActivity({ workingDir: tempDir, context });
+    expect(hydrated.artifacts['count']).toBe(42);
+    expect(hydrated.artifacts['name']).toBe('test');
+  });
+});
+
+describe('hydrateContext', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'drs-hydrate-ctx-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('hydrates artifact refs in-place', async () => {
+    const store = new LocalWorkflowArtifactStore(tempDir, 'temporal');
+    const originalValue = 'hydrated value';
+    const ref = await store.put('artifact', originalValue);
+
+    const context: Record<string, unknown> = { artifact: ref };
+    await hydrateContext(context, store);
+    expect(context['artifact']).toBe(originalValue);
+  });
+
+  it('leaves non-ref values unchanged', async () => {
+    const store = new LocalWorkflowArtifactStore(tempDir, 'temporal');
+    const context: Record<string, unknown> = { count: 7, text: 'hello' };
+    await hydrateContext(context, store);
+    expect(context['count']).toBe(7);
+    expect(context['text']).toBe('hello');
   });
 });

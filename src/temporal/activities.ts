@@ -27,6 +27,13 @@ export async function runWorkflowNodeActivity(
   input: RunWorkflowNodeActivityInput
 ): Promise<WorkflowNodeResult> {
   const config = loadConfig(input.workingDir);
+
+  // Hydrate artifact refs in the node context so template rendering can
+  // access actual artifact values. The workflow passes hydrated artifacts,
+  // but hydrating here makes the activity resilient when called directly.
+  const store = new LocalWorkflowArtifactStore(input.workingDir, input.nodeId);
+  await hydrateContext(input.context.artifacts, store);
+
   const result = await runWorkflowNodeLocally(
     config,
     input.nodeId,
@@ -50,7 +57,6 @@ export async function runWorkflowNodeActivity(
     mode: 'ref-large-values',
     inlineMaxBytes: input.artifactInlineMaxBytes ?? 64 * 1024,
   };
-  const store = new LocalWorkflowArtifactStore(input.workingDir, input.nodeId);
 
   return offloadNodeResult(result, input.nodeId, store, policy);
 }
@@ -107,28 +113,29 @@ async function offloadNodeResult(
 }
 
 /**
- * Hydrate artifact refs within a template context in-place. Called by the
- * Temporal workflow before each wave so node template rendering can access
- * prior artifact values.
+ * Hydrate artifact refs within a template context. Called by the Temporal
+ * workflow before each wave so node template rendering can access prior
+ * artifact values. Returns a new context because activities receive a
+ * deserialized copy of the workflow's input; mutations do not propagate back.
  */
-export async function hydrateContextActivity(input: HydrateContextActivityInput): Promise<void> {
+export async function hydrateContextActivity(
+  input: HydrateContextActivityInput
+): Promise<WorkflowTemplateContext> {
   const store = new LocalWorkflowArtifactStore(input.workingDir, 'temporal');
-  for (const value of Object.values(input.context.artifacts)) {
-    if (isArtifactRef(value)) {
-      // Mutating the context in-place is intentional: the workflow passes the
-      // same context object to subsequent activities, and hydrated values must
-      // persist across waves.
-      // Note: we hydrate into a copy to avoid mutating the workflow-owned object
-      // directly, but since Temporal activities receive a deserialized copy
-      // anyway, we return the hydrated artifacts for the workflow to merge.
-    }
-  }
-  // Hydrate artifacts that are refs
+  const hydratedArtifacts: Record<string, unknown> = {};
+
   for (const [key, value] of Object.entries(input.context.artifacts)) {
     if (isArtifactRef(value)) {
-      input.context.artifacts[key] = await store.get(value);
+      hydratedArtifacts[key] = await store.get(value);
+    } else {
+      hydratedArtifacts[key] = value;
     }
   }
+
+  return {
+    ...input.context,
+    artifacts: hydratedArtifacts,
+  };
 }
 
 /**
