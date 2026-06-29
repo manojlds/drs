@@ -62,6 +62,7 @@ export interface TemporalWorkflowStatusQueryResult {
   workflow: string;
   workflowId: string;
   runId: string;
+  cancelled: boolean;
   nodes: Record<string, TemporalWorkflowNodeStatusSnapshot>;
   runningNodeIds: string[];
   completedNodeIds: string[];

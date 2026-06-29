@@ -19,6 +19,7 @@ const temporalMocks = vi.hoisted(() => {
 
 vi.mock('@temporalio/workflow', () => ({
   defineQuery: (name: string) => name,
+  isCancellation: (error: unknown) => error instanceof Error && error.name === 'CancelledFailure',
   proxyActivities: (options: { retry?: { maximumAttempts?: number } } = {}) => ({
     runWorkflowNodeActivity:
       options.retry?.maximumAttempts === 1
@@ -466,6 +467,7 @@ describe('drsWorkflow control-flow execution', () => {
       workflow: 'statusFlow',
       workflowId: 'workflow-1',
       runId: 'run-1',
+      cancelled: false,
       runningNodeIds: ['diff'],
       completedNodeIds: [],
       nodes: {
@@ -480,8 +482,70 @@ describe('drsWorkflow control-flow execution', () => {
     expect(query?.()).toMatchObject({
       runningNodeIds: [],
       completedNodeIds: ['diff'],
+      cancelled: false,
       nodes: {
         diff: { id: 'diff', status: 'success' },
+      },
+    } satisfies Partial<TemporalWorkflowStatusQueryResult>);
+  });
+
+  it('marks workflow status as cancelled and clears running nodes when activity cancellation propagates', async () => {
+    let rejectActivity: ((error: Error) => void) | undefined;
+    let activityStarted: (() => void) | undefined;
+    const activityStartedPromise = new Promise<void>((resolve) => {
+      activityStarted = resolve;
+    });
+    temporalMocks.runWorkflowNodeActivity.mockImplementation(async () => {
+      activityStarted?.();
+      await new Promise<void>((_resolve, reject) => {
+        rejectActivity = reject;
+      });
+    });
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'cancelFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'diff',
+        inputs: {},
+        nodes: {
+          diff: { action: 'git-diff', output: 'diff' },
+        },
+        executionOrder: ['diff'],
+        waves: [['diff']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'diff',
+      },
+    };
+
+    const workflowPromise = drsWorkflow(input);
+    await activityStartedPromise;
+
+    const query = temporalMocks.queryHandlers.get(workflowStatusQuery);
+    expect(query?.()).toMatchObject({
+      cancelled: false,
+      runningNodeIds: ['diff'],
+      nodes: {
+        diff: { id: 'diff', status: 'running' },
+      },
+    } satisfies Partial<TemporalWorkflowStatusQueryResult>);
+
+    const cancellation = new Error('cancelled');
+    cancellation.name = 'CancelledFailure';
+    rejectActivity?.(cancellation);
+
+    await expect(workflowPromise).rejects.toThrow('cancelled');
+    expect(query?.()).toMatchObject({
+      cancelled: true,
+      runningNodeIds: [],
+      completedNodeIds: [],
+      nodes: {
+        diff: { id: 'diff', status: 'pending' },
       },
     } satisfies Partial<TemporalWorkflowStatusQueryResult>);
   });
