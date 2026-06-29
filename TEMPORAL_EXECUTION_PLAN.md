@@ -21,7 +21,7 @@ Do not generate TypeScript Temporal workflow source for each DRS workflow. Use o
 - [x] Put side effects in activities only.
 - [x] Run agents, built-in actions, git operations, platform calls, file writes, artifact operations, and Pi runtime calls as activities.
 - [x] Avoid storing large diffs, review outputs, or model responses directly in Temporal history.
-- [ ] Treat side-effecting activities as retryable only after idempotency behavior is explicit.
+- [x] Treat side-effecting activities as retryable only after idempotency behavior is explicit.
 
 ## Temporal Workflow Responsibilities
 
@@ -159,11 +159,11 @@ Done when: workflows with DRS control nodes execute correctly in Temporal with t
 
 - [x] Add activity idempotency context.
 - [x] Define retry policies per node/action kind.
-- [ ] Audit side-effecting actions for retry safety.
+- [x] Audit side-effecting actions for retry safety.
 - [x] Make comment-posting actions marker/fingerprint based so retries update or reuse comments instead of duplicating them.
-- [ ] Make change-request creation reuse existing branches/PRs/MRs on retry.
-- [ ] Define safe behavior for git commits created before an activity failure.
-- [ ] Add retry-after-side-effect tests.
+- [x] Make change-request creation reuse existing branches/PRs/MRs on retry.
+- [x] Define safe behavior for git commits created before an activity failure.
+- [x] Add retry-after-side-effect tests.
 
 Activity idempotency context:
 
@@ -189,6 +189,13 @@ Actions requiring explicit audit:
 - `create-change-request`
 - `create-pr`
 - `create-mr`
+
+Audit outcome:
+
+- Temporal schedules non-idempotent side effects (`write`, git mutation actions, review artifact mutations, and platform posting/creation actions) with `maximumAttempts: 1` until each action has explicit replay-safe semantics.
+- Comment posting actions use explicit markers or the Temporal idempotency key as the fallback marker so reruns update an existing comment instead of creating duplicates.
+- Change-request creation reuses an existing PR/MR for the same source and target branches before creating one, and re-checks for an existing PR/MR if creation fails after the remote side effect succeeds.
+- Git commit and push actions are not retried by Temporal. If a commit or push succeeds and a later failure is observed, the workflow surfaces the failure instead of attempting to create another commit or repeat the push.
 
 Done when: Temporal retries cannot duplicate comments, commits, PRs, or MRs for supported workflows.
 
