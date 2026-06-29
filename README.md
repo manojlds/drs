@@ -539,7 +539,7 @@ Start a worker in the repository where node activities should execute:
 drs temporal worker
 ```
 
-Run a supported DAG-only workflow through Temporal:
+Run a supported workflow through Temporal:
 
 ```bash
 drs workflow run local-review --executor temporal
@@ -547,7 +547,15 @@ drs workflow run github-pr-show-changes --executor temporal --input owner=octoca
 drs workflow run local-review --executor temporal --no-wait
 ```
 
-Temporal mode is experimental. The MVP supports DAG-only workflows; DRS control-flow nodes (`loop`, `switch`, `passThrough`, `end`), artifact-reference storage for large payloads, and side-effect idempotency hardening are planned follow-up phases. See [TEMPORAL_EXECUTION_PLAN.md](TEMPORAL_EXECUTION_PLAN.md) for the rollout plan.
+For a safe local smoke test that does not require model or platform credentials, run the packaged control-flow workflow:
+
+```bash
+drs workflow run temporal-control-smoke --executor temporal --input mode=loop
+drs workflow run temporal-control-smoke --executor temporal --input mode=pass
+drs workflow run temporal-control-smoke --executor temporal --input mode=end
+```
+
+Temporal mode is experimental. It supports DAG workflows and DRS control-flow nodes (`loop`, `switch`, `passThrough`, `end`). Side-effect idempotency hardening remains a planned follow-up phase. See [TEMPORAL_EXECUTION_PLAN.md](TEMPORAL_EXECUTION_PLAN.md) for the rollout plan.
 
 ### Configure Review Behavior
 
