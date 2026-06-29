@@ -1,4 +1,10 @@
-import { defineQuery, proxyActivities, setHandler, workflowInfo } from '@temporalio/workflow';
+import {
+  defineQuery,
+  isCancellation,
+  proxyActivities,
+  setHandler,
+  workflowInfo,
+} from '@temporalio/workflow';
 import type * as activities from './activities.js';
 import {
   computeActiveWorkflowNodes,
@@ -88,7 +94,8 @@ function isTemporalArtifactRef(
 function buildWorkflowStatusSnapshot(
   input: TemporalWorkflowInput,
   context: WorkflowTemplateContext,
-  runningNodeIds: Set<string>
+  runningNodeIds: Set<string>,
+  isCancelled: boolean
 ): TemporalWorkflowStatusQueryResult {
   const nodes: TemporalWorkflowStatusQueryResult['nodes'] = {};
 
@@ -108,6 +115,7 @@ function buildWorkflowStatusSnapshot(
     workflow: input.plan.workflowName,
     workflowId: info.workflowId,
     runId: info.runId,
+    cancelled: isCancelled,
     nodes,
     runningNodeIds: [...runningNodeIds],
     completedNodeIds: Object.keys(context.nodes),
@@ -335,6 +343,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const runningNodeIds = new Set<string>();
+  let isCancelled = false;
   const context: WorkflowTemplateContext = {
     inputs: input.inputs,
     nodes,
@@ -343,15 +352,23 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   };
 
   setHandler(workflowStatusQuery, () =>
-    buildWorkflowStatusSnapshot(input, context, runningNodeIds)
+    buildWorkflowStatusSnapshot(input, context, runningNodeIds, isCancelled)
   );
   setHandler(workflowLoopStateQuery, () => context.loop);
   setHandler(workflowArtifactsQuery, () => buildArtifactsSnapshot(context));
 
-  if (plan.hasControlNodes) {
-    await runTemporalControlWorkflow(input, context, runningNodeIds);
-  } else {
-    await runTemporalDagWorkflow(input, context, runningNodeIds);
+  try {
+    if (plan.hasControlNodes) {
+      await runTemporalControlWorkflow(input, context, runningNodeIds);
+    } else {
+      await runTemporalDagWorkflow(input, context, runningNodeIds);
+    }
+  } catch (error) {
+    if (isCancellation(error)) {
+      isCancelled = true;
+      runningNodeIds.clear();
+    }
+    throw error;
   }
 
   const lastNode = plan.nodes[plan.lastNodeId];
