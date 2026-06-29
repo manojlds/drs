@@ -521,7 +521,7 @@ See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for the full workflow configuration r
 
 ### Temporal Execution (Experimental)
 
-DRS can dispatch DAG-only workflows through Temporal. The workflow YAML remains the source of truth; DRS compiles it to a JSON plan, runs deterministic scheduling in a generic Temporal workflow, and executes workflow nodes as Temporal activities.
+DRS can dispatch workflows through Temporal. The workflow YAML remains the source of truth; DRS compiles it to a JSON plan, runs deterministic scheduling in a generic Temporal workflow, and executes workflow nodes as Temporal activities.
 
 Configure Temporal in `.drs/drs.config.yaml` when the defaults do not match your environment:
 
@@ -545,6 +545,7 @@ Run a supported workflow through Temporal:
 drs workflow run local-review --executor temporal
 drs workflow run github-pr-show-changes --executor temporal --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run local-review --executor temporal --no-wait
+drs workflow run local-review --executor temporal --trace
 ```
 
 For a safe local smoke test that does not require model or platform credentials, run the packaged control-flow workflow:
@@ -555,7 +556,7 @@ drs workflow run temporal-control-smoke --executor temporal --input mode=pass
 drs workflow run temporal-control-smoke --executor temporal --input mode=end
 ```
 
-Temporal mode is experimental. It supports DAG workflows and DRS control-flow nodes (`loop`, `switch`, `passThrough`, `end`). Side-effect idempotency hardening remains a planned follow-up phase. See [TEMPORAL_EXECUTION_PLAN.md](TEMPORAL_EXECUTION_PLAN.md) for the rollout plan.
+Temporal mode is experimental. It supports DAG workflows and DRS control-flow nodes (`loop`, `switch`, `passThrough`, `end`), structured logs, workflow queries, cancellation state, trace artifacts, and side-effect retry safeguards. See [docs/TEMPORAL.md](docs/TEMPORAL.md) for worker deployment, Temporal UI troubleshooting, and opt-in smoke coverage. See [TEMPORAL_EXECUTION_PLAN.md](TEMPORAL_EXECUTION_PLAN.md) for the rollout plan.
 
 ### Configure Review Behavior
 

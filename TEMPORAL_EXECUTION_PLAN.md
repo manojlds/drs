@@ -201,13 +201,13 @@ Done when: Temporal retries cannot duplicate comments, commits, PRs, or MRs for 
 
 ## Phase 7: Production Hardening
 
-- [ ] Add worker deployment docs.
-- [ ] Add Temporal UI troubleshooting docs.
+- [x] Add worker deployment docs.
+- [x] Add Temporal UI troubleshooting docs.
 - [x] Add workflow queries for current node status, loop state, and artifact refs.
 - [x] Add cancellation handling.
 - [x] Integrate Temporal execution with existing DRS trace artifacts.
 - [x] Add structured logs that include workflow id, run id, node id, and activity attempt.
-- [ ] Add CI coverage with a local Temporal test server if feasible.
+- [x] Add CI coverage with a local Temporal test server if feasible.
 
 Done when: Temporal mode is documented, inspectable, and safe enough for real repository workflows.
 
