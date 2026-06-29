@@ -11,6 +11,7 @@ import {
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
+import { configureLogger } from '../lib/logger.js';
 
 vi.mock('../cli/workflow.js', () => ({
   runWorkflowNodeLocally: vi.fn(),
@@ -145,6 +146,10 @@ describe('activities artifact offloading', () => {
 });
 
 describe('resolveActivityIdempotencyContext', () => {
+  afterEach(() => {
+    configureLogger({ level: 'info', format: 'human', timestamps: false, colors: false });
+  });
+
   it('returns undefined when no scheduled idempotency context is present', () => {
     const input: RunWorkflowNodeActivityInput = {
       workingDir: '/repo',
@@ -231,6 +236,61 @@ describe('resolveActivityIdempotencyContext', () => {
       '/repo',
       input.context
     );
+  });
+
+  it('logs Temporal activity context for node execution', async () => {
+    configureLogger({ level: 'debug', format: 'json', timestamps: true, colors: false });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const nodeResult = { id: 'test', type: 'action' as const, action: 'git-diff', output: 'diff' };
+    vi.mocked(runWorkflowNodeLocally).mockResolvedValue(nodeResult);
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'test',
+      node: { action: 'git-diff' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+      idempotencyContext: {
+        workflowId: 'workflow-1',
+        runId: 'run-1',
+        nodeId: 'test',
+        attempt: 2,
+        idempotencyKey: 'workflow-1:run-1:test',
+      },
+    };
+
+    try {
+      await runWorkflowNodeActivity(input);
+
+      const entries = logSpy.mock.calls.map(([line]) => JSON.parse(String(line)));
+      expect(entries).toEqual([
+        expect.objectContaining({
+          level: 'debug',
+          message: 'Temporal activity started',
+          context: expect.objectContaining({
+            component: 'temporal-activity',
+            workflowId: 'workflow-1',
+            runId: 'run-1',
+            nodeId: 'test',
+            attempt: 2,
+            action: 'git-diff',
+          }),
+        }),
+        expect.objectContaining({
+          level: 'debug',
+          message: 'Temporal activity completed',
+          context: expect.objectContaining({
+            component: 'temporal-activity',
+            workflowId: 'workflow-1',
+            runId: 'run-1',
+            nodeId: 'test',
+            attempt: 2,
+            action: 'git-diff',
+          }),
+          data: expect.objectContaining({ status: 'success' }),
+        }),
+      ]);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });
 

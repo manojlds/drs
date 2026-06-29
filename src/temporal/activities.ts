@@ -1,6 +1,7 @@
 import { Context } from '@temporalio/activity';
 import { loadConfig } from '../lib/config.js';
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
+import { getLogger } from '../lib/logger.js';
 import {
   type ArtifactInliningPolicy,
   isArtifactRef,
@@ -52,39 +53,63 @@ export async function runWorkflowNodeActivity(
 ): Promise<WorkflowNodeResult> {
   const config = loadConfig(input.workingDir);
   const idempotencyContext = resolveActivityIdempotencyContext(input);
+  const startedAt = Date.now();
+  const logContext = {
+    component: 'temporal-activity',
+    workflowId: idempotencyContext?.workflowId,
+    runId: idempotencyContext?.runId,
+    nodeId: input.nodeId,
+    attempt: idempotencyContext?.attempt,
+    action: input.node.action,
+    agent: input.node.agent,
+  };
+  const logger = getLogger();
+
+  logger.debug('Temporal activity started', logContext);
 
   // Hydrate artifact refs in the node context so template rendering can
   // access actual artifact values. The workflow passes hydrated artifacts,
   // but hydrating here makes the activity resilient when called directly.
   const store = new LocalWorkflowArtifactStore(input.workingDir, input.nodeId);
-  await hydrateContext(input.context.artifacts, store);
+  try {
+    await hydrateContext(input.context.artifacts, store);
 
-  const result = await runWorkflowNodeLocally(
-    config,
-    input.nodeId,
-    input.node,
-    {
-      debug: input.options?.debug,
-      thinkingLevel: input.options?.thinkingLevel,
-      idempotencyContext,
-      workingDir: input.workingDir,
-      jsonOutput: true,
-      trace: false,
-    },
-    input.workingDir,
-    input.context
-  );
+    const result = await runWorkflowNodeLocally(
+      config,
+      input.nodeId,
+      input.node,
+      {
+        debug: input.options?.debug,
+        thinkingLevel: input.options?.thinkingLevel,
+        idempotencyContext,
+        workingDir: input.workingDir,
+        jsonOutput: true,
+        trace: false,
+      },
+      input.workingDir,
+      input.context
+    );
 
-  if (!input.offloadArtifacts) {
-    return result;
+    const finalResult = input.offloadArtifacts
+      ? await offloadNodeResult(result, input.nodeId, store, {
+          mode: 'ref-large-values',
+          inlineMaxBytes: input.artifactInlineMaxBytes ?? 64 * 1024,
+        })
+      : result;
+
+    logger.debug('Temporal activity completed', logContext, {
+      durationMs: Date.now() - startedAt,
+      status: finalResult.status ?? 'success',
+    });
+
+    return finalResult;
+  } catch (error) {
+    logger.error('Temporal activity failed', logContext, {
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
-
-  const policy: ArtifactInliningPolicy = {
-    mode: 'ref-large-values',
-    inlineMaxBytes: input.artifactInlineMaxBytes ?? 64 * 1024,
-  };
-
-  return offloadNodeResult(result, input.nodeId, store, policy);
 }
 
 async function offloadNodeResult(
