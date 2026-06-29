@@ -146,12 +146,12 @@ Done when: large git-range diffs and review outputs no longer bloat Temporal his
 
 ## Phase 5: Control-Flow Support
 
-- [ ] Implement `loop` in Temporal workflow code using existing bounded `maxIterations` semantics.
-- [ ] Implement `switch` as deterministic forward routing.
-- [ ] Implement `passThrough` as deterministic forward routing.
-- [ ] Implement `end` as deterministic workflow termination.
-- [ ] Preserve inactive-branch skipped-node results.
-- [ ] Add tests for branch skipping, loop iteration state, `onMaxIterations`, and forward-only router validation.
+- [x] Implement `loop` in Temporal workflow code using existing bounded `maxIterations` semantics.
+- [x] Implement `switch` as deterministic forward routing.
+- [x] Implement `passThrough` as deterministic forward routing.
+- [x] Implement `end` as deterministic workflow termination.
+- [x] Preserve inactive-branch skipped-node results.
+- [x] Add tests for branch skipping, loop iteration state, `onMaxIterations`, and forward-only router validation.
 
 Done when: workflows with DRS control nodes execute correctly in Temporal with the same results as local mode for equivalent mocked node outputs.
 

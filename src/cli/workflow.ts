@@ -99,7 +99,6 @@ export type { NodeExecutor } from '../lib/workflow/node-executor.js';
 import {
   computeActiveWorkflowNodes,
   createSkippedWorkflowNodeResult,
-  evaluateWorkflowExpression,
   findWorkflowSegmentIndex,
   getNodeKind,
   getNodeNeeds,
@@ -110,6 +109,7 @@ import {
   hasWorkflowControlNodes,
   normalizeWorkflowBooleanLike,
   renderTemplate,
+  runControlWorkflowNode,
   splitWorkflowSegments,
   type WorkflowSegment,
 } from '../lib/workflow/planning.js';
@@ -3154,133 +3154,6 @@ async function runWorkflowDagSegment(
       recordWorkflowNodeResult(nodeId, node, result, context.nodes, context.artifacts);
     }
   }
-}
-
-function runControlWorkflowNode(
-  nodeId: string,
-  node: WorkflowNodeConfig,
-  context: WorkflowTemplateContext
-): { result: WorkflowNodeResult; nextNodeId?: string; ended?: boolean } {
-  if (node.control === 'loop') {
-    const expression = node.if;
-    if (!expression) {
-      throw new Error(`Workflow loop node "${nodeId}" must define if.`);
-    }
-    if (!node.target || !node.exit) {
-      throw new Error(`Workflow loop node "${nodeId}" must define target and exit.`);
-    }
-    const rawMaxIterations: string | number | undefined = node.maxIterations;
-    const renderedMaxIterations =
-      typeof rawMaxIterations === 'string'
-        ? renderTemplate(rawMaxIterations, context).trim()
-        : String(rawMaxIterations ?? '');
-    const configuredMaxIterations = Number.parseInt(renderedMaxIterations, 10);
-    if (
-      renderedMaxIterations === '' ||
-      !Number.isInteger(configuredMaxIterations) ||
-      configuredMaxIterations <= 0
-    ) {
-      throw new Error(`Workflow loop node "${nodeId}" must define a positive maxIterations.`);
-    }
-    const maxIterations = configuredMaxIterations;
-
-    const shouldLoop = evaluateWorkflowExpression(expression, context);
-    const current = context.loop[nodeId] ?? { iteration: 1, maxIterations };
-    let nextNodeId = node.exit;
-    let decision: 'loop' | 'exit' = 'exit';
-
-    if (shouldLoop) {
-      if (current.iteration >= maxIterations) {
-        if (node.onMaxIterations === 'exit') {
-          nextNodeId = node.exit;
-        } else {
-          throw new Error(
-            `Workflow loop node "${nodeId}" reached maxIterations (${maxIterations}).`
-          );
-        }
-      } else {
-        decision = 'loop';
-        nextNodeId = node.target;
-        current.iteration += 1;
-      }
-    }
-
-    current.maxIterations = maxIterations;
-    current.lastDecision = decision;
-    context.loop[nodeId] = current;
-
-    return {
-      nextNodeId,
-      result: {
-        id: nodeId,
-        type: 'control',
-        status: 'success',
-        control: node.control,
-        decision,
-        target: nextNodeId,
-        response: decision,
-        output: {
-          matched: shouldLoop,
-          target: nextNodeId,
-          iteration: current.iteration,
-          maxIterations,
-        },
-      },
-    };
-  }
-
-  if (node.control === 'switch') {
-    if (!node.value || !node.cases) {
-      throw new Error(`Workflow switch node "${nodeId}" must define value and cases.`);
-    }
-    const value = renderTemplate(node.value, context).trim();
-    const nextNodeId = node.cases[value] ?? node.default;
-    if (!nextNodeId) {
-      throw new Error(`Workflow switch node "${nodeId}" has no case for "${value}" or default.`);
-    }
-    return {
-      nextNodeId,
-      result: {
-        id: nodeId,
-        type: 'control',
-        status: 'success',
-        control: node.control,
-        decision: value,
-        target: nextNodeId,
-        response: value,
-        output: { value, target: nextNodeId },
-      },
-    };
-  }
-
-  if (node.control === 'end') {
-    return {
-      ended: true,
-      result: {
-        id: nodeId,
-        type: 'control',
-        status: 'success',
-        control: node.control,
-        decision: 'end',
-        response: 'end',
-        output: { ended: true },
-      },
-    };
-  }
-
-  if (node.control === 'passThrough') {
-    const result: WorkflowNodeResult = {
-      id: nodeId,
-      type: 'control',
-      control: 'passThrough',
-      target: node.target,
-      decision: 'pass',
-      response: `passed through to ${node.target}`,
-    };
-    return { result, nextNodeId: node.target };
-  }
-
-  throw new Error(`Unsupported workflow control "${node.control}" in node "${nodeId}".`);
 }
 
 async function runControlWorkflow(

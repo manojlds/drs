@@ -1,0 +1,63 @@
+name: temporal-control-smoke
+description: Smoke test Temporal control-flow execution with safe local write actions
+inputs:
+  mode:
+    type: enum
+    values:
+      - loop
+      - pass
+      - end
+    default: loop
+    description: 'Control route to exercise: loop, passThrough, or end'
+output: final
+nodes:
+  start:
+    action: write
+    input: '{{inputs.mode}}'
+    writes: .drs/artifacts/temporal-smoke/start.txt
+    output: mode
+
+  route:
+    control: switch
+    needs:
+      - start
+    value: '{{artifacts.mode}}'
+    cases:
+      loop: loop-body
+      end: stop
+    default: pass
+
+  loop-body:
+    action: write
+    needs:
+      - route
+    input: 'loop body for {{artifacts.mode}}'
+    writes: .drs/artifacts/temporal-smoke/loop-body.txt
+    output: loopBody
+
+  again:
+    control: loop
+    needs:
+      - loop-body
+    if: 'true'
+    target: loop-body
+    exit: done
+    maxIterations: 2
+    onMaxIterations: exit
+
+  pass:
+    control: passThrough
+    needs:
+      - route
+    target: done
+
+  stop:
+    control: end
+    needs:
+      - route
+
+  done:
+    action: write
+    input: 'temporal control smoke complete via {{inputs.mode}}'
+    writes: .drs/artifacts/temporal-smoke/done.txt
+    output: final
