@@ -4,6 +4,7 @@ import { dirname } from 'path';
 import { Connection, Client } from '@temporalio/client';
 import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
+import { getLogger } from '../lib/logger.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import { compileWorkflowPlan, type CompiledWorkflowInput } from '../lib/workflow/compiled-plan.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
@@ -114,6 +115,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
     const temporal = resolveTemporalConfig(config);
     const plan = compileWorkflowPlan(config, workflowName, { workingDir });
     const inputs = await resolveCompiledPlanInputs(plan.inputs, options, workingDir);
+    const logger = getLogger();
 
     const connection = await Connection.connect({ address: temporal.address });
     try {
@@ -134,6 +136,16 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
         workflowId,
         args: [workflowInput],
       });
+      const logContext = {
+        component: 'temporal-executor',
+        workflow: workflowName,
+        workflowId: handle.workflowId,
+        runId: handle.firstExecutionRunId,
+        namespace: temporal.namespace,
+        taskQueue: temporal.taskQueue,
+      };
+
+      logger.debug('Temporal workflow started', logContext);
 
       if (options.wait === false) {
         const result: WorkflowRunResult = {
@@ -159,6 +171,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
       }
 
       const result = await handle.result();
+      logger.debug('Temporal workflow completed', logContext);
 
       if (options.outputPath) {
         await writeWorkflowFile(workingDir, options.outputPath, formatWorkflowJson(result));
