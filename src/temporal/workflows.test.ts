@@ -339,4 +339,64 @@ describe('drsWorkflow control-flow execution', () => {
       })
     );
   });
+
+  it.each([
+    'write',
+    'git-add',
+    'git-branch',
+    'git-commit',
+    'git-push',
+    'save-artifact',
+    'review-artifact-add-finding',
+    'review-artifact-update-findings',
+    'review-artifact-promote-finding',
+    'review-artifact-resolve-finding',
+    'post-comment',
+    'post-review-comments',
+    'post-fix-status',
+    'create-change-request',
+    'create-pr',
+    'create-mr',
+  ] as const)('uses the no-retry activity proxy for side-effecting action %s', async (action) => {
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockResolvedValue(
+      actionResult('sideEffect', 'side-effect-output')
+    );
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'sideEffectFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'result',
+        inputs: {},
+        nodes: {
+          sideEffect: { action, output: 'result' },
+        },
+        executionOrder: ['sideEffect'],
+        waves: [['sideEffect']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'sideEffect',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+
+    expect(result.output).toBe('side-effect-output');
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(1);
+    expect(temporalMocks.runWorkflowNodeActivity).not.toHaveBeenCalled();
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyContext: {
+          workflowId: 'workflow-1',
+          runId: 'run-1',
+          nodeId: 'sideEffect',
+          idempotencyKey: 'workflow-1:run-1:sideEffect',
+        },
+      })
+    );
+  });
 });
