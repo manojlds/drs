@@ -8,10 +8,17 @@ const temporalMocks = vi.hoisted(() => {
   const hydrateContextActivity = vi.fn(
     async (input: { context: WorkflowTemplateContext }) => input.context
   );
-  return { runWorkflowNodeActivity, runWorkflowNodeNoRetryActivity, hydrateContextActivity };
+  const queryHandlers = new Map<unknown, () => unknown>();
+  return {
+    runWorkflowNodeActivity,
+    runWorkflowNodeNoRetryActivity,
+    hydrateContextActivity,
+    queryHandlers,
+  };
 });
 
 vi.mock('@temporalio/workflow', () => ({
+  defineQuery: (name: string) => name,
   proxyActivities: (options: { retry?: { maximumAttempts?: number } } = {}) => ({
     runWorkflowNodeActivity:
       options.retry?.maximumAttempts === 1
@@ -19,6 +26,9 @@ vi.mock('@temporalio/workflow', () => ({
         : temporalMocks.runWorkflowNodeActivity,
     hydrateContextActivity: temporalMocks.hydrateContextActivity,
   }),
+  setHandler: (query: unknown, handler: () => unknown) => {
+    temporalMocks.queryHandlers.set(query, handler);
+  },
   workflowInfo: () => ({
     workflowId: 'workflow-1',
     runId: 'run-1',
@@ -26,7 +36,16 @@ vi.mock('@temporalio/workflow', () => ({
   }),
 }));
 
-import { drsWorkflow } from './workflows.js';
+import {
+  drsWorkflow,
+  workflowArtifactsQuery,
+  workflowLoopStateQuery,
+  workflowStatusQuery,
+} from './workflows.js';
+import type {
+  TemporalWorkflowArtifactsQueryResult,
+  TemporalWorkflowStatusQueryResult,
+} from './types.js';
 
 function actionResult(id: string, output: unknown): WorkflowNodeResult {
   return {
@@ -43,6 +62,7 @@ describe('drsWorkflow control-flow execution', () => {
     temporalMocks.runWorkflowNodeActivity.mockReset();
     temporalMocks.runWorkflowNodeNoRetryActivity.mockReset();
     temporalMocks.hydrateContextActivity.mockClear();
+    temporalMocks.queryHandlers.clear();
     temporalMocks.hydrateContextActivity.mockImplementation(
       async (input: { context: WorkflowTemplateContext }) => input.context
     );
@@ -398,5 +418,141 @@ describe('drsWorkflow control-flow execution', () => {
         },
       })
     );
+  });
+
+  it('exposes workflow node status while an activity is running', async () => {
+    let releaseActivity: (() => void) | undefined;
+    let activityStarted: (() => void) | undefined;
+    const activityStartedPromise = new Promise<void>((resolve) => {
+      activityStarted = resolve;
+    });
+    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+      async ({ nodeId }: { nodeId: string }) => {
+        activityStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseActivity = resolve;
+        });
+        return actionResult(nodeId, 'diff-output');
+      }
+    );
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'statusFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'diff',
+        inputs: {},
+        nodes: {
+          diff: { action: 'git-diff', output: 'diff' },
+        },
+        executionOrder: ['diff'],
+        waves: [['diff']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'diff',
+      },
+    };
+
+    const workflowPromise = drsWorkflow(input);
+    await activityStartedPromise;
+
+    const query = temporalMocks.queryHandlers.get(workflowStatusQuery);
+    expect(query).toBeDefined();
+    expect(query?.()).toMatchObject({
+      workflow: 'statusFlow',
+      workflowId: 'workflow-1',
+      runId: 'run-1',
+      runningNodeIds: ['diff'],
+      completedNodeIds: [],
+      nodes: {
+        diff: { id: 'diff', status: 'running', action: 'git-diff' },
+      },
+    } satisfies Partial<TemporalWorkflowStatusQueryResult>);
+
+    releaseActivity?.();
+    const result = await workflowPromise;
+
+    expect(result.output).toBe('diff-output');
+    expect(query?.()).toMatchObject({
+      runningNodeIds: [],
+      completedNodeIds: ['diff'],
+      nodes: {
+        diff: { id: 'diff', status: 'success' },
+      },
+    } satisfies Partial<TemporalWorkflowStatusQueryResult>);
+  });
+
+  it('exposes loop state and artifact refs through workflow queries', async () => {
+    const artifactRef = {
+      kind: 'artifact-ref' as const,
+      key: 'done-output',
+      uri: 'file:///repo/.drs/artifacts/temporal/done-output.json',
+      sha256: 'abc123',
+    };
+    let count = 0;
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
+      async ({ nodeId }: { nodeId: string }) => {
+        if (nodeId === 'bump') {
+          count += 1;
+          return actionResult(nodeId, count);
+        }
+        if (nodeId === 'done') return actionResult(nodeId, artifactRef);
+        throw new Error(`Unexpected node ${nodeId}`);
+      }
+    );
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'queryLoopFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'final',
+        inputs: {},
+        nodes: {
+          bump: { action: 'write', output: 'count' },
+          again: {
+            control: 'loop',
+            needs: ['bump'],
+            if: '{{artifacts.count}} < 2',
+            target: 'bump',
+            exit: 'done',
+            maxIterations: 3,
+          },
+          done: { action: 'write', output: 'final' },
+        },
+        executionOrder: ['bump', 'again', 'done'],
+        waves: [],
+        segments: [
+          { type: 'dag', nodeIds: ['bump'] },
+          { type: 'control', nodeId: 'again' },
+          { type: 'dag', nodeIds: ['done'] },
+        ],
+        hasControlNodes: true,
+        lastNodeId: 'done',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+    const loopQuery = temporalMocks.queryHandlers.get(workflowLoopStateQuery);
+    const artifactsQuery = temporalMocks.queryHandlers.get(workflowArtifactsQuery);
+
+    expect(result.output).toEqual(artifactRef);
+    expect(loopQuery?.()).toEqual({
+      again: { iteration: 2, maxIterations: 3, lastDecision: 'loop' },
+    });
+    expect(artifactsQuery?.()).toEqual({
+      artifactKeys: ['bump', 'count', 'again', 'done', 'final'],
+      artifactRefs: {
+        done: artifactRef,
+        final: artifactRef,
+      },
+    } satisfies TemporalWorkflowArtifactsQueryResult);
   });
 });

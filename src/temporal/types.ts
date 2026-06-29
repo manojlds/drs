@@ -6,6 +6,7 @@ import type {
   WorkflowTemplateContext,
   WorkflowActivityIdempotencyContext,
 } from '../lib/workflow/types.js';
+import type { TemporalArtifactRef } from '../lib/workflow/artifact-store.js';
 
 export interface TemporalConfig {
   address: string;
@@ -45,6 +46,30 @@ export interface RunWorkflowNodeActivityInput {
    * offloadArtifacts is true. Defaults to 64KB.
    */
   artifactInlineMaxBytes?: number;
+}
+
+export type TemporalWorkflowNodeQueryStatus = 'pending' | 'running' | 'success' | 'skipped';
+
+export interface TemporalWorkflowNodeStatusSnapshot {
+  id: string;
+  status: TemporalWorkflowNodeQueryStatus;
+  action?: string;
+  agent?: string;
+  control?: string;
+}
+
+export interface TemporalWorkflowStatusQueryResult {
+  workflow: string;
+  workflowId: string;
+  runId: string;
+  nodes: Record<string, TemporalWorkflowNodeStatusSnapshot>;
+  runningNodeIds: string[];
+  completedNodeIds: string[];
+}
+
+export interface TemporalWorkflowArtifactsQueryResult {
+  artifactKeys: string[];
+  artifactRefs: Record<string, TemporalArtifactRef>;
 }
 
 export type TemporalWorkflowResult = WorkflowRunResult;

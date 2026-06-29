@@ -1,4 +1,4 @@
-import { proxyActivities, workflowInfo } from '@temporalio/workflow';
+import { defineQuery, proxyActivities, setHandler, workflowInfo } from '@temporalio/workflow';
 import type * as activities from './activities.js';
 import {
   computeActiveWorkflowNodes,
@@ -15,9 +15,18 @@ import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflo
 import { getTemporalNodeRetryMode } from './retry-policy.js';
 import type {
   ScheduledActivityIdempotencyContext,
+  TemporalWorkflowArtifactsQueryResult,
   TemporalWorkflowInput,
+  TemporalWorkflowStatusQueryResult,
   TemporalWorkflowResult,
 } from './types.js';
+
+export const workflowStatusQuery =
+  defineQuery<TemporalWorkflowStatusQueryResult>('drsWorkflowStatus');
+export const workflowLoopStateQuery =
+  defineQuery<WorkflowTemplateContext['loop']>('drsWorkflowLoopState');
+export const workflowArtifactsQuery =
+  defineQuery<TemporalWorkflowArtifactsQueryResult>('drsWorkflowArtifacts');
 
 const { runWorkflowNodeActivity, hydrateContextActivity } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
@@ -62,6 +71,64 @@ function recordWorkflowNodeResult(
   if (result.status !== 'skipped') {
     recordNodeArtifact(nodeId, node, result, artifacts);
   }
+}
+
+function isTemporalArtifactRef(
+  value: unknown
+): value is { kind: 'artifact-ref'; key: string; uri: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<string, unknown>).kind === 'artifact-ref' &&
+    typeof (value as Record<string, unknown>).key === 'string' &&
+    typeof (value as Record<string, unknown>).uri === 'string'
+  );
+}
+
+function buildWorkflowStatusSnapshot(
+  input: TemporalWorkflowInput,
+  context: WorkflowTemplateContext,
+  runningNodeIds: Set<string>
+): TemporalWorkflowStatusQueryResult {
+  const nodes: TemporalWorkflowStatusQueryResult['nodes'] = {};
+
+  for (const [nodeId, node] of Object.entries(input.plan.nodes)) {
+    const result = context.nodes[nodeId];
+    nodes[nodeId] = {
+      id: nodeId,
+      status: runningNodeIds.has(nodeId) ? 'running' : (result?.status ?? 'pending'),
+      action: node.action,
+      agent: node.agent,
+      control: node.control,
+    };
+  }
+
+  const info = workflowInfo();
+  return {
+    workflow: input.plan.workflowName,
+    workflowId: info.workflowId,
+    runId: info.runId,
+    nodes,
+    runningNodeIds: [...runningNodeIds],
+    completedNodeIds: Object.keys(context.nodes),
+  };
+}
+
+function buildArtifactsSnapshot(
+  context: WorkflowTemplateContext
+): TemporalWorkflowArtifactsQueryResult {
+  const artifactRefs: TemporalWorkflowArtifactsQueryResult['artifactRefs'] = {};
+
+  for (const [key, value] of Object.entries(context.artifacts)) {
+    if (isTemporalArtifactRef(value)) {
+      artifactRefs[key] = value;
+    }
+  }
+
+  return {
+    artifactKeys: Object.keys(context.artifacts),
+    artifactRefs,
+  };
 }
 
 function createActivityIdempotencyContext(nodeId: string): ScheduledActivityIdempotencyContext {
@@ -112,7 +179,8 @@ async function runTemporalDagNodes(
   input: TemporalWorkflowInput,
   nodeIds: string[],
   activeNodeIds: Set<string> | undefined,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  runningNodeIds: Set<string>
 ): Promise<void> {
   const { plan } = input;
   const completed = new Set<string>();
@@ -154,8 +222,13 @@ async function runTemporalDagNodes(
           return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
         }
 
-        const result = await runTemporalWorkflowNodeActivity(input, nodeId, node, context);
-        return { nodeId, node, result };
+        runningNodeIds.add(nodeId);
+        try {
+          const result = await runTemporalWorkflowNodeActivity(input, nodeId, node, context);
+          return { nodeId, node, result };
+        } finally {
+          runningNodeIds.delete(nodeId);
+        }
       })
     );
 
@@ -180,7 +253,8 @@ function toWorkflowSegments(compiledSegments: CompiledWorkflowSegment[]): Workfl
 
 async function runTemporalControlWorkflow(
   input: TemporalWorkflowInput,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  runningNodeIds: Set<string>
 ): Promise<void> {
   const { plan } = input;
   const segments = toWorkflowSegments(plan.segments);
@@ -189,7 +263,13 @@ async function runTemporalControlWorkflow(
   while (segmentIndex < segments.length) {
     const segment = segments[segmentIndex];
     if (segment.type === 'dag') {
-      await runTemporalDagNodes(input, segment.nodeIds, segment.activeNodeIds, context);
+      await runTemporalDagNodes(
+        input,
+        segment.nodeIds,
+        segment.activeNodeIds,
+        context,
+        runningNodeIds
+      );
       segmentIndex += 1;
       continue;
     }
@@ -242,10 +322,11 @@ async function runTemporalControlWorkflow(
 
 async function runTemporalDagWorkflow(
   input: TemporalWorkflowInput,
-  context: WorkflowTemplateContext
+  context: WorkflowTemplateContext,
+  runningNodeIds: Set<string>
 ): Promise<void> {
   for (const wave of input.plan.waves) {
-    await runTemporalDagNodes(input, wave, undefined, context);
+    await runTemporalDagNodes(input, wave, undefined, context, runningNodeIds);
   }
 }
 
@@ -253,6 +334,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const { plan } = input;
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
+  const runningNodeIds = new Set<string>();
   const context: WorkflowTemplateContext = {
     inputs: input.inputs,
     nodes,
@@ -260,10 +342,16 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
     loop: {},
   };
 
+  setHandler(workflowStatusQuery, () =>
+    buildWorkflowStatusSnapshot(input, context, runningNodeIds)
+  );
+  setHandler(workflowLoopStateQuery, () => context.loop);
+  setHandler(workflowArtifactsQuery, () => buildArtifactsSnapshot(context));
+
   if (plan.hasControlNodes) {
-    await runTemporalControlWorkflow(input, context);
+    await runTemporalControlWorkflow(input, context, runningNodeIds);
   } else {
-    await runTemporalDagWorkflow(input, context);
+    await runTemporalDagWorkflow(input, context, runningNodeIds);
   }
 
   const lastNode = plan.nodes[plan.lastNodeId];
