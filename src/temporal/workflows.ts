@@ -12,10 +12,24 @@ import {
 import type { WorkflowNodeConfig } from '../lib/config.js';
 import type { CompiledWorkflowSegment } from '../lib/workflow/compiled-plan.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
-import type { TemporalWorkflowInput, TemporalWorkflowResult } from './types.js';
+import { getTemporalNodeRetryMode } from './retry-policy.js';
+import type {
+  ScheduledActivityIdempotencyContext,
+  TemporalWorkflowInput,
+  TemporalWorkflowResult,
+} from './types.js';
 
 const { runWorkflowNodeActivity, hydrateContextActivity } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
+});
+
+const { runWorkflowNodeActivity: runWorkflowNodeNoRetryActivity } = proxyActivities<
+  typeof activities
+>({
+  startToCloseTimeout: '30 minutes',
+  retry: {
+    maximumAttempts: 1,
+  },
 });
 
 function recordNodeArtifact(
@@ -48,6 +62,39 @@ function recordWorkflowNodeResult(
   if (result.status !== 'skipped') {
     recordNodeArtifact(nodeId, node, result, artifacts);
   }
+}
+
+function createActivityIdempotencyContext(nodeId: string): ScheduledActivityIdempotencyContext {
+  const info = workflowInfo();
+  return {
+    workflowId: info.workflowId,
+    runId: info.runId,
+    nodeId,
+    idempotencyKey: `${info.workflowId}:${info.runId}:${nodeId}`,
+  };
+}
+
+async function runTemporalWorkflowNodeActivity(
+  input: TemporalWorkflowInput,
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const activityInput = {
+    workingDir: input.workingDir,
+    nodeId,
+    node,
+    context,
+    options: input.options,
+    idempotencyContext: createActivityIdempotencyContext(nodeId),
+    offloadArtifacts: true,
+  };
+
+  if (getTemporalNodeRetryMode(node) === 'no-retry') {
+    return runWorkflowNodeNoRetryActivity(activityInput);
+  }
+
+  return runWorkflowNodeActivity(activityInput);
 }
 
 async function hydrateTemporalContext(
@@ -107,14 +154,7 @@ async function runTemporalDagNodes(
           return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
         }
 
-        const result = await runWorkflowNodeActivity({
-          workingDir: input.workingDir,
-          nodeId,
-          node,
-          context,
-          options: input.options,
-          offloadArtifacts: true,
-        });
+        const result = await runTemporalWorkflowNodeActivity(input, nodeId, node, context);
         return { nodeId, node, result };
       })
     );

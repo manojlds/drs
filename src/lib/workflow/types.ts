@@ -10,6 +10,15 @@ export interface WorkflowRunOptions {
   workingDir?: string;
   trace?: boolean;
   wait?: boolean;
+  idempotencyContext?: WorkflowActivityIdempotencyContext;
+}
+
+export interface WorkflowActivityIdempotencyContext {
+  workflowId: string;
+  runId: string;
+  nodeId: string;
+  attempt: number;
+  idempotencyKey: string;
 }
 
 export interface WorkflowNodeResult {

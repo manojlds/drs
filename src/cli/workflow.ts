@@ -2449,7 +2449,11 @@ async function runPostCommentWorkflowNode(
     node.input === undefined
       ? requireStringActionOption(nodeId, node, 'body', context)
       : renderTemplate(node.input, context);
-  const marker = getStringActionOption(node, 'marker', context)?.trim();
+  const configuredMarker = getStringActionOption(node, 'marker', context)?.trim();
+  const marker =
+    configuredMarker && configuredMarker.length > 0
+      ? configuredMarker
+      : options.idempotencyContext?.idempotencyKey;
   const body = formatMarkedComment(rawBody, marker);
   let operation = 'created';
 

@@ -157,10 +157,10 @@ Done when: workflows with DRS control nodes execute correctly in Temporal with t
 
 ## Phase 6: Idempotent Side Effects And Retry Policy
 
-- [ ] Add activity idempotency context.
-- [ ] Define retry policies per node/action kind.
+- [x] Add activity idempotency context.
+- [x] Define retry policies per node/action kind.
 - [ ] Audit side-effecting actions for retry safety.
-- [ ] Make comment-posting actions marker/fingerprint based so retries update or reuse comments instead of duplicating them.
+- [x] Make comment-posting actions marker/fingerprint based so retries update or reuse comments instead of duplicating them.
 - [ ] Make change-request creation reuse existing branches/PRs/MRs on retry.
 - [ ] Define safe behavior for git commits created before an activity failure.
 - [ ] Add retry-after-side-effect tests.
