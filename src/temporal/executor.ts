@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import type { DRSConfig } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
+import { saveWorkflowArtifact } from '../lib/workflow-artifacts.js';
 import { compileWorkflowPlan, type CompiledWorkflowInput } from '../lib/workflow/compiled-plan.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { normalizeWorkflowBooleanLike } from '../lib/workflow/planning.js';
@@ -25,6 +26,66 @@ async function writeWorkflowFile(
 
 function formatWorkflowJson(result: WorkflowRunResult): string {
   return JSON.stringify(result, null, 2);
+}
+
+interface TemporalWorkflowTracePayload {
+  schemaVersion: 1;
+  executor: 'temporal';
+  workflowName: string;
+  temporal: {
+    workflowId: string;
+    runId: string;
+    namespace: string;
+    taskQueue: string;
+  };
+  startedAt: string;
+  completedAt: string;
+  inputs: Record<string, string>;
+  nodes: WorkflowRunResult['nodes'];
+  artifacts: WorkflowRunResult['artifacts'];
+  loop: WorkflowRunResult['loop'];
+  output: WorkflowRunResult['output'];
+}
+
+async function saveTemporalWorkflowTrace(
+  workingDir: string,
+  workflowName: string,
+  startedAt: string,
+  result: WorkflowRunResult,
+  temporal: { namespace: string; taskQueue: string },
+  handle: { workflowId: string; firstExecutionRunId: string },
+  options: WorkflowRunOptions
+): Promise<void> {
+  const saved = await saveWorkflowArtifact<TemporalWorkflowTracePayload>(workingDir, {
+    kind: 'trace',
+    scope: {
+      platform: 'temporal',
+      projectId: workflowName,
+      subject: 'trace',
+    },
+    payload: {
+      schemaVersion: 1,
+      executor: 'temporal',
+      workflowName,
+      temporal: {
+        workflowId: handle.workflowId,
+        runId: handle.firstExecutionRunId,
+        namespace: temporal.namespace,
+        taskQueue: temporal.taskQueue,
+      },
+      startedAt,
+      completedAt: result.timestamp,
+      inputs: result.inputs,
+      nodes: result.nodes,
+      artifacts: result.artifacts,
+      loop: result.loop,
+      output: result.output,
+    },
+  });
+
+  if (!options.jsonOutput) {
+    console.log(chalk.green(`\n✓ Temporal trace saved to ${saved.latestPath}`));
+  }
 }
 
 function validateResolvedWorkflowInput(
@@ -116,6 +177,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
     const plan = compileWorkflowPlan(config, workflowName, { workingDir });
     const inputs = await resolveCompiledPlanInputs(plan.inputs, options, workingDir);
     const logger = getLogger();
+    const startedAt = new Date().toISOString();
 
     const connection = await Connection.connect({ address: temporal.address });
     try {
@@ -172,6 +234,18 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
 
       const result = await handle.result();
       logger.debug('Temporal workflow completed', logContext);
+
+      if (options.trace) {
+        await saveTemporalWorkflowTrace(
+          workingDir,
+          workflowName,
+          startedAt,
+          result,
+          temporal,
+          handle,
+          options
+        );
+      }
 
       if (options.outputPath) {
         await writeWorkflowFile(workingDir, options.outputPath, formatWorkflowJson(result));
