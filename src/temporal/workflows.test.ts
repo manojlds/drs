@@ -4,15 +4,26 @@ import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflo
 
 const temporalMocks = vi.hoisted(() => {
   const runWorkflowNodeActivity = vi.fn();
+  const runWorkflowNodeNoRetryActivity = vi.fn();
   const hydrateContextActivity = vi.fn(
     async (input: { context: WorkflowTemplateContext }) => input.context
   );
-  return { runWorkflowNodeActivity, hydrateContextActivity };
+  return { runWorkflowNodeActivity, runWorkflowNodeNoRetryActivity, hydrateContextActivity };
 });
 
 vi.mock('@temporalio/workflow', () => ({
-  proxyActivities: () => temporalMocks,
-  workflowInfo: () => ({ startTime: new Date('2026-06-29T00:00:00.000Z') }),
+  proxyActivities: (options: { retry?: { maximumAttempts?: number } } = {}) => ({
+    runWorkflowNodeActivity:
+      options.retry?.maximumAttempts === 1
+        ? temporalMocks.runWorkflowNodeNoRetryActivity
+        : temporalMocks.runWorkflowNodeActivity,
+    hydrateContextActivity: temporalMocks.hydrateContextActivity,
+  }),
+  workflowInfo: () => ({
+    workflowId: 'workflow-1',
+    runId: 'run-1',
+    startTime: new Date('2026-06-29T00:00:00.000Z'),
+  }),
 }));
 
 import { drsWorkflow } from './workflows.js';
@@ -30,6 +41,7 @@ function actionResult(id: string, output: unknown): WorkflowNodeResult {
 describe('drsWorkflow control-flow execution', () => {
   beforeEach(() => {
     temporalMocks.runWorkflowNodeActivity.mockReset();
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockReset();
     temporalMocks.hydrateContextActivity.mockClear();
     temporalMocks.hydrateContextActivity.mockImplementation(
       async (input: { context: WorkflowTemplateContext }) => input.context
@@ -37,7 +49,7 @@ describe('drsWorkflow control-flow execution', () => {
   });
 
   it('routes switch branches and records inactive DAG nodes as skipped', async () => {
-    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
       async ({ nodeId }: { nodeId: string }) => {
         if (nodeId === 'start') return actionResult(nodeId, 'yes');
         if (nodeId === 'yesNode') return actionResult(nodeId, 'selected');
@@ -86,12 +98,13 @@ describe('drsWorkflow control-flow execution', () => {
     expect(result.nodes['route']).toMatchObject({ decision: 'yes', target: 'yesNode' });
     expect(result.nodes['yesNode']).toMatchObject({ status: 'success' });
     expect(result.nodes['noNode']).toMatchObject({ status: 'skipped' });
-    expect(temporalMocks.runWorkflowNodeActivity).toHaveBeenCalledTimes(2);
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(2);
+    expect(temporalMocks.runWorkflowNodeActivity).not.toHaveBeenCalled();
   });
 
   it('executes bounded loops and returns loop state', async () => {
     let count = 0;
-    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
       async ({ nodeId }: { nodeId: string }) => {
         if (nodeId === 'bump') {
           count += 1;
@@ -140,12 +153,13 @@ describe('drsWorkflow control-flow execution', () => {
 
     expect(result.output).toBe('done:2');
     expect(result.loop['again']).toEqual({ iteration: 2, maxIterations: 3, lastDecision: 'loop' });
-    expect(temporalMocks.runWorkflowNodeActivity).toHaveBeenCalledTimes(3);
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(3);
+    expect(temporalMocks.runWorkflowNodeActivity).not.toHaveBeenCalled();
   });
 
   it('exits loops when onMaxIterations is exit', async () => {
     let count = 0;
-    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
       async ({ nodeId }: { nodeId: string }) => {
         if (nodeId === 'bump') {
           count += 1;
@@ -195,11 +209,12 @@ describe('drsWorkflow control-flow execution', () => {
 
     expect(result.output).toBe('max:2');
     expect(result.loop['again']).toEqual({ iteration: 2, maxIterations: 2, lastDecision: 'exit' });
-    expect(temporalMocks.runWorkflowNodeActivity).toHaveBeenCalledTimes(3);
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(3);
+    expect(temporalMocks.runWorkflowNodeActivity).not.toHaveBeenCalled();
   });
 
   it('routes passThrough controls to their target segment', async () => {
-    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
       async ({ nodeId }: { nodeId: string }) => {
         if (nodeId === 'first') return actionResult(nodeId, 'first-output');
         if (nodeId === 'target') return actionResult(nodeId, 'target-output');
@@ -244,7 +259,9 @@ describe('drsWorkflow control-flow execution', () => {
   });
 
   it('terminates when an end control node runs', async () => {
-    temporalMocks.runWorkflowNodeActivity.mockResolvedValue(actionResult('first', 'before-end'));
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockResolvedValue(
+      actionResult('first', 'before-end')
+    );
 
     const input: TemporalWorkflowInput = {
       workingDir: '/repo',
@@ -278,6 +295,48 @@ describe('drsWorkflow control-flow execution', () => {
     expect(result.nodes['stop']).toMatchObject({ decision: 'end' });
     expect(result.nodes['after']).toBeUndefined();
     expect(result.output).toBeUndefined();
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(1);
+    expect(temporalMocks.runWorkflowNodeActivity).not.toHaveBeenCalled();
+  });
+
+  it('uses the retryable activity proxy for read-only actions', async () => {
+    temporalMocks.runWorkflowNodeActivity.mockResolvedValue(actionResult('diff', 'diff-output'));
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'retryableFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'diff',
+        inputs: {},
+        nodes: {
+          diff: { action: 'git-diff', output: 'diff' },
+        },
+        executionOrder: ['diff'],
+        waves: [['diff']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'diff',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+
+    expect(result.output).toBe('diff-output');
     expect(temporalMocks.runWorkflowNodeActivity).toHaveBeenCalledTimes(1);
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).not.toHaveBeenCalled();
+    expect(temporalMocks.runWorkflowNodeActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyContext: {
+          workflowId: 'workflow-1',
+          runId: 'run-1',
+          nodeId: 'diff',
+          idempotencyKey: 'workflow-1:run-1:diff',
+        },
+      })
+    );
   });
 });

@@ -1,3 +1,4 @@
+import { Context } from '@temporalio/activity';
 import { loadConfig } from '../lib/config.js';
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
 import {
@@ -7,7 +8,7 @@ import {
   LocalWorkflowArtifactStore,
 } from '../lib/workflow/artifact-store.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
-import type { RunWorkflowNodeActivityInput } from './types.js';
+import type { ActivityIdempotencyContext, RunWorkflowNodeActivityInput } from './types.js';
 
 export interface HydrateContextActivityInput {
   workingDir: string;
@@ -19,6 +20,29 @@ function serializedSize(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value, null, 2), 'utf-8');
 }
 
+function getCurrentActivityAttempt(): number | undefined {
+  try {
+    return Context.current().info.attempt;
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveActivityIdempotencyContext(
+  input: RunWorkflowNodeActivityInput
+): ActivityIdempotencyContext | undefined {
+  const scheduled = input.idempotencyContext;
+  if (!scheduled) return undefined;
+
+  return {
+    workflowId: scheduled.workflowId,
+    runId: scheduled.runId,
+    nodeId: scheduled.nodeId,
+    attempt: getCurrentActivityAttempt() ?? scheduled.attempt ?? 1,
+    idempotencyKey: scheduled.idempotencyKey,
+  };
+}
+
 /**
  * Run the activity: executes one node locally, then offloads large outputs
  * to the artifact store so Temporal history only carries refs.
@@ -27,6 +51,7 @@ export async function runWorkflowNodeActivity(
   input: RunWorkflowNodeActivityInput
 ): Promise<WorkflowNodeResult> {
   const config = loadConfig(input.workingDir);
+  const idempotencyContext = resolveActivityIdempotencyContext(input);
 
   // Hydrate artifact refs in the node context so template rendering can
   // access actual artifact values. The workflow passes hydrated artifacts,
@@ -41,6 +66,7 @@ export async function runWorkflowNodeActivity(
     {
       debug: input.options?.debug,
       thinkingLevel: input.options?.thinkingLevel,
+      idempotencyContext,
       workingDir: input.workingDir,
       jsonOutput: true,
       trace: false,

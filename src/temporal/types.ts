@@ -4,6 +4,7 @@ import type {
   WorkflowRunOptions,
   WorkflowRunResult,
   WorkflowTemplateContext,
+  WorkflowActivityIdempotencyContext,
 } from '../lib/workflow/types.js';
 
 export interface TemporalConfig {
@@ -20,12 +21,19 @@ export interface TemporalWorkflowInput {
   options?: Pick<WorkflowRunOptions, 'debug' | 'thinkingLevel'>;
 }
 
+export type ActivityIdempotencyContext = WorkflowActivityIdempotencyContext;
+
+export type ScheduledActivityIdempotencyContext = Omit<ActivityIdempotencyContext, 'attempt'> & {
+  attempt?: number;
+};
+
 export interface RunWorkflowNodeActivityInput {
   workingDir: string;
   nodeId: string;
   node: WorkflowNodeConfig;
   context: WorkflowTemplateContext;
   options?: Pick<WorkflowRunOptions, 'debug' | 'thinkingLevel'>;
+  idempotencyContext?: ScheduledActivityIdempotencyContext;
   /**
    * When true, the activity constructs a LocalWorkflowArtifactStore for the
    * worker's working directory and offloads large node outputs as refs so

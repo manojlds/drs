@@ -2935,6 +2935,55 @@ describe('workflow runner', () => {
     });
   });
 
+  it('uses idempotency context as a fallback post-comment marker', async () => {
+    mocks.githubAdapter.getComments.mockResolvedValue([
+      { id: 10, body: '<!-- drs-comment-id: workflow-1:run-1:comment -->\nold body' },
+    ]);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        postComment: {
+          nodes: {
+            comment: {
+              action: 'post-comment',
+              input: 'new body',
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'commentResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'postComment', {
+      workingDir: process.cwd(),
+      idempotencyContext: {
+        workflowId: 'workflow-1',
+        runId: 'run-1',
+        nodeId: 'comment',
+        attempt: 2,
+        idempotencyKey: 'workflow-1:run-1:comment',
+      },
+    });
+
+    expect(mocks.githubAdapter.updateComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      10,
+      '<!-- drs-comment-id: workflow-1:run-1:comment -->\nnew body'
+    );
+    expect(mocks.githubAdapter.createComment).not.toHaveBeenCalled();
+    expect(result.artifacts.commentResult).toMatchObject({
+      marker: 'workflow-1:run-1:comment',
+      operation: 'updated',
+    });
+  });
+
   it('posts GitHub review comments from workflow review artifacts', async () => {
     mocks.githubAdapter.getChangedFiles.mockResolvedValue([
       {

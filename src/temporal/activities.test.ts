@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runWorkflowNodeActivity, hydrateContextActivity, hydrateContext } from './activities.js';
+import {
+  runWorkflowNodeActivity,
+  hydrateContextActivity,
+  hydrateContext,
+  resolveActivityIdempotencyContext,
+} from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
@@ -136,6 +141,96 @@ describe('activities artifact offloading', () => {
     expect(result.outputs).toBeDefined();
     expect(result.outputs!['small']).toBe('ok');
     expect(isArtifactRef(result.outputs!['big'])).toBe(true);
+  });
+});
+
+describe('resolveActivityIdempotencyContext', () => {
+  it('returns undefined when no scheduled idempotency context is present', () => {
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'node',
+      node: { action: 'git-diff' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+    };
+
+    expect(resolveActivityIdempotencyContext(input)).toBeUndefined();
+  });
+
+  it('fills attempt from scheduled context when not running inside Temporal activity context', () => {
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'node',
+      node: { action: 'git-diff' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+      idempotencyContext: {
+        workflowId: 'workflow-1',
+        runId: 'run-1',
+        nodeId: 'node',
+        attempt: 3,
+        idempotencyKey: 'workflow-1:run-1:node',
+      },
+    };
+
+    expect(resolveActivityIdempotencyContext(input)).toEqual({
+      workflowId: 'workflow-1',
+      runId: 'run-1',
+      nodeId: 'node',
+      attempt: 3,
+      idempotencyKey: 'workflow-1:run-1:node',
+    });
+  });
+
+  it('defaults attempt to 1 for direct calls without Temporal context', () => {
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'node',
+      node: { action: 'git-diff' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+      idempotencyContext: {
+        workflowId: 'workflow-1',
+        runId: 'run-1',
+        nodeId: 'node',
+        idempotencyKey: 'workflow-1:run-1:node',
+      },
+    };
+
+    expect(resolveActivityIdempotencyContext(input)).toMatchObject({ attempt: 1 });
+  });
+
+  it('passes resolved idempotency context into local node execution options', async () => {
+    const nodeResult = { id: 'test', type: 'action' as const, action: 'git-diff', output: 'diff' };
+    vi.mocked(runWorkflowNodeLocally).mockResolvedValue(nodeResult);
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'test',
+      node: { action: 'git-diff' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+      idempotencyContext: {
+        workflowId: 'workflow-1',
+        runId: 'run-1',
+        nodeId: 'test',
+        idempotencyKey: 'workflow-1:run-1:test',
+      },
+    };
+
+    await runWorkflowNodeActivity(input);
+
+    expect(runWorkflowNodeLocally).toHaveBeenCalledWith(
+      expect.anything(),
+      'test',
+      input.node,
+      expect.objectContaining({
+        idempotencyContext: {
+          workflowId: 'workflow-1',
+          runId: 'run-1',
+          nodeId: 'test',
+          attempt: 1,
+          idempotencyKey: 'workflow-1:run-1:test',
+        },
+      }),
+      '/repo',
+      input.context
+    );
   });
 });
 
