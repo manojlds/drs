@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DRSConfig } from '../lib/config.js';
+import { loadWorkflowArtifact } from '../lib/workflow-artifacts.js';
 import { TemporalWorkflowExecutor } from './executor.js';
 
 const temporalMocks = vi.hoisted(() => {
@@ -96,6 +100,53 @@ describe('TemporalWorkflowExecutor', () => {
 
     expect(result.output).toEqual({ workflowId: 'wf-id', runId: 'run-id' });
     expect(temporalMocks.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves a Temporal workflow trace artifact when tracing is enabled', async () => {
+    const workingDir = mkdtempSync(join(tmpdir(), 'drs-temporal-trace-'));
+    try {
+      const result = await new TemporalWorkflowExecutor().run(config, 'sample', {
+        workingDir,
+        jsonOutput: true,
+        trace: true,
+      });
+
+      const { artifact } = await loadWorkflowArtifact<Record<string, unknown>>(
+        workingDir,
+        'trace',
+        {
+          platform: 'temporal',
+          projectId: 'sample',
+          subject: 'trace',
+        }
+      );
+
+      expect(result.output).toBe('ok');
+      expect(artifact.payload).toMatchObject({
+        schemaVersion: 1,
+        executor: 'temporal',
+        workflowName: 'sample',
+        temporal: {
+          workflowId: 'wf-id',
+          runId: 'run-id',
+          namespace: 'test',
+          taskQueue: 'test-queue',
+        },
+        completedAt: '2026-06-28T00:00:00.000Z',
+        inputs: { mode: 'quick' },
+        nodes: {},
+        artifacts: {},
+        loop: {},
+        output: 'ok',
+      });
+      expect(artifact.scope).toEqual({
+        platform: 'temporal',
+        projectId: 'sample',
+        subject: 'trace',
+      });
+    } finally {
+      rmSync(workingDir, { recursive: true, force: true });
+    }
   });
 
   it('validates compiled-plan inputs before dispatching', async () => {

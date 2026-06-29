@@ -205,7 +205,7 @@ Done when: Temporal retries cannot duplicate comments, commits, PRs, or MRs for 
 - [ ] Add Temporal UI troubleshooting docs.
 - [x] Add workflow queries for current node status, loop state, and artifact refs.
 - [x] Add cancellation handling.
-- [ ] Integrate Temporal execution with existing DRS trace artifacts.
+- [x] Integrate Temporal execution with existing DRS trace artifacts.
 - [x] Add structured logs that include workflow id, run id, node id, and activity attempt.
 - [ ] Add CI coverage with a local Temporal test server if feasible.
 
