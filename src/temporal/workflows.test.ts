@@ -36,6 +36,7 @@ vi.mock('@temporalio/workflow', () => ({
   workflowInfo: () => ({
     workflowId: 'workflow-1',
     runId: 'run-1',
+    runStartTime: new Date('2026-06-29T00:00:00.000Z'),
     startTime: new Date('2026-06-29T00:00:00.000Z'),
   }),
 }));
@@ -665,5 +666,35 @@ describe('drsWorkflow control-flow execution', () => {
         final: artifactRef,
       },
     } satisfies TemporalWorkflowArtifactsQueryResult);
+  });
+
+  it('derives the result timestamp from the deterministic workflow run start time', async () => {
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockResolvedValue(actionResult('write', 'ok'));
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'timestampFlow',
+        source: 'project',
+        overridesPackaged: false,
+        inputs: {},
+        nodes: {
+          write: { action: 'write', output: 'result' },
+        },
+        executionOrder: ['write'],
+        waves: [['write']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'write',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+
+    // The workflow must not call new Date(); the timestamp is derived from the
+    // deterministic workflowInfo().runStartTime so it is safe on replay.
+    expect(result.timestamp).toBe('2026-06-29T00:00:00.000Z');
   });
 });

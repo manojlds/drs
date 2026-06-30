@@ -388,7 +388,10 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const lastNode = plan.nodes[plan.lastNodeId];
   const outputKey = plan.output ?? lastNode?.output ?? plan.lastNodeId;
   return {
-    timestamp: new Date().toISOString(),
+    // Deterministic timestamp: derive from workflowInfo().runStartTime (set by
+    // the Temporal server and replayed) instead of new Date(), which would be a
+    // determinism violation in workflow code.
+    timestamp: info.runStartTime.toISOString(),
     workflow: plan.workflowName,
     inputs: input.inputs,
     nodes,
