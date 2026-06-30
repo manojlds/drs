@@ -374,7 +374,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const lastNode = plan.nodes[plan.lastNodeId];
   const outputKey = plan.output ?? lastNode?.output ?? plan.lastNodeId;
   return {
-    timestamp: workflowInfo().startTime.toISOString(),
+    timestamp: new Date().toISOString(),
     workflow: plan.workflowName,
     inputs: input.inputs,
     nodes,

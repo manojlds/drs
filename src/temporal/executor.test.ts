@@ -117,7 +117,7 @@ describe('TemporalWorkflowExecutor', () => {
         {
           platform: 'temporal',
           projectId: 'sample',
-          subject: 'trace',
+          subject: 'workflow',
         }
       );
 
@@ -132,7 +132,7 @@ describe('TemporalWorkflowExecutor', () => {
           namespace: 'test',
           taskQueue: 'test-queue',
         },
-        completedAt: '2026-06-28T00:00:00.000Z',
+        completedAt: expect.any(String),
         inputs: { mode: 'quick' },
         nodes: {},
         artifacts: {},
@@ -142,7 +142,7 @@ describe('TemporalWorkflowExecutor', () => {
       expect(artifact.scope).toEqual({
         platform: 'temporal',
         projectId: 'sample',
-        subject: 'trace',
+        subject: 'workflow',
       });
     } finally {
       rmSync(workingDir, { recursive: true, force: true });

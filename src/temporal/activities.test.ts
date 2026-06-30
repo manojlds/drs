@@ -2,11 +2,13 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ApplicationFailure } from '@temporalio/common';
 import {
   runWorkflowNodeActivity,
   hydrateContextActivity,
   hydrateContext,
   resolveActivityIdempotencyContext,
+  isNonRetryableProviderFailure,
 } from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
@@ -291,6 +293,45 @@ describe('resolveActivityIdempotencyContext', () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+});
+
+describe('isNonRetryableProviderFailure', () => {
+  it('classifies quota and provider configuration failures as non-retryable', () => {
+    expect(
+      isNonRetryableProviderFailure(
+        new Error(
+          'All review agents failed: review/unified-reviewer: Failed to get messages: Agent error: "429 Monthly usage limit reached. Enable usage from your available balance."'
+        )
+      )
+    ).toBe(true);
+    expect(
+      isNonRetryableProviderFailure(
+        new Error('Authentication failed with the configured model provider')
+      )
+    ).toBe(true);
+    expect(isNonRetryableProviderFailure(new Error('Model configuration is invalid'))).toBe(true);
+    expect(isNonRetryableProviderFailure(new Error('fetch failed'))).toBe(false);
+  });
+
+  it('throws Temporal non-retryable failures for quota errors', async () => {
+    vi.mocked(runWorkflowNodeLocally).mockRejectedValueOnce(
+      new Error(
+        'All review agents failed: review/unified-reviewer: 429 Monthly usage limit reached'
+      )
+    );
+
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'review',
+      node: { action: 'review' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+    };
+
+    await expect(runWorkflowNodeActivity(input)).rejects.toMatchObject({
+      nonRetryable: true,
+      type: 'NonRetryableProviderFailure',
+    } satisfies Partial<ApplicationFailure>);
   });
 });
 

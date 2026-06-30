@@ -61,7 +61,7 @@ async function saveTemporalWorkflowTrace(
     scope: {
       platform: 'temporal',
       projectId: workflowName,
-      subject: 'trace',
+      subject: 'workflow',
     },
     payload: {
       schemaVersion: 1,
@@ -74,7 +74,7 @@ async function saveTemporalWorkflowTrace(
         taskQueue: temporal.taskQueue,
       },
       startedAt,
-      completedAt: result.timestamp,
+      completedAt: new Date().toISOString(),
       inputs: result.inputs,
       nodes: result.nodes,
       artifacts: result.artifacts,

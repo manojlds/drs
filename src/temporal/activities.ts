@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity';
+import { ApplicationFailure, Context } from '@temporalio/activity';
 import { loadConfig } from '../lib/config.js';
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
 import { getLogger } from '../lib/logger.js';
@@ -27,6 +27,32 @@ function getCurrentActivityAttempt(): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function isNonRetryableProviderFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  const authOrConfigFailure =
+    normalized.includes('authentication failed') ||
+    normalized.includes('unauthorized') ||
+    normalized.includes('invalid api key') ||
+    normalized.includes('api key') ||
+    normalized.includes('401') ||
+    normalized.includes('403') ||
+    normalized.includes('failed to resolve model') ||
+    (normalized.includes('model') && normalized.includes('not found')) ||
+    normalized.includes('model configuration is invalid');
+
+  const quotaFailure =
+    normalized.includes('monthly usage limit') ||
+    normalized.includes('usage limit reached') ||
+    normalized.includes('quota') ||
+    normalized.includes('insufficient_quota') ||
+    normalized.includes('billing') ||
+    normalized.includes('available balance');
+
+  return authOrConfigFailure || quotaFailure;
 }
 
 export function resolveActivityIdempotencyContext(
@@ -108,6 +134,12 @@ export async function runWorkflowNodeActivity(
       durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
     });
+    if (isNonRetryableProviderFailure(error)) {
+      throw ApplicationFailure.nonRetryable(
+        error instanceof Error ? error.message : String(error),
+        'NonRetryableProviderFailure'
+      );
+    }
     throw error;
   }
 }
