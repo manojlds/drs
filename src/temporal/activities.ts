@@ -152,7 +152,7 @@ export async function runWorkflowNodeActivity(
   // Hydrate artifact refs in the node context so template rendering can
   // access actual artifact values. The workflow passes hydrated artifacts,
   // but hydrating here makes the activity resilient when called directly.
-  const store = new LocalWorkflowArtifactStore(input.workingDir, input.nodeId);
+  const store = new LocalWorkflowArtifactStore(input.workingDir, 'temporal');
   try {
     await hydrateContext(input.context.artifacts, store);
 

@@ -21,6 +21,16 @@ export function resolveTemporalConfig(config: DRSConfig): TemporalConfig {
   return {
     ...DEFAULT_TEMPORAL_CONFIG,
     ...configured,
+    address:
+      process.env.DRS_TEMPORAL_ADDRESS ?? configured.address ?? DEFAULT_TEMPORAL_CONFIG.address,
+    namespace:
+      process.env.DRS_TEMPORAL_NAMESPACE ??
+      configured.namespace ??
+      DEFAULT_TEMPORAL_CONFIG.namespace,
+    taskQueue:
+      process.env.DRS_TEMPORAL_TASK_QUEUE ??
+      configured.taskQueue ??
+      DEFAULT_TEMPORAL_CONFIG.taskQueue,
     workspace: {
       ...DEFAULT_TEMPORAL_CONFIG.workspace,
       ...configuredWorkspace,

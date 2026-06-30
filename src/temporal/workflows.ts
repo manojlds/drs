@@ -296,7 +296,10 @@ async function runTemporalDagNodes(
     });
 
     if (runnable.length === 0) {
-      throw new Error('Workflow control runner could not make progress in a DAG segment.');
+      const incomplete = nodeIds.filter((nodeId) => !completed.has(nodeId));
+      throw new Error(
+        `Workflow control runner could not make progress in a DAG segment. Pending nodes: ${incomplete.join(', ')}.`
+      );
     }
 
     const evalContext = await resolveDagEvaluationContext(input, context, runnable);
