@@ -1,0 +1,35 @@
+{
+  "name": "drs-desktop",
+  "version": "0.1.0",
+  "description": "DRS Desktop — an Electron UI for diff review with DRS agents and fix workflows.",
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite build && electron .",
+    "start": "vite build && electron .",
+    "electron": "electron .",
+    "electron:dev": "ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "setup:drs": "npm --prefix ../ run build",
+    "package": "vite build && electron-forge package",
+    "make": "vite build && electron-forge make"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

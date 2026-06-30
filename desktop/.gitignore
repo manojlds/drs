@@ -1,0 +1,8 @@
+node_modules/
+dist-renderer/
+out/
+.vite/
+.electron-gyp/
+.cache/
+*.log
+npm-debug.log*
