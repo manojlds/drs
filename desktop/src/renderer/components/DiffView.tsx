@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { FileDiff, type DiffLineAnnotation } from '@pierre/diffs/react';
 import {
   buildIssueLineIndex,
   fileDomId,
   lineDomId,
+  type DiffLayout,
   type DiffFile,
   type IssueLineIndex,
 } from '../lib/diff';
@@ -12,9 +14,12 @@ import type { ReviewIssue } from '../types';
 interface DiffViewProps {
   files: DiffFile[];
   issues: ReviewIssue[];
+  layout: DiffLayout;
   scrollTarget: { file: string; line: number | null } | null;
   onIssueClick: (issue: ReviewIssue) => void;
 }
+
+type IssueAnnotation = { issue: ReviewIssue };
 
 const STATUS_LABEL: Record<DiffFile['status'], string> = {
   added: 'A',
@@ -24,7 +29,7 @@ const STATUS_LABEL: Record<DiffFile['status'], string> = {
   untracked: '?',
 };
 
-export function DiffView({ files, issues, scrollTarget, onIssueClick }: DiffViewProps) {
+export function DiffView({ files, issues, layout, scrollTarget, onIssueClick }: DiffViewProps) {
   const index: IssueLineIndex = buildIssueLineIndex(issues);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -37,6 +42,11 @@ export function DiffView({ files, issues, scrollTarget, onIssueClick }: DiffView
       const lineEl = document.getElementById(lineDomId(scrollTarget.file, scrollTarget.line, null));
       if (lineEl) {
         lineEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+      const pierreLine = findPierreLine(fileEl, scrollTarget.line);
+      if (pierreLine) {
+        pierreLine.scrollIntoView({ block: 'center', behavior: 'smooth' });
         return;
       }
     }
@@ -64,6 +74,7 @@ export function DiffView({ files, issues, scrollTarget, onIssueClick }: DiffView
           key={file.path}
           file={file}
           index={index}
+          layout={layout}
           onIssueClick={onIssueClick}
           scrollTarget={scrollTarget}
         />
@@ -75,12 +86,18 @@ export function DiffView({ files, issues, scrollTarget, onIssueClick }: DiffView
 interface FileSectionProps {
   file: DiffFile;
   index: IssueLineIndex;
+  layout: DiffLayout;
   onIssueClick: (issue: ReviewIssue) => void;
   scrollTarget: { file: string; line: number | null } | null;
 }
 
-function FileSection({ file, index, onIssueClick, scrollTarget }: FileSectionProps) {
+function FileSection({ file, index, layout, onIssueClick, scrollTarget }: FileSectionProps) {
   const generalIssues = index.general.get(file.path) ?? [];
+  const annotations = buildAnnotations(file, index);
+  const selectedLines =
+    scrollTarget?.file === file.path && scrollTarget.line
+      ? { start: scrollTarget.line, end: scrollTarget.line, side: 'additions' as const }
+      : null;
 
   return (
     <div className="diff-file" id={fileDomId(file.path)}>
@@ -95,7 +112,38 @@ function FileSection({ file, index, onIssueClick, scrollTarget }: FileSectionPro
         </span>
       </div>
 
-      {file.binary ? (
+      {file.metadata ? (
+        <div className="pierre-diff-wrap">
+          <FileDiff<IssueAnnotation>
+            fileDiff={file.metadata}
+            disableWorkerPool
+            lineAnnotations={annotations}
+            selectedLines={selectedLines}
+            options={{
+              diffStyle: layout,
+              disableFileHeader: true,
+              hunkSeparators: 'line-info-basic',
+              lineDiffType: 'word',
+              overflow: 'scroll',
+              theme: 'github-dark',
+              themeType: 'dark',
+            }}
+            renderAnnotation={(annotation) => (
+              <InlineIssue
+                issue={annotation.metadata.issue}
+                onClick={() => onIssueClick(annotation.metadata.issue)}
+              />
+            )}
+          />
+          {generalIssues.map((issue) => (
+            <InlineIssue
+              key={`${file.path}:general:${issue.title}`}
+              issue={issue}
+              onClick={() => onIssueClick(issue)}
+            />
+          ))}
+        </div>
+      ) : file.binary ? (
         <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 12 }}>
           Binary file — no text diff.
         </div>
@@ -152,6 +200,37 @@ function FileSection({ file, index, onIssueClick, scrollTarget }: FileSectionPro
       )}
     </div>
   );
+}
+
+function findPierreLine(fileEl: HTMLElement, line: number): HTMLElement | null {
+  const container = fileEl.querySelector('diffs-container') as HTMLElement & {
+    shadowRoot?: ShadowRoot | null;
+  } | null;
+  const root = container?.shadowRoot;
+  if (!root) return null;
+  return root.querySelector(
+    `[data-line="${line}"][data-line-type="change-addition"], [data-line="${line}"][data-line-type="context"], [data-line="${line}"][data-line-type="context-expanded"]`,
+  );
+}
+
+function buildAnnotations(
+  file: DiffFile,
+  index: IssueLineIndex,
+): DiffLineAnnotation<IssueAnnotation>[] {
+  if (!file.metadata) return [];
+  const annotations: DiffLineAnnotation<IssueAnnotation>[] = [];
+  for (const [key, issues] of index.byFileLine.entries()) {
+    const separator = key.lastIndexOf(':');
+    if (separator === -1) continue;
+    const path = key.slice(0, separator);
+    if (path !== file.path) continue;
+    const lineNumber = Number(key.slice(separator + 1));
+    if (!Number.isFinite(lineNumber)) continue;
+    for (const issue of issues) {
+      annotations.push({ side: 'additions', lineNumber, metadata: { issue } });
+    }
+  }
+  return annotations;
 }
 
 function InlineIssue({

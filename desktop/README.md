@@ -11,7 +11,11 @@ from a desktop app.
 ## What it does
 
 - **Diff viewer** — renders the working-tree (unstaged or staged) diff with
-  add/delete/modify/rename badges and `+`/`−` counts per file.
+  `@pierre/diffs`, split/unified layout toggle, add/delete/modify/rename badges,
+  and `+`/`−` counts per file.
+- **File tree** — uses `@pierre/trees` to show changed files grouped by
+  directory with git status and add/delete count decorations; selecting a file
+  scrolls the diff to that file.
 - **Inline DRS reviews** — overlays `ReviewIssue`s from `.drs/review-output.json`
   directly on the diff lines they reference, with severity/category badges.
 - **Issue panel** — filterable, clickable list of all review findings; clicking

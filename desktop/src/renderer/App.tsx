@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffView } from './components/DiffView';
+import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -22,6 +23,7 @@ export function App() {
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowListEntry[]>([]);
   const [staged, setStaged] = useState(false);
+  const [diffLayout, setDiffLayout] = useState<'unified' | 'split'>('split');
 
   const [diffPatch, setDiffPatch] = useState('');
   const [diffLoading, setDiffLoading] = useState(false);
@@ -35,6 +37,7 @@ export function App() {
     () => new Set(SEVERITIES),
   );
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ file: string; line: number | null } | null>(
     null,
   );
@@ -131,6 +134,10 @@ export function App() {
     if (workingDir) void loadDiff(workingDir, staged);
   }, [loadDiff, staged, workingDir]);
 
+  const handleToggleLayout = useCallback(() => {
+    setDiffLayout((cur) => (cur === 'split' ? 'unified' : 'split'));
+  }, []);
+
   const startWorkflow = useCallback(
     async (name: string, inputs: Record<string, string>) => {
       if (!workingDir) return;
@@ -194,6 +201,12 @@ export function App() {
     const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
     setSelectedIssueKey(key);
     setScrollTarget({ file: issue.file, line: issue.line ?? null });
+    setSelectedFile(issue.file);
+  }, []);
+
+  const handleSelectFile = useCallback((file: string) => {
+    setSelectedFile(file);
+    setScrollTarget({ file, line: null });
   }, []);
 
   return (
@@ -211,10 +224,12 @@ export function App() {
         <Toolbar
           workingDir={workingDir}
           staged={staged}
+          layout={diffLayout}
           running={!!runState?.active}
           review={review}
           diffLoading={diffLoading}
           onToggleStaged={handleToggleStaged}
+          onToggleLayout={handleToggleLayout}
           onRefresh={handleRefresh}
           onRunReview={handleRunReview}
           onFixIssues={handleFixIssues}
@@ -226,9 +241,15 @@ export function App() {
           <div className="error-banner">Diff error: {diffError}</div>
         )}
         <div className="content">
+          <FileTree
+            files={diffFiles}
+            selectedFile={selectedFile}
+            onSelectFile={handleSelectFile}
+          />
           <DiffView
             files={diffFiles}
             issues={review?.issues ?? []}
+            layout={diffLayout}
             scrollTarget={scrollTarget}
             onIssueClick={handleSelectIssue}
           />
@@ -254,5 +275,4 @@ function actionableMinSeverity(review: ReviewJsonOutput): string {
   // but keep a sane default if invoked another way.
   return 'high';
 }
-
 

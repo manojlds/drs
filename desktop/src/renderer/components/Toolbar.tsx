@@ -1,12 +1,15 @@
 import type { ReviewJsonOutput } from '../types';
+import type { DiffLayout } from '../lib/diff';
 
 interface ToolbarProps {
   workingDir: string | null;
   staged: boolean;
+  layout: DiffLayout;
   running: boolean;
   review: ReviewJsonOutput | null;
   diffLoading: boolean;
   onToggleStaged: () => void;
+  onToggleLayout: () => void;
   onRefresh: () => void;
   onRunReview: () => void;
   onFixIssues: () => void;
@@ -37,6 +40,15 @@ export function Toolbar(props: ToolbarProps) {
           Staged
         </button>
       </div>
+
+      <button
+        className="btn"
+        onClick={props.onToggleLayout}
+        disabled={running}
+        title="Toggle unified/split diff layout"
+      >
+        {props.layout === 'split' ? 'Split' : 'Unified'}
+      </button>
 
       <button
         className="btn"

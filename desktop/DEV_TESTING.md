@@ -64,13 +64,15 @@ npm run electron:dev
 3. Confirm the sidebar lists packaged and project workflows.
 4. Make a small local change in the repo.
 5. Click `Refresh` and confirm the diff appears.
-6. Toggle `Unstaged` and `Staged` and confirm the diff source changes as expected.
-7. Click `Run Review` and confirm live logs stream in the run banner.
-8. Confirm review issues appear in the issue panel and inline in the diff when `.drs/review-output.json` is produced.
-9. Click an issue and confirm the diff scrolls to the matching file/line.
-10. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
-11. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
-12. Start a long-running workflow and click `Cancel` to confirm cancellation updates the run banner.
+6. Confirm the Pierre file tree groups changed files by directory, shows git status/count decorations, supports search, and click a file to scroll to it.
+7. Toggle `Unified` / `Split` and confirm the diff layout changes.
+8. Toggle `Unstaged` and `Staged` and confirm the diff source changes as expected.
+9. Click `Run Review` and confirm live logs stream in the run banner.
+10. Confirm review issues appear in the issue panel and inline in the diff when `.drs/review-output.json` is produced.
+11. Click an issue and confirm the diff scrolls to the matching file/line.
+12. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
+13. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
+14. Start a long-running workflow and click `Cancel` to confirm cancellation updates the run banner.
 
 ## Quality Checks
 

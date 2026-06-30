@@ -98,6 +98,33 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .content { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+.file-tree-pane {
+  width: 260px;
+  min-width: 260px;
+  border-right: 1px solid var(--border);
+  background: #151521;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pierre-file-tree {
+  flex: 1;
+  min-height: 0;
+}
+.file-tree-header-content {
+  height: 34px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: #151521;
+  color: var(--text);
+}
+.file-tree-header-content span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .diff-pane { flex: 1; overflow: auto; min-width: 0; background: var(--bg); }
 
 .issues-pane {
@@ -145,6 +172,12 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .del-count { color: var(--del-text); }
 
 .diff-table { font-family: var(--mono); font-size: 12px; line-height: 1.55; width: 100%; border-collapse: collapse; }
+.pierre-diff-wrap { font-family: var(--mono); font-size: 12px; line-height: 1.55; background: #0d1117; }
+.pierre-diff-wrap diffs-container {
+  display: block;
+  --diffs-font-family: var(--mono);
+  --diffs-font-size: 12px;
+}
 .diff-table .line { display: grid; grid-template-columns: 3.2em 3.2em 1fr; white-space: pre; }
 .diff-table .gutter { color: var(--text-muted); text-align: right; padding: 0 8px; user-select: none; background: var(--bg); border-right: 1px solid var(--border-soft); }
 .diff-table .line-content { padding: 0 8px; overflow-x: auto; white-space: pre; }
@@ -177,5 +210,3 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 3px solid var(--bg-elevated); }
 ::-webkit-scrollbar-track { background: transparent; }
-
-

@@ -4,10 +4,11 @@ A native Electron desktop UI for [DRS (Diff Review System)](..). This document
 records what was built in the Path B MVP, how it is structured, how it was
 validated, and what comes next.
 
-> **TL;DR** — A new `desktop/` package that renders diffs, overlays DRS review
-> issues inline on diff lines, runs any DRS workflow (including the fix-and-verify
-> loop), and streams live logs — all by driving the existing DRS CLI as a child
-> process. The CLI engine is unchanged.
+> **TL;DR** — A new `desktop/` package that renders split/unified diffs with
+> `@pierre/diffs`, shows a changed-file tree with `@pierre/trees`, overlays DRS review issues inline
+> on diff lines, runs any DRS workflow (including the fix-and-verify loop), and
+> streams live logs — all by driving the existing DRS CLI as a child process. The
+> CLI engine is unchanged.
 
 ---
 
@@ -35,8 +36,8 @@ lacks, making the combination more powerful than either alone.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  React renderer  (src/renderer/, bundled by Vite)            │
-│  • DiffView   • IssuesPanel   • Sidebar   • Toolbar          │
-│  • diff parser   • badges   • markdown formatter             │
+│  • FileTree   • DiffView   • IssuesPanel   • Sidebar          │
+│  • @pierre/diffs   • @pierre/trees   • markdown formatter      │
 └────────────────────────┬────────────────────────────────────┘
                          │  window.drs.*  (contextBridge IPC)
 ┌────────────────────────┴────────────────────────────────────┐
@@ -222,7 +223,8 @@ captured into both the banner and a global error banner.
 
 | Feature | Status |
 |---|---|
-| Diff viewer (unified, working-tree + staged) | ✅ |
+| Diff viewer (split/unified, working-tree + staged) | ✅ |
+| Changed-file tree navigation (`@pierre/trees`) | ✅ |
 | File status badges (A/D/M/R) + add/del counts | ✅ |
 | Inline DRS review issues on diff lines | ✅ |
 | Issue panel with severity filter + click-to-scroll | ✅ |
@@ -296,16 +298,21 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
    human logs on stdout. `--output` writes clean JSON to a file via DRS's
    `writeWorkflowFile`, so the app reads a guaranteed-clean result.
 
-3. **No `@pierre/diffs` dependency yet** — the MVP uses a custom diff parser
-   (~190 lines) to avoid adding a third-party rendering dependency. Upgrading to
-   `@pierre/diffs` (Codiff's engine, public on npm v1.2.12) is a natural next
-   step for split layout + syntax highlighting.
+3. **Use `@pierre/diffs` for rendering** — the app now uses Pierre's diff parser
+   and React `FileDiff` renderer for split/unified layouts and syntax-highlighted
+   rendering. The local diff helpers still keep a small fallback parser for
+   metadata and issue indexing resilience.
 
-4. **Shared IPC types without a DRS package dependency** — `ipc-types.ts` mirrors
+4. **Use `@pierre/trees` for file navigation** — the changed-file navigator is a
+   DRS adapter around Pierre's React file tree. DRS supplies paths, git status,
+   and add/delete count decorations; Pierre handles tree projection, search,
+   sticky folders, selection, and virtualization.
+
+5. **Shared IPC types without a DRS package dependency** — `ipc-types.ts` mirrors
    DRS types by hand. This keeps the desktop build independent of the DRS
    package's internal export graph. The types are small and stable.
 
-5. **Renderer is framework-light** — React 18 + plain CSS (no Tailwind, no UI
+6. **Renderer is framework-light** — React 18 + plain CSS (no Tailwind, no UI
    kit). Keeps the dependency surface minimal and the bundle small.
 
 ---
@@ -313,8 +320,6 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
 ## 9. What's next (post-MVP)
 
 ### High value
-- **Split diff layout** — add `@pierre/diffs` for side-by-side + syntax
-  highlighting (it's the engine Codiff uses, public on npm v1.2.12).
 - **Post to PR/MR** — reuse DRS's `comment-poster.ts` + `@octokit/rest` /
   `@gitbeaker/node` to submit inline comments / approve / request changes
   directly from the desktop UI.
@@ -338,8 +343,6 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
 - **Markdown preview rendering** inline (render added `.md` content live).
 - **"Viewed" toggle** per file (track review progress).
 - **Multiple windows** (one per repository).
-
-
 
 
 

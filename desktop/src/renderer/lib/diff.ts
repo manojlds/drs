@@ -1,6 +1,9 @@
+import { parsePatchFiles, type FileDiffMetadata } from '@pierre/diffs';
 import type { ReviewIssue } from '../types';
 
 export type GitFileStatus = 'added' | 'deleted' | 'modified' | 'renamed' | 'untracked';
+
+export type DiffLayout = 'unified' | 'split';
 
 export interface DiffLine {
   type: 'context' | 'add' | 'del';
@@ -25,7 +28,16 @@ export interface DiffFile {
   deletions: number;
   hunks: DiffHunk[];
   binary: boolean;
+  metadata?: FileDiffMetadata;
 }
+
+const CHANGE_STATUS: Record<FileDiffMetadata['type'], GitFileStatus> = {
+  change: 'modified',
+  deleted: 'deleted',
+  new: 'added',
+  'rename-changed': 'renamed',
+  'rename-pure': 'renamed',
+};
 
 function stripPrefix(path: string): string {
   if (path.startsWith('a/') || path.startsWith('b/')) return path.slice(2);
@@ -79,6 +91,9 @@ function nextNew(hunk: DiffHunk): number {
  */
 export function parseUnifiedDiff(patch: string): DiffFile[] {
   if (!patch.trim()) return [];
+
+  const pierreFiles = parsePierreDiffFiles(patch);
+  if (pierreFiles.length > 0) return pierreFiles;
 
   const lines = patch.split('\n');
   const files: DiffFile[] = [];
@@ -146,6 +161,25 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
   return files;
 }
 
+function parsePierreDiffFiles(patch: string): DiffFile[] {
+  try {
+    return parsePatchFiles(patch, 'drs-desktop', true).flatMap((parsedPatch) =>
+      parsedPatch.files.map((fileDiff) => ({
+        path: fileDiff.name,
+        oldPath: fileDiff.prevName ?? null,
+        status: CHANGE_STATUS[fileDiff.type],
+        additions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.additionLines, 0),
+        deletions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.deletionLines, 0),
+        hunks: [],
+        binary: fileDiff.hunks.length === 0,
+        metadata: fileDiff,
+      })),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function pushHunkLine(hunk: DiffHunk, prefix: string, text: string): void {
   if (prefix === '+') {
     hunk.lines.push({ type: 'add', text, oldLine: null, newLine: nextNew(hunk) });
@@ -191,5 +225,4 @@ export function lineDomId(file: string, newLine: number | null, oldLine: number 
 export function fileDomId(file: string): string {
   return `df-${encodeURIComponent(file)}`;
 }
-
 
