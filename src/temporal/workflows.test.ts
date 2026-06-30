@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TemporalWorkflowInput } from './types.js';
-import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
+import type { WorkflowNodeResult } from '../lib/workflow/types.js';
 
 const temporalMocks = vi.hoisted(() => {
   const runWorkflowNodeActivity = vi.fn();
   const runWorkflowNodeNoRetryActivity = vi.fn();
-  const hydrateContextActivity = vi.fn(
-    async (input: { context: WorkflowTemplateContext }) => input.context
+  const resolveArtifactRefsActivity = vi.fn(async (input: { refs: Record<string, unknown> }) =>
+    Object.fromEntries(Object.keys(input.refs).map((key) => [key, `resolved-${key}`]))
   );
   const prepareWorkspaceActivity = vi.fn(async () => ({ workingDir: '/worker/repo' }));
   const queryHandlers = new Map<unknown, () => unknown>();
   return {
     runWorkflowNodeActivity,
     runWorkflowNodeNoRetryActivity,
-    hydrateContextActivity,
+    resolveArtifactRefsActivity,
     prepareWorkspaceActivity,
     queryHandlers,
   };
@@ -27,7 +27,7 @@ vi.mock('@temporalio/workflow', () => ({
       options.retry?.maximumAttempts === 1
         ? temporalMocks.runWorkflowNodeNoRetryActivity
         : temporalMocks.runWorkflowNodeActivity,
-    hydrateContextActivity: temporalMocks.hydrateContextActivity,
+    resolveArtifactRefsActivity: temporalMocks.resolveArtifactRefsActivity,
     prepareWorkspaceActivity: temporalMocks.prepareWorkspaceActivity,
   }),
   setHandler: (query: unknown, handler: () => unknown) => {
@@ -68,10 +68,11 @@ describe('drsWorkflow control-flow execution', () => {
     temporalMocks.runWorkflowNodeNoRetryActivity.mockReset();
     temporalMocks.prepareWorkspaceActivity.mockClear();
     temporalMocks.prepareWorkspaceActivity.mockResolvedValue({ workingDir: '/worker/repo' });
-    temporalMocks.hydrateContextActivity.mockClear();
+    temporalMocks.resolveArtifactRefsActivity.mockClear();
     temporalMocks.queryHandlers.clear();
-    temporalMocks.hydrateContextActivity.mockImplementation(
-      async (input: { context: WorkflowTemplateContext }) => input.context
+    temporalMocks.resolveArtifactRefsActivity.mockImplementation(
+      async (input: { refs: Record<string, unknown> }) =>
+        Object.fromEntries(Object.keys(input.refs).map((key) => [key, `resolved-${key}`]))
     );
   });
 
@@ -696,5 +697,96 @@ describe('drsWorkflow control-flow execution', () => {
     // The workflow must not call new Date(); the timestamp is derived from the
     // deterministic workflowInfo().runStartTime so it is safe on replay.
     expect(result.timestamp).toBe('2026-06-29T00:00:00.000Z');
+  });
+
+  it('resolves only referenced artifact refs for control-flow evaluation', async () => {
+    const largeRef = {
+      kind: 'artifact-ref' as const,
+      key: 'diff-output',
+      uri: 'file:///repo/.drs/artifacts/temporal/diff-output.json',
+    };
+    temporalMocks.runWorkflowNodeActivity.mockImplementation(
+      async ({ nodeId }: { nodeId: string }) => {
+        if (nodeId === 'diff') return actionResult(nodeId, largeRef);
+        throw new Error(`Unexpected retryable node ${nodeId}`);
+      }
+    );
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
+      async ({ nodeId }: { nodeId: string }) => {
+        if (nodeId === 'gate') return actionResult(nodeId, 'proceed');
+        throw new Error(`Unexpected no-retry node ${nodeId}`);
+      }
+    );
+    temporalMocks.resolveArtifactRefsActivity.mockResolvedValue({
+      diffResult: 'resolved-diff-content',
+    });
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'refEvalFlow',
+        source: 'project',
+        overridesPackaged: false,
+        output: 'final',
+        inputs: {},
+        nodes: {
+          diff: { action: 'git-diff', output: 'diffResult' },
+          gate: {
+            action: 'write',
+            needs: ['diff'],
+            if: '{{artifacts.diffResult}}',
+            input: 'proceed',
+            writes: 'out.txt',
+            output: 'final',
+          },
+        },
+        executionOrder: ['diff', 'gate'],
+        waves: [],
+        segments: [{ type: 'dag', nodeIds: ['diff', 'gate'] }],
+        hasControlNodes: true,
+        lastNodeId: 'gate',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+
+    // resolveArtifactRefsActivity was called with only the 'diffResult' key
+    expect(temporalMocks.resolveArtifactRefsActivity).toHaveBeenCalledWith({
+      workingDir: '/repo',
+      refs: { diffResult: largeRef },
+    });
+    // The gate node was not skipped (condition was truthy after resolution)
+    expect(result.nodes['gate']).toMatchObject({ status: 'success' });
+    // The large ref stayed as a ref in workflow context (not bulk-hydrated)
+    expect(result.artifacts['diffResult']).toEqual(largeRef);
+  });
+
+  it('does not call resolveArtifactRefsActivity when conditions reference only inline values', async () => {
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockResolvedValue(actionResult('write', 'ok'));
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'inlineFlow',
+        source: 'project',
+        overridesPackaged: false,
+        inputs: {},
+        nodes: {
+          write: { action: 'write', output: 'result' },
+        },
+        executionOrder: ['write'],
+        waves: [['write']],
+        segments: [],
+        hasControlNodes: false,
+        lastNodeId: 'write',
+      },
+    };
+
+    await drsWorkflow(input);
+    expect(temporalMocks.resolveArtifactRefsActivity).not.toHaveBeenCalled();
   });
 });

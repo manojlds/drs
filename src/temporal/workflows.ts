@@ -18,6 +18,7 @@ import {
 import type { WorkflowNodeConfig } from '../lib/config.js';
 import type { CompiledWorkflowSegment } from '../lib/workflow/compiled-plan.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
+import { isArtifactRef, type TemporalArtifactRef } from '../lib/workflow/artifact-store.js';
 import { getTemporalNodeRetryMode } from './retry-policy.js';
 import type {
   ScheduledActivityIdempotencyContext,
@@ -34,7 +35,7 @@ export const workflowLoopStateQuery =
 export const workflowArtifactsQuery =
   defineQuery<TemporalWorkflowArtifactsQueryResult>('drsWorkflowArtifacts');
 
-const { runWorkflowNodeActivity, hydrateContextActivity, prepareWorkspaceActivity } =
+const { runWorkflowNodeActivity, resolveArtifactRefsActivity, prepareWorkspaceActivity } =
   proxyActivities<typeof activities>({
     startToCloseTimeout: '30 minutes',
   });
@@ -80,18 +81,6 @@ function recordWorkflowNodeResult(
   }
 }
 
-function isTemporalArtifactRef(
-  value: unknown
-): value is { kind: 'artifact-ref'; key: string; uri: string } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Record<string, unknown>).kind === 'artifact-ref' &&
-    typeof (value as Record<string, unknown>).key === 'string' &&
-    typeof (value as Record<string, unknown>).uri === 'string'
-  );
-}
-
 function buildWorkflowStatusSnapshot(
   input: TemporalWorkflowInput,
   context: WorkflowTemplateContext,
@@ -129,7 +118,7 @@ function buildArtifactsSnapshot(
   const artifactRefs: TemporalWorkflowArtifactsQueryResult['artifactRefs'] = {};
 
   for (const [key, value] of Object.entries(context.artifacts)) {
-    if (isTemporalArtifactRef(value)) {
+    if (isArtifactRef(value)) {
       artifactRefs[key] = value;
     }
   }
@@ -173,15 +162,102 @@ async function runTemporalWorkflowNodeActivity(
   return runWorkflowNodeActivity(activityInput);
 }
 
-async function hydrateTemporalContext(
-  workingDir: string,
-  context: WorkflowTemplateContext
-): Promise<void> {
-  const hydrated = await hydrateContextActivity({
-    workingDir,
-    context,
+/**
+ * Extract artifact keys referenced by a template/expression string.
+ *
+ * Scans for `{{artifacts.KEY}}` template references and bare `artifacts.KEY`
+ * path references, collecting only the first path segment after `artifacts.`
+ * (the key in `context.artifacts`). Subsequent dotted segments are sub-paths
+ * within the resolved value and are resolved at evaluation time.
+ */
+function extractArtifactKeysFromExpression(expression: string, keys: Set<string>): void {
+  for (const match of expression.matchAll(/\{\{\s*artifacts\.([A-Za-z0-9_-]+)/g)) {
+    keys.add(match[1] ?? '');
+  }
+  const stripped = expression.replace(/\{\{[^}]+\}\}/g, '');
+  for (const match of stripped.matchAll(/(?:^|[^A-Za-z0-9_.])artifacts\.([A-Za-z0-9_-]+)/g)) {
+    keys.add(match[1] ?? '');
+  }
+  keys.delete('');
+}
+
+/**
+ * Resolve only the artifact refs needed for upcoming control-flow evaluation.
+ *
+ * Returns a shallow-copy evaluation context with the requested keys resolved.
+ * The original `context.artifacts` is never mutated, so large values that are
+ * not needed for branching stay as refs in workflow state and never enter
+ * Temporal event history. Activities self-hydrate from their own deserialized
+ * copy, so node execution is unaffected.
+ */
+async function resolveEvaluationArtifacts(
+  input: TemporalWorkflowInput,
+  context: WorkflowTemplateContext,
+  keys: Set<string>
+): Promise<WorkflowTemplateContext> {
+  if (keys.size === 0) return context;
+
+  const refsToResolve: Record<string, TemporalArtifactRef> = {};
+  for (const key of keys) {
+    const value = context.artifacts[key];
+    if (isArtifactRef(value)) {
+      refsToResolve[key] = value;
+    }
+  }
+
+  if (Object.keys(refsToResolve).length === 0) return context;
+
+  const resolved = await resolveArtifactRefsActivity({
+    workingDir: input.workingDir,
+    refs: refsToResolve,
   });
-  Object.assign(context.artifacts, hydrated.artifacts);
+
+  return {
+    ...context,
+    artifacts: { ...context.artifacts, ...resolved },
+  };
+}
+
+/**
+ * Build an evaluation context for a set of runnable DAG nodes by resolving
+ * only the artifact refs referenced by their `if` conditions.
+ */
+async function resolveDagEvaluationContext(
+  input: TemporalWorkflowInput,
+  context: WorkflowTemplateContext,
+  runnableNodeIds: string[]
+): Promise<WorkflowTemplateContext> {
+  const keys = new Set<string>();
+  for (const nodeId of runnableNodeIds) {
+    const node = input.plan.nodes[nodeId];
+    if (node?.if) {
+      extractArtifactKeysFromExpression(node.if, keys);
+    }
+  }
+  return resolveEvaluationArtifacts(input, context, keys);
+}
+
+/**
+ * Build an evaluation context for a control node by resolving only the
+ * artifact refs referenced by its `if`, `value` (switch), or `maxIterations`
+ * (loop) expressions.
+ */
+async function resolveControlEvaluationContext(
+  input: TemporalWorkflowInput,
+  context: WorkflowTemplateContext,
+  node: WorkflowNodeConfig
+): Promise<WorkflowTemplateContext> {
+  const keys = new Set<string>();
+  if (node.if) {
+    extractArtifactKeysFromExpression(node.if, keys);
+  }
+  if (node.control === 'switch' && node.value) {
+    extractArtifactKeysFromExpression(node.value, keys);
+  }
+  if (node.control === 'loop' && typeof node.maxIterations === 'string') {
+    extractArtifactKeysFromExpression(node.maxIterations, keys);
+  }
+  return resolveEvaluationArtifacts(input, context, keys);
 }
 
 async function runTemporalDagNodes(
@@ -218,7 +294,7 @@ async function runTemporalDagNodes(
       throw new Error('Workflow control runner could not make progress in a DAG segment.');
     }
 
-    await hydrateTemporalContext(input.workingDir, context);
+    const evalContext = await resolveDagEvaluationContext(input, context, runnable);
     const results = await Promise.all(
       runnable.map(async (nodeId) => {
         const node = plan.nodes[nodeId];
@@ -226,7 +302,7 @@ async function runTemporalDagNodes(
           throw new Error(`Workflow references unknown node "${nodeId}".`);
         }
 
-        const skipReason = getWorkflowNodeSkipReason(node, context);
+        const skipReason = getWorkflowNodeSkipReason(node, evalContext);
         if (skipReason) {
           return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
         }
@@ -288,11 +364,11 @@ async function runTemporalControlWorkflow(
       throw new Error(`Workflow references unknown node "${segment.nodeId}".`);
     }
 
-    await hydrateTemporalContext(input.workingDir, context);
-    const skipReason = getWorkflowNodeSkipReason(node, context);
+    const evalContext = await resolveControlEvaluationContext(input, context, node);
+    const skipReason = getWorkflowNodeSkipReason(node, evalContext);
     const { result, nextNodeId, ended } = skipReason
       ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
-      : runControlWorkflowNode(segment.nodeId, node, context);
+      : runControlWorkflowNode(segment.nodeId, node, evalContext);
     recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
 
     if (ended) {

@@ -46,6 +46,11 @@ export interface PrepareWorkspaceActivityResult {
   workingDir: string;
 }
 
+export interface ResolveArtifactRefsActivityInput {
+  workingDir: string;
+  refs: Record<string, TemporalArtifactRef>;
+}
+
 export type ActivityIdempotencyContext = WorkflowActivityIdempotencyContext;
 
 export type ScheduledActivityIdempotencyContext = Omit<ActivityIdempotencyContext, 'attempt'> & {

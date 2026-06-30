@@ -11,18 +11,14 @@ import {
   shouldInline,
   LocalWorkflowArtifactStore,
 } from '../lib/workflow/artifact-store.js';
-import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
+import type { WorkflowNodeResult } from '../lib/workflow/types.js';
 import type {
   ActivityIdempotencyContext,
   PrepareWorkspaceActivityInput,
   PrepareWorkspaceActivityResult,
+  ResolveArtifactRefsActivityInput,
   RunWorkflowNodeActivityInput,
 } from './types.js';
-
-export interface HydrateContextActivityInput {
-  workingDir: string;
-  context: WorkflowTemplateContext;
-}
 
 function safePathSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
@@ -256,29 +252,23 @@ async function offloadNodeResult(
 }
 
 /**
- * Hydrate artifact refs within a template context. Called by the Temporal
- * workflow before each wave so node template rendering can access prior
- * artifact values. Returns a new context because activities receive a
- * deserialized copy of the workflow's input; mutations do not propagate back.
+ * Resolve a targeted set of artifact refs to their actual values. Called by
+ * the Temporal workflow only for the specific artifact keys referenced by
+ * upcoming control-flow expressions (if/switch/loop), so large values that
+ * are not needed for branching stay as refs and never enter workflow state or
+ * event history.
  */
-export async function hydrateContextActivity(
-  input: HydrateContextActivityInput
-): Promise<WorkflowTemplateContext> {
+export async function resolveArtifactRefsActivity(
+  input: ResolveArtifactRefsActivityInput
+): Promise<Record<string, unknown>> {
   const store = new LocalWorkflowArtifactStore(input.workingDir, 'temporal');
-  const hydratedArtifacts: Record<string, unknown> = {};
+  const resolved: Record<string, unknown> = {};
 
-  for (const [key, value] of Object.entries(input.context.artifacts)) {
-    if (isArtifactRef(value)) {
-      hydratedArtifacts[key] = await store.get(value);
-    } else {
-      hydratedArtifacts[key] = value;
-    }
+  for (const [key, ref] of Object.entries(input.refs)) {
+    resolved[key] = await store.get(ref);
   }
 
-  return {
-    ...input.context,
-    artifacts: hydratedArtifacts,
-  };
+  return resolved;
 }
 
 /**

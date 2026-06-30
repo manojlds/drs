@@ -5,14 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApplicationFailure } from '@temporalio/common';
 import {
   runWorkflowNodeActivity,
-  hydrateContextActivity,
+  resolveArtifactRefsActivity,
   hydrateContext,
   resolveActivityIdempotencyContext,
   isNonRetryableProviderFailure,
   prepareWorkspaceActivity,
 } from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
-import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
 import { configureLogger } from '../lib/logger.js';
 
@@ -384,45 +383,50 @@ describe('isNonRetryableProviderFailure', () => {
   });
 });
 
-describe('hydrateContextActivity', () => {
+describe('resolveArtifactRefsActivity', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'drs-hydrate-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'drs-resolve-refs-'));
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('returns hydrated artifact refs without mutating input', async () => {
+  it('resolves only the requested artifact refs', async () => {
     const store = new LocalWorkflowArtifactStore(tempDir, 'temporal');
-    const originalValue = 'large content';
-    const ref = await store.put('node-output', originalValue);
+    const ref = await store.put('diff', 'large diff content');
 
-    const context: WorkflowTemplateContext = {
-      inputs: {},
-      nodes: {},
-      artifacts: { review: ref },
-      loop: {},
-    };
+    const resolved = await resolveArtifactRefsActivity({
+      workingDir: tempDir,
+      refs: { diff: ref },
+    });
 
-    const hydrated = await hydrateContextActivity({ workingDir: tempDir, context });
-    expect(hydrated.artifacts['review']).toBe(originalValue);
-    expect(context.artifacts['review']).toBe(ref);
+    expect(resolved['diff']).toBe('large diff content');
   });
 
-  it('leaves non-ref artifacts unchanged', async () => {
-    const context: WorkflowTemplateContext = {
-      inputs: {},
-      nodes: {},
-      artifacts: { count: 42, name: 'test' },
-      loop: {},
-    };
+  it('returns an empty object when no refs are requested', async () => {
+    const resolved = await resolveArtifactRefsActivity({
+      workingDir: tempDir,
+      refs: {},
+    });
 
-    const hydrated = await hydrateContextActivity({ workingDir: tempDir, context });
-    expect(hydrated.artifacts['count']).toBe(42);
-    expect(hydrated.artifacts['name']).toBe('test');
+    expect(resolved).toEqual({});
+  });
+
+  it('resolves multiple refs independently', async () => {
+    const store = new LocalWorkflowArtifactStore(tempDir, 'temporal');
+    const ref1 = await store.put('a', 'value-a');
+    const ref2 = await store.put('b', { data: 'value-b' });
+
+    const resolved = await resolveArtifactRefsActivity({
+      workingDir: tempDir,
+      refs: { a: ref1, b: ref2 },
+    });
+
+    expect(resolved['a']).toBe('value-a');
+    expect(resolved['b']).toEqual({ data: 'value-b' });
   });
 });
 
