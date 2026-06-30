@@ -23,6 +23,9 @@ from a desktop app.
 - **Run any workflow** — the sidebar lists all packaged + project workflows
   (via `drs workflow list`), shows their inputs with forms, and runs them.
 - **Run Review** — one-click `local-review` (DRS agents review the current diff).
+- **GitHub/GitLab review** — enter a GitHub PR or GitLab MR target and run the
+  packaged `github-pr-review` / `gitlab-mr-review` workflows. The app displays
+  the remote diff from the workflow artifact when available.
 - **Fix ≥ High** — one-click `local-fix-review-issues` for CRITICAL/HIGH
   findings, with the DRS fix → re-review → verify loop. Live logs stream in.
 - **Copy as Markdown** — export the review as Markdown for pasting anywhere.
@@ -32,6 +35,8 @@ from a desktop app.
 - Node.js 22.19+
 - A working DRS setup in the target repo (`.drs/drs.config.yaml`, model provider
   env vars). See the [DRS README](../README.md).
+- For GitHub PR reviews: GitHub auth/env expected by DRS.
+- For GitLab MR reviews: GitLab auth/env expected by DRS.
 
 ## Setup
 

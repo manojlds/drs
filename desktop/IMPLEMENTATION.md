@@ -6,7 +6,7 @@ validated, and what comes next.
 
 > **TL;DR** — A new `desktop/` package that renders split/unified diffs with
 > `@pierre/diffs`, shows a changed-file tree with `@pierre/trees`, overlays DRS review issues inline
-> on diff lines, runs any DRS workflow (including the fix-and-verify loop), and
+> on diff lines, reviews local diffs plus GitHub PRs/GitLab MRs, runs any DRS workflow (including the fix-and-verify loop), and
 > streams live logs — all by driving the existing DRS CLI as a child process. The
 > CLI engine is unchanged.
 
@@ -231,6 +231,9 @@ captured into both the banner and a global error banner.
 | Run any packaged/project workflow | ✅ |
 | Dynamic workflow input forms | ✅ |
 | One-click Run Review (`local-review`) | ✅ |
+| GitHub PR review (`github-pr-review`) | ✅ |
+| GitLab MR review (`gitlab-mr-review`) | ✅ |
+| Remote PR/MR diff hydration from workflow artifacts | ✅ |
 | One-click Fix ≥ High (`local-fix-review-issues` with verify loop) | ✅ |
 | Live workflow log streaming | ✅ |
 | Cancel in-flight workflows | ✅ |
@@ -343,6 +346,5 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
 - **Markdown preview rendering** inline (render added `.md` content live).
 - **"Viewed" toggle** per file (track review progress).
 - **Multiple windows** (one per repository).
-
 
 

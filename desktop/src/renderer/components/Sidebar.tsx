@@ -9,6 +9,8 @@ interface SidebarProps {
   runState: RunBannerState | null;
   onPickDirectory: () => void;
   onRunWorkflow: (name: string, inputs: Record<string, string>) => void;
+  onRunGithubReview: (inputs: Record<string, string>) => void;
+  onRunGitlabReview: (inputs: Record<string, string>) => void;
   onCancelWorkflow: () => void;
   onDismissRun: () => void;
 }
@@ -38,6 +40,12 @@ export function Sidebar(props: SidebarProps) {
           onDismiss={props.onDismissRun}
         />
 
+        <ReviewSourcePanel
+          disabled={!workingDir || !!runState?.active}
+          onRunGithubReview={props.onRunGithubReview}
+          onRunGitlabReview={props.onRunGitlabReview}
+        />
+
         <div className="sidebar-section">
           <h3>Workflows</h3>
           {workflows.length === 0 && (
@@ -61,6 +69,116 @@ export function Sidebar(props: SidebarProps) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ReviewSourcePanel({
+  disabled,
+  onRunGithubReview,
+  onRunGitlabReview,
+}: {
+  disabled: boolean;
+  onRunGithubReview: (inputs: Record<string, string>) => void;
+  onRunGitlabReview: (inputs: Record<string, string>) => void;
+}) {
+  const [source, setSource] = useState<'github' | 'gitlab'>('github');
+  const [github, setGithub] = useState({ owner: '', repo: '', pr: '' });
+  const [gitlab, setGitlab] = useState({ project: '', mr: '' });
+  const [options, setOptions] = useState({ describe: false, post: false, visual: false, fix: false });
+
+  const optionInputs = {
+    describe: String(options.describe),
+    post: String(options.post),
+    visual: String(options.visual),
+    fix: String(options.fix),
+  };
+
+  const canRunGithub = github.owner.trim() && github.repo.trim() && github.pr.trim();
+  const canRunGitlab = gitlab.project.trim() && gitlab.mr.trim();
+
+  return (
+    <div className="sidebar-section">
+      <h3>Review Source</h3>
+      <div className="review-source-card">
+        <div className="seg source-tabs">
+          <button className={source === 'github' ? 'active' : ''} onClick={() => setSource('github')}>
+            GitHub PR
+          </button>
+          <button className={source === 'gitlab' ? 'active' : ''} onClick={() => setSource('gitlab')}>
+            GitLab MR
+          </button>
+        </div>
+
+        {source === 'github' ? (
+          <>
+            <LabeledInput label="Owner" value={github.owner} onChange={(owner) => setGithub((cur) => ({ ...cur, owner }))} />
+            <LabeledInput label="Repo" value={github.repo} onChange={(repo) => setGithub((cur) => ({ ...cur, repo }))} />
+            <LabeledInput label="PR" type="number" value={github.pr} onChange={(pr) => setGithub((cur) => ({ ...cur, pr }))} />
+            <button
+              className="btn btn-primary"
+              disabled={disabled || !canRunGithub}
+              onClick={() => onRunGithubReview({ ...optionInputs, owner: github.owner.trim(), repo: github.repo.trim(), pr: github.pr.trim() })}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              Review GitHub PR
+            </button>
+          </>
+        ) : (
+          <>
+            <LabeledInput label="Project" value={gitlab.project} onChange={(project) => setGitlab((cur) => ({ ...cur, project }))} placeholder="group/project" />
+            <LabeledInput label="MR" type="number" value={gitlab.mr} onChange={(mr) => setGitlab((cur) => ({ ...cur, mr }))} />
+            <button
+              className="btn btn-primary"
+              disabled={disabled || !canRunGitlab}
+              onClick={() => onRunGitlabReview({ ...optionInputs, project: gitlab.project.trim(), mr: gitlab.mr.trim() })}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              Review GitLab MR
+            </button>
+          </>
+        )}
+
+        <div className="source-options">
+          {(['describe', 'post', 'visual', 'fix'] as const).map((name) => (
+            <label key={name}>
+              <input
+                type="checkbox"
+                checked={options[name]}
+                onChange={(event) => setOptions((cur) => ({ ...cur, [name]: event.target.checked }))}
+              />
+              {name}
+            </label>
+          ))}
+        </div>
+        <div className="muted source-note">Posting and fixing are off by default.</div>
+      </div>
+    </div>
+  );
+}
+
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: 'text' | 'number';
+  placeholder?: string;
+}) {
+  return (
+    <div className="input-row">
+      <label>{label}</label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </div>
   );
 }

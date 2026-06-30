@@ -7,6 +7,7 @@ Use this guide to run and smoke-test the Electron desktop app from a local DRS c
 - Node.js 22.19 or newer.
 - A working DRS checkout with dependencies installed at the repository root.
 - A DRS-compatible model/provider environment for workflows that call agents.
+- GitHub/GitLab provider credentials when testing PR/MR workflows.
 - Git available on `PATH`.
 
 ## First-Time Setup
@@ -73,6 +74,18 @@ npm run electron:dev
 12. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
 13. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
 14. Start a long-running workflow and click `Cancel` to confirm cancellation updates the run banner.
+
+## GitHub/GitLab Smoke Test
+
+Use the `Review Source` panel in the sidebar:
+
+1. Select `GitHub PR`, enter `owner`, `repo`, and `PR`, then click `Review GitHub PR`.
+2. Confirm live logs stream and the source banner changes to the PR review source.
+3. Confirm the remote PR diff appears in the diff viewer when the workflow returns `artifacts.change.filesWithDiffs`.
+4. Confirm issues from `.drs/review-output.json` appear in the issue panel and inline on matching diff lines.
+5. Select `GitLab MR`, enter `project` and `MR`, then click `Review GitLab MR`.
+6. Repeat the same checks for the MR diff and issues.
+7. Leave `describe`, `post`, `visual`, and `fix` unchecked unless you intentionally want side effects on the PR/MR.
 
 ## Quality Checks
 

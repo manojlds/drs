@@ -91,8 +91,18 @@ export interface WorkflowRunResultJson {
   workflow: string;
   inputs: Record<string, string>;
   nodes: Record<string, unknown>;
-  artifacts: Record<string, unknown>;
+  artifacts: Record<string, unknown> & {
+    change?: ReviewSourceArtifact;
+  };
   output?: unknown;
+}
+
+export interface ReviewSourceArtifact {
+  name: string;
+  files: string[];
+  filesWithDiffs?: Array<{ filename: string; patch: string }>;
+  context?: Record<string, unknown>;
+  staged?: boolean;
 }
 
 export interface DiffResult {

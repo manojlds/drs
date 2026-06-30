@@ -14,16 +14,20 @@ import type {
   ReviewJsonOutput,
   WorkflowListEntry,
   WorkflowLogEvent,
+  WorkflowRunResultJson,
 } from './types';
 
 const REVIEW_WORKFLOW = 'local-review';
 const FIX_WORKFLOW = 'local-fix-review-issues';
+const GITHUB_REVIEW_WORKFLOW = 'github-pr-review';
+const GITLAB_REVIEW_WORKFLOW = 'gitlab-mr-review';
 
 export function App() {
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowListEntry[]>([]);
   const [staged, setStaged] = useState(false);
   const [diffLayout, setDiffLayout] = useState<'unified' | 'split'>('split');
+  const [diffSourceLabel, setDiffSourceLabel] = useState('Local unstaged diff');
 
   const [diffPatch, setDiffPatch] = useState('');
   const [diffLoading, setDiffLoading] = useState(false);
@@ -81,6 +85,7 @@ export function App() {
     try {
       const result = await window.drs.getDiff(dir, { staged: useStaged });
       setDiffPatch(result.patch);
+      setDiffSourceLabel(useStaged ? 'Local staged diff' : 'Local unstaged diff');
     } catch (error) {
       setDiffPatch('');
       setDiffError(error instanceof Error ? error.message : String(error));
@@ -147,8 +152,14 @@ export function App() {
       try {
         const response = await window.drs.runWorkflow({ name, inputs, workingDir, runId });
         if (response.reviewOutput) setReview(response.reviewOutput);
-        // After any workflow that may change the tree, reload the diff.
-        await loadDiff(workingDir, staged);
+        const remotePatch = patchFromWorkflowResult(response.result);
+        if (remotePatch) {
+          setDiffPatch(remotePatch.patch);
+          setDiffSourceLabel(remotePatch.label);
+        } else {
+          // After any local workflow that may change the tree, reload the diff.
+          await loadDiff(workingDir, staged);
+        }
         setRunState((cur) => (cur && cur.runId === runId ? { ...cur, active: false } : cur));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -164,6 +175,20 @@ export function App() {
   const handleRunReview = useCallback(() => {
     void startWorkflow(REVIEW_WORKFLOW, { staged: String(staged) });
   }, [startWorkflow, staged]);
+
+  const handleRunGithubReview = useCallback(
+    (inputs: Record<string, string>) => {
+      void startWorkflow(GITHUB_REVIEW_WORKFLOW, inputs);
+    },
+    [startWorkflow],
+  );
+
+  const handleRunGitlabReview = useCallback(
+    (inputs: Record<string, string>) => {
+      void startWorkflow(GITLAB_REVIEW_WORKFLOW, inputs);
+    },
+    [startWorkflow],
+  );
 
   const handleFixIssues = useCallback(() => {
     if (!review) return;
@@ -217,6 +242,8 @@ export function App() {
         runState={runState}
         onPickDirectory={handlePickDirectory}
         onRunWorkflow={startWorkflow}
+        onRunGithubReview={handleRunGithubReview}
+        onRunGitlabReview={handleRunGitlabReview}
         onCancelWorkflow={handleCancelWorkflow}
         onDismissRun={handleDismissRun}
       />
@@ -240,6 +267,7 @@ export function App() {
         {diffError && !globalError && (
           <div className="error-banner">Diff error: {diffError}</div>
         )}
+        <div className="source-banner">{diffSourceLabel}</div>
         <div className="content">
           <FileTree
             files={diffFiles}
@@ -276,3 +304,20 @@ function actionableMinSeverity(review: ReviewJsonOutput): string {
   return 'high';
 }
 
+function patchFromWorkflowResult(
+  result: WorkflowRunResultJson,
+): { patch: string; label: string } | null {
+  const change = result.artifacts.change;
+  if (!change?.filesWithDiffs?.length) return null;
+  const patch = change.filesWithDiffs
+    .map(({ filename, patch: filePatch }) => normalizeFilePatch(filename, filePatch))
+    .join('\n');
+  if (!patch.trim()) return null;
+  return { patch, label: change.name || result.workflow };
+}
+
+function normalizeFilePatch(filename: string, patch: string): string {
+  if (patch.startsWith('diff --git ')) return patch.trimEnd();
+  const header = [`diff --git a/${filename} b/${filename}`, `--- a/${filename}`, `+++ b/${filename}`];
+  return `${header.join('\n')}\n${patch.trimEnd()}`;
+}
