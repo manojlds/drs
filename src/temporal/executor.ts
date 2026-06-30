@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { dirname } from 'path';
 import { Connection, Client } from '@temporalio/client';
 import chalk from 'chalk';
+import simpleGit from 'simple-git';
 import type { DRSConfig } from '../lib/config.js';
 import { getLogger } from '../lib/logger.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
@@ -12,7 +13,7 @@ import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { normalizeWorkflowBooleanLike } from '../lib/workflow/planning.js';
 import type { WorkflowRunOptions, WorkflowRunResult } from '../lib/workflow/types.js';
 import { resolveTemporalConfig } from './config.js';
-import type { TemporalWorkflowInput } from './types.js';
+import type { TemporalManagedWorkspaceInput, TemporalWorkflowInput } from './types.js';
 
 async function writeWorkflowFile(
   workingDir: string,
@@ -61,7 +62,7 @@ async function saveTemporalWorkflowTrace(
     scope: {
       platform: 'temporal',
       projectId: workflowName,
-      subject: 'trace',
+      subject: 'workflow',
     },
     payload: {
       schemaVersion: 1,
@@ -74,7 +75,7 @@ async function saveTemporalWorkflowTrace(
         taskQueue: temporal.taskQueue,
       },
       startedAt,
-      completedAt: result.timestamp,
+      completedAt: new Date().toISOString(),
       inputs: result.inputs,
       nodes: result.nodes,
       artifacts: result.artifacts,
@@ -125,6 +126,27 @@ function validateResolvedWorkflowInput(
   if (input.type !== 'string') {
     throw new Error(`Workflow input "${key}" has unsupported type "${input.type}".`);
   }
+}
+
+async function resolveManagedWorkspaceInput(
+  workingDir: string,
+  temporal: ReturnType<typeof resolveTemporalConfig>
+): Promise<TemporalManagedWorkspaceInput | undefined> {
+  if (temporal.workspace.mode !== 'managed') {
+    return undefined;
+  }
+
+  const git = simpleGit(workingDir);
+  const configuredRepoUrl = process.env.DRS_TEMPORAL_WORKSPACE_REPO_URL;
+  const repoUrl = configuredRepoUrl ?? String(await git.remote(['get-url', 'origin']));
+  const ref = process.env.DRS_TEMPORAL_WORKSPACE_REF ?? (await git.revparse(['HEAD']));
+
+  return {
+    mode: 'managed',
+    root: temporal.workspace.root,
+    repoUrl: repoUrl.trim(),
+    ref: ref.trim(),
+  };
 }
 
 async function resolveCompiledPlanInputs(
@@ -183,6 +205,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
     try {
       const client = new Client({ connection, namespace: temporal.namespace });
       const workflowId = `${temporal.workflowIdPrefix}-${workflowName}-${randomUUID()}`;
+      const workspace = await resolveManagedWorkspaceInput(workingDir, temporal);
       const workflowInput: TemporalWorkflowInput = {
         plan,
         inputs,
@@ -191,6 +214,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
           debug: options.debug,
           thinkingLevel: options.thinkingLevel,
         },
+        ...(workspace ? { workspace } : {}),
       };
 
       const handle = await client.workflow.start('drsWorkflow', {

@@ -10,7 +10,9 @@ const temporalMocks = vi.hoisted(() => {
   const close = vi.fn();
   const connect = vi.fn();
   const start = vi.fn();
-  return { close, connect, start };
+  const remote = vi.fn();
+  const revparse = vi.fn();
+  return { close, connect, start, remote, revparse };
 });
 
 vi.mock('@temporalio/client', () => {
@@ -27,6 +29,13 @@ vi.mock('@temporalio/client', () => {
     }),
   };
 });
+
+vi.mock('simple-git', () => ({
+  default: vi.fn(() => ({
+    remote: temporalMocks.remote,
+    revparse: temporalMocks.revparse,
+  })),
+}));
 
 const config = {
   temporal: {
@@ -58,6 +67,8 @@ describe('TemporalWorkflowExecutor', () => {
     vi.clearAllMocks();
     temporalMocks.close.mockResolvedValue(undefined);
     temporalMocks.connect.mockResolvedValue({ close: temporalMocks.close });
+    temporalMocks.remote.mockResolvedValue('https://github.com/example/repo.git\n');
+    temporalMocks.revparse.mockResolvedValue('abc123\n');
     temporalMocks.start.mockResolvedValue({
       workflowId: 'wf-id',
       firstExecutionRunId: 'run-id',
@@ -91,6 +102,42 @@ describe('TemporalWorkflowExecutor', () => {
     expect(temporalMocks.close).toHaveBeenCalledTimes(1);
   });
 
+  it('passes managed workspace checkout metadata when configured', async () => {
+    await new TemporalWorkflowExecutor().run(
+      {
+        ...config,
+        temporal: {
+          ...config.temporal,
+          workspace: {
+            mode: 'managed',
+            root: '/var/lib/drs/workspaces',
+          },
+        },
+      },
+      'sample',
+      {
+        workingDir: process.cwd(),
+        jsonOutput: true,
+      }
+    );
+
+    expect(temporalMocks.start).toHaveBeenCalledWith(
+      'drsWorkflow',
+      expect.objectContaining({
+        args: [
+          expect.objectContaining({
+            workspace: {
+              mode: 'managed',
+              root: '/var/lib/drs/workspaces',
+              repoUrl: 'https://github.com/example/repo.git',
+              ref: 'abc123',
+            },
+          }),
+        ],
+      })
+    );
+  });
+
   it('supports --no-wait and still closes the connection', async () => {
     const result = await new TemporalWorkflowExecutor().run(config, 'sample', {
       workingDir: process.cwd(),
@@ -117,7 +164,7 @@ describe('TemporalWorkflowExecutor', () => {
         {
           platform: 'temporal',
           projectId: 'sample',
-          subject: 'trace',
+          subject: 'workflow',
         }
       );
 
@@ -132,7 +179,7 @@ describe('TemporalWorkflowExecutor', () => {
           namespace: 'test',
           taskQueue: 'test-queue',
         },
-        completedAt: '2026-06-28T00:00:00.000Z',
+        completedAt: expect.any(String),
         inputs: { mode: 'quick' },
         nodes: {},
         artifacts: {},
@@ -142,7 +189,7 @@ describe('TemporalWorkflowExecutor', () => {
       expect(artifact.scope).toEqual({
         platform: 'temporal',
         projectId: 'sample',
-        subject: 'trace',
+        subject: 'workflow',
       });
     } finally {
       rmSync(workingDir, { recursive: true, force: true });

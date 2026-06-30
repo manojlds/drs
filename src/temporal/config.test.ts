@@ -10,6 +10,10 @@ describe('resolveTemporalConfig', () => {
       namespace: 'default',
       taskQueue: 'drs-workflows',
       workflowIdPrefix: 'drs',
+      workspace: {
+        mode: 'local',
+        root: '/tmp/drs-temporal-workspaces',
+      },
     });
   });
 
@@ -20,6 +24,10 @@ describe('resolveTemporalConfig', () => {
         namespace: 'prod',
         taskQueue: 'repo-maintenance',
         workflowIdPrefix: 'repo',
+        workspace: {
+          mode: 'managed',
+          root: '/var/lib/drs/workspaces',
+        },
       },
     } as DRSConfig;
     expect(resolveTemporalConfig(config)).toEqual({
@@ -27,6 +35,10 @@ describe('resolveTemporalConfig', () => {
       namespace: 'prod',
       taskQueue: 'repo-maintenance',
       workflowIdPrefix: 'repo',
+      workspace: {
+        mode: 'managed',
+        root: '/var/lib/drs/workspaces',
+      },
     });
   });
 });

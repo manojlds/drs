@@ -71,6 +71,7 @@ export interface AgentResult {
   agentType: string;
   success: boolean;
   issues: ReviewIssue[];
+  error?: string;
   verification?: ReviewVerificationResult;
   usage?: AgentUsageSummary;
 }
@@ -503,11 +504,13 @@ async function executeSingleAgent(
       },
     };
   } catch (error) {
-    console.error(chalk.red(`✗ ${agentType} agent failed: ${error}`));
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(chalk.red(`✗ ${agentType} agent failed: ${message}`));
     return {
       agentType,
       success: false,
       issues: [],
+      error: message,
       usage: {
         ...agentUsage,
         success: false,
@@ -575,6 +578,9 @@ export async function runReviewAgents(
   const failedAgents = agentResults.filter((r) => !r.success);
 
   if (successfulAgents.length === 0) {
+    const failureDetails = failedAgents
+      .map((result) => `${result.agentType}: ${result.error ?? 'unknown error'}`)
+      .join('; ');
     console.error(chalk.red('\n✗ All review agents failed!\n'));
     console.error(
       chalk.yellow(
@@ -585,7 +591,9 @@ export async function runReviewAgents(
           '  4. Agents cannot find files to review\n'
       )
     );
-    throw new Error('All review agents failed');
+    throw new Error(
+      failureDetails ? `All review agents failed: ${failureDetails}` : 'All review agents failed'
+    );
   }
 
   if (failedAgents.length > 0) {

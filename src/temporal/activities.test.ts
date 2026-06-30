@@ -2,16 +2,25 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ApplicationFailure } from '@temporalio/common';
 import {
   runWorkflowNodeActivity,
   hydrateContextActivity,
   hydrateContext,
   resolveActivityIdempotencyContext,
+  isNonRetryableProviderFailure,
+  prepareWorkspaceActivity,
 } from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
 import { configureLogger } from '../lib/logger.js';
+
+const gitMocks = vi.hoisted(() => ({
+  clone: vi.fn(),
+  fetch: vi.fn(),
+  checkout: vi.fn(),
+}));
 
 vi.mock('../cli/workflow.js', () => ({
   runWorkflowNodeLocally: vi.fn(),
@@ -21,7 +30,49 @@ vi.mock('../lib/config.js', () => ({
   loadConfig: vi.fn().mockReturnValue({}),
 }));
 
+vi.mock('simple-git', () => ({
+  default: vi.fn(() => gitMocks),
+}));
+
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
+
+describe('prepareWorkspaceActivity', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gitMocks.clone.mockResolvedValue(undefined);
+    gitMocks.fetch.mockResolvedValue(undefined);
+    gitMocks.checkout.mockResolvedValue(undefined);
+    tempDir = mkdtempSync(join(tmpdir(), 'drs-managed-workspace-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('clones and checks out the requested ref under the workflow workspace', async () => {
+    const result = await prepareWorkspaceActivity({
+      workflowId: 'workflow/1',
+      runId: 'run:1',
+      workspace: {
+        mode: 'managed',
+        root: tempDir,
+        repoUrl: 'https://github.com/example/repo.git',
+        ref: 'abc123',
+      },
+    });
+
+    expect(result.workingDir).toBe(join(tempDir, 'workflow-1', 'run-1', 'repo'));
+    expect(gitMocks.clone).toHaveBeenCalledWith(
+      'https://github.com/example/repo.git',
+      result.workingDir,
+      ['--no-checkout']
+    );
+    expect(gitMocks.fetch).toHaveBeenCalledWith(['origin', 'abc123', '--tags']);
+    expect(gitMocks.checkout).toHaveBeenCalledWith('abc123');
+  });
+});
 
 describe('activities artifact offloading', () => {
   let tempDir: string;
@@ -291,6 +342,45 @@ describe('resolveActivityIdempotencyContext', () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+});
+
+describe('isNonRetryableProviderFailure', () => {
+  it('classifies quota and provider configuration failures as non-retryable', () => {
+    expect(
+      isNonRetryableProviderFailure(
+        new Error(
+          'All review agents failed: review/unified-reviewer: Failed to get messages: Agent error: "429 Monthly usage limit reached. Enable usage from your available balance."'
+        )
+      )
+    ).toBe(true);
+    expect(
+      isNonRetryableProviderFailure(
+        new Error('Authentication failed with the configured model provider')
+      )
+    ).toBe(true);
+    expect(isNonRetryableProviderFailure(new Error('Model configuration is invalid'))).toBe(true);
+    expect(isNonRetryableProviderFailure(new Error('fetch failed'))).toBe(false);
+  });
+
+  it('throws Temporal non-retryable failures for quota errors', async () => {
+    vi.mocked(runWorkflowNodeLocally).mockRejectedValueOnce(
+      new Error(
+        'All review agents failed: review/unified-reviewer: 429 Monthly usage limit reached'
+      )
+    );
+
+    const input: RunWorkflowNodeActivityInput = {
+      workingDir: '/repo',
+      nodeId: 'review',
+      node: { action: 'review' },
+      context: { inputs: {}, nodes: {}, artifacts: {}, loop: {} },
+    };
+
+    await expect(runWorkflowNodeActivity(input)).rejects.toMatchObject({
+      nonRetryable: true,
+      type: 'NonRetryableProviderFailure',
+    } satisfies Partial<ApplicationFailure>);
   });
 });
 

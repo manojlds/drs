@@ -34,9 +34,10 @@ export const workflowLoopStateQuery =
 export const workflowArtifactsQuery =
   defineQuery<TemporalWorkflowArtifactsQueryResult>('drsWorkflowArtifacts');
 
-const { runWorkflowNodeActivity, hydrateContextActivity } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30 minutes',
-});
+const { runWorkflowNodeActivity, hydrateContextActivity, prepareWorkspaceActivity } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '30 minutes',
+  });
 
 const { runWorkflowNodeActivity: runWorkflowNodeNoRetryActivity } = proxyActivities<
   typeof activities
@@ -340,6 +341,19 @@ async function runTemporalDagWorkflow(
 
 export async function drsWorkflow(input: TemporalWorkflowInput): Promise<TemporalWorkflowResult> {
   const { plan } = input;
+  const info = workflowInfo();
+  const executionInput = input.workspace
+    ? {
+        ...input,
+        workingDir: (
+          await prepareWorkspaceActivity({
+            workspace: input.workspace,
+            workflowId: info.workflowId,
+            runId: info.runId,
+          })
+        ).workingDir,
+      }
+    : input;
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const runningNodeIds = new Set<string>();
@@ -359,9 +373,9 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
 
   try {
     if (plan.hasControlNodes) {
-      await runTemporalControlWorkflow(input, context, runningNodeIds);
+      await runTemporalControlWorkflow(executionInput, context, runningNodeIds);
     } else {
-      await runTemporalDagWorkflow(input, context, runningNodeIds);
+      await runTemporalDagWorkflow(executionInput, context, runningNodeIds);
     }
   } catch (error) {
     if (isCancellation(error)) {
@@ -374,7 +388,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const lastNode = plan.nodes[plan.lastNodeId];
   const outputKey = plan.output ?? lastNode?.output ?? plan.lastNodeId;
   return {
-    timestamp: workflowInfo().startTime.toISOString(),
+    timestamp: new Date().toISOString(),
     workflow: plan.workflowName,
     inputs: input.inputs,
     nodes,

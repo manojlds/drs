@@ -8,11 +8,13 @@ const temporalMocks = vi.hoisted(() => {
   const hydrateContextActivity = vi.fn(
     async (input: { context: WorkflowTemplateContext }) => input.context
   );
+  const prepareWorkspaceActivity = vi.fn(async () => ({ workingDir: '/worker/repo' }));
   const queryHandlers = new Map<unknown, () => unknown>();
   return {
     runWorkflowNodeActivity,
     runWorkflowNodeNoRetryActivity,
     hydrateContextActivity,
+    prepareWorkspaceActivity,
     queryHandlers,
   };
 });
@@ -26,6 +28,7 @@ vi.mock('@temporalio/workflow', () => ({
         ? temporalMocks.runWorkflowNodeNoRetryActivity
         : temporalMocks.runWorkflowNodeActivity,
     hydrateContextActivity: temporalMocks.hydrateContextActivity,
+    prepareWorkspaceActivity: temporalMocks.prepareWorkspaceActivity,
   }),
   setHandler: (query: unknown, handler: () => unknown) => {
     temporalMocks.queryHandlers.set(query, handler);
@@ -62,10 +65,54 @@ describe('drsWorkflow control-flow execution', () => {
   beforeEach(() => {
     temporalMocks.runWorkflowNodeActivity.mockReset();
     temporalMocks.runWorkflowNodeNoRetryActivity.mockReset();
+    temporalMocks.prepareWorkspaceActivity.mockClear();
+    temporalMocks.prepareWorkspaceActivity.mockResolvedValue({ workingDir: '/worker/repo' });
     temporalMocks.hydrateContextActivity.mockClear();
     temporalMocks.queryHandlers.clear();
     temporalMocks.hydrateContextActivity.mockImplementation(
       async (input: { context: WorkflowTemplateContext }) => input.context
+    );
+  });
+
+  it('prepares managed workspace before running nodes', async () => {
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockResolvedValue(actionResult('write', 'ok'));
+
+    const input: TemporalWorkflowInput = {
+      workingDir: '/dispatcher/repo',
+      inputs: {},
+      workspace: {
+        mode: 'managed',
+        root: '/var/lib/drs/workspaces',
+        repoUrl: 'https://github.com/example/repo.git',
+        ref: 'abc123',
+      },
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'managedFlow',
+        source: 'project',
+        overridesPackaged: false,
+        inputs: {},
+        nodes: {
+          write: { action: 'write', output: 'result' },
+        },
+        executionOrder: ['write'],
+        waves: [['write']],
+        segments: [{ type: 'dag', nodeIds: ['write'] }],
+        hasControlNodes: false,
+        lastNodeId: 'write',
+      },
+    };
+
+    const result = await drsWorkflow(input);
+
+    expect(result.output).toBe('ok');
+    expect(temporalMocks.prepareWorkspaceActivity).toHaveBeenCalledWith({
+      workspace: input.workspace,
+      workflowId: 'workflow-1',
+      runId: 'run-1',
+    });
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ workingDir: '/worker/repo' })
     );
   });
 
