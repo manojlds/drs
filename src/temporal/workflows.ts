@@ -19,7 +19,7 @@ import type { WorkflowNodeConfig } from '../lib/config.js';
 import type { CompiledWorkflowSegment } from '../lib/workflow/compiled-plan.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, type TemporalArtifactRef } from '../lib/workflow/artifact-store.js';
-import { getTemporalNodeRetryMode } from './retry-policy.js';
+import { getTemporalNodeRetryMode, TEMPORAL_RETRYABLE_ACTIVITY_POLICY } from './retry-policy.js';
 import type {
   ScheduledActivityIdempotencyContext,
   TemporalWorkflowArtifactsQueryResult,
@@ -38,6 +38,11 @@ export const workflowArtifactsQuery =
 const { runWorkflowNodeActivity, resolveArtifactRefsActivity, prepareWorkspaceActivity } =
   proxyActivities<typeof activities>({
     startToCloseTimeout: '30 minutes',
+    // Bound total time across all retries so a persistently failing activity
+    // fails the workflow instead of retrying indefinitely. 3 hours comfortably
+    // allows 5 attempts at up to 30 minutes each plus backoff.
+    scheduleToCloseTimeout: '3 hours',
+    retry: TEMPORAL_RETRYABLE_ACTIVITY_POLICY,
   });
 
 const { runWorkflowNodeActivity: runWorkflowNodeNoRetryActivity } = proxyActivities<

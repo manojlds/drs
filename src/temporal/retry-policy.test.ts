@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getTemporalNodeRetryMode, TEMPORAL_NO_RETRY_ACTIONS } from './retry-policy.js';
+import {
+  getTemporalNodeRetryMode,
+  TEMPORAL_NO_RETRY_ACTIONS,
+  TEMPORAL_RETRYABLE_ACTIVITY_POLICY,
+} from './retry-policy.js';
 import type { WorkflowAction, WorkflowNodeConfig } from '../lib/config.js';
 
 describe('getTemporalNodeRetryMode', () => {
@@ -62,6 +66,28 @@ describe('getTemporalNodeRetryMode', () => {
     expect(getTemporalNodeRetryMode({ agent: 'task/review', input: 'review' })).toBe('retryable');
     expect(getTemporalNodeRetryMode({ agentsFrom: 'review.agents', input: 'review' })).toBe(
       'retryable'
+    );
+  });
+});
+
+describe('TEMPORAL_RETRYABLE_ACTIVITY_POLICY', () => {
+  it('bounds maximum attempts to a finite number', () => {
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.maximumAttempts).toBe(5);
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.maximumAttempts).toBeLessThan(Infinity);
+  });
+
+  it('uses exponential backoff', () => {
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.backoffCoefficient).toBe(2);
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.initialInterval).toBe('1 second');
+  });
+
+  it('caps the maximum retry interval', () => {
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.maximumInterval).toBe('1 minute');
+  });
+
+  it('lists NonRetryableProviderFailure as non-retryable', () => {
+    expect(TEMPORAL_RETRYABLE_ACTIVITY_POLICY.nonRetryableErrorTypes).toContain(
+      'NonRetryableProviderFailure'
     );
   });
 });
