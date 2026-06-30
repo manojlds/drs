@@ -11,6 +11,12 @@ export interface WorkflowRunOptions {
   trace?: boolean;
   wait?: boolean;
   idempotencyContext?: WorkflowActivityIdempotencyContext;
+  /**
+   * Explicit Temporal workflow ID. When set, the Temporal executor uses this
+   * ID instead of deriving one, enabling deterministic deduplication from a
+   * service layer. The local executor ignores this option.
+   */
+  workflowId?: string;
 }
 
 export interface WorkflowActivityIdempotencyContext {

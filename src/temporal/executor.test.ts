@@ -10,9 +10,10 @@ const temporalMocks = vi.hoisted(() => {
   const close = vi.fn();
   const connect = vi.fn();
   const start = vi.fn();
+  const getHandle = vi.fn();
   const remote = vi.fn();
   const revparse = vi.fn();
-  return { close, connect, start, remote, revparse };
+  return { close, connect, start, getHandle, remote, revparse };
 });
 
 vi.mock('@temporalio/client', () => {
@@ -24,9 +25,20 @@ vi.mock('@temporalio/client', () => {
       return {
         workflow: {
           start: temporalMocks.start,
+          getHandle: temporalMocks.getHandle,
         },
       };
     }),
+    WorkflowExecutionAlreadyStartedError: class WorkflowExecutionAlreadyStartedError extends Error {
+      constructor(
+        message: string,
+        public workflowId: string,
+        public workflowType: string
+      ) {
+        super(message);
+        this.name = 'WorkflowExecutionAlreadyStartedError';
+      }
+    },
   };
 });
 
@@ -204,5 +216,47 @@ describe('TemporalWorkflowExecutor', () => {
       })
     ).rejects.toThrow('Workflow input "mode" must be one of: quick, full.');
     expect(temporalMocks.connect).not.toHaveBeenCalled();
+  });
+
+  it('joins an already-running workflow instead of erroring', async () => {
+    const { WorkflowExecutionAlreadyStartedError } = await import('@temporalio/client');
+    temporalMocks.start.mockRejectedValueOnce(
+      new WorkflowExecutionAlreadyStartedError('already started', 'existing-wf', 'drsWorkflow')
+    );
+    temporalMocks.getHandle.mockReturnValue({
+      workflowId: 'existing-wf',
+      result: vi.fn().mockResolvedValue({
+        timestamp: '2026-06-28T00:00:00.000Z',
+        workflow: 'sample',
+        inputs: { mode: 'quick' },
+        nodes: {},
+        artifacts: {},
+        loop: {},
+        output: 'existing-ok',
+      }),
+    });
+
+    const result = await new TemporalWorkflowExecutor().run(config, 'sample', {
+      workingDir: process.cwd(),
+      workflowId: 'existing-wf',
+      jsonOutput: true,
+    });
+
+    expect(temporalMocks.getHandle).toHaveBeenCalledWith('existing-wf');
+    expect(result.output).toBe('existing-ok');
+    expect(temporalMocks.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses an explicit workflowId when provided', async () => {
+    await new TemporalWorkflowExecutor().run(config, 'sample', {
+      workingDir: process.cwd(),
+      workflowId: 'my-custom-id',
+      jsonOutput: true,
+    });
+
+    expect(temporalMocks.start).toHaveBeenCalledWith(
+      'drsWorkflow',
+      expect.objectContaining({ workflowId: 'my-custom-id' })
+    );
   });
 });

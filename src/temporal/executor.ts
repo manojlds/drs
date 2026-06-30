@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { randomUUID } from 'crypto';
 import { dirname } from 'path';
-import { Connection, Client } from '@temporalio/client';
+import { Connection, Client, WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import chalk from 'chalk';
 import simpleGit from 'simple-git';
 import type { DRSConfig } from '../lib/config.js';
@@ -13,6 +12,7 @@ import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { normalizeWorkflowBooleanLike } from '../lib/workflow/planning.js';
 import type { WorkflowRunOptions, WorkflowRunResult } from '../lib/workflow/types.js';
 import { resolveTemporalConfig } from './config.js';
+import { deriveTemporalWorkflowId } from './workflow-id.js';
 import type { TemporalManagedWorkspaceInput, TemporalWorkflowInput } from './types.js';
 
 async function writeWorkflowFile(
@@ -204,7 +204,9 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
     const connection = await Connection.connect({ address: temporal.address });
     try {
       const client = new Client({ connection, namespace: temporal.namespace });
-      const workflowId = `${temporal.workflowIdPrefix}-${workflowName}-${randomUUID()}`;
+      const workflowId =
+        options.workflowId ??
+        deriveTemporalWorkflowId(temporal.workflowIdPrefix, workflowName, inputs);
       const workspace = await resolveManagedWorkspaceInput(workingDir, temporal);
       const workflowInput: TemporalWorkflowInput = {
         plan,
@@ -217,21 +219,46 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
         ...(workspace ? { workspace } : {}),
       };
 
-      const handle = await client.workflow.start('drsWorkflow', {
-        taskQueue: temporal.taskQueue,
-        workflowId,
-        args: [workflowInput],
-      });
+      let handle: Awaited<ReturnType<typeof client.workflow.start>>;
+      let isDuplicate = false;
+      try {
+        handle = await client.workflow.start('drsWorkflow', {
+          taskQueue: temporal.taskQueue,
+          workflowId,
+          args: [workflowInput],
+        });
+      } catch (error) {
+        if (error instanceof WorkflowExecutionAlreadyStartedError) {
+          isDuplicate = true;
+          handle = client.workflow.getHandle(workflowId) as Awaited<
+            ReturnType<typeof client.workflow.start>
+          >;
+          logger.debug('Temporal workflow already running — joining existing run', {
+            component: 'temporal-executor',
+            workflow: workflowName,
+            workflowId,
+            namespace: temporal.namespace,
+            taskQueue: temporal.taskQueue,
+          });
+        } else {
+          throw error;
+        }
+      }
+      const runId = handle.firstExecutionRunId ?? '';
       const logContext = {
         component: 'temporal-executor',
         workflow: workflowName,
         workflowId: handle.workflowId,
-        runId: handle.firstExecutionRunId,
+        runId,
         namespace: temporal.namespace,
         taskQueue: temporal.taskQueue,
+        ...(isDuplicate ? { duplicate: true } : {}),
       };
 
-      logger.debug('Temporal workflow started', logContext);
+      logger.debug(
+        isDuplicate ? 'Temporal workflow already running' : 'Temporal workflow started',
+        logContext
+      );
 
       if (options.wait === false) {
         const result: WorkflowRunResult = {
@@ -243,14 +270,14 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
           loop: {},
           output: {
             workflowId: handle.workflowId,
-            runId: handle.firstExecutionRunId,
+            runId,
           },
         };
         if (options.jsonOutput) {
           console.log(formatWorkflowJson(result));
         } else {
           console.log(
-            `Temporal workflow started: ${handle.workflowId} (run ${handle.firstExecutionRunId})`
+            `Temporal workflow ${isDuplicate ? 'already running' : 'started'}: ${handle.workflowId}${runId ? ` (run ${runId})` : ''}`
           );
         }
         return result;
@@ -266,7 +293,7 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
           startedAt,
           result,
           temporal,
-          handle,
+          { workflowId: handle.workflowId, firstExecutionRunId: runId },
           options
         );
       }
