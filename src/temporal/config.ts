@@ -6,11 +6,28 @@ const DEFAULT_TEMPORAL_CONFIG: TemporalConfig = {
   namespace: 'default',
   taskQueue: 'drs-workflows',
   workflowIdPrefix: 'drs',
+  workspace: {
+    mode: 'local',
+    root: '/tmp/drs-temporal-workspaces',
+  },
 };
 
 export function resolveTemporalConfig(config: DRSConfig): TemporalConfig {
+  const configured = config.temporal ?? {};
+  const configuredWorkspace = configured.workspace ?? {};
+  const envMode = process.env.DRS_TEMPORAL_WORKSPACE_MODE;
+  const mode = envMode === 'managed' || envMode === 'local' ? envMode : configuredWorkspace.mode;
+
   return {
     ...DEFAULT_TEMPORAL_CONFIG,
-    ...(config.temporal ?? {}),
+    ...configured,
+    workspace: {
+      ...DEFAULT_TEMPORAL_CONFIG.workspace,
+      ...configuredWorkspace,
+      ...(mode ? { mode } : {}),
+      ...(process.env.DRS_TEMPORAL_WORKSPACE_ROOT
+        ? { root: process.env.DRS_TEMPORAL_WORKSPACE_ROOT }
+        : {}),
+    },
   };
 }

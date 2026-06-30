@@ -1,4 +1,7 @@
 import { ApplicationFailure, Context } from '@temporalio/activity';
+import { mkdir, stat } from 'fs/promises';
+import { join } from 'path';
+import simpleGit from 'simple-git';
 import { loadConfig } from '../lib/config.js';
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
 import { getLogger } from '../lib/logger.js';
@@ -9,11 +12,32 @@ import {
   LocalWorkflowArtifactStore,
 } from '../lib/workflow/artifact-store.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from '../lib/workflow/types.js';
-import type { ActivityIdempotencyContext, RunWorkflowNodeActivityInput } from './types.js';
+import type {
+  ActivityIdempotencyContext,
+  PrepareWorkspaceActivityInput,
+  PrepareWorkspaceActivityResult,
+  RunWorkflowNodeActivityInput,
+} from './types.js';
 
 export interface HydrateContextActivityInput {
   workingDir: string;
   context: WorkflowTemplateContext;
+}
+
+function safePathSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function serializedSize(value: unknown): number {
@@ -68,6 +92,42 @@ export function resolveActivityIdempotencyContext(
     attempt: getCurrentActivityAttempt() ?? scheduled.attempt ?? 1,
     idempotencyKey: scheduled.idempotencyKey,
   };
+}
+
+export async function prepareWorkspaceActivity(
+  input: PrepareWorkspaceActivityInput
+): Promise<PrepareWorkspaceActivityResult> {
+  const workspaceDir = join(
+    input.workspace.root,
+    safePathSegment(input.workflowId),
+    safePathSegment(input.runId)
+  );
+  const repoDir = join(workspaceDir, 'repo');
+  const logger = getLogger();
+  const logContext = {
+    component: 'temporal-activity',
+    workflowId: input.workflowId,
+    runId: input.runId,
+    workspaceMode: input.workspace.mode,
+    repoDir,
+  };
+
+  logger.debug('Temporal workspace preparation started', logContext);
+  await mkdir(workspaceDir, { recursive: true });
+
+  if (await pathExists(join(repoDir, '.git'))) {
+    const git = simpleGit(repoDir);
+    await git.fetch(['origin', input.workspace.ref, '--tags']);
+    await git.checkout(input.workspace.ref);
+  } else {
+    await simpleGit().clone(input.workspace.repoUrl, repoDir, ['--no-checkout']);
+    const git = simpleGit(repoDir);
+    await git.fetch(['origin', input.workspace.ref, '--tags']);
+    await git.checkout(input.workspace.ref);
+  }
+
+  logger.debug('Temporal workspace preparation completed', logContext);
+  return { workingDir: repoDir };
 }
 
 /**

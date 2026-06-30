@@ -13,6 +13,19 @@ export interface TemporalConfig {
   namespace: string;
   taskQueue: string;
   workflowIdPrefix: string;
+  workspace: TemporalWorkspaceConfig;
+}
+
+export interface TemporalWorkspaceConfig {
+  mode: 'local' | 'managed';
+  root: string;
+}
+
+export interface TemporalManagedWorkspaceInput {
+  mode: 'managed';
+  root: string;
+  repoUrl: string;
+  ref: string;
 }
 
 export interface TemporalWorkflowInput {
@@ -20,6 +33,17 @@ export interface TemporalWorkflowInput {
   inputs: Record<string, string>;
   workingDir: string;
   options?: Pick<WorkflowRunOptions, 'debug' | 'thinkingLevel'>;
+  workspace?: TemporalManagedWorkspaceInput;
+}
+
+export interface PrepareWorkspaceActivityInput {
+  workspace: TemporalManagedWorkspaceInput;
+  workflowId: string;
+  runId: string;
+}
+
+export interface PrepareWorkspaceActivityResult {
+  workingDir: string;
 }
 
 export type ActivityIdempotencyContext = WorkflowActivityIdempotencyContext;

@@ -9,11 +9,18 @@ import {
   hydrateContext,
   resolveActivityIdempotencyContext,
   isNonRetryableProviderFailure,
+  prepareWorkspaceActivity,
 } from './activities.js';
 import type { RunWorkflowNodeActivityInput } from './types.js';
 import type { WorkflowTemplateContext } from '../lib/workflow/types.js';
 import { isArtifactRef, LocalWorkflowArtifactStore } from '../lib/workflow/artifact-store.js';
 import { configureLogger } from '../lib/logger.js';
+
+const gitMocks = vi.hoisted(() => ({
+  clone: vi.fn(),
+  fetch: vi.fn(),
+  checkout: vi.fn(),
+}));
 
 vi.mock('../cli/workflow.js', () => ({
   runWorkflowNodeLocally: vi.fn(),
@@ -23,7 +30,49 @@ vi.mock('../lib/config.js', () => ({
   loadConfig: vi.fn().mockReturnValue({}),
 }));
 
+vi.mock('simple-git', () => ({
+  default: vi.fn(() => gitMocks),
+}));
+
 import { runWorkflowNodeLocally } from '../cli/workflow.js';
+
+describe('prepareWorkspaceActivity', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gitMocks.clone.mockResolvedValue(undefined);
+    gitMocks.fetch.mockResolvedValue(undefined);
+    gitMocks.checkout.mockResolvedValue(undefined);
+    tempDir = mkdtempSync(join(tmpdir(), 'drs-managed-workspace-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('clones and checks out the requested ref under the workflow workspace', async () => {
+    const result = await prepareWorkspaceActivity({
+      workflowId: 'workflow/1',
+      runId: 'run:1',
+      workspace: {
+        mode: 'managed',
+        root: tempDir,
+        repoUrl: 'https://github.com/example/repo.git',
+        ref: 'abc123',
+      },
+    });
+
+    expect(result.workingDir).toBe(join(tempDir, 'workflow-1', 'run-1', 'repo'));
+    expect(gitMocks.clone).toHaveBeenCalledWith(
+      'https://github.com/example/repo.git',
+      result.workingDir,
+      ['--no-checkout']
+    );
+    expect(gitMocks.fetch).toHaveBeenCalledWith(['origin', 'abc123', '--tags']);
+    expect(gitMocks.checkout).toHaveBeenCalledWith('abc123');
+  });
+});
 
 describe('activities artifact offloading', () => {
   let tempDir: string;

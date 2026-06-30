@@ -282,6 +282,10 @@ export interface DRSConfig {
     namespace?: string;
     taskQueue?: string;
     workflowIdPrefix?: string;
+    workspace?: {
+      mode?: 'local' | 'managed';
+      root?: string;
+    };
   };
 
   /**

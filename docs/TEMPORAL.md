@@ -14,9 +14,26 @@ temporal:
   namespace: default
   taskQueue: drs-workflows
   workflowIdPrefix: drs
+  workspace:
+    mode: local
+    root: /tmp/drs-temporal-workspaces
 ```
 
 Defaults are suitable for local development with a Temporal server listening on `localhost:7233`.
+
+`temporal.workspace.mode` controls where activities execute:
+
+- `local` keeps the original behavior: activities run in the dispatcher's `workingDir`. This is useful for local Temporal development or single-host workers.
+- `managed` makes the worker prepare an isolated checkout before node execution. The dispatcher sends the current git remote URL and exact `HEAD` SHA; the worker clones/fetches that ref under `<root>/<workflowId>/<runId>/repo` and runs activities there.
+
+Environment overrides are also supported for worker experiments and deployment templates:
+
+```bash
+DRS_TEMPORAL_WORKSPACE_MODE=managed
+DRS_TEMPORAL_WORKSPACE_ROOT=/var/lib/drs/workspaces
+DRS_TEMPORAL_WORKSPACE_REPO_URL=https://github.com/org/repo.git
+DRS_TEMPORAL_WORKSPACE_REF=<sha-or-ref>
+```
 
 ## Worker Deployment
 
@@ -30,7 +47,8 @@ For production-like deployments:
 
 - Build the package before starting the worker: `npm run build`.
 - Run one or more worker processes with the same `temporal.taskQueue` configured in project config.
-- Set the worker working directory to the repository root so git actions, file writes, artifact paths, and `.env` loading resolve correctly.
+- In `local` workspace mode, set the worker working directory to the repository root so git actions, file writes, artifact paths, and `.env` loading resolve correctly.
+- In `managed` workspace mode, workers need git network access to clone/fetch the repo and a writable `temporal.workspace.root`. The worker still loads its DRS runtime config from its own startup directory, then executes workflow nodes in the prepared checkout.
 - Provide the same environment variables that local DRS runs need, including model provider keys and `GITHUB_TOKEN` or `GITLAB_TOKEN` for platform workflows.
 - Keep workers close to the repository filesystem they mutate. Git mutation workflows assume a working tree on local disk.
 - Use process supervision from your platform, for example systemd, Kubernetes, Docker Compose, or a CI runner service process.
@@ -60,7 +78,7 @@ Example container command:
 node dist/cli/index.js temporal worker --log-format json
 ```
 
-Mount the target repository as the container working directory and provide `.drs/drs.config.yaml`, `.env`, and git credentials through your deployment platform.
+For `local` workspace mode, mount the target repository as the container working directory and provide `.drs/drs.config.yaml`, `.env`, and git credentials through your deployment platform. For `managed` workspace mode, mount a writable workspace volume and start the worker from a checkout or image that contains DRS config and packaged workflows.
 
 ## Running Workflows
 
@@ -83,7 +101,7 @@ Use `--trace` to save a Temporal workflow trace artifact after a waited run comp
 drs workflow run local-review --executor temporal --trace
 ```
 
-Trace artifacts are written through the normal DRS workflow artifact store under `.drs/artifacts/temporal/<workflow>/trace/`.
+Trace artifacts are written through the normal DRS workflow artifact store under `.drs/artifacts/temporal/<workflow>/workflow/trace/`.
 
 ## Workflow Queries
 
