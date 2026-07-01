@@ -1,8 +1,8 @@
 # DRS Desktop
 
-An Electron UI for [DRS (Diff Review System)](..): view diffs, see DRS review
-issues inline, run any DRS workflow, and trigger the fix-and-verify loop — all
-from a desktop app.
+An Electron UI for [DRS (Diff Review System)](..): reopen projects, select DRS
+workflows, inspect run history, view review diffs/issues, and trigger the
+fix-and-verify loop from a desktop app.
 
 > **Status:** MVP (Path B). The desktop app is a new surface over the existing
 > DRS CLI engine. The CLI stays fully intact; the app drives it as a child
@@ -20,12 +20,16 @@ from a desktop app.
   directly on the diff lines they reference, with severity/category badges.
 - **Issue panel** — filterable, clickable list of all review findings; clicking
   an issue scrolls the diff to the exact line.
-- **Run any workflow** — the sidebar lists all packaged + project workflows
-  (via `drs workflow list`), shows their inputs with forms, and runs them.
-- **Run Review** — one-click `local-review` (DRS agents review the current diff).
-- **GitHub/GitLab review** — enter a GitHub PR or GitLab MR target and run the
-  packaged `github-pr-review` / `gitlab-mr-review` workflows. The app displays
-  the remote diff from the workflow artifact when available.
+- **Workflow-first navigation** — open/reopen projects, select packaged + project
+  workflows, see workflow metadata/inputs, run the selected workflow, and inspect
+  recent runs for that project/workflow.
+- **Review workflow UI** — workflows marked with review metadata render the diff,
+  file tree, inline DRS issues, and issues panel. Other workflows show their JSON
+  result output.
+- **GitHub/GitLab review** — run the packaged `github-pr-review` /
+  `gitlab-mr-review` workflows from the workflow list. The app displays the
+  remote diff from the workflow artifact when available.
+- **Run Review** — toolbar shortcut for `local-review` against the current diff.
 - **Fix ≥ High** — one-click `local-fix-review-issues` for CRITICAL/HIGH
   findings, with the DRS fix → re-review → verify loop. Live logs stream in.
 - **Copy as Markdown** — export the review as Markdown for pasting anywhere.
@@ -84,6 +88,11 @@ The main process is CommonJS (Electron's convention); DRS compiles to ESM. The
 app bridges that by driving the DRS CLI as a child process and reading
 structured JSON (`--output` for run results, `.drs/review-output.json` for
 review artifacts) — the same pattern Codiff uses for its agent backends.
+
+Review/diff mode is driven by workflow YAML metadata. Review workflows should set
+`metadata.kind: review` or include `review` in `metadata.tags`; optional
+`metadata.review.source` identifies `local`, `github-pr`, or `gitlab-mr` review
+sources.
 
 ## Package
 

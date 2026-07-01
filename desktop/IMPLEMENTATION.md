@@ -4,11 +4,13 @@ A native Electron desktop UI for [DRS (Diff Review System)](..). This document
 records what was built in the Path B MVP, how it is structured, how it was
 validated, and what comes next.
 
-> **TL;DR** — A new `desktop/` package that renders split/unified diffs with
-> `@pierre/diffs`, shows a changed-file tree with `@pierre/trees`, overlays DRS review issues inline
-> on diff lines, reviews local diffs plus GitHub PRs/GitLab MRs, runs any DRS workflow (including the fix-and-verify loop), and
-> streams live logs — all by driving the existing DRS CLI as a child process. The
-> CLI engine is unchanged.
+> **TL;DR** — A new `desktop/` package that opens projects, lists packaged +
+> project workflows, renders split/unified review diffs with `@pierre/diffs`,
+> shows a changed-file tree with `@pierre/trees`, overlays DRS review issues
+> inline on diff lines, runs any DRS workflow (including local/GitHub/GitLab
+> reviews and the fix-and-verify loop), persists recent run history, and streams
+> live logs — all by driving the existing DRS CLI as a child process. The CLI
+> engine is unchanged.
 
 ---
 
@@ -67,6 +69,20 @@ drives the DRS CLI as a child process and reads structured JSON from disk:
 - `.drs/review-output.json` holds the `ReviewJsonOutput` (issues + summary).
 
 ### DRS ↔ desktop data mapping
+
+The desktop app treats DRS as `projects -> workflows -> runs`:
+
+- **Projects** are local directories selected in Electron and remembered in
+  renderer `localStorage` as recent projects.
+- **Workflows** come from `drs workflow list --json` and
+  `drs workflow show <name> --json`, including YAML metadata and input schemas.
+- **Runs** are started through `drs workflow run <name> --output ... --input ...`
+  and stored in renderer `localStorage` as recent project/workflow history.
+
+Review/diff mode is metadata-driven. A workflow is rendered with the review UI
+when its YAML metadata sets `metadata.kind: review` or includes `review` in
+`metadata.tags`. Optional `metadata.review.source` records whether the review
+source is `local`, `github-pr`, or `gitlab-mr`.
 
 DRS's `ReviewIssue` maps cleanly onto an inline diff comment:
 
@@ -186,16 +202,19 @@ spirit without importing the Node-based formatter (the renderer runs in a
 browser). Includes a clipboard-copy fallback.
 
 ### `src/renderer/App.tsx` — state + orchestration
-Central state: `workingDir`, `workflows`, `staged`, `diffPatch`, `review`,
-`runState`, `severityFilter`, `selectedIssueKey`, `scrollTarget`.
+Central state: `workingDir`, `recentProjects`, `workflows`, `selectedWorkflow`,
+`selectedWorkflowDetail`, `workflowInputs`, `runHistory`, `lastRunResult`,
+`staged`, `diffPatch`, `review`, `runState`, `severityFilter`,
+`selectedIssueKey`, `scrollTarget`.
 
 Boot sequence: reads `getCwd()`, infers the DRS repo root (parent of `desktop/`
 in dev), then loads workflows + diff + review artifact in parallel.
 
 `startWorkflow(name, inputs)` is the core runner: sets a run banner, calls
-`window.drs.runWorkflow`, loads the returned `reviewOutput` into state, reloads
-the diff (workflows may change the tree), and finalizes the banner. Errors are
-captured into both the banner and a global error banner.
+`window.drs.runWorkflow`, records the run in local history, loads the returned
+`reviewOutput` into state, hydrates remote PR/MR diffs from workflow artifacts
+when present, reloads the local diff otherwise, and finalizes the banner. Errors
+are captured into both the banner and a global error banner.
 
 `handleFixIssues` computes `fixSeverity` from the review's severity counts
 (CRITICAL if any, else HIGH) and runs `local-fix-review-issues`.
@@ -203,10 +222,10 @@ captured into both the banner and a global error banner.
 ### `src/renderer/components/` — UI components
 - **Toolbar** — staged/unstaged segment toggle, Refresh, Run Review (primary),
   Fix ≥ High (shows actionable count), Copy MD. Disables actions appropriately.
-- **Sidebar** — repo card with Open button, run banner, workflow list. Each
-  workflow row expands to show a dynamic input form (boolean → checkbox, enum →
-  select, number/string → text input) with defaults populated from
-  `drs workflow show --json`.
+- **Sidebar** — project card with Open button, recent projects, run banner,
+  workflow list, selected workflow metadata/details, dynamic input form (boolean
+  → checkbox, enum → select, number/string → text input), Run Workflow button,
+  and recent runs for the selected project/workflow.
 - **DiffView** — renders parsed `DiffFile[]` as sticky-header cards with hunk
   meta, line gutters, and `+`/`−` prefixed content. Overlays `ReviewIssue`s as
   inline `.line-issue` blocks directly below their target line. Scrolls to the
@@ -346,5 +365,4 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
 - **Markdown preview rendering** inline (render added `.md` content live).
 - **"Viewed" toggle** per file (track review progress).
 - **Multiple windows** (one per repository).
-
 

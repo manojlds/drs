@@ -64,26 +64,29 @@ npm run electron:dev
 2. Confirm the default repository is the DRS repo root, not `desktop/`.
 3. Confirm the sidebar lists packaged and project workflows.
 4. Make a small local change in the repo.
-5. Click `Refresh` and confirm the diff appears.
-6. Confirm the Pierre file tree groups changed files by directory, shows git status/count decorations, supports search, and click a file to scroll to it.
-7. Toggle `Unified` / `Split` and confirm the diff layout changes.
-8. Toggle `Unstaged` and `Staged` and confirm the diff source changes as expected.
-9. Click `Run Review` and confirm live logs stream in the run banner.
-10. Confirm review issues appear in the issue panel and inline in the diff when `.drs/review-output.json` is produced.
-11. Click an issue and confirm the diff scrolls to the matching file/line.
-12. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
-13. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
-14. Start a long-running workflow and click `Cancel` to confirm cancellation updates the run banner.
+5. Select the `local-review` workflow and confirm the workflow detail/input panel appears.
+6. Click `Refresh` and confirm the diff appears.
+7. Confirm the Pierre file tree groups changed files by directory, shows git status/count decorations, supports search, and click a file to scroll to it.
+8. Toggle `Unified` / `Split` and confirm the diff layout changes.
+9. Toggle `Unstaged` and `Staged` and confirm the diff source changes as expected.
+10. Click `Run Workflow` in the sidebar or `Run Review` in the toolbar and confirm live logs stream in the run banner.
+11. Confirm the run appears in the sidebar run history.
+12. Confirm review issues appear in the issue panel and inline in the diff when `.drs/review-output.json` is produced.
+13. Click an issue and confirm the diff scrolls to the matching file/line.
+14. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
+15. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
+16. Select a non-review workflow and confirm the main panel switches to JSON workflow output.
+17. Start a long-running workflow and click `Cancel` to confirm cancellation updates the run banner.
 
 ## GitHub/GitLab Smoke Test
 
-Use the `Review Source` panel in the sidebar:
+Use the workflow list in the sidebar:
 
-1. Select `GitHub PR`, enter `owner`, `repo`, and `PR`, then click `Review GitHub PR`.
+1. Select `github-pr-review`, enter `owner`, `repo`, and `pr`, then click `Run Workflow`.
 2. Confirm live logs stream and the source banner changes to the PR review source.
 3. Confirm the remote PR diff appears in the diff viewer when the workflow returns `artifacts.change.filesWithDiffs`.
 4. Confirm issues from `.drs/review-output.json` appear in the issue panel and inline on matching diff lines.
-5. Select `GitLab MR`, enter `project` and `MR`, then click `Review GitLab MR`.
+5. Select `gitlab-mr-review`, enter `project` and `mr`, then click `Run Workflow`.
 6. Repeat the same checks for the MR diff and issues.
 7. Leave `describe`, `post`, `visual`, and `fix` unchecked unless you intentionally want side effects on the PR/MR.
 

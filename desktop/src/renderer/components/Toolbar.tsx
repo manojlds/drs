@@ -12,6 +12,7 @@ interface ToolbarProps {
   onToggleLayout: () => void;
   onRefresh: () => void;
   onRunReview: () => void;
+  onRunVisualWalkthrough: () => void;
   onFixIssues: () => void;
   onCopyMarkdown: () => void;
   copied: boolean;
@@ -66,6 +67,15 @@ export function Toolbar(props: ToolbarProps) {
         title="Run the local-review workflow with DRS agents"
       >
         {running ? <span className="spinner" /> : '🔍'} Run Review
+      </button>
+
+      <button
+        className="btn"
+        onClick={props.onRunVisualWalkthrough}
+        disabled={!workingDir || running}
+        title="Generate a visual walkthrough artifact for the current review target"
+      >
+        Visual Walkthrough
       </button>
 
       <button

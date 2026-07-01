@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffView } from './components/DiffView';
 import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
-import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
-import type { RunBannerState } from './components/RunBanner';
+import { RunBanner, type RunBannerState } from './components/RunBanner';
 import { SEVERITIES, severityToInput } from './lib/badges';
 import { buildReviewMarkdown, copyToClipboard } from './lib/markdown';
 import { parseUnifiedDiff, type DiffFile, issueLineKey } from './lib/diff';
@@ -13,27 +12,67 @@ import type {
   ReviewIssue,
   ReviewJsonOutput,
   WorkflowListEntry,
+  WorkflowDetail,
+  WorkflowInputConfig,
   WorkflowLogEvent,
   WorkflowRunResultJson,
 } from './types';
 
 const REVIEW_WORKFLOW = 'local-review';
 const FIX_WORKFLOW = 'local-fix-review-issues';
-const GITHUB_REVIEW_WORKFLOW = 'github-pr-review';
-const GITLAB_REVIEW_WORKFLOW = 'gitlab-mr-review';
+const VISUAL_WORKFLOW = 'local-visual-explain';
+const RECENT_PROJECTS_KEY = 'drs-desktop:recent-projects';
+const RUN_HISTORY_KEY = 'drs-desktop:run-history';
+const REVIEW_SNAPSHOTS_KEY = 'drs-desktop:review-snapshots';
+
+type ReviewView = 'overview' | 'diff' | 'walkthrough' | 'output';
+type ProjectMode = 'review' | 'workflow';
+
+interface RunHistoryEntry {
+  id: string;
+  project: string;
+  workflow: string;
+  timestamp: string;
+  status: 'success' | 'error';
+  inputs: Record<string, string>;
+  error?: string;
+  result?: WorkflowRunResultJson;
+}
+
+interface ReviewSnapshot {
+  project: string;
+  target: 'staged' | 'unstaged';
+  diffFingerprint: string;
+  timestamp: string;
+  workflow: string;
+  review: ReviewJsonOutput;
+}
 
 export function App() {
+  const [showProjectsHome, setShowProjectsHome] = useState(true);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowListEntry[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [workflowsError, setWorkflowsError] = useState<string | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
+  const [selectedWorkflowDetail, setSelectedWorkflowDetail] = useState<WorkflowDetail | null>(null);
+  const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
+  const [recentProjects, setRecentProjects] = useState<string[]>(() => readStringArray(RECENT_PROJECTS_KEY));
+  const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => readRunHistory());
+  const [lastRunResult, setLastRunResult] = useState<WorkflowRunResultJson | null>(null);
   const [staged, setStaged] = useState(false);
   const [diffLayout, setDiffLayout] = useState<'unified' | 'split'>('split');
   const [diffSourceLabel, setDiffSourceLabel] = useState('Local unstaged diff');
+  const [reviewView, setReviewView] = useState<ReviewView>('overview');
+  const [projectMode, setProjectMode] = useState<ProjectMode>('review');
 
   const [diffPatch, setDiffPatch] = useState('');
+  const [diffFingerprint, setDiffFingerprint] = useState('');
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
   const [review, setReview] = useState<ReviewJsonOutput | null>(null);
+  const [staleReview, setStaleReview] = useState<ReviewJsonOutput | null>(null);
   const [runState, setRunState] = useState<RunBannerState | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
@@ -50,6 +89,23 @@ export function App() {
   const logCleanupRef = useRef<(() => void) | null>(null);
 
   const diffFiles: DiffFile[] = useMemo(() => parseUnifiedDiff(diffPatch), [diffPatch]);
+  const selectedWorkflowEntry = useMemo(
+    () => workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null,
+    [selectedWorkflow, workflows],
+  );
+  const selectedWorkflowIsReview = isReviewWorkflow(selectedWorkflowDetail ?? selectedWorkflowEntry);
+  const visibleRunHistory = useMemo(
+    () =>
+      runHistory.filter(
+        (run) => run.project === workingDir && (!selectedWorkflow || run.workflow === selectedWorkflow),
+      ),
+    [runHistory, selectedWorkflow, workingDir],
+  );
+  const reviewStats = useMemo(() => summarizeReview(diffFiles, review), [diffFiles, review]);
+  const visualResult = useMemo(
+    () => runHistory.find((run) => run.project === workingDir && run.workflow.includes('visual'))?.result ?? null,
+    [runHistory, workingDir],
+  );
 
   // Subscribe to live workflow log events from the main process.
   useEffect(() => {
@@ -68,14 +124,22 @@ export function App() {
     }, []);
 
   const loadWorkflows = useCallback(async (dir: string) => {
+    setWorkflowsLoading(true);
+    setWorkflowsError(null);
     try {
       const list = await window.drs.listWorkflows(dir);
       setWorkflows(list);
+      setSelectedWorkflow((cur) => {
+        if (cur && list.some((workflow) => workflow.name === cur)) return cur;
+        return defaultWorkflowSelection(list);
+      });
     } catch (error) {
       setWorkflows([]);
-      setGlobalError(
-        `Could not list workflows: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const message = `Could not list workflows: ${error instanceof Error ? error.message : String(error)}`;
+      setWorkflowsError(message);
+      setGlobalError(message);
+    } finally {
+      setWorkflowsLoading(false);
     }
   }, []);
 
@@ -84,24 +148,46 @@ export function App() {
     setDiffError(null);
     try {
       const result = await window.drs.getDiff(dir, { staged: useStaged });
+      const fingerprint = hashString(result.patch);
       setDiffPatch(result.patch);
+      setDiffFingerprint(fingerprint);
       setDiffSourceLabel(useStaged ? 'Local staged diff' : 'Local unstaged diff');
+      return { patch: result.patch, fingerprint };
     } catch (error) {
       setDiffPatch('');
+      setDiffFingerprint('');
       setDiffError(error instanceof Error ? error.message : String(error));
+      return { patch: '', fingerprint: '' };
     } finally {
       setDiffLoading(false);
     }
   }, []);
 
-  const loadReview = useCallback(async (dir: string) => {
+  const loadReview = useCallback(async (dir: string, useStaged: boolean, fingerprint: string) => {
+    const snapshot = readReviewSnapshot(dir, useStaged ? 'staged' : 'unstaged', fingerprint);
+    if (snapshot) {
+      setReview(snapshot.review);
+      setStaleReview(null);
+      return;
+    }
+
     try {
       const artifact = await window.drs.getReviewArtifact(dir);
-      setReview(artifact);
+      setReview(null);
+      setStaleReview(artifact);
     } catch {
       // A missing artifact is not a hard error; review simply shows as none.
       setReview(null);
+      setStaleReview(null);
     }
+  }, []);
+
+  const rememberProject = useCallback((dir: string) => {
+    setRecentProjects((cur) => {
+      const next = [dir, ...cur.filter((item) => item !== dir)].slice(0, 8);
+      localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   // Boot: default to the DRS repo itself (the parent of desktop/) in dev.
@@ -113,31 +199,79 @@ export function App() {
       const guess = cwd.replace(/\/desktop\/?$/, '');
       const initial = guess && guess !== cwd ? guess : cwd;
       setWorkingDir(initial);
-      await Promise.all([loadWorkflows(initial), loadDiff(initial, false), loadReview(initial)]);
+      rememberProject(initial);
+      const [{ fingerprint }] = await Promise.all([loadDiff(initial, false), loadWorkflows(initial)]);
+      await loadReview(initial, false, fingerprint);
     })();
-  }, [loadDiff, loadReview, loadWorkflows]);
+  }, [loadDiff, loadReview, loadWorkflows, rememberProject]);
+
+  useEffect(() => {
+    if (!workingDir || !selectedWorkflow) {
+      setSelectedWorkflowDetail(null);
+      setWorkflowInputs({});
+      return;
+    }
+    let cancelled = false;
+    void window.drs.showWorkflow(selectedWorkflow, workingDir).then((detail) => {
+      if (cancelled) return;
+      setSelectedWorkflowDetail(detail);
+      setWorkflowInputs(defaultWorkflowInputs(detail));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedWorkflow, workingDir]);
 
   const handlePickDirectory = useCallback(async () => {
     const dir = await window.drs.selectDirectory();
     if (!dir) return;
+    setShowProjectsHome(false);
     setWorkingDir(dir);
+    rememberProject(dir);
     setReview(null);
+    setStaleReview(null);
     setSelectedIssueKey(null);
     setScrollTarget(null);
-    await Promise.all([loadWorkflows(dir), loadDiff(dir, staged), loadReview(dir)]);
-  }, [loadDiff, loadReview, loadWorkflows, staged]);
+    const [{ fingerprint }] = await Promise.all([loadDiff(dir, staged), loadWorkflows(dir)]);
+    await loadReview(dir, staged, fingerprint);
+  }, [loadDiff, loadReview, loadWorkflows, rememberProject, staged]);
+
+  const handleSelectRecentProject = useCallback(
+    async (dir: string) => {
+      setShowProjectsHome(false);
+      setWorkingDir(dir);
+      rememberProject(dir);
+      setReview(null);
+      setStaleReview(null);
+      setSelectedIssueKey(null);
+      setScrollTarget(null);
+      const [{ fingerprint }] = await Promise.all([loadDiff(dir, staged), loadWorkflows(dir)]);
+      await loadReview(dir, staged, fingerprint);
+    },
+    [loadDiff, loadReview, loadWorkflows, rememberProject, staged],
+  );
 
   const handleToggleStaged = useCallback(() => {
     setStaged((cur) => {
       const next = !cur;
-      if (workingDir) void loadDiff(workingDir, next);
+      if (workingDir) {
+        void (async () => {
+          const { fingerprint } = await loadDiff(workingDir, next);
+          await loadReview(workingDir, next, fingerprint);
+        })();
+      }
       return next;
     });
-  }, [loadDiff, workingDir]);
+  }, [loadDiff, loadReview, workingDir]);
 
   const handleRefresh = useCallback(() => {
-    if (workingDir) void loadDiff(workingDir, staged);
-  }, [loadDiff, staged, workingDir]);
+    if (workingDir) {
+      void (async () => {
+        const { fingerprint } = await loadDiff(workingDir, staged);
+        await loadReview(workingDir, staged, fingerprint);
+      })();
+    }
+  }, [loadDiff, loadReview, staged, workingDir]);
 
   const handleToggleLayout = useCallback(() => {
     setDiffLayout((cur) => (cur === 'split' ? 'unified' : 'split'));
@@ -148,53 +282,96 @@ export function App() {
       if (!workingDir) return;
       setGlobalError(null);
       const runId = `${name}-${Date.now()}`;
+      const targetAtStart: 'staged' | 'unstaged' = staged ? 'staged' : 'unstaged';
+      const fingerprintAtStart = diffFingerprint;
       setRunState({ active: true, name, runId, logs: [], error: null });
       try {
         const response = await window.drs.runWorkflow({ name, inputs, workingDir, runId });
-        if (response.reviewOutput) setReview(response.reviewOutput);
+        setLastRunResult(response.result);
+        if (name.includes('visual')) setReviewView('walkthrough');
+        else if (isReviewWorkflowName(name)) setReviewView('diff');
         const remotePatch = patchFromWorkflowResult(response.result);
+        let reviewFingerprint = fingerprintAtStart;
+        let reviewTarget: 'staged' | 'unstaged' = targetAtStart;
         if (remotePatch) {
           setDiffPatch(remotePatch.patch);
+          reviewFingerprint = hashString(remotePatch.patch);
+          setDiffFingerprint(reviewFingerprint);
           setDiffSourceLabel(remotePatch.label);
+          reviewTarget = 'unstaged';
         } else {
           // After any local workflow that may change the tree, reload the diff.
-          await loadDiff(workingDir, staged);
+          const refreshed = await loadDiff(workingDir, staged);
+          if (name.includes('fix-review-issues')) reviewFingerprint = refreshed.fingerprint;
+        }
+        if (response.reviewOutput) {
+          setReview(response.reviewOutput);
+          setStaleReview(null);
+          writeReviewSnapshot({
+            project: workingDir,
+            target: reviewTarget,
+            diffFingerprint: reviewFingerprint,
+            timestamp: response.reviewOutput.timestamp ?? response.result.timestamp ?? new Date().toISOString(),
+            workflow: name,
+            review: response.reviewOutput,
+          });
         }
         setRunState((cur) => (cur && cur.runId === runId ? { ...cur, active: false } : cur));
+        appendRunHistory({
+          id: runId,
+          project: workingDir,
+          workflow: name,
+          timestamp: response.result.timestamp ?? new Date().toISOString(),
+          status: 'success',
+          inputs,
+          result: response.result,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setRunState((cur) =>
           cur && cur.runId === runId ? { ...cur, active: false, error: message } : cur,
         );
         setGlobalError(message);
+        appendRunHistory({
+          id: runId,
+          project: workingDir,
+          workflow: name,
+          timestamp: new Date().toISOString(),
+          status: 'error',
+          inputs,
+          error: message,
+        });
       }
     },
-    [loadDiff, staged, workingDir],
+    [diffFingerprint, loadDiff, staged, workingDir],
   );
+
+  const appendRunHistory = useCallback((entry: RunHistoryEntry) => {
+    setRunHistory((cur) => {
+      const next = [entry, ...cur].slice(0, 100);
+      localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleRunSelectedWorkflow = useCallback(() => {
+    if (!selectedWorkflow) return;
+    void startWorkflow(selectedWorkflow, workflowInputs);
+  }, [selectedWorkflow, startWorkflow, workflowInputs]);
 
   const handleRunReview = useCallback(() => {
     void startWorkflow(REVIEW_WORKFLOW, { staged: String(staged) });
   }, [startWorkflow, staged]);
-
-  const handleRunGithubReview = useCallback(
-    (inputs: Record<string, string>) => {
-      void startWorkflow(GITHUB_REVIEW_WORKFLOW, inputs);
-    },
-    [startWorkflow],
-  );
-
-  const handleRunGitlabReview = useCallback(
-    (inputs: Record<string, string>) => {
-      void startWorkflow(GITLAB_REVIEW_WORKFLOW, inputs);
-    },
-    [startWorkflow],
-  );
 
   const handleFixIssues = useCallback(() => {
     if (!review) return;
     const minSeverity = actionableMinSeverity(review);
     void startWorkflow(FIX_WORKFLOW, { staged: String(staged), fixSeverity: minSeverity });
   }, [review, startWorkflow, staged]);
+
+  const handleRunVisualWalkthrough = useCallback(() => {
+    void startWorkflow(VISUAL_WORKFLOW, { staged: String(staged) });
+  }, [staged, startWorkflow]);
 
   const handleCancelWorkflow = useCallback(() => {
     if (runState?.runId) void window.drs.cancelWorkflow(runState.runId);
@@ -234,20 +411,31 @@ export function App() {
     setScrollTarget({ file, line: null });
   }, []);
 
+  if (showProjectsHome) {
+    return (
+      <ProjectHome
+        recentProjects={recentProjects}
+        defaultProject={workingDir}
+        onOpenProject={handlePickDirectory}
+        onSelectProject={handleSelectRecentProject}
+        onContinue={workingDir ? () => setShowProjectsHome(false) : undefined}
+      />
+    );
+  }
+
   return (
     <div className="app">
-      <Sidebar
-        workingDir={workingDir}
-        workflows={workflows}
-        runState={runState}
-        onPickDirectory={handlePickDirectory}
-        onRunWorkflow={startWorkflow}
-        onRunGithubReview={handleRunGithubReview}
-        onRunGitlabReview={handleRunGitlabReview}
-        onCancelWorkflow={handleCancelWorkflow}
-        onDismissRun={handleDismissRun}
-      />
       <main className="main">
+        <ReviewHeader
+          workingDir={workingDir}
+          target={diffSourceLabel}
+          workflow={selectedWorkflow}
+          mode={projectMode}
+          onModeChange={setProjectMode}
+          running={!!runState?.active}
+          stats={reviewStats}
+          onBackToProjects={() => setShowProjectsHome(true)}
+        />
         <Toolbar
           workingDir={workingDir}
           staged={staged}
@@ -259,6 +447,7 @@ export function App() {
           onToggleLayout={handleToggleLayout}
           onRefresh={handleRefresh}
           onRunReview={handleRunReview}
+          onRunVisualWalkthrough={handleRunVisualWalkthrough}
           onFixIssues={handleFixIssues}
           onCopyMarkdown={handleCopyMarkdown}
           copied={copied}
@@ -267,30 +456,509 @@ export function App() {
         {diffError && !globalError && (
           <div className="error-banner">Diff error: {diffError}</div>
         )}
-        <div className="source-banner">{diffSourceLabel}</div>
-        <div className="content">
-          <FileTree
-            files={diffFiles}
-            selectedFile={selectedFile}
-            onSelectFile={handleSelectFile}
+        {workflowsError && !globalError && <div className="error-banner">{workflowsError}</div>}
+        {projectMode === 'workflow' ? (
+          <WorkflowWorkspace
+            workflows={workflows}
+            selectedWorkflow={selectedWorkflow}
+            detail={selectedWorkflowDetail}
+            inputs={workflowInputs}
+            result={lastRunResult}
+            runHistory={visibleRunHistory}
+            running={!!runState?.active}
+            workingDir={workingDir}
+            onSelectWorkflow={setSelectedWorkflow}
+            onInputChange={(key, value) => setWorkflowInputs((cur) => ({ ...cur, [key]: value }))}
+            onRun={handleRunSelectedWorkflow}
           />
-          <DiffView
-            files={diffFiles}
-            issues={review?.issues ?? []}
-            layout={diffLayout}
-            scrollTarget={scrollTarget}
-            onIssueClick={handleSelectIssue}
-          />
-          <IssuesPanel
+        ) : (
+          <>
+            <ReviewViewTabs view={reviewView} onChange={setReviewView} />
+            {reviewView === 'overview' ? (
+          <ReviewOverview
+            stats={reviewStats}
             review={review}
-            selectedIssueKey={selectedIssueKey}
-            severityFilter={severityFilter}
-            onToggleSeverity={handleToggleSeverity}
-            onSelectIssue={handleSelectIssue}
-            onCopyMarkdown={handleCopyMarkdown}
+            staleReview={staleReview}
+            running={!!runState?.active}
+            hasProject={!!workingDir}
+            hasVisualWalkthrough={!!visualResult}
+            onRunReview={handleRunReview}
+            onRunVisualWalkthrough={handleRunVisualWalkthrough}
+            onFixIssues={handleFixIssues}
+            onOpenDiff={() => setReviewView('diff')}
           />
-        </div>
+        ) : reviewView === 'walkthrough' ? (
+          <VisualWalkthroughPanel
+            result={visualResult}
+            running={!!runState?.active}
+            onGenerate={handleRunVisualWalkthrough}
+          />
+        ) : reviewView === 'diff' && selectedWorkflowIsReview ? (
+          <div className="content">
+            <FileTree
+              files={diffFiles}
+              selectedFile={selectedFile}
+              onSelectFile={handleSelectFile}
+            />
+            <DiffView
+              files={diffFiles}
+              issues={review?.issues ?? []}
+              layout={diffLayout}
+              scrollTarget={scrollTarget}
+              onIssueClick={handleSelectIssue}
+            />
+            <IssuesPanel
+              review={review}
+              selectedIssueKey={selectedIssueKey}
+              severityFilter={severityFilter}
+              onToggleSeverity={handleToggleSeverity}
+              onSelectIssue={handleSelectIssue}
+              onCopyMarkdown={handleCopyMarkdown}
+            />
+          </div>
+        ) : (
+          <GenericWorkflowResult result={lastRunResult} />
+        )}
+          </>
+        )}
+        <RunBanner
+          state={runState}
+          onCancel={handleCancelWorkflow}
+          onDismiss={handleDismissRun}
+        />
       </main>
+    </div>
+  );
+}
+
+function ReviewHeader({
+  workingDir,
+  target,
+  workflow,
+  mode,
+  onModeChange,
+  running,
+  stats,
+  onBackToProjects,
+}: {
+  workingDir: string | null;
+  target: string;
+  workflow: string | null;
+  mode: ProjectMode;
+  onModeChange: (mode: ProjectMode) => void;
+  running: boolean;
+  stats: ReviewStats;
+  onBackToProjects: () => void;
+}) {
+  return (
+    <div className="review-header">
+      <div>
+        <div className="review-kicker">DRS Review Cockpit</div>
+        <div className="review-title">{target}</div>
+        <div className="review-subtitle">{workingDir ?? 'No project selected'}</div>
+      </div>
+      <div className="review-header-meta">
+        <button className="back-link" onClick={onBackToProjects}>
+          &lt;- Back to projects
+        </button>
+        <div className="mode-toggle" title="Switch project workspace mode">
+          <button className={mode === 'review' ? 'active' : ''} onClick={() => onModeChange('review')}>
+            Review
+          </button>
+          <button className={mode === 'workflow' ? 'active' : ''} onClick={() => onModeChange('workflow')}>
+            Workflows
+          </button>
+        </div>
+        <span>{workflow ?? 'No workflow selected'}</span>
+        <span>{stats.filesChanged} files</span>
+        <span className={running ? 'running' : ''}>{running ? 'Running' : 'Ready'}</span>
+      </div>
+    </div>
+  );
+}
+
+function ProjectHome({
+  recentProjects,
+  defaultProject,
+  onOpenProject,
+  onSelectProject,
+  onContinue,
+}: {
+  recentProjects: string[];
+  defaultProject: string | null;
+  onOpenProject: () => void;
+  onSelectProject: (project: string) => void;
+  onContinue?: () => void;
+}) {
+  const projects = recentProjects.length > 0 ? recentProjects : defaultProject ? [defaultProject] : [];
+  return (
+    <div className="projects-home">
+      <section className="projects-hero">
+        <div className="review-kicker">DRS Desktop</div>
+        <h1>Choose a project to review</h1>
+        <p>
+          Open a repository, inspect the current change, run DRS workflows, and use the
+          review cockpit to understand, fix, verify, and explain agentic code changes.
+        </p>
+        <div className="projects-actions">
+          <button className="btn btn-primary" onClick={onOpenProject}>Open Project...</button>
+          {onContinue && <button className="btn" onClick={onContinue}>Continue Current Project</button>}
+        </div>
+      </section>
+
+      <section className="projects-section">
+        <div className="projects-section-title">
+          <h2>Recent Projects</h2>
+          <span>{projects.length} available</span>
+        </div>
+        {projects.length === 0 ? (
+          <div className="projects-empty">
+            No projects yet. Open a repository to start a DRS review session.
+          </div>
+        ) : (
+          <div className="project-grid">
+            {projects.map((project) => (
+              <button key={project} className="project-card" onClick={() => onSelectProject(project)}>
+                <span>Project</span>
+                <strong>{projectName(project)}</strong>
+                <code>{project}</code>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function WorkflowWorkspace({
+  workflows,
+  selectedWorkflow,
+  detail,
+  inputs,
+  result,
+  runHistory,
+  running,
+  workingDir,
+  onSelectWorkflow,
+  onInputChange,
+  onRun,
+}: {
+  workflows: WorkflowListEntry[];
+  selectedWorkflow: string | null;
+  detail: WorkflowDetail | null;
+  inputs: Record<string, string>;
+  result: WorkflowRunResultJson | null;
+  runHistory: RunHistoryEntry[];
+  running: boolean;
+  workingDir: string | null;
+  onSelectWorkflow: (workflow: string) => void;
+  onInputChange: (key: string, value: string) => void;
+  onRun: () => void;
+}) {
+  const projectWorkflows = workflows.filter((workflow) => workflow.source === 'project');
+  const packagedWorkflows = workflows.filter((workflow) => workflow.source === 'packaged');
+  return (
+    <div className="workflow-workspace">
+      <section className="workflow-browser">
+        <div className="workflow-browser-head">
+          <div>
+            <div className="review-kicker">Workflow Mode</div>
+            <h1>Run and inspect DRS workflows</h1>
+          </div>
+          <span>{workflows.length} workflows</span>
+        </div>
+        <WorkflowSection
+          title="Project Workflows"
+          description="Workflows defined by this repository. These override or extend packaged DRS behavior."
+          workflows={projectWorkflows}
+          selectedWorkflow={selectedWorkflow}
+          empty="No project workflows found in this repository."
+          onSelectWorkflow={onSelectWorkflow}
+        />
+        <WorkflowSection
+          title="Packaged Workflows"
+          description="Built-in DRS workflows available to every project."
+          workflows={packagedWorkflows}
+          selectedWorkflow={selectedWorkflow}
+          empty="No packaged workflows available."
+          onSelectWorkflow={onSelectWorkflow}
+        />
+      </section>
+
+      <aside className="workflow-inspector">
+        <section className="workflow-inspector-card">
+          <div className="review-kicker">Selected Workflow</div>
+          <h2>{detail?.name ?? selectedWorkflow ?? 'No workflow selected'}</h2>
+          {detail?.description && <p>{detail.description}</p>}
+          {detail && <div className="workflow-node-summary">{detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}</div>}
+          {detail && Object.entries(detail.inputs).map(([key, input]) => (
+            <WorkflowInputField
+              key={key}
+              name={key}
+              input={normalizeWorkflowInput(input)}
+              value={inputs[key] ?? ''}
+              onChange={(value) => onInputChange(key, value)}
+            />
+          ))}
+          <button
+            className="btn btn-primary"
+            disabled={!workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)}
+            onClick={onRun}
+          >
+            {running ? 'Running...' : 'Run Workflow'}
+          </button>
+        </section>
+
+        <section className="workflow-inspector-card">
+          <div className="review-kicker">Latest Output</div>
+          {result ? <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre> : <p>No workflow output yet.</p>}
+        </section>
+
+        <section className="workflow-inspector-card">
+          <div className="review-kicker">Runs</div>
+          {runHistory.length === 0 ? <p>No runs yet for this workflow.</p> : runHistory.slice(0, 8).map((run) => (
+            <div key={run.id} className={`workflow-run-row ${run.status}`}>
+              <strong>{run.workflow}</strong>
+              <span>{new Date(run.timestamp).toLocaleString()}</span>
+            </div>
+          ))}
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function WorkflowSection({
+  title,
+  description,
+  workflows,
+  selectedWorkflow,
+  empty,
+  onSelectWorkflow,
+}: {
+  title: string;
+  description: string;
+  workflows: WorkflowListEntry[];
+  selectedWorkflow: string | null;
+  empty: string;
+  onSelectWorkflow: (workflow: string) => void;
+}) {
+  return (
+    <section className="workflow-section-block">
+      <div className="workflow-section-title">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <span>{workflows.length}</span>
+      </div>
+      {workflows.length === 0 ? (
+        <div className="workflow-section-empty">{empty}</div>
+      ) : (
+        <div className="workflow-card-grid">
+          {workflows.map((workflow) => (
+            <button
+              key={workflow.name}
+              className={`workflow-card ${selectedWorkflow === workflow.name ? 'active' : ''}`}
+              onClick={() => onSelectWorkflow(workflow.name)}
+            >
+              <span>{workflowIntentLabel(workflow)}</span>
+              <strong>{workflow.name}</strong>
+              {workflow.description && <p>{workflow.description}</p>}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function WorkflowInputField({
+  name,
+  input,
+  value,
+  onChange,
+}: {
+  name: string;
+  input: WorkflowInputConfig;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const type = input.type ?? 'string';
+  const id = `workspace-wf-input-${name}`;
+  if (type === 'boolean') {
+    return (
+      <div className="input-row">
+        <label htmlFor={id}>
+          <input id={id} type="checkbox" checked={value === 'true'} onChange={(event) => onChange(event.target.checked ? 'true' : 'false')} />
+          {name}
+        </label>
+      </div>
+    );
+  }
+  if (type === 'enum' && input.values) {
+    return (
+      <div className="input-row">
+        <label htmlFor={id}>{name}</label>
+        <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+          {input.values.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}
+        </select>
+      </div>
+    );
+  }
+  return (
+    <div className="input-row">
+      <label htmlFor={id}>{name}</label>
+      <input id={id} type={type === 'number' ? 'number' : 'text'} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
+function ReviewViewTabs({ view, onChange }: { view: ReviewView; onChange: (view: ReviewView) => void }) {
+  const tabs: Array<{ id: ReviewView; label: string }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'diff', label: 'Diff Review' },
+    { id: 'walkthrough', label: 'Visual Walkthrough' },
+    { id: 'output', label: 'Workflow Output' },
+  ];
+  return (
+    <div className="review-tabs">
+      {tabs.map((tab) => (
+        <button key={tab.id} className={view === tab.id ? 'active' : ''} onClick={() => onChange(tab.id)}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface ReviewStats {
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  issues: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+function ReviewOverview({
+  stats,
+  review,
+  staleReview,
+  running,
+  hasProject,
+  hasVisualWalkthrough,
+  onRunReview,
+  onRunVisualWalkthrough,
+  onFixIssues,
+  onOpenDiff,
+}: {
+  stats: ReviewStats;
+  review: ReviewJsonOutput | null;
+  staleReview: ReviewJsonOutput | null;
+  running: boolean;
+  hasProject: boolean;
+  hasVisualWalkthrough: boolean;
+  onRunReview: () => void;
+  onRunVisualWalkthrough: () => void;
+  onFixIssues: () => void;
+  onOpenDiff: () => void;
+}) {
+  const actionable = stats.critical + stats.high;
+  return (
+    <div className="overview-shell">
+      <section className="overview-hero">
+        <div>
+          <div className="review-kicker">Review Session</div>
+          <h1>{review ? 'Review findings are ready' : 'Start by reviewing this change'}</h1>
+          <p>
+            {staleReview && !review
+              ? 'A previous review artifact exists, but it does not match the current diff. Run a new review to attach findings to this change.'
+              : 'DRS keeps workflows underneath, but this screen is optimized for understanding, triaging, fixing, and verifying agentic code changes.'}
+          </p>
+        </div>
+        <div className="overview-actions">
+          <button className="btn btn-primary" disabled={!hasProject || running} onClick={onRunReview}>
+            Run Review
+          </button>
+          <button className="btn" disabled={!hasProject || running} onClick={onRunVisualWalkthrough}>
+            {hasVisualWalkthrough ? 'Regenerate Walkthrough' : 'Generate Walkthrough'}
+          </button>
+          <button className="btn" disabled={!hasProject || running || actionable === 0} onClick={onFixIssues}>
+            Fix High+{actionable ? ` (${actionable})` : ''}
+          </button>
+        </div>
+      </section>
+      <section className="overview-grid">
+        <OverviewCard label="Changed Files" value={stats.filesChanged} detail={`+${stats.additions} / -${stats.deletions}`} />
+        <OverviewCard label="Findings" value={stats.issues} detail="from latest DRS review" />
+        <OverviewCard label="Critical / High" value={actionable} detail={`${stats.critical} critical, ${stats.high} high`} />
+        <OverviewCard label="Medium / Low" value={stats.medium + stats.low} detail={`${stats.medium} medium, ${stats.low} low`} />
+      </section>
+      <section className="review-next-step">
+        <h2>Suggested next step</h2>
+        {staleReview && !review ? (
+          <p>The saved review is stale for this diff. Run Review to create a current snapshot.</p>
+        ) : review ? (
+          <p>{actionable > 0 ? 'Fix high-impact findings, then re-run the review.' : 'Open the diff or generate a visual walkthrough for reviewer context.'}</p>
+        ) : (
+          <p>Run a DRS review to get inline findings and a triage queue for this change.</p>
+        )}
+        <button className="btn" onClick={onOpenDiff}>Open Diff Review</button>
+      </section>
+    </div>
+  );
+}
+
+function OverviewCard({ label, value, detail }: { label: string; value: number; detail: string }) {
+  return (
+    <div className="overview-card">
+      <div>{label}</div>
+      <strong>{value}</strong>
+      <span>{detail}</span>
+    </div>
+  );
+}
+
+function VisualWalkthroughPanel({
+  result,
+  running,
+  onGenerate,
+}: {
+  result: WorkflowRunResultJson | null;
+  running: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="visual-panel">
+      <div className="visual-empty">
+        <div className="review-kicker">Visual Walkthrough</div>
+        <h2>{result ? 'Walkthrough artifact generated' : 'No visual walkthrough yet'}</h2>
+        <p>
+          Generate an HTML explainer that walks reviewers through the change at a higher level
+          than the raw diff. Artifact rendering will be wired here next.
+        </p>
+        <button className="btn btn-primary" disabled={running} onClick={onGenerate}>
+          {result ? 'Regenerate Visual Walkthrough' : 'Generate Visual Walkthrough'}
+        </button>
+      </div>
+      {result && <pre>{JSON.stringify(result.output ?? result.artifacts, null, 2)}</pre>}
+    </div>
+  );
+}
+
+function GenericWorkflowResult({ result }: { result: WorkflowRunResultJson | null }) {
+  return (
+    <div className="generic-result">
+      <h2>Workflow Output</h2>
+      {result ? (
+        <pre>{JSON.stringify(result, null, 2)}</pre>
+      ) : (
+        <div className="muted">Select and run a workflow to inspect its result.</div>
+      )}
     </div>
   );
 }
@@ -320,4 +988,131 @@ function normalizeFilePatch(filename: string, patch: string): string {
   if (patch.startsWith('diff --git ')) return patch.trimEnd();
   const header = [`diff --git a/${filename} b/${filename}`, `--- a/${filename}`, `+++ b/${filename}`];
   return `${header.join('\n')}\n${patch.trimEnd()}`;
+}
+
+function isReviewWorkflow(workflow: { metadata?: { kind?: string; tags?: string[] } } | null): boolean {
+  return workflow?.metadata?.kind === 'review' || workflow?.metadata?.tags?.includes('review') || false;
+}
+
+function defaultWorkflowSelection(workflows: WorkflowListEntry[]): string | null {
+  return (
+    workflows.find((workflow) => workflow.name === REVIEW_WORKFLOW)?.name ??
+    workflows.find((workflow) => workflow.metadata?.review?.source === 'local' && workflow.name.includes('review'))?.name ??
+    workflows.find((workflow) => isReviewWorkflow(workflow))?.name ??
+    workflows[0]?.name ??
+    null
+  );
+}
+
+function isReviewWorkflowName(name: string): boolean {
+  return name.includes('review') || name.includes('fix-review-issues');
+}
+
+function summarizeReview(files: DiffFile[], review: ReviewJsonOutput | null): ReviewStats {
+  return {
+    filesChanged: files.length,
+    additions: files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    issues: review?.summary.issuesFound ?? 0,
+    critical: review?.summary.bySeverity.CRITICAL ?? 0,
+    high: review?.summary.bySeverity.HIGH ?? 0,
+    medium: review?.summary.bySeverity.MEDIUM ?? 0,
+    low: review?.summary.bySeverity.LOW ?? 0,
+  };
+}
+
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function projectName(project: string): string {
+  return project.split('/').filter(Boolean).pop() ?? project;
+}
+
+function workflowIntentLabel(workflow: WorkflowListEntry): string {
+  if (workflow.name.includes('visual')) return 'visual';
+  if (workflow.name.includes('fix-review')) return 'fix';
+  if (workflow.name.includes('review')) return 'review';
+  if (workflow.name.includes('changelog')) return 'changelog';
+  if (workflow.name.includes('agents')) return 'guidance';
+  return workflow.source;
+}
+
+function normalizeWorkflowInput(input: WorkflowInputConfig): WorkflowInputConfig {
+  if (typeof input === 'string') return { type: 'string', default: input };
+  return input;
+}
+
+function hasMissingWorkflowInputs(detail: WorkflowDetail, inputs: Record<string, string>): boolean {
+  return Object.entries(detail.inputs).some(([key, input]) => {
+    if (typeof input === 'string' || !input.required) return false;
+    return !inputs[key]?.trim();
+  });
+}
+
+function defaultWorkflowInputs(detail: WorkflowDetail): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  for (const [key, input] of Object.entries(detail.inputs)) {
+    if (typeof input === 'string') defaults[key] = input;
+    else if (input.type === 'boolean') defaults[key] = input.default === true ? 'true' : 'false';
+    else if (input.default !== undefined && input.default !== null) defaults[key] = String(input.default);
+    else defaults[key] = '';
+  }
+  return defaults;
+}
+
+function reviewSnapshotKey(project: string, target: 'staged' | 'unstaged', diffFingerprint: string): string {
+  return `${project}::${target}::${diffFingerprint}`;
+}
+
+function readReviewSnapshots(): Record<string, ReviewSnapshot> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REVIEW_SNAPSHOTS_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readReviewSnapshot(
+  project: string,
+  target: 'staged' | 'unstaged',
+  diffFingerprint: string,
+): ReviewSnapshot | null {
+  if (!diffFingerprint) return null;
+  return readReviewSnapshots()[reviewSnapshotKey(project, target, diffFingerprint)] ?? null;
+}
+
+function writeReviewSnapshot(snapshot: ReviewSnapshot): void {
+  const snapshots = readReviewSnapshots();
+  snapshots[reviewSnapshotKey(snapshot.project, snapshot.target, snapshot.diffFingerprint)] = snapshot;
+  const recent = Object.fromEntries(
+    Object.entries(snapshots)
+      .sort(([, a], [, b]) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 50),
+  );
+  localStorage.setItem(REVIEW_SNAPSHOTS_KEY, JSON.stringify(recent));
+}
+
+function readStringArray(key: string): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function readRunHistory(): RunHistoryEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RUN_HISTORY_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

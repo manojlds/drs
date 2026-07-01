@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 export interface RunBannerState {
   active: boolean;
   name: string;
@@ -13,29 +15,49 @@ interface RunBannerProps {
 }
 
 export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (state?.error) setExpanded(true);
+  }, [state?.error]);
+
   if (!state) return null;
+
+  const status = state.active ? 'Running' : state.error ? 'Failed' : 'Finished';
+  const hasDetails = state.logs.length > 0 || !!state.error;
 
   return (
     <div className="run-banner">
       <div className="rb-head">
-        {state.active ? <span className="spinner" /> : <span className="status-dot ok" />}
-        <span className="rb-name">{state.name}</span>
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        {state.active ? <span className="spinner" /> : <span className={`status-dot ${state.error ? 'error' : 'ok'}`} />}
+        <button
+          className="rb-summary"
+          disabled={!hasDetails}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="rb-status">{status}</span>
+          <span className="rb-name">{state.name}</span>
+          {hasDetails && <span className="rb-log-count">{expanded ? 'Hide logs' : `${state.logs.length} log chunks`}</span>}
+        </button>
+        <span className="rb-actions">
           {state.active ? (
-            <button className="btn btn-danger" onClick={onCancel} style={{ padding: '3px 9px', fontSize: 11 }}>
+            <button className="btn btn-danger" onClick={onCancel}>
               Cancel
             </button>
           ) : (
-            <button className="btn" onClick={onDismiss} style={{ padding: '3px 9px', fontSize: 11 }}>
+            <button className="btn" onClick={onDismiss}>
               Dismiss
             </button>
           )}
         </span>
       </div>
-      {state.logs.length > 0 && (
-        <div className="rb-logs">{state.logs.join('').slice(-4000)}</div>
+      {expanded && hasDetails && (
+        <div className="rb-panel">
+          {state.logs.length > 0 && <div className="rb-logs">{state.logs.join('').slice(-4000)}</div>}
+          {state.error && <div className="rb-error">{state.error}</div>}
+        </div>
       )}
-      {state.error && <div className="rb-error">{state.error}</div>}
     </div>
   );
 }
