@@ -1,5 +1,12 @@
 name: gitlab-mr-review
 description: Review a GitLab merge request, optionally posting a description, DRS comments, Code Quality, and a visual HTML explainer
+metadata:
+  kind: review
+  tags: [review, gitlab, merge-request]
+  review:
+    source: gitlab-mr
+    diff: true
+    issues: true
 inputs:
   project:
     type: string

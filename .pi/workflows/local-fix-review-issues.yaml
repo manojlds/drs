@@ -1,5 +1,12 @@
 name: local-fix-review-issues
 description: Fix actionable issues from a saved local DRS review artifact with verification loop
+metadata:
+  kind: review
+  tags: [review, fix, local]
+  review:
+    source: local
+    diff: true
+    issues: true
 inputs:
   review:
     type: string

@@ -1,5 +1,12 @@
 name: github-pr-review
 description: Review a GitHub pull request, optionally posting a description, DRS comments, a visual HTML explainer, and a stacked fix PR
+metadata:
+  kind: review
+  tags: [review, github, pull-request]
+  review:
+    source: github-pr
+    diff: true
+    issues: true
 inputs:
   owner:
     type: string

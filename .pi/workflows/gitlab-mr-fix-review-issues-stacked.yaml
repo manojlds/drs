@@ -1,5 +1,12 @@
 name: gitlab-mr-fix-review-issues-stacked
 description: Fix high-severity GitLab MR review issues and open a stacked MR
+metadata:
+  kind: review
+  tags: [review, fix, gitlab, merge-request]
+  review:
+    source: gitlab-mr
+    diff: true
+    issues: true
 inputs:
   project: ''
   mr: ''

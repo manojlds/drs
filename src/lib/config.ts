@@ -114,10 +114,22 @@ export interface WorkflowNodeConfig {
 
 export interface WorkflowConfig {
   description?: string;
+  metadata?: WorkflowMetadata;
   inputs?: Record<string, WorkflowInputConfig>;
   /** Artifact key to expose as the workflow output. Defaults to the last node output. */
   output?: string;
   nodes: Record<string, WorkflowNodeConfig>;
+}
+
+export interface WorkflowMetadata {
+  kind?: string;
+  tags?: string[];
+  review?: {
+    source?: string;
+    diff?: boolean;
+    issues?: boolean;
+  };
+  [key: string]: unknown;
 }
 
 export type WorkflowSource = 'packaged' | 'project';

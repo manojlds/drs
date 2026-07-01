@@ -6,6 +6,7 @@ import type {
   DRSConfig,
   WorkflowConfig,
   WorkflowInputConfig,
+  WorkflowMetadata,
   WorkflowNodeConfig,
 } from '../lib/config.js';
 import {
@@ -3599,6 +3600,7 @@ export interface WorkflowListEntry {
   source: WorkflowSource;
   overridden: boolean;
   description?: string;
+  metadata?: WorkflowMetadata;
 }
 
 export interface WorkflowListOptions {
@@ -3628,6 +3630,7 @@ export interface WorkflowDetail {
   source: WorkflowSource;
   overridden: boolean;
   description?: string;
+  metadata?: WorkflowMetadata;
   inputs: Record<string, WorkflowInputConfig>;
   output?: string;
   nodes: WorkflowNodeDetail[];
@@ -3676,6 +3679,7 @@ export function listWorkflows(
         source: info.source,
         overridden: info.overridesPackaged,
         description: workflow.description,
+        metadata: workflow.metadata,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -3743,6 +3747,7 @@ function buildWorkflowDetail(
     source: info.source,
     overridden: info.overridesPackaged,
     description: workflow.description,
+    metadata: workflow.metadata,
     inputs: workflow.inputs ?? {},
     output: workflow.output,
     nodes: Object.entries(workflowNodes).map(([nodeId, node]) => ({
@@ -3791,6 +3796,9 @@ export function showWorkflow(
   }
   if (detail.output) {
     console.log(`  Output: ${detail.output}`);
+  }
+  if (detail.metadata) {
+    console.log(`  Metadata: ${JSON.stringify(detail.metadata)}`);
   }
 
   console.log(chalk.bold('\nInputs:'));

@@ -1,5 +1,12 @@
 name: github-pr-fix-review-issues-stacked
 description: Fix high-severity GitHub PR review issues and open a stacked PR
+metadata:
+  kind: review
+  tags: [review, fix, github, pull-request]
+  review:
+    source: github-pr
+    diff: true
+    issues: true
 inputs:
   owner: ''
   repo: ''

@@ -1,5 +1,12 @@
 name: local-review
 description: Review local git diff
+metadata:
+  kind: review
+  tags: [review, local]
+  review:
+    source: local
+    diff: true
+    issues: true
 inputs:
   staged:
     type: boolean

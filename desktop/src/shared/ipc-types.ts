@@ -53,6 +53,18 @@ export interface WorkflowListEntry {
   source: 'packaged' | 'project';
   overridden: boolean;
   description?: string;
+  metadata?: WorkflowMetadata;
+}
+
+export interface WorkflowMetadata {
+  kind?: string;
+  tags?: string[];
+  review?: {
+    source?: string;
+    diff?: boolean;
+    issues?: boolean;
+  };
+  [key: string]: unknown;
 }
 
 export interface WorkflowInputConfig {
@@ -80,6 +92,7 @@ export interface WorkflowDetail {
   source: 'packaged' | 'project';
   overridden: boolean;
   description?: string;
+  metadata?: WorkflowMetadata;
   inputs: Record<string, WorkflowInputConfig>;
   output?: string;
   nodes: WorkflowNodeDetail[];
