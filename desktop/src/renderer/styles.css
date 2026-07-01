@@ -1,4 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
+  color-scheme: dark;
   --bg: #181825;
   --bg-elevated: #1e1e2e;
   --bg-surface: #23233460;
@@ -21,6 +26,26 @@
   --sev-low: #bac2de;
   --mono: 'Fira Code', 'SF Mono', 'JetBrains Mono', 'Cascadia Code', ui-monospace,
     'SFMono-Regular', Menlo, Consolas, monospace;
+  --background: 240 21% 12%;
+  --foreground: 226 64% 88%;
+  --card: 240 22% 15%;
+  --card-foreground: 226 64% 88%;
+  --popover: 240 22% 15%;
+  --popover-foreground: 226 64% 88%;
+  --primary: 217 92% 76%;
+  --primary-foreground: 240 21% 9%;
+  --secondary: 240 22% 21%;
+  --secondary-foreground: 226 64% 88%;
+  --muted: 240 22% 18%;
+  --muted-foreground: 227 24% 65%;
+  --accent-shadcn: 240 22% 21%;
+  --accent-foreground: 226 64% 88%;
+  --destructive: 343 81% 75%;
+  --destructive-foreground: 240 21% 9%;
+  --border-shadcn: 240 16% 23%;
+  --input: 240 16% 23%;
+  --ring: 217 92% 76%;
+  --radius: 0.6rem;
 }
 
 * { box-sizing: border-box; }
@@ -285,7 +310,6 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .run-banner .rb-name { font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-banner .rb-log-count { color: var(--text-muted); font-size: 11px; margin-left: auto; }
 .run-banner .rb-actions { display: flex; gap: 6px; }
-.run-banner .rb-actions .btn { padding: 3px 9px; font-size: 11px; }
 .run-banner .rb-panel { border-top: 1px solid var(--border-soft); background: #11111b; max-height: 260px; overflow: auto; }
 .run-banner .rb-logs { padding: 8px 10px; font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; }
 .run-banner .rb-error { border-top: 1px solid rgba(243, 139, 168, 0.24); color: var(--sev-critical); font-size: 11.5px; padding: 8px 10px; white-space: pre-wrap; }

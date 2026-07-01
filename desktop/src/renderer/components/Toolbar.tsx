@@ -1,5 +1,6 @@
 import type { ReviewJsonOutput } from '../types';
 import type { DiffLayout } from '../lib/diff';
+import { Button } from '@/renderer/components/ui/button';
 
 interface ToolbarProps {
   workingDir: string | null;
@@ -42,44 +43,43 @@ export function Toolbar(props: ToolbarProps) {
         </button>
       </div>
 
-      <button
-        className="btn"
+      <Button
+        variant="outline"
         onClick={props.onToggleLayout}
         disabled={running}
         title="Toggle unified/split diff layout"
       >
         {props.layout === 'split' ? 'Split' : 'Unified'}
-      </button>
+      </Button>
 
-      <button
-        className="btn"
+      <Button
+        variant="outline"
         onClick={props.onRefresh}
         disabled={!workingDir || diffLoading || running}
         title="Reload the diff"
       >
         {diffLoading ? <span className="spinner" /> : '↻'} Refresh
-      </button>
+      </Button>
 
-      <button
-        className="btn btn-primary"
+      <Button
         onClick={props.onRunReview}
         disabled={!workingDir || running}
         title="Run the local-review workflow with DRS agents"
       >
         {running ? <span className="spinner" /> : '🔍'} Run Review
-      </button>
+      </Button>
 
-      <button
-        className="btn"
+      <Button
+        variant="outline"
         onClick={props.onRunVisualWalkthrough}
         disabled={!workingDir || running}
         title="Generate a visual walkthrough artifact for the current review target"
       >
         Visual Walkthrough
-      </button>
+      </Button>
 
-      <button
-        className="btn"
+      <Button
+        variant="outline"
         onClick={props.onFixIssues}
         disabled={!workingDir || running || actionableCount === 0}
         title={
@@ -89,7 +89,7 @@ export function Toolbar(props: ToolbarProps) {
         }
       >
         🛠️ Fix ≥ High{actionableCount > 0 ? ` (${actionableCount})` : ''}
-      </button>
+      </Button>
 
       <span className="spacer" />
 
@@ -99,14 +99,14 @@ export function Toolbar(props: ToolbarProps) {
         </span>
       )}
 
-      <button
-        className="btn"
+      <Button
+        variant="outline"
         onClick={props.onCopyMarkdown}
         disabled={!hasReview}
         title="Copy the review as Markdown"
       >
         {copied ? '✓ Copied' : '⧉ Copy MD'}
-      </button>
+      </Button>
     </div>
   );
 }

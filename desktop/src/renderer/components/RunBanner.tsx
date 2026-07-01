@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@/renderer/components/ui/button';
 
 export interface RunBannerState {
   active: boolean;
@@ -42,13 +43,13 @@ export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
         </button>
         <span className="rb-actions">
           {state.active ? (
-            <button className="btn btn-danger" onClick={onCancel}>
+            <Button variant="destructive" size="sm" onClick={onCancel}>
               Cancel
-            </button>
+            </Button>
           ) : (
-            <button className="btn" onClick={onDismiss}>
+            <Button variant="outline" size="sm" onClick={onDismiss}>
               Dismiss
-            </button>
+            </Button>
           )}
         </span>
       </div>

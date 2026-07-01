@@ -96,9 +96,9 @@ sources.
 
 ## Package
 
-```bash
-npm run make    # electron-forge make → out/ (zip)
-```
+Packaged distribution is not wired up yet. The current desktop app is intended
+for local development and review workflows via `npm run dev` plus
+`npm run electron:dev`, or `npm run start` for a built renderer.
 
 ## Project layout
 
