@@ -41,6 +41,13 @@ const findOnPath = (name) => {
   return null;
 };
 
+const resolveNodeExecutable = () => {
+  if (process.env.npm_node_execpath) return process.env.npm_node_execpath;
+  if (process.env.NODE) return process.env.NODE;
+  if (process.versions.electron) return findOnPath('node') || process.execPath;
+  return process.execPath;
+};
+
 /**
  * @param {{ repoRoot?: string | null }} [options]
  * @returns {{ command: string; args: string[] }}
@@ -55,7 +62,7 @@ const resolveDrsCli = (options = {}) => {
   if (repoRoot) {
     const distCli = join(repoRoot, 'dist', 'cli', 'index.js');
     if (existsSync(distCli)) {
-      return { command: process.execPath, args: [distCli] };
+      return { command: resolveNodeExecutable(), args: [distCli] };
     }
   }
 
@@ -85,6 +92,7 @@ const resolveDrsCli = (options = {}) => {
  *   args: string[];
  *   onOutput?: (text: string, stream: 'stdout' | 'stderr') => void;
  *   onStart?: (child: import('child_process').ChildProcess) => void;
+ *   timeoutMs?: number;
  * }} RunDrsOptions
  */
 
@@ -107,6 +115,13 @@ const runDrs = (options) =>
 
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    const timeoutMs = options.timeoutMs || 120000;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       stdout += text;
@@ -118,6 +133,7 @@ const runDrs = (options) =>
       options.onOutput?.(text, 'stderr');
     });
     child.on('error', (error) => {
+      clearTimeout(timeout);
       reject(
         error instanceof Error
           ? error
@@ -125,6 +141,11 @@ const runDrs = (options) =>
       );
     });
     child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`DRS CLI timed out after ${timeoutMs}ms.`));
+        return;
+      }
       if (code !== 0) {
         const detail = (stderr || stdout).trim();
         reject(new Error(`DRS CLI exited with code ${code}.${detail ? `\n${detail}` : ''}`));

@@ -20,6 +20,7 @@ const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:51
 // Relative to the reviewed repo's working directory.
 const RUN_OUTPUT_REL = '.drs/.desktop-run.json';
 const REVIEW_OUTPUT_REL = '.drs/review-output.json';
+const WORKFLOW_RUN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
 const runningProcesses = new Map();
@@ -109,13 +110,18 @@ app.whenReady().then(() => {
   ipcMain.handle('drs:getCwd', () => process.cwd());
 
   ipcMain.handle('drs:listWorkflows', async (_event, workingDir) => {
-    const { stdout } = await runDrs({
+    const { stdout, stderr } = await runDrs({
       repoRoot,
       workingDir,
       args: ['workflow', 'list', '--json'],
+      timeoutMs: 30000,
     });
     const parsed = parseJsonSafe(stdout);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) {
+      const detail = (stderr || stdout).trim();
+      throw new Error(`Could not parse workflow list JSON.${detail ? `\n${detail}` : ''}`);
+    }
+    return parsed;
   });
 
   ipcMain.handle('drs:showWorkflow', async (_event, name, workingDir) => {
@@ -123,6 +129,7 @@ app.whenReady().then(() => {
       repoRoot,
       workingDir,
       args: ['workflow', 'show', name, '--json'],
+      timeoutMs: 30000,
     });
     return parseJsonSafe(stdout);
   });
@@ -148,6 +155,7 @@ app.whenReady().then(() => {
         repoRoot,
         workingDir,
         args,
+        timeoutMs: WORKFLOW_RUN_TIMEOUT_MS,
         onStart: (child) => {
           runningProcesses.set(effectiveRunId, child);
         },
