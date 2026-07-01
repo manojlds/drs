@@ -47,9 +47,9 @@ const runGit = (workingDir, args) =>
 const getDiff = async (workingDir, opts = {}) => {
   const flag = opts.staged ? ['--cached'] : [];
   const [patch, nameStatus, stat] = await Promise.all([
-    runGit(workingDir, [...flag, '--no-color']),
-    runGit(workingDir, [...flag, '--name-status']),
-    runGit(workingDir, [...flag, '--stat', '--no-color']),
+    runGit(workingDir, ['diff', ...flag, '--no-color']),
+    runGit(workingDir, ['diff', ...flag, '--name-status']),
+    runGit(workingDir, ['diff', ...flag, '--stat', '--no-color']),
   ]);
   return { patch, nameStatus, stat };
 };
