@@ -9,6 +9,7 @@ import { runAgent } from './run-agent.js';
 import { listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { loadConfig } from '../lib/config.js';
+import { ConversationService } from '../lib/conversation.js';
 import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { runTemporalWorker } from '../temporal/worker.js';
 import { createWorkflowExecutor } from './workflow-executor-selection.js';
@@ -222,6 +223,47 @@ workflowCommand
       });
       if (results.some((result) => !result.valid)) {
         process.exit(1);
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('chat')
+  .description('Ask a question against the latest DRS review/workflow artifacts')
+  .option('-p, --prompt <text>', 'Question to ask')
+  .option('--json', 'Output the conversation turn as JSON')
+  .option('--debug', 'Print debug logs')
+  .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
+  .action(async (options) => {
+    try {
+      configureLogger({
+        level: options.debug ? 'debug' : 'error',
+        format: (options.logFormat as LogFormat) ?? 'human',
+        timestamps: options.logFormat === 'json',
+      });
+
+      const prompt = String(options.prompt ?? '').trim();
+      if (!prompt) {
+        throw new Error('Provide a question with --prompt.');
+      }
+
+      const config = loadConfig(process.cwd());
+      const service = new ConversationService({ config, workingDir: process.cwd() });
+      const conversation = await service.startConversation();
+      const result = await service.sendMessage({
+        conversationId: conversation.id,
+        message: prompt,
+      });
+      await service.closeConversation(conversation.id);
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(result.response.trim());
       }
       process.exit(0);
     } catch (error) {
