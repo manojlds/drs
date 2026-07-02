@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { FileDiff, type DiffLineAnnotation } from '@pierre/diffs/react';
+import { useTheme } from './theme-provider';
 import {
   buildIssueLineIndex,
   fileDomId,
@@ -32,6 +33,7 @@ const STATUS_LABEL: Record<DiffFile['status'], string> = {
 export function DiffView({ files, issues, layout, scrollTarget, onIssueClick }: DiffViewProps) {
   const index: IssueLineIndex = buildIssueLineIndex(issues);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
 
   // Scroll the targeted line into view when the selection changes.
   useEffect(() => {
@@ -75,6 +77,7 @@ export function DiffView({ files, issues, layout, scrollTarget, onIssueClick }: 
           file={file}
           index={index}
           layout={layout}
+          theme={resolvedTheme}
           onIssueClick={onIssueClick}
           scrollTarget={scrollTarget}
         />
@@ -87,11 +90,12 @@ interface FileSectionProps {
   file: DiffFile;
   index: IssueLineIndex;
   layout: DiffLayout;
+  theme: 'light' | 'dark';
   onIssueClick: (issue: ReviewIssue) => void;
   scrollTarget: { file: string; line: number | null } | null;
 }
 
-function FileSection({ file, index, layout, onIssueClick, scrollTarget }: FileSectionProps) {
+function FileSection({ file, index, layout, theme, onIssueClick, scrollTarget }: FileSectionProps) {
   const generalIssues = index.general.get(file.path) ?? [];
   const annotations = buildAnnotations(file, index);
   const selectedLines =
@@ -125,8 +129,8 @@ function FileSection({ file, index, layout, onIssueClick, scrollTarget }: FileSe
               hunkSeparators: 'line-info-basic',
               lineDiffType: 'word',
               overflow: 'scroll',
-              theme: 'github-dark',
-              themeType: 'dark',
+              theme: theme === 'dark' ? 'github-dark' : 'github-light',
+              themeType: theme,
             }}
             renderAnnotation={(annotation) => (
               <InlineIssue

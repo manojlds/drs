@@ -2,8 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffView } from './components/DiffView';
 import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
-import { Toolbar } from './components/Toolbar';
 import { RunBanner, type RunBannerState } from './components/RunBanner';
+import { ThemeToggle } from './components/ThemeToggle';
+import { Badge } from '@/renderer/components/ui/badge';
+import { Button } from '@/renderer/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/renderer/components/ui/card';
+import { Skeleton } from '@/renderer/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { SEVERITIES, severityToInput } from './lib/badges';
 import { buildReviewMarkdown, copyToClipboard } from './lib/markdown';
 import { parseUnifiedDiff, type DiffFile, issueLineKey } from './lib/diff';
@@ -436,22 +441,6 @@ export function App() {
           stats={reviewStats}
           onBackToProjects={() => setShowProjectsHome(true)}
         />
-        <Toolbar
-          workingDir={workingDir}
-          staged={staged}
-          layout={diffLayout}
-          running={!!runState?.active}
-          review={review}
-          diffLoading={diffLoading}
-          onToggleStaged={handleToggleStaged}
-          onToggleLayout={handleToggleLayout}
-          onRefresh={handleRefresh}
-          onRunReview={handleRunReview}
-          onRunVisualWalkthrough={handleRunVisualWalkthrough}
-          onFixIssues={handleFixIssues}
-          onCopyMarkdown={handleCopyMarkdown}
-          copied={copied}
-        />
         {globalError && <div className="error-banner">{globalError}</div>}
         {diffError && !globalError && (
           <div className="error-banner">Diff error: {diffError}</div>
@@ -460,6 +449,7 @@ export function App() {
         {projectMode === 'workflow' ? (
           <WorkflowWorkspace
             workflows={workflows}
+            workflowsLoading={workflowsLoading}
             selectedWorkflow={selectedWorkflow}
             detail={selectedWorkflowDetail}
             inputs={workflowInputs}
@@ -474,11 +464,25 @@ export function App() {
         ) : (
           <>
             <ReviewViewTabs view={reviewView} onChange={setReviewView} />
+            <ReviewContextBar
+              staged={staged}
+              layout={diffLayout}
+              diffLoading={diffLoading}
+              running={!!runState?.active}
+              workingDir={workingDir}
+              target={diffSourceLabel}
+              workflow={selectedWorkflowDetail ?? workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null}
+              onToggleStaged={handleToggleStaged}
+              onToggleLayout={handleToggleLayout}
+              onRefresh={handleRefresh}
+            />
             {reviewView === 'overview' ? (
           <ReviewOverview
             stats={reviewStats}
             review={review}
             staleReview={staleReview}
+            target={diffSourceLabel}
+            workflow={selectedWorkflowDetail ?? workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null}
             running={!!runState?.active}
             hasProject={!!workingDir}
             hasVisualWalkthrough={!!visualResult}
@@ -558,20 +562,19 @@ function ReviewHeader({
         <div className="review-subtitle">{workingDir ?? 'No project selected'}</div>
       </div>
       <div className="review-header-meta">
-        <button className="back-link" onClick={onBackToProjects}>
+        <Button variant="ghost" size="sm" onClick={onBackToProjects}>
           &lt;- Back to projects
-        </button>
-        <div className="mode-toggle" title="Switch project workspace mode">
-          <button className={mode === 'review' ? 'active' : ''} onClick={() => onModeChange('review')}>
-            Review
-          </button>
-          <button className={mode === 'workflow' ? 'active' : ''} onClick={() => onModeChange('workflow')}>
-            Workflows
-          </button>
-        </div>
-        <span>{workflow ?? 'No workflow selected'}</span>
-        <span>{stats.filesChanged} files</span>
-        <span className={running ? 'running' : ''}>{running ? 'Running' : 'Ready'}</span>
+        </Button>
+        <Tabs value={mode} onValueChange={(value) => onModeChange(value as ProjectMode)}>
+          <TabsList title="Switch project workspace mode">
+            <TabsTrigger value="review">Review</TabsTrigger>
+            <TabsTrigger value="workflow">Workflows</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <ThemeToggle />
+        <Badge variant="outline">{workflow ?? 'No workflow selected'}</Badge>
+        <Badge variant="outline">{stats.filesChanged} files</Badge>
+        <Badge variant={running ? 'secondary' : 'outline'}>{running ? 'Running' : 'Ready'}</Badge>
       </div>
     </div>
   );
@@ -593,36 +596,47 @@ function ProjectHome({
   const projects = recentProjects.length > 0 ? recentProjects : defaultProject ? [defaultProject] : [];
   return (
     <div className="projects-home">
-      <section className="projects-hero">
-        <div className="review-kicker">DRS Desktop</div>
-        <h1>Choose a project to review</h1>
-        <p>
-          Open a repository, inspect the current change, run DRS workflows, and use the
-          review cockpit to understand, fix, verify, and explain agentic code changes.
-        </p>
-        <div className="projects-actions">
-          <button className="btn btn-primary" onClick={onOpenProject}>Open Project...</button>
-          {onContinue && <button className="btn" onClick={onContinue}>Continue Current Project</button>}
-        </div>
-      </section>
+      <Card className="projects-hero">
+        <CardHeader className="p-0">
+          <div className="projects-hero-top">
+            <div className="review-kicker">DRS Desktop</div>
+            <ThemeToggle />
+          </div>
+          <CardTitle className="projects-title">Choose a project to review</CardTitle>
+          <CardDescription className="projects-description">
+            Open a repository, inspect the current change, run DRS workflows, and use the
+            review cockpit to understand, fix, verify, and explain agentic code changes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="projects-actions p-0">
+          <Button onClick={onOpenProject}>Open Project...</Button>
+          {onContinue && (
+            <Button variant="outline" onClick={onContinue}>
+              Continue Current Project
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       <section className="projects-section">
         <div className="projects-section-title">
           <h2>Recent Projects</h2>
-          <span>{projects.length} available</span>
+          <Badge variant="outline">{projects.length} available</Badge>
         </div>
         {projects.length === 0 ? (
-          <div className="projects-empty">
+          <Card className="projects-empty">
             No projects yet. Open a repository to start a DRS review session.
-          </div>
+          </Card>
         ) : (
           <div className="project-grid">
             {projects.map((project) => (
-              <button key={project} className="project-card" onClick={() => onSelectProject(project)}>
-                <span>Project</span>
-                <strong>{projectName(project)}</strong>
-                <code>{project}</code>
-              </button>
+              <Card key={project} asChild className="project-card">
+                <button onClick={() => onSelectProject(project)}>
+                  <Badge variant="secondary">Project</Badge>
+                  <strong>{projectName(project)}</strong>
+                  <code>{project}</code>
+                </button>
+              </Card>
             ))}
           </div>
         )}
@@ -633,6 +647,7 @@ function ProjectHome({
 
 function WorkflowWorkspace({
   workflows,
+  workflowsLoading,
   selectedWorkflow,
   detail,
   inputs,
@@ -645,6 +660,7 @@ function WorkflowWorkspace({
   onRun,
 }: {
   workflows: WorkflowListEntry[];
+  workflowsLoading: boolean;
   selectedWorkflow: string | null;
   detail: WorkflowDetail | null;
   inputs: Record<string, string>;
@@ -672,6 +688,7 @@ function WorkflowWorkspace({
           title="Project Workflows"
           description="Workflows defined by this repository. These override or extend packaged DRS behavior."
           workflows={projectWorkflows}
+          loading={workflowsLoading}
           selectedWorkflow={selectedWorkflow}
           empty="No project workflows found in this repository."
           onSelectWorkflow={onSelectWorkflow}
@@ -680,6 +697,7 @@ function WorkflowWorkspace({
           title="Packaged Workflows"
           description="Built-in DRS workflows available to every project."
           workflows={packagedWorkflows}
+          loading={workflowsLoading}
           selectedWorkflow={selectedWorkflow}
           empty="No packaged workflows available."
           onSelectWorkflow={onSelectWorkflow}
@@ -687,35 +705,50 @@ function WorkflowWorkspace({
       </section>
 
       <aside className="workflow-inspector">
-        <section className="workflow-inspector-card">
-          <div className="review-kicker">Selected Workflow</div>
-          <h2>{detail?.name ?? selectedWorkflow ?? 'No workflow selected'}</h2>
-          {detail?.description && <p>{detail.description}</p>}
-          {detail && <div className="workflow-node-summary">{detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}</div>}
-          {detail && Object.entries(detail.inputs).map(([key, input]) => (
-            <WorkflowInputField
-              key={key}
-              name={key}
-              input={normalizeWorkflowInput(input)}
-              value={inputs[key] ?? ''}
-              onChange={(value) => onInputChange(key, value)}
-            />
-          ))}
-          <button
-            className="btn btn-primary"
-            disabled={!workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)}
-            onClick={onRun}
-          >
-            {running ? 'Running...' : 'Run Workflow'}
-          </button>
-        </section>
+        <Card className="workflow-inspector-card">
+          <CardHeader className="p-0 pb-3">
+            <div className="review-kicker">Selected Workflow</div>
+            <CardTitle>{detail?.name ?? selectedWorkflow ?? 'No workflow selected'}</CardTitle>
+            {detail?.description && <CardDescription>{detail.description}</CardDescription>}
+          </CardHeader>
+          <CardContent className="p-0">
+            {selectedWorkflow && !detail && workflowsLoading ? (
+              <div className="workflow-detail-skeleton">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : null}
+            {detail && (
+              <div className="workflow-node-summary">
+                {detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}
+              </div>
+            )}
+            {detail && Object.entries(detail.inputs).map(([key, input]) => (
+              <WorkflowInputField
+                key={key}
+                name={key}
+                input={normalizeWorkflowInput(input)}
+                value={inputs[key] ?? ''}
+                onChange={(value) => onInputChange(key, value)}
+              />
+            ))}
+            <Button
+              className="w-full"
+              disabled={!workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)}
+              onClick={onRun}
+            >
+              {running ? 'Running...' : 'Run Workflow'}
+            </Button>
+          </CardContent>
+        </Card>
 
-        <section className="workflow-inspector-card">
+        <Card className="workflow-inspector-card">
           <div className="review-kicker">Latest Output</div>
           {result ? <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre> : <p>No workflow output yet.</p>}
-        </section>
+        </Card>
 
-        <section className="workflow-inspector-card">
+        <Card className="workflow-inspector-card">
           <div className="review-kicker">Runs</div>
           {runHistory.length === 0 ? <p>No runs yet for this workflow.</p> : runHistory.slice(0, 8).map((run) => (
             <div key={run.id} className={`workflow-run-row ${run.status}`}>
@@ -723,7 +756,7 @@ function WorkflowWorkspace({
               <span>{new Date(run.timestamp).toLocaleString()}</span>
             </div>
           ))}
-        </section>
+        </Card>
       </aside>
     </div>
   );
@@ -733,6 +766,7 @@ function WorkflowSection({
   title,
   description,
   workflows,
+  loading,
   selectedWorkflow,
   empty,
   onSelectWorkflow,
@@ -740,6 +774,7 @@ function WorkflowSection({
   title: string;
   description: string;
   workflows: WorkflowListEntry[];
+  loading: boolean;
   selectedWorkflow: string | null;
   empty: string;
   onSelectWorkflow: (workflow: string) => void;
@@ -751,22 +786,31 @@ function WorkflowSection({
           <h2>{title}</h2>
           <p>{description}</p>
         </div>
-        <span>{workflows.length}</span>
+        <Badge variant="outline">{loading ? 'Loading' : workflows.length}</Badge>
       </div>
-      {workflows.length === 0 ? (
+      {loading ? (
+        <div className="workflow-card-grid">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="workflow-card-skeleton">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-4/5" />
+            </Card>
+          ))}
+        </div>
+      ) : workflows.length === 0 ? (
         <div className="workflow-section-empty">{empty}</div>
       ) : (
         <div className="workflow-card-grid">
           {workflows.map((workflow) => (
-            <button
-              key={workflow.name}
-              className={`workflow-card ${selectedWorkflow === workflow.name ? 'active' : ''}`}
-              onClick={() => onSelectWorkflow(workflow.name)}
-            >
-              <span>{workflowIntentLabel(workflow)}</span>
-              <strong>{workflow.name}</strong>
-              {workflow.description && <p>{workflow.description}</p>}
-            </button>
+            <Card key={workflow.name} asChild className={`workflow-card ${selectedWorkflow === workflow.name ? 'active' : ''}`}>
+              <button onClick={() => onSelectWorkflow(workflow.name)}>
+                <Badge variant="secondary">{workflowIntentLabel(workflow)}</Badge>
+                <strong>{workflow.name}</strong>
+                {workflow.description && <p>{workflow.description}</p>}
+              </button>
+            </Card>
           ))}
         </div>
       )}
@@ -823,12 +867,77 @@ function ReviewViewTabs({ view, onChange }: { view: ReviewView; onChange: (view:
     { id: 'output', label: 'Workflow Output' },
   ];
   return (
-    <div className="review-tabs">
-      {tabs.map((tab) => (
-        <button key={tab.id} className={view === tab.id ? 'active' : ''} onClick={() => onChange(tab.id)}>
-          {tab.label}
-        </button>
-      ))}
+    <Tabs value={view} onValueChange={(value) => onChange(value as ReviewView)} className="review-tabs-shell">
+      <TabsList className="review-tabs">
+        {tabs.map((tab) => (
+          <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
+}
+
+type ReviewWorkflowSummary = {
+  name: string;
+  description?: string;
+  source?: string;
+  metadata?: {
+    kind?: string;
+    tags?: string[];
+    review?: {
+      source?: string;
+      diff?: boolean;
+      issues?: boolean;
+    };
+  };
+};
+
+function ReviewContextBar({
+  staged,
+  layout,
+  diffLoading,
+  running,
+  workingDir,
+  target,
+  workflow,
+  onToggleStaged,
+  onToggleLayout,
+  onRefresh,
+}: {
+  staged: boolean;
+  layout: 'unified' | 'split';
+  diffLoading: boolean;
+  running: boolean;
+  workingDir: string | null;
+  target: string;
+  workflow: ReviewWorkflowSummary | null;
+  onToggleStaged: () => void;
+  onToggleLayout: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="review-context-bar">
+      <div className="review-context-copy">
+        <span className="review-kicker">Review Target</span>
+        <strong>{target}</strong>
+        <span>{reviewWorkflowKind(workflow)} via {workflow?.name ?? 'no workflow selected'}</span>
+      </div>
+      <div className="review-context-controls">
+        <div className="seg" title="Choose which local diff to review">
+          <button className={!staged ? 'active' : ''} onClick={() => !staged || onToggleStaged()}>
+            Unstaged
+          </button>
+          <button className={staged ? 'active' : ''} onClick={() => staged || onToggleStaged()}>
+            Staged
+          </button>
+        </div>
+        <Button variant="outline" onClick={onToggleLayout} disabled={running} title="Toggle unified/split diff layout">
+          {layout === 'split' ? 'Split diff' : 'Unified diff'}
+        </Button>
+        <Button variant="outline" onClick={onRefresh} disabled={!workingDir || diffLoading || running} title="Reload the current diff">
+          {diffLoading ? <span className="spinner" /> : 'Refresh diff'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -848,6 +957,8 @@ function ReviewOverview({
   stats,
   review,
   staleReview,
+  target,
+  workflow,
   running,
   hasProject,
   hasVisualWalkthrough,
@@ -859,6 +970,8 @@ function ReviewOverview({
   stats: ReviewStats;
   review: ReviewJsonOutput | null;
   staleReview: ReviewJsonOutput | null;
+  target: string;
+  workflow: ReviewWorkflowSummary | null;
   running: boolean;
   hasProject: boolean;
   hasVisualWalkthrough: boolean;
@@ -868,38 +981,55 @@ function ReviewOverview({
   onOpenDiff: () => void;
 }) {
   const actionable = stats.critical + stats.high;
+  const workflowName = workflow?.name ?? 'No review workflow selected';
+  const workflowSource = workflow?.metadata?.review?.source ?? workflow?.source ?? 'local';
+  const reviewKind = reviewWorkflowKind(workflow);
   return (
     <div className="overview-shell">
-      <section className="overview-hero">
-        <div>
+      <Card className="overview-hero">
+        <CardHeader className="p-0">
           <div className="review-kicker">Review Session</div>
-          <h1>{review ? 'Review findings are ready' : 'Start by reviewing this change'}</h1>
-          <p>
+          <CardTitle>{review ? 'Review findings are ready' : 'Start by reviewing this change'}</CardTitle>
+          <CardDescription>
             {staleReview && !review
               ? 'A previous review artifact exists, but it does not match the current diff. Run a new review to attach findings to this change.'
-              : 'DRS keeps workflows underneath, but this screen is optimized for understanding, triaging, fixing, and verifying agentic code changes.'}
-          </p>
+              : `This is a ${reviewKind.toLowerCase()} for ${target}, powered by ${workflowName}. DRS keeps workflows underneath, while this cockpit is optimized for understanding, triaging, fixing, and verifying agentic code changes.`}
+          </CardDescription>
+        </CardHeader>
+        <div className="review-session-facts">
+          <div>
+            <span>Workflow</span>
+            <strong>{workflowName}</strong>
+          </div>
+          <div>
+            <span>Review source</span>
+            <strong>{workflowSource}</strong>
+          </div>
+          <div>
+            <span>Diff target</span>
+            <strong>{target}</strong>
+          </div>
         </div>
         <div className="overview-actions">
-          <button className="btn btn-primary" disabled={!hasProject || running} onClick={onRunReview}>
+          <Button disabled={!hasProject || running} onClick={onRunReview}>
             Run Review
-          </button>
-          <button className="btn" disabled={!hasProject || running} onClick={onRunVisualWalkthrough}>
+          </Button>
+          <Button variant="outline" disabled={!hasProject || running} onClick={onRunVisualWalkthrough}>
             {hasVisualWalkthrough ? 'Regenerate Walkthrough' : 'Generate Walkthrough'}
-          </button>
-          <button className="btn" disabled={!hasProject || running || actionable === 0} onClick={onFixIssues}>
+          </Button>
+          <Button variant="outline" disabled={!hasProject || running || actionable === 0} onClick={onFixIssues}>
             Fix High+{actionable ? ` (${actionable})` : ''}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
       <section className="overview-grid">
         <OverviewCard label="Changed Files" value={stats.filesChanged} detail={`+${stats.additions} / -${stats.deletions}`} />
         <OverviewCard label="Findings" value={stats.issues} detail="from latest DRS review" />
         <OverviewCard label="Critical / High" value={actionable} detail={`${stats.critical} critical, ${stats.high} high`} />
         <OverviewCard label="Medium / Low" value={stats.medium + stats.low} detail={`${stats.medium} medium, ${stats.low} low`} />
       </section>
-      <section className="review-next-step">
-        <h2>Suggested next step</h2>
+      <Card className="review-next-step">
+        <CardTitle>Suggested next step</CardTitle>
         {staleReview && !review ? (
           <p>The saved review is stale for this diff. Run Review to create a current snapshot.</p>
         ) : review ? (
@@ -907,19 +1037,19 @@ function ReviewOverview({
         ) : (
           <p>Run a DRS review to get inline findings and a triage queue for this change.</p>
         )}
-        <button className="btn" onClick={onOpenDiff}>Open Diff Review</button>
-      </section>
+        <Button variant="outline" onClick={onOpenDiff}>Open Diff Review</Button>
+      </Card>
     </div>
   );
 }
 
 function OverviewCard({ label, value, detail }: { label: string; value: number; detail: string }) {
   return (
-    <div className="overview-card">
+    <Card className="overview-card">
       <div>{label}</div>
       <strong>{value}</strong>
       <span>{detail}</span>
-    </div>
+    </Card>
   );
 }
 
@@ -932,20 +1062,30 @@ function VisualWalkthroughPanel({
   running: boolean;
   onGenerate: () => void;
 }) {
+  const html = visualHtmlFromResult(result);
   return (
     <div className="visual-panel">
-      <div className="visual-empty">
+      <Card className="visual-empty">
         <div className="review-kicker">Visual Walkthrough</div>
-        <h2>{result ? 'Walkthrough artifact generated' : 'No visual walkthrough yet'}</h2>
-        <p>
+        <CardTitle>{result ? 'Walkthrough artifact generated' : 'No visual walkthrough yet'}</CardTitle>
+        <CardDescription>
           Generate an HTML explainer that walks reviewers through the change at a higher level
           than the raw diff. Artifact rendering will be wired here next.
-        </p>
-        <button className="btn btn-primary" disabled={running} onClick={onGenerate}>
+        </CardDescription>
+        <Button disabled={running} onClick={onGenerate}>
           {result ? 'Regenerate Visual Walkthrough' : 'Generate Visual Walkthrough'}
-        </button>
-      </div>
-      {result && <pre>{JSON.stringify(result.output ?? result.artifacts, null, 2)}</pre>}
+        </Button>
+      </Card>
+      {html ? (
+        <iframe
+          className="visual-artifact-frame"
+          title="DRS visual walkthrough artifact"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+          srcDoc={html}
+        />
+      ) : result ? (
+        <pre>{JSON.stringify(result.output ?? result.artifacts, null, 2)}</pre>
+      ) : null}
     </div>
   );
 }
@@ -982,6 +1122,18 @@ function patchFromWorkflowResult(
     .join('\n');
   if (!patch.trim()) return null;
   return { patch, label: change.name || result.workflow };
+}
+
+function visualHtmlFromResult(result: WorkflowRunResultJson | null): string | null {
+  if (!result) return null;
+  if (typeof result.output === 'string' && result.output.trimStart().startsWith('<!DOCTYPE html>')) {
+    return result.output;
+  }
+  const visualOutput = result.artifacts.visualExplainer;
+  if (typeof visualOutput === 'string' && visualOutput.trimStart().startsWith('<!DOCTYPE html>')) {
+    return visualOutput;
+  }
+  return null;
 }
 
 function normalizeFilePatch(filename: string, patch: string): string {
@@ -1041,6 +1193,15 @@ function workflowIntentLabel(workflow: WorkflowListEntry): string {
   if (workflow.name.includes('changelog')) return 'changelog';
   if (workflow.name.includes('agents')) return 'guidance';
   return workflow.source;
+}
+
+function reviewWorkflowKind(workflow: ReviewWorkflowSummary | null): string {
+  const source = workflow?.metadata?.review?.source ?? workflow?.source;
+  if (source === 'github') return 'GitHub pull request review';
+  if (source === 'gitlab') return 'GitLab merge request review';
+  if (source === 'local') return 'Local diff review';
+  if (workflow?.metadata?.kind === 'review') return 'Review';
+  return 'Local diff review';
 }
 
 function normalizeWorkflowInput(input: WorkflowInputConfig): WorkflowInputConfig {

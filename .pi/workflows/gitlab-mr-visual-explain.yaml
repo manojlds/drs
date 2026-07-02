@@ -15,10 +15,31 @@ nodes:
       mr: '{{inputs.mr}}'
     output: change
 
-  visual:
+  review-artifact:
+    action: artifact-exists
+    needs:
+      - change
+    with:
+      kind: review
+      source: change
+    output: reviewArtifact
+
+  load-review-artifact:
+    action: load-artifact
+    needs:
+      - review-artifact
+    if: artifacts.reviewArtifact.exists == true
+    with:
+      kind: review
+      source: change
+    output: persistedReviewArtifact
+
+  visual-with-review:
     agent: visual/pr-explainer
     needs:
       - change
+      - load-review-artifact
+    if: artifacts.reviewArtifact.exists == true
     input: |
       Generate a visual MR explainer HTML artifact.
 
@@ -29,5 +50,29 @@ nodes:
 
       DRS change-source context:
       {{artifacts.change}}
+
+      Current DRS review artifact path: {{artifacts.persistedReviewArtifact.path}}
+
+      Use the read_artifact tool with this path to include confirmed DRS findings in a clearly labeled section. Do not assume the review JSON is in this prompt.
+    writes: '{{inputs.outputPath}}'
+    output: visualExplainer
+
+  visual:
+    agent: visual/pr-explainer
+    needs:
+      - review-artifact
+    if: artifacts.reviewArtifact.exists == false
+    input: |
+      Generate a visual MR explainer HTML artifact.
+
+      Output path: {{inputs.outputPath}}
+      Slide mode: {{inputs.slides}}
+
+      Use the supplied DRS change-source context. If important file diffs are omitted or summarized, use git_diff for those files before explaining them.
+
+      DRS change-source context:
+      {{artifacts.change}}
+
+      No current DRS review artifact exists for this MR. Label the artifact as an MR explainer with no DRS findings included.
     writes: '{{inputs.outputPath}}'
     output: visualExplainer
