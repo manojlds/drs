@@ -142,6 +142,16 @@ export interface WorkflowLogEvent {
   text: string;
 }
 
+export interface AskReviewChatRequest {
+  workingDir: string;
+  prompt: string;
+}
+
+export interface AskReviewChatResponse {
+  conversationId: string;
+  response: string;
+}
+
 export interface DrsApi {
   selectDirectory(): Promise<string | null>;
   getCwd(): Promise<string>;
@@ -150,6 +160,7 @@ export interface DrsApi {
   getDiff(workingDir: string, opts: { staged: boolean }): Promise<DiffResult>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
+  askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
   cancelWorkflow(runId: string): Promise<void>;
   readFile(filePath: string): Promise<string>;
   openExternal(url: string): Promise<void>;

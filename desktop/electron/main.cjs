@@ -175,6 +175,32 @@ app.whenReady().then(() => {
     return { result, reviewOutput };
   });
 
+  ipcMain.handle('drs:askReviewChat', async (_event, req) => {
+    const { workingDir, prompt } = req || {};
+    if (!workingDir || typeof workingDir !== 'string') {
+      throw new Error('A working directory is required for review chat.');
+    }
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      throw new Error('A prompt is required for review chat.');
+    }
+
+    const { stdout, stderr } = await runDrs({
+      repoRoot,
+      workingDir,
+      args: ['chat', '--prompt', prompt, '--json'],
+      timeoutMs: WORKFLOW_RUN_TIMEOUT_MS,
+    });
+    const parsed = parseJsonSafe(stdout);
+    if (!parsed || typeof parsed !== 'object') {
+      const detail = (stderr || stdout).trim();
+      throw new Error(`Could not parse review chat JSON.${detail ? `\n${detail}` : ''}`);
+    }
+    return {
+      conversationId: parsed.conversation?.id || parsed.conversationId || '',
+      response: typeof parsed.response === 'string' ? parsed.response : '',
+    };
+  });
+
   ipcMain.handle('drs:cancelWorkflow', async (_event, runId) => {
     const child = runningProcesses.get(runId);
     if (child) {

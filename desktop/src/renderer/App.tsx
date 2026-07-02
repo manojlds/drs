@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffView } from './components/DiffView';
 import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
+import { ReviewChatPanel } from './components/ReviewChatPanel';
 import { RunBanner, type RunBannerState } from './components/RunBanner';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Badge } from '@/renderer/components/ui/badge';
@@ -111,6 +112,15 @@ export function App() {
     () => runHistory.find((run) => run.project === workingDir && run.workflow.includes('visual'))?.result ?? null,
     [runHistory, workingDir],
   );
+  const selectedIssue = useMemo(() => {
+    if (!review || !selectedIssueKey) return null;
+    return (
+      review.issues.find((issue) => {
+        const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
+        return key === selectedIssueKey;
+      }) ?? null
+    );
+  }, [review, selectedIssueKey]);
 
   // Subscribe to live workflow log events from the main process.
   useEffect(() => {
@@ -511,14 +521,17 @@ export function App() {
               scrollTarget={scrollTarget}
               onIssueClick={handleSelectIssue}
             />
-            <IssuesPanel
-              review={review}
-              selectedIssueKey={selectedIssueKey}
-              severityFilter={severityFilter}
-              onToggleSeverity={handleToggleSeverity}
-              onSelectIssue={handleSelectIssue}
-              onCopyMarkdown={handleCopyMarkdown}
-            />
+            <aside className="review-sidecar">
+              <IssuesPanel
+                review={review}
+                selectedIssueKey={selectedIssueKey}
+                severityFilter={severityFilter}
+                onToggleSeverity={handleToggleSeverity}
+                onSelectIssue={handleSelectIssue}
+                onCopyMarkdown={handleCopyMarkdown}
+              />
+              <ReviewChatPanel workingDir={workingDir} review={review} selectedIssue={selectedIssue} />
+            </aside>
           </div>
         ) : (
           <GenericWorkflowResult result={lastRunResult} />

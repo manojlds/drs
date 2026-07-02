@@ -9,6 +9,8 @@ const { contextBridge, ipcRenderer } = require('electron');
  * @typedef {import('../src/shared/ipc-types').ReviewJsonOutput} ReviewJsonOutput
  * @typedef {import('../src/shared/ipc-types').RunWorkflowRequest} RunWorkflowRequest
  * @typedef {import('../src/shared/ipc-types').RunWorkflowResponse} RunWorkflowResponse
+ * @typedef {import('../src/shared/ipc-types').AskReviewChatRequest} AskReviewChatRequest
+ * @typedef {import('../src/shared/ipc-types').AskReviewChatResponse} AskReviewChatResponse
  * @typedef {import('../src/shared/ipc-types').DiffResult} DiffResult
  * @typedef {import('../src/shared/ipc-types').WorkflowLogEvent} WorkflowLogEvent
  * @typedef {import('../src/shared/ipc-types').DrsApi} DrsApi
@@ -23,6 +25,7 @@ const drs = {
   getDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getDiff', workingDir, opts),
   getReviewArtifact: (workingDir) => ipcRenderer.invoke('drs:getReviewArtifact', workingDir),
   runWorkflow: (req) => ipcRenderer.invoke('drs:runWorkflow', req),
+  askReviewChat: (req) => ipcRenderer.invoke('drs:askReviewChat', req),
   cancelWorkflow: (runId) => ipcRenderer.invoke('drs:cancelWorkflow', runId),
   readFile: (filePath) => ipcRenderer.invoke('drs:readFile', filePath),
   openExternal: (url) => ipcRenderer.invoke('drs:openExternal', url),
