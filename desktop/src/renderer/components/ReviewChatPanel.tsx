@@ -30,10 +30,83 @@ export function ReviewChatPanel({ workingDir, review, selectedIssue }: ReviewCha
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const conversationIdRef = useRef<string | null>(null);
+  const conversationWorkingDirRef = useRef<string | null>(null);
+  const currentAssistantMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
+
+  useEffect(() => {
+    return window.drs.onReviewChatEvent((event) => {
+      if (event.conversationId !== conversationIdRef.current) return;
+      if (event.type === 'message_delta') {
+        const assistantId = currentAssistantMessageIdRef.current ?? `assistant-${event.messageId}`;
+        currentAssistantMessageIdRef.current = assistantId;
+        setMessages((cur) => {
+          if (cur.some((message) => message.id === assistantId)) {
+            return cur.map((message) =>
+              message.id === assistantId
+                ? { ...message, content: `${message.content}${event.text}` }
+                : message,
+            );
+          }
+          return [...cur, { id: assistantId, role: 'assistant', content: event.text }];
+        });
+      } else if (event.type === 'turn_done') {
+        currentAssistantMessageIdRef.current = null;
+        setSending(false);
+      } else if (event.type === 'error') {
+        currentAssistantMessageIdRef.current = null;
+        setSending(false);
+        setMessages((cur) => [
+          ...cur,
+          {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: event.message,
+          },
+        ]);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const previousConversationId = conversationIdRef.current;
+    if (previousConversationId) {
+      void window.drs.closeReviewChat(previousConversationId);
+    }
+    conversationIdRef.current = null;
+    conversationWorkingDirRef.current = null;
+    currentAssistantMessageIdRef.current = null;
+    setSending(false);
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content:
+          'Ask about the latest DRS review output. I can explain findings, clarify severity, and suggest the smallest safe fix scope.',
+      },
+    ]);
+  }, [workingDir]);
+
+  const getOrStartConversation = async (): Promise<string> => {
+    if (!workingDir) {
+      throw new Error('Open a project before starting review chat.');
+    }
+    if (
+      conversationIdRef.current &&
+      conversationWorkingDirRef.current &&
+      conversationWorkingDirRef.current === workingDir
+    ) {
+      return conversationIdRef.current;
+    }
+    const result = await window.drs.startReviewChat({ workingDir });
+    conversationIdRef.current = result.conversationId;
+    conversationWorkingDirRef.current = workingDir;
+    return result.conversationId;
+  };
 
   const ask = async (text: string) => {
     if (!workingDir || sending || !text.trim()) return;
@@ -42,28 +115,32 @@ export function ReviewChatPanel({ workingDir, review, selectedIssue }: ReviewCha
       role: 'user',
       content: text.trim(),
     };
-    setMessages((cur) => [...cur, userMessage]);
+    const assistantId = `assistant-${Date.now()}`;
+    currentAssistantMessageIdRef.current = assistantId;
+    setMessages((cur) => [...cur, userMessage, { id: assistantId, role: 'assistant', content: '' }]);
     setPrompt('');
     setSending(true);
     try {
-      const result = await window.drs.askReviewChat({ workingDir, prompt: text.trim() });
-      setMessages((cur) => [
-        ...cur,
-        {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: result.response || 'No response was returned.',
-        },
-      ]);
+      const conversationId = await getOrStartConversation();
+      await window.drs.sendReviewChatMessage({ conversationId, prompt: text.trim() });
     } catch (error) {
-      setMessages((cur) => [
-        ...cur,
-        {
-          id: `error-${Date.now()}`,
-          role: 'system',
-          content: error instanceof Error ? error.message : String(error),
-        },
-      ]);
+      currentAssistantMessageIdRef.current = null;
+      setMessages((cur) => {
+        const withoutEmptyAssistant = cur.filter(
+          (message) => message.id !== assistantId || message.content.trim(),
+        );
+        if (conversationIdRef.current) {
+          return withoutEmptyAssistant;
+        }
+        return [
+          ...withoutEmptyAssistant,
+          {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: error instanceof Error ? error.message : String(error),
+          },
+        ];
+      });
     } finally {
       setSending(false);
     }

@@ -75,6 +75,30 @@ export interface ConversationTurnResult {
   response: string;
 }
 
+export type ConversationStreamEvent =
+  | {
+      type: 'user_message';
+      conversationId: string;
+      message: ConversationMessage;
+    }
+  | {
+      type: 'message';
+      conversationId: string;
+      message: ConversationMessage;
+    }
+  | {
+      type: 'response_delta';
+      conversationId: string;
+      messageId: string;
+      text: string;
+    }
+  | {
+      type: 'turn_done';
+      conversationId: string;
+      conversation: ConversationArtifact;
+      response: string;
+    };
+
 export interface ConversationRuntime {
   createSession(options: { agent: string; message: string }): Promise<Session>;
   sendMessage(sessionId: string, content: string): Promise<void>;
@@ -184,6 +208,7 @@ export class ConversationService {
   private readonly conversations = new Map<string, ConversationArtifact>();
   private readonly runtimes = new Map<string, ConversationRuntime>();
   private readonly contexts = new Map<string, ConversationContext>();
+  private readonly seenRuntimeMessageIds = new Map<string, Set<string>>();
 
   constructor(options: ConversationServiceOptions) {
     this.config = options.config;
@@ -235,6 +260,28 @@ export class ConversationService {
   }
 
   async sendMessage(options: SendConversationMessageOptions): Promise<ConversationTurnResult> {
+    const messages: ConversationMessage[] = [];
+    let response = '';
+    let conversation = this.getConversation(options.conversationId);
+
+    for await (const event of this.streamMessage(options)) {
+      if (event.type === 'message') {
+        messages.push(event.message);
+      }
+      if (event.type === 'response_delta') {
+        response += event.text;
+      }
+      if (event.type === 'turn_done') {
+        conversation = event.conversation;
+      }
+    }
+
+    return { conversation, messages, response };
+  }
+
+  async *streamMessage(
+    options: SendConversationMessageOptions
+  ): AsyncGenerator<ConversationStreamEvent> {
     const conversation = this.getConversation(options.conversationId);
     if (conversation.state !== 'active') {
       throw new Error(`Conversation "${conversation.id}" is closed.`);
@@ -250,6 +297,7 @@ export class ConversationService {
       timestamp: new Date().toISOString(),
     };
     conversation.messages.push(userMessage);
+    yield { type: 'user_message', conversationId: conversation.id, message: userMessage };
 
     const runtime = await this.getOrCreateRuntime(conversation);
     const context = this.contexts.get(conversation.id) ?? {
@@ -266,20 +314,31 @@ export class ConversationService {
       await runtime.sendMessage(conversation.piSessionId, options.message);
     }
 
-    const messages: ConversationMessage[] = [];
+    const seen = this.seenRuntimeMessageIds.get(conversation.id) ?? new Set<string>();
+    this.seenRuntimeMessageIds.set(conversation.id, seen);
     let response = '';
     for await (const runtimeMessage of runtime.streamMessages(conversation.piSessionId)) {
+      if (seen.has(runtimeMessage.id)) {
+        continue;
+      }
+      seen.add(runtimeMessage.id);
       const message = serializeRuntimeMessage(runtimeMessage);
-      messages.push(message);
       conversation.messages.push(message);
+      yield { type: 'message', conversationId: conversation.id, message };
       if (message.role === 'assistant') {
         response += message.content;
+        yield {
+          type: 'response_delta',
+          conversationId: conversation.id,
+          messageId: message.id,
+          text: message.content,
+        };
       }
     }
 
     conversation.updatedAt = new Date().toISOString();
     await this.persistConversation(conversation);
-    return { conversation, messages, response };
+    yield { type: 'turn_done', conversationId: conversation.id, conversation, response };
   }
 
   async closeConversation(conversationId: string): Promise<ConversationArtifact> {

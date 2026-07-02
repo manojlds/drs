@@ -11,6 +11,10 @@ const { contextBridge, ipcRenderer } = require('electron');
  * @typedef {import('../src/shared/ipc-types').RunWorkflowResponse} RunWorkflowResponse
  * @typedef {import('../src/shared/ipc-types').AskReviewChatRequest} AskReviewChatRequest
  * @typedef {import('../src/shared/ipc-types').AskReviewChatResponse} AskReviewChatResponse
+ * @typedef {import('../src/shared/ipc-types').StartReviewChatRequest} StartReviewChatRequest
+ * @typedef {import('../src/shared/ipc-types').StartReviewChatResponse} StartReviewChatResponse
+ * @typedef {import('../src/shared/ipc-types').SendReviewChatMessageRequest} SendReviewChatMessageRequest
+ * @typedef {import('../src/shared/ipc-types').ReviewChatEvent} ReviewChatEvent
  * @typedef {import('../src/shared/ipc-types').DiffResult} DiffResult
  * @typedef {import('../src/shared/ipc-types').WorkflowLogEvent} WorkflowLogEvent
  * @typedef {import('../src/shared/ipc-types').DrsApi} DrsApi
@@ -26,6 +30,9 @@ const drs = {
   getReviewArtifact: (workingDir) => ipcRenderer.invoke('drs:getReviewArtifact', workingDir),
   runWorkflow: (req) => ipcRenderer.invoke('drs:runWorkflow', req),
   askReviewChat: (req) => ipcRenderer.invoke('drs:askReviewChat', req),
+  startReviewChat: (req) => ipcRenderer.invoke('drs:startReviewChat', req),
+  sendReviewChatMessage: (req) => ipcRenderer.invoke('drs:sendReviewChatMessage', req),
+  closeReviewChat: (conversationId) => ipcRenderer.invoke('drs:closeReviewChat', conversationId),
   cancelWorkflow: (runId) => ipcRenderer.invoke('drs:cancelWorkflow', runId),
   readFile: (filePath) => ipcRenderer.invoke('drs:readFile', filePath),
   openExternal: (url) => ipcRenderer.invoke('drs:openExternal', url),
@@ -34,6 +41,12 @@ const drs = {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('drs:workflowLog', listener);
     return () => ipcRenderer.removeListener('drs:workflowLog', listener);
+  },
+  onReviewChatEvent: (callback) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {ReviewChatEvent} payload */
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('drs:reviewChatEvent', listener);
+    return () => ipcRenderer.removeListener('drs:reviewChatEvent', listener);
   },
 };
 

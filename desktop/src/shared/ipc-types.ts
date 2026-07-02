@@ -152,6 +152,24 @@ export interface AskReviewChatResponse {
   response: string;
 }
 
+export interface StartReviewChatRequest {
+  workingDir: string;
+}
+
+export interface StartReviewChatResponse {
+  conversationId: string;
+}
+
+export interface SendReviewChatMessageRequest {
+  conversationId: string;
+  prompt: string;
+}
+
+export type ReviewChatEvent =
+  | { type: 'message_delta'; conversationId: string; messageId: string; text: string }
+  | { type: 'turn_done'; conversationId: string }
+  | { type: 'error'; conversationId: string; message: string };
+
 export interface DrsApi {
   selectDirectory(): Promise<string | null>;
   getCwd(): Promise<string>;
@@ -161,8 +179,12 @@ export interface DrsApi {
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
+  startReviewChat(req: StartReviewChatRequest): Promise<StartReviewChatResponse>;
+  sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;
+  closeReviewChat(conversationId: string): Promise<void>;
   cancelWorkflow(runId: string): Promise<void>;
   readFile(filePath: string): Promise<string>;
   openExternal(url: string): Promise<void>;
   onWorkflowLog(callback: (event: WorkflowLogEvent) => void): () => void;
+  onReviewChatEvent(callback: (event: ReviewChatEvent) => void): () => void;
 }

@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports, no-undef */
 const { existsSync, readFileSync } = require('node:fs');
 const { join, dirname } = require('node:path');
+const { pathToFileURL } = require('node:url');
 const http = require('node:http');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { runDrs } = require('./drs-cli.cjs');
@@ -24,6 +25,11 @@ const WORKFLOW_RUN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
 const runningProcesses = new Map();
+
+/** @type {Map<string, { service: any; workingDir: string }>} */
+const reviewChatSessions = new Map();
+/** @type {Set<string>} */
+const activeReviewChatTurns = new Set();
 
 /** @param {string} url */
 const probeDevServer = (url) =>
@@ -72,6 +78,22 @@ const readJsonFile = (workingDir, relPath) => {
     return null;
   }
 };
+
+async function loadDrsConversationRuntime() {
+  if (!repoRoot) {
+    throw new Error('Live review chat requires a bundled DRS runtime. Use DRS_CLI one-shot chat fallback in packaged builds for now.');
+  }
+  const conversationPath = join(repoRoot, 'dist', 'lib', 'conversation.js');
+  const configPath = join(repoRoot, 'dist', 'lib', 'config.js');
+  if (!existsSync(conversationPath) || !existsSync(configPath)) {
+    throw new Error('Live review chat requires a built DRS runtime. Run `npm --prefix ../ run build` or `npm run setup:drs` from desktop/.');
+  }
+  const [{ ConversationService }, { loadConfig }] = await Promise.all([
+    import(pathToFileURL(conversationPath).href),
+    import(pathToFileURL(configPath).href),
+  ]);
+  return { ConversationService, loadConfig };
+}
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -199,6 +221,74 @@ app.whenReady().then(() => {
       conversationId: parsed.conversation?.id || parsed.conversationId || '',
       response: typeof parsed.response === 'string' ? parsed.response : '',
     };
+  });
+
+  ipcMain.handle('drs:startReviewChat', async (_event, req) => {
+    const { workingDir } = req || {};
+    if (!workingDir || typeof workingDir !== 'string') {
+      throw new Error('A working directory is required for review chat.');
+    }
+    const { ConversationService, loadConfig } = await loadDrsConversationRuntime();
+    const config = loadConfig(workingDir);
+    const service = new ConversationService({ config, workingDir });
+    const conversation = await service.startConversation();
+    reviewChatSessions.set(conversation.id, { service, workingDir });
+    return { conversationId: conversation.id };
+  });
+
+  ipcMain.handle('drs:sendReviewChatMessage', async (event, req) => {
+    const { conversationId, prompt } = req || {};
+    if (!conversationId || typeof conversationId !== 'string') {
+      throw new Error('A conversation id is required for review chat.');
+    }
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      throw new Error('A prompt is required for review chat.');
+    }
+    const record = reviewChatSessions.get(conversationId);
+    if (!record) {
+      throw new Error(`Review chat conversation not found: ${conversationId}`);
+    }
+    if (activeReviewChatTurns.has(conversationId)) {
+      throw new Error('A review chat turn is already running for this conversation.');
+    }
+
+    activeReviewChatTurns.add(conversationId);
+    try {
+      for await (const chatEvent of record.service.streamMessage({
+        conversationId,
+        message: prompt,
+      })) {
+        if (chatEvent.type === 'response_delta') {
+          event.sender.send('drs:reviewChatEvent', {
+            type: 'message_delta',
+            conversationId,
+            messageId: chatEvent.messageId,
+            text: chatEvent.text,
+          });
+        } else if (chatEvent.type === 'turn_done') {
+          event.sender.send('drs:reviewChatEvent', { type: 'turn_done', conversationId });
+        }
+      }
+    } catch (error) {
+      event.sender.send('drs:reviewChatEvent', {
+        type: 'error',
+        conversationId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      activeReviewChatTurns.delete(conversationId);
+    }
+  });
+
+  ipcMain.handle('drs:closeReviewChat', async (_event, conversationId) => {
+    const record = reviewChatSessions.get(conversationId);
+    if (record) {
+      await record.service.closeConversation(conversationId);
+      reviewChatSessions.delete(conversationId);
+      activeReviewChatTurns.delete(conversationId);
+    }
+    return null;
   });
 
   ipcMain.handle('drs:cancelWorkflow', async (_event, runId) => {

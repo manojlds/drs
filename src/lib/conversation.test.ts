@@ -14,7 +14,8 @@ async function createTempProject(): Promise<string> {
   return dir;
 }
 
-function createRuntime(messages: SessionMessage[] = []): ConversationRuntime {
+function createRuntime(messages: SessionMessage[] | SessionMessage[][] = []): ConversationRuntime {
+  let streamIndex = 0;
   return {
     createSession: vi.fn(async () => ({
       id: 'session-123',
@@ -23,7 +24,11 @@ function createRuntime(messages: SessionMessage[] = []): ConversationRuntime {
     })),
     sendMessage: vi.fn(async () => {}),
     streamMessages: vi.fn(async function* () {
-      for (const message of messages) {
+      const streamMessages = Array.isArray(messages[0])
+        ? ((messages as SessionMessage[][])[streamIndex] ?? [])
+        : (messages as SessionMessage[]);
+      streamIndex += 1;
+      for (const message of streamMessages) {
         yield message;
       }
     }),
@@ -102,6 +107,68 @@ describe('ConversationService', () => {
 
     expect(runtime.createSession).toHaveBeenCalledTimes(1);
     expect(runtime.sendMessage).toHaveBeenCalledWith('session-123', 'Now explain the first issue.');
+  });
+
+  it('streams new messages without replaying prior runtime messages', async () => {
+    const workingDir = await createTempProject();
+    const runtime = createRuntime([
+      [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'First answer.',
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ],
+      [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'First answer.',
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'assistant-2',
+          role: 'assistant',
+          content: 'Second answer.',
+          timestamp: new Date('2026-01-01T00:00:01.000Z'),
+        },
+      ],
+    ]);
+    const service = new ConversationService({
+      config: {} as any,
+      workingDir,
+      runtimeFactory: vi.fn(async () => runtime),
+    });
+
+    const conversation = await service.startConversation();
+    const firstEvents = [];
+    for await (const event of service.streamMessage({
+      conversationId: conversation.id,
+      message: 'First?',
+    })) {
+      firstEvents.push(event);
+    }
+    const secondEvents = [];
+    for await (const event of service.streamMessage({
+      conversationId: conversation.id,
+      message: 'Second?',
+    })) {
+      secondEvents.push(event);
+    }
+
+    expect(firstEvents.map((event) => event.type)).toEqual([
+      'user_message',
+      'message',
+      'response_delta',
+      'turn_done',
+    ]);
+    expect(
+      secondEvents.filter((event) => event.type === 'response_delta').map((event) => event.text)
+    ).toEqual(['Second answer.']);
+    expect(
+      service.getConversation(conversation.id).messages.map((message) => message.content)
+    ).toEqual(['First?', 'First answer.', 'Second?', 'Second answer.']);
   });
 
   it('closes the underlying runtime session', async () => {
