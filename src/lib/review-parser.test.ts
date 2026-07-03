@@ -3,6 +3,8 @@ import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { parseReviewOutput } from './review-parser.js';
+import type { ReviewArtifactPayload } from './review-artifact.js';
+import type { WorkflowArtifactEnvelope } from './workflow-artifacts.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -33,6 +35,49 @@ const REVIEW_JSON = {
     },
   ],
 };
+
+function createReviewArtifact(reviewedAt: string): WorkflowArtifactEnvelope<ReviewArtifactPayload> {
+  return {
+    schemaVersion: 1,
+    kind: 'review',
+    id: 'art_1',
+    createdAt: reviewedAt,
+    updatedAt: reviewedAt,
+    scope: { platform: 'local', projectId: 'local', subject: 'default' },
+    payload: {
+      schemaVersion: 1,
+      reviewId: 'rev_1',
+      reviewedAt,
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      findings: [
+        {
+          id: 'F001',
+          fingerprint: 'fp',
+          state: 'open',
+          disposition: 'confirmed',
+          source: 'agent',
+          createdAt: reviewedAt,
+          updatedAt: reviewedAt,
+          issue: {
+            category: 'QUALITY',
+            severity: 'HIGH',
+            title: 'Canonical issue',
+            file: 'src/app.ts',
+            line: 12,
+            problem: 'Problem',
+            solution: 'Solution',
+            agent: 'quality',
+          },
+        },
+      ],
+    },
+  };
+}
 
 // ── parseReviewOutput ────────────────────────────────────────────
 
@@ -103,6 +148,35 @@ That's it.`;
   });
 
   describe('default file path fallback', () => {
+    it('prefers canonical review artifacts over .drs/review-output.json', async () => {
+      const artifactDir = join(testDir, '.drs/artifacts/local/local/default/review');
+      await mkdir(artifactDir, { recursive: true });
+      await writeFile(
+        join(artifactDir, 'latest.json'),
+        JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
+      );
+      await writeFile(
+        join(testDir, '.drs/review-output.json'),
+        JSON.stringify({ issues: [{ title: 'Legacy issue' }] })
+      );
+
+      const result = await parseReviewOutput(testDir, false);
+
+      expect(result).toMatchObject({
+        issues: [
+          {
+            title: 'Canonical issue',
+            findingId: 'F001',
+            findingState: 'open',
+          },
+        ],
+        artifact: {
+          reviewId: 'rev_1',
+          path: '.drs/artifacts/local/local/default/review/latest.json',
+        },
+      });
+    });
+
     it('reads from .drs/review-output.json when no rawOutput', async () => {
       await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
 
