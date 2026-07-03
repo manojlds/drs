@@ -1,5 +1,4 @@
 import { readFile } from 'fs/promises';
-import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
 import { resolveWithinWorkingDir } from './path-utils.js';
 import { parseJsonFromAgentOutput } from './describe-parser.js';
 import {
@@ -11,15 +10,13 @@ import {
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 interface ReviewOutputPointer {
-  outputType?: OutputType;
+  outputType?: string;
   outputPath?: string;
 }
 
 function isOutputPointer(value: unknown): value is ReviewOutputPointer {
   return !!value && typeof value === 'object' && ('outputType' in value || 'outputPath' in value);
 }
-
-const REVIEW_OUTPUT_PATH = OUTPUT_PATHS.review_output;
 
 async function readJsonIfExists(workingDir: string, targetPath: string): Promise<JsonValue | null> {
   const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath, 'read');
@@ -39,16 +36,12 @@ function resolveReviewOutputPath(pointer: ReviewOutputPointer | null): string | 
     return null;
   }
 
-  if (pointer.outputType && pointer.outputType !== 'review_output') {
+  if (pointer.outputType) {
     throw new Error(`Unexpected output type for review output: ${pointer.outputType}`);
   }
 
   if (pointer.outputPath) {
     return pointer.outputPath;
-  }
-
-  if (pointer.outputType) {
-    return OUTPUT_PATHS[pointer.outputType];
   }
 
   return null;
@@ -106,7 +99,7 @@ export async function parseReviewOutput(
       return pointerOutput;
     }
     if (debug) {
-      console.log(`Review output not found at ${pointerPath}, falling back to default path.`);
+      console.log(`Review output not found at ${pointerPath}.`);
     }
   }
 
@@ -125,13 +118,5 @@ export async function parseReviewOutput(
     };
   }
 
-  const defaultOutput = await readJsonIfExists(workingDir, REVIEW_OUTPUT_PATH);
-  if (defaultOutput) {
-    if (debug) {
-      console.log(`Review output loaded from ${REVIEW_OUTPUT_PATH}`);
-    }
-    return defaultOutput;
-  }
-
-  throw new Error(`Review output file not found at ${REVIEW_OUTPUT_PATH}`);
+  throw new Error('Review output not found in raw output or canonical review artifacts.');
 }

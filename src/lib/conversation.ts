@@ -16,7 +16,6 @@ import {
 } from '../runtime/client.js';
 
 export const DEFAULT_CONVERSATION_AGENT = 'task/review-assistant';
-export const DEFAULT_REVIEW_OUTPUT_PATH = '.drs/review-output.json';
 export const DEFAULT_WORKFLOW_OUTPUT_PATH = '.drs/.desktop-run.json';
 
 export type ConversationSubjectKind = 'review' | 'workflow-run' | 'local-diff' | 'finding';
@@ -65,7 +64,6 @@ export interface StartConversationOptions {
   workingDir?: string;
   agent?: string;
   subject?: ConversationSubject;
-  reviewOutputPath?: string;
   workflowOutputPath?: string;
 }
 
@@ -223,7 +221,6 @@ export class ConversationService {
 
   async startConversation(options: StartConversationOptions = {}): Promise<ConversationArtifact> {
     const workingDir = options.workingDir ?? this.workingDir;
-    const reviewOutputPath = options.reviewOutputPath ?? DEFAULT_REVIEW_OUTPUT_PATH;
     const workflowOutputPath = options.workflowOutputPath ?? DEFAULT_WORKFLOW_OUTPUT_PATH;
     const now = new Date().toISOString();
     const id = createConversationId();
@@ -240,9 +237,9 @@ export class ConversationService {
       : undefined;
     const effectiveReviewOutputPath = latestReviewArtifact
       ? toRepoRelativePath(workingDir, latestReviewArtifact.path)
-      : reviewOutputPath;
+      : undefined;
     const context: ConversationContext = {
-      reviewOutput: canonicalReviewOutput ?? (await readJsonIfExists(workingDir, reviewOutputPath)),
+      reviewOutput: canonicalReviewOutput,
       workflowOutput: await readJsonIfExists(workingDir, workflowOutputPath),
       artifactPaths: {
         reviewOutput: effectiveReviewOutputPath,

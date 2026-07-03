@@ -71,7 +71,7 @@ npm run electron:dev
 9. Toggle `Unstaged` and `Staged` and confirm the diff source changes as expected.
 10. Click `Run Workflow` in the sidebar or `Run Review` in the toolbar and confirm live logs stream in the run banner.
 11. Confirm the run appears in the sidebar run history.
-12. Confirm review issues appear in the issue panel and inline in the diff when `.drs/review-output.json` is produced.
+12. Confirm review issues appear in the issue panel and inline in the diff when a canonical review artifact is produced under `.drs/artifacts/`.
 13. Click an issue and confirm the diff scrolls to the matching file/line.
 14. Click `Copy MD` and paste elsewhere to confirm Markdown was copied.
 15. If CRITICAL/HIGH issues exist, click `Fix >= High` and confirm the fix workflow runs and refreshes the diff.
@@ -85,7 +85,7 @@ Use the workflow list in the sidebar:
 1. Select `github-pr-review`, enter `owner`, `repo`, and `pr`, then click `Run Workflow`.
 2. Confirm live logs stream and the source banner changes to the PR review source.
 3. Confirm the remote PR diff appears in the diff viewer when the workflow returns `artifacts.change.filesWithDiffs`.
-4. Confirm issues from `.drs/review-output.json` appear in the issue panel and inline on matching diff lines.
+4. Confirm issues from the canonical review artifact appear in the issue panel and inline on matching diff lines.
 5. Select `gitlab-mr-review`, enter `project` and `mr`, then click `Run Workflow`.
 6. Repeat the same checks for the MR diff and issues.
 7. Leave `describe`, `post`, `visual`, and `fix` unchecked unless you intentionally want side effects on the PR/MR.
@@ -122,7 +122,6 @@ These are intentionally ignored and should not be committed:
 - `desktop/dist-renderer/`
 - `desktop/out/`
 - `.drs/.desktop-run.json`
-- `.drs/review-output.json`
 - `.drs/artifacts/`
 
 `desktop/package-lock.json` is commit-worthy and should stay tracked with `desktop/package.json`.
@@ -139,4 +138,4 @@ If Electron opens a Vite error page, either start the dev server with `npm run d
 
 If the app cannot find DRS in a packaged build, set `DRS_CLI` to an installed `drs` executable.
 
-If review issues do not appear inline, confirm the issue `file` and `line` values in `.drs/review-output.json` match the new-file paths and line numbers in `git diff`.
+If review issues do not appear inline, confirm the issue `file` and `line` values in the latest review artifact match the new-file paths and line numbers in `git diff`.

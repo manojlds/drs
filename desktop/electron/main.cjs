@@ -20,7 +20,6 @@ const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:51
 
 // Relative to the reviewed repo's working directory.
 const RUN_OUTPUT_REL = '.drs/.desktop-run.json';
-const REVIEW_OUTPUT_REL = '.drs/review-output.json';
 const WORKFLOW_RUN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
@@ -234,7 +233,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {
-    return readLatestReviewArtifact(workingDir) || readJsonFile(workingDir, REVIEW_OUTPUT_REL);
+    return readLatestReviewArtifact(workingDir);
   });
 
   ipcMain.handle('drs:runWorkflow', async (event, req) => {
@@ -266,7 +265,7 @@ app.whenReady().then(() => {
     if (!result) {
       throw new Error('Workflow completed but no result file was produced.');
     }
-    const reviewOutput = readLatestReviewArtifact(workingDir) || readJsonFile(workingDir, REVIEW_OUTPUT_REL);
+    const reviewOutput = readLatestReviewArtifact(workingDir);
     return { result, reviewOutput };
   });
 

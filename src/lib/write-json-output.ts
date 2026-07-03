@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname } from 'path';
 import Ajv from 'ajv';
-import { describeOutputSchema, reviewOutputSchema } from './json-output-schema.js';
+import { describeOutputSchema } from './json-output-schema.js';
 import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
 import { resolveWithinWorkingDir } from './path-utils.js';
 
@@ -9,7 +9,6 @@ const DEFAULT_INDENT = 2;
 const ajv = new Ajv({ allErrors: true });
 
 const validateDescribeOutput = ajv.compile(describeOutputSchema);
-const validateReviewOutput = ajv.compile(reviewOutputSchema);
 
 export interface WriteJsonOutputArgs {
   outputType: OutputType;
@@ -28,18 +27,10 @@ export async function writeJsonOutput({
 }: WriteJsonOutputArgs): Promise<{ outputType: OutputType; outputPath: string }> {
   const jsonValue = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
-  const isValid =
-    outputType === 'describe_output'
-      ? validateDescribeOutput(jsonValue)
-      : validateReviewOutput(jsonValue);
+  const isValid = validateDescribeOutput(jsonValue);
 
   if (!isValid) {
-    const errorText = ajv.errorsText(
-      outputType === 'describe_output'
-        ? validateDescribeOutput.errors
-        : validateReviewOutput.errors,
-      { separator: '\n' }
-    );
+    const errorText = ajv.errorsText(validateDescribeOutput.errors, { separator: '\n' });
     throw new Error(`Output validation failed:\n${errorText}`);
   }
 
