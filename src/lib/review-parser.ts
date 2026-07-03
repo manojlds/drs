@@ -2,6 +2,11 @@ import { readFile } from 'fs/promises';
 import { OUTPUT_PATHS, type OutputType } from './output-paths.js';
 import { resolveWithinWorkingDir } from './path-utils.js';
 import { parseJsonFromAgentOutput } from './describe-parser.js';
+import {
+  loadLatestReviewArtifact,
+  reviewArtifactToJsonOutput,
+  toRepoRelativePath,
+} from './review-artifact-store.js';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -103,6 +108,21 @@ export async function parseReviewOutput(
     if (debug) {
       console.log(`Review output not found at ${pointerPath}, falling back to default path.`);
     }
+  }
+
+  const latestReviewArtifact = await loadLatestReviewArtifact(workingDir);
+  if (latestReviewArtifact) {
+    const artifactPath = toRepoRelativePath(workingDir, latestReviewArtifact.path);
+    if (debug) {
+      console.log(`Review output loaded from ${artifactPath}`);
+    }
+    return {
+      ...reviewArtifactToJsonOutput(latestReviewArtifact.artifact.payload),
+      artifact: {
+        reviewId: latestReviewArtifact.artifact.payload.reviewId,
+        path: artifactPath,
+      },
+    };
   }
 
   const defaultOutput = await readJsonIfExists(workingDir, REVIEW_OUTPUT_PATH);
