@@ -68,7 +68,7 @@ export async function loadLatestReviewArtifact(
         candidates.push({ artifact: parsed, path });
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) {
         throw error;
       }
     }

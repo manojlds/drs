@@ -103,6 +103,29 @@ describe('review-artifact-store', () => {
     expect(loaded?.artifact.payload.reviewId).toBe('rev_new');
   });
 
+  it('skips malformed latest review artifacts', async () => {
+    const workingDir = await createTempProject();
+    const malformedDir = join(workingDir, '.drs/artifacts/local/project/default/review');
+    const validDir = join(workingDir, '.drs/artifacts/github/org-repo/pr-1/review');
+    await mkdir(malformedDir, { recursive: true });
+    await mkdir(validDir, { recursive: true });
+    await writeFile(join(malformedDir, 'latest.json'), '{');
+    await writeFile(
+      join(validDir, 'latest.json'),
+      JSON.stringify(
+        createEnvelope(
+          'art_valid',
+          '2026-01-02T00:00:00.000Z',
+          createPayload('rev_valid', '2026-01-02T00:00:00.000Z')
+        )
+      )
+    );
+
+    const loaded = await loadLatestReviewArtifact(workingDir);
+
+    expect(loaded?.artifact.id).toBe('art_valid');
+  });
+
   it('converts review artifact payload to legacy JSON output shape with finding metadata', () => {
     const output = reviewArtifactToJsonOutput(createPayload('rev_1', '2026-01-01T00:00:00.000Z'));
 

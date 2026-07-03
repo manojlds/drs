@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports, no-undef */
 const { existsSync, readFileSync, readdirSync } = require('node:fs');
-const { join, dirname } = require('node:path');
+const { join, dirname, relative } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const http = require('node:http');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
@@ -87,6 +87,7 @@ const isReviewArtifactPayload = (value) =>
   typeof value.reviewId === 'string' &&
   typeof value.reviewedAt === 'string' &&
   !!value.summary &&
+  typeof value.summary === 'object' &&
   Array.isArray(value.findings);
 
 /** @param {unknown} value */
@@ -96,7 +97,10 @@ const isReviewArtifactEnvelope = (value) =>
   value.schemaVersion === 1 &&
   value.kind === 'review' &&
   typeof value.id === 'string' &&
+  typeof value.createdAt === 'string' &&
   typeof value.updatedAt === 'string' &&
+  !!value.scope &&
+  typeof value.scope === 'object' &&
   isReviewArtifactPayload(value.payload);
 
 /** @param {string} directory */
@@ -143,7 +147,7 @@ const readLatestReviewArtifact = (workingDir) => {
     metadata: payload.metadata,
     artifact: {
       reviewId: payload.reviewId,
-      path: latest.path.slice(workingDir.length + 1).replace(/\\/g, '/'),
+      path: relative(workingDir, latest.path).replace(/\\/g, '/'),
     },
   };
 };
