@@ -267,13 +267,14 @@ nodes:
     needs: [change]
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review
 ```
 
 The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
 
-Set `with.artifact` to also create and save a review artifact under that output name. The raw review remains available through `output`, while the persisted review artifact envelope is available as `artifacts.<artifact>`.
+The review action always saves a canonical review artifact. The raw review remains available through `output`, while the persisted review artifact envelope is available as `artifacts.<nodeId>Artifact` by default, such as `artifacts.reviewArtifact` for a node named `review`.
+
+Set `with.artifact` to override that named workflow artifact output. Verification re-review nodes that set `with.reviewArtifact` do not create the implicit `<nodeId>Artifact` output; they use the supplied artifact for verification context instead.
 
 ### `review-context`
 

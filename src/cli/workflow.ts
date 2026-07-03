@@ -3014,7 +3014,7 @@ async function runReviewWorkflowNode(
 
   const explicitArtifactOutput = getStringActionOption(node, 'artifact', context)?.trim();
   let artifactOutput: string | undefined;
-  if (explicitArtifactOutput && explicitArtifactOutput.length > 0) {
+  if (explicitArtifactOutput) {
     artifactOutput = explicitArtifactOutput;
   } else if (!reviewArtifactName) {
     artifactOutput = `${nodeId}Artifact`;
