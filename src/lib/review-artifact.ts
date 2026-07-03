@@ -187,6 +187,7 @@ export function isReviewArtifactPayload(value: unknown): value is ReviewArtifact
     candidate.schemaVersion === 1 &&
     typeof candidate.reviewId === 'string' &&
     typeof candidate.reviewedAt === 'string' &&
+    !!candidate.summary &&
     typeof candidate.summary === 'object' &&
     Array.isArray(candidate.findings)
   );

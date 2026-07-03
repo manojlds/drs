@@ -1,8 +1,8 @@
 // @ts-check
 
 /* eslint-disable @typescript-eslint/no-require-imports, no-undef */
-const { existsSync, readFileSync } = require('node:fs');
-const { join, dirname } = require('node:path');
+const { existsSync, readFileSync, readdirSync } = require('node:fs');
+const { join, dirname, relative } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const http = require('node:http');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
@@ -77,6 +77,79 @@ const readJsonFile = (workingDir, relPath) => {
   } catch {
     return null;
   }
+};
+
+/** @param {unknown} value */
+const isReviewArtifactPayload = (value) =>
+  !!value &&
+  typeof value === 'object' &&
+  value.schemaVersion === 1 &&
+  typeof value.reviewId === 'string' &&
+  typeof value.reviewedAt === 'string' &&
+  !!value.summary &&
+  typeof value.summary === 'object' &&
+  Array.isArray(value.findings);
+
+/** @param {unknown} value */
+const isReviewArtifactEnvelope = (value) =>
+  !!value &&
+  typeof value === 'object' &&
+  value.schemaVersion === 1 &&
+  value.kind === 'review' &&
+  typeof value.id === 'string' &&
+  typeof value.createdAt === 'string' &&
+  typeof value.updatedAt === 'string' &&
+  !!value.scope &&
+  typeof value.scope === 'object' &&
+  isReviewArtifactPayload(value.payload);
+
+/** @param {string} directory */
+const collectLatestReviewArtifactPaths = (directory) => {
+  if (!existsSync(directory)) return [];
+  const paths = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const entryPath = join(directory, entry.name);
+    if (entry.name === 'review') {
+      paths.push(join(entryPath, 'latest.json'));
+    } else {
+      paths.push(...collectLatestReviewArtifactPaths(entryPath));
+    }
+  }
+  return paths;
+};
+
+/** @param {string} workingDir */
+const readLatestReviewArtifact = (workingDir) => {
+  const latestPaths = collectLatestReviewArtifactPaths(join(workingDir, '.drs/artifacts'));
+  const candidates = [];
+  for (const absPath of latestPaths) {
+    if (!existsSync(absPath)) continue;
+    const parsed = parseJsonSafe(readFileSync(absPath, 'utf-8'));
+    if (isReviewArtifactEnvelope(parsed)) {
+      candidates.push({ artifact: parsed, path: absPath });
+    }
+  }
+  candidates.sort((a, b) => b.artifact.updatedAt.localeCompare(a.artifact.updatedAt));
+  const latest = candidates[0];
+  if (!latest) return null;
+  const payload = latest.artifact.payload;
+  return {
+    timestamp: payload.reviewedAt,
+    summary: payload.summary,
+    issues: payload.findings.map((finding) => ({
+      ...finding.issue,
+      findingId: finding.id,
+      findingState: finding.state,
+      findingDisposition: finding.disposition,
+    })),
+    usage: payload.usage,
+    metadata: payload.metadata,
+    artifact: {
+      reviewId: payload.reviewId,
+      path: relative(workingDir, latest.path).replace(/\\/g, '/'),
+    },
+  };
 };
 
 async function loadDrsConversationRuntime() {
@@ -161,7 +234,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {
-    return readJsonFile(workingDir, REVIEW_OUTPUT_REL);
+    return readLatestReviewArtifact(workingDir) || readJsonFile(workingDir, REVIEW_OUTPUT_REL);
   });
 
   ipcMain.handle('drs:runWorkflow', async (event, req) => {
@@ -193,7 +266,7 @@ app.whenReady().then(() => {
     if (!result) {
       throw new Error('Workflow completed but no result file was produced.');
     }
-    const reviewOutput = readJsonFile(workingDir, REVIEW_OUTPUT_REL);
+    const reviewOutput = readLatestReviewArtifact(workingDir) || readJsonFile(workingDir, REVIEW_OUTPUT_REL);
     return { result, reviewOutput };
   });
 

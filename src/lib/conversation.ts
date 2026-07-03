@@ -4,6 +4,11 @@ import type { DRSConfig } from './config.js';
 import { getRuntimeConfig } from './config.js';
 import { resolveWithinWorkingDir } from './path-utils.js';
 import {
+  loadLatestReviewArtifact,
+  reviewArtifactToJsonOutput,
+  toRepoRelativePath,
+} from './review-artifact-store.js';
+import {
   createRuntimeClientInstance,
   type RuntimeClient,
   type Session,
@@ -223,11 +228,24 @@ export class ConversationService {
     const now = new Date().toISOString();
     const id = createConversationId();
 
+    const latestReviewArtifact = await loadLatestReviewArtifact(workingDir);
+    const canonicalReviewOutput = latestReviewArtifact
+      ? {
+          ...reviewArtifactToJsonOutput(latestReviewArtifact.artifact.payload),
+          artifact: {
+            reviewId: latestReviewArtifact.artifact.payload.reviewId,
+            path: toRepoRelativePath(workingDir, latestReviewArtifact.path),
+          },
+        }
+      : undefined;
+    const effectiveReviewOutputPath = latestReviewArtifact
+      ? toRepoRelativePath(workingDir, latestReviewArtifact.path)
+      : reviewOutputPath;
     const context: ConversationContext = {
-      reviewOutput: await readJsonIfExists(workingDir, reviewOutputPath),
+      reviewOutput: canonicalReviewOutput ?? (await readJsonIfExists(workingDir, reviewOutputPath)),
       workflowOutput: await readJsonIfExists(workingDir, workflowOutputPath),
       artifactPaths: {
-        reviewOutput: reviewOutputPath,
+        reviewOutput: effectiveReviewOutputPath,
         workflowOutput: workflowOutputPath,
       },
     };

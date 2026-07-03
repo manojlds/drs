@@ -4,6 +4,8 @@ import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationService, type ConversationRuntime } from './conversation.js';
 import type { SessionMessage } from '../runtime/client.js';
+import type { ReviewArtifactPayload } from './review-artifact.js';
+import type { WorkflowArtifactEnvelope } from './workflow-artifacts.js';
 
 const tempDirs: string[] = [];
 
@@ -34,6 +36,49 @@ function createRuntime(messages: SessionMessage[] | SessionMessage[][] = []): Co
     }),
     closeSession: vi.fn(async () => {}),
     shutdown: vi.fn(async () => {}),
+  };
+}
+
+function createReviewArtifact(reviewedAt: string): WorkflowArtifactEnvelope<ReviewArtifactPayload> {
+  return {
+    schemaVersion: 1,
+    kind: 'review',
+    id: 'art_1',
+    createdAt: reviewedAt,
+    updatedAt: reviewedAt,
+    scope: { platform: 'local', projectId: 'project', subject: 'default' },
+    payload: {
+      schemaVersion: 1,
+      reviewId: 'rev_1',
+      reviewedAt,
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      findings: [
+        {
+          id: 'F001',
+          fingerprint: 'fp',
+          state: 'open',
+          disposition: 'confirmed',
+          source: 'agent',
+          createdAt: reviewedAt,
+          updatedAt: reviewedAt,
+          issue: {
+            category: 'QUALITY',
+            severity: 'HIGH',
+            title: 'Canonical bug',
+            file: 'src/app.ts',
+            line: 12,
+            problem: 'Problem',
+            solution: 'Solution',
+            agent: 'quality',
+          },
+        },
+      ],
+    },
   };
 }
 
@@ -84,6 +129,42 @@ describe('ConversationService', () => {
       await readFile(join(workingDir, '.drs/conversations/latest.json'), 'utf-8')
     ) as { messages: Array<{ role: string; content: string }> };
     expect(saved.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('prefers canonical review artifacts over legacy review output', async () => {
+    const workingDir = await createTempProject();
+    const artifactDir = join(workingDir, '.drs/artifacts/local/project/default/review');
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(
+      join(artifactDir, 'latest.json'),
+      JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
+    );
+    await writeFile(
+      join(workingDir, '.drs/review-output.json'),
+      JSON.stringify({ summary: { issuesFound: 1 }, issues: [{ title: 'Legacy bug' }] })
+    );
+
+    const runtime = createRuntime([]);
+    const service = new ConversationService({
+      config: {} as any,
+      workingDir,
+      runtimeFactory: vi.fn(async () => runtime),
+    });
+
+    const conversation = await service.startConversation();
+    await service.sendMessage({
+      conversationId: conversation.id,
+      message: 'What did the review find?',
+    });
+
+    expect(runtime.createSession).toHaveBeenCalledWith({
+      agent: 'task/review-assistant',
+      message: expect.stringContaining('Canonical bug'),
+    });
+    expect(runtime.createSession).toHaveBeenCalledWith({
+      agent: 'task/review-assistant',
+      message: expect.stringContaining('.drs/artifacts/local/project/default/review/latest.json'),
+    });
   });
 
   it('continues an existing Pi session for follow-up messages', async () => {
