@@ -140,7 +140,7 @@ describe('Config', () => {
           review: {
             action: 'review',
             with: {
-              artifact: 'persistedReviewArtifact',
+              source: 'change',
             },
           },
         },
@@ -185,7 +185,7 @@ describe('Config', () => {
       expect(config.workflows?.['github-pr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['github-pr-review']?.nodes.review?.with).toMatchObject({
-        artifact: 'persistedReviewArtifact',
+        source: 'change',
       });
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
@@ -193,7 +193,7 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.with).toMatchObject({
-        artifact: 'persistedReviewArtifact',
+        source: 'change',
       });
       expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.needs).toEqual([
         'change',
