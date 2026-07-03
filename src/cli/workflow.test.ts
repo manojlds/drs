@@ -1922,6 +1922,43 @@ describe('workflow runner', () => {
     expect(verificationSource?.context?.verification?.artifact?.reviewId).toMatch(/^rev_/);
   });
 
+  it('persists review artifacts by default without changing review output artifacts', async () => {
+    const projectRoot = createTempDir('drs-workflow-default-review-artifact-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        defaultReviewArtifact: {
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              output: 'review',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+    mocks.executeReview.mockResolvedValue(
+      createMockReviewResult([createMockReviewIssue('Default artifact')])
+    );
+
+    const result = await runWorkflow(config, 'defaultReviewArtifact', { workingDir: projectRoot });
+
+    expect(result.artifacts.review).toMatchObject({
+      issues: [expect.objectContaining({ title: 'Default artifact' })],
+    });
+    const latest = JSON.parse(
+      readFileSync(
+        join(projectRoot, '.drs/artifacts/local/local/branch-feature/review/latest.json'),
+        'utf-8'
+      )
+    ) as { kind?: string; payload?: { findings?: Array<{ issue?: { title?: string } }> } };
+    expect(latest.kind).toBe('review');
+    expect(latest.payload?.findings?.[0]?.issue?.title).toBe('Default artifact');
+  });
+
   it('does not re-run upstream change-source or load-artifact when a fix loop iterates', async () => {
     const projectRoot = createTempDir('drs-workflow-local-fix-loop-cache-');
     const config = loadConfig(projectRoot);
