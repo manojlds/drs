@@ -30,7 +30,6 @@ nodes:
       - describe
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review
 
   post-comments:

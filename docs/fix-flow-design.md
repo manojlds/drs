@@ -65,7 +65,6 @@ nodes:
     action: review
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review
 
   # ... threshold as before ...
@@ -83,7 +82,7 @@ nodes:
       - review
     input: |
       Fix actionable issues...
-      Review artifact: {{artifacts.persistedReviewArtifact}}
+      Review artifact: {{artifacts.reviewArtifact}}
     output: fixes
 
   # --- Internal mode: re-review loop ---
@@ -181,7 +180,7 @@ nodes:
         Automated DRS fix stacked on PR #{{inputs.pr}} from the main github-pr-review workflow.
 
         Threshold: {{inputs.fixSeverity}}, minimum issues: {{inputs.fixMinIssues}}
-        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+        Review artifact: {{artifacts.reviewArtifact.path}}
 
         <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
         <!-- drs-stack-kind: fix -->
@@ -241,7 +240,7 @@ post-fix-status:
     owner: "{{inputs.owner}}"
     repo: "{{inputs.repo}}"
     pr: "{{inputs.pr}}"
-    reviewArtifact: persistedReviewArtifact
+    reviewArtifact: reviewArtifact
     fixReview: reReview
     fixChange: fixChange
     marker: drs-fix-status

@@ -89,7 +89,6 @@ nodes:
       - change
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review
 
   visual:
@@ -177,7 +176,7 @@ nodes:
 
       Only fix findings at or above severity {{inputs.fixSeverity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review artifact path: {{artifacts.persistedReviewArtifact.path}}
+      Review artifact path: {{artifacts.reviewArtifact.path}}
 
       Use the read_artifact tool with this path to get the finding manifest, then pull full details for specific findings by id. Do not assume the review JSON is in this prompt — call the tool.
 
@@ -224,7 +223,7 @@ nodes:
     if: inputs.fixMode == internal
     with:
       source: verificationChange
-      reviewArtifact: persistedReviewArtifact
+      reviewArtifact: reviewArtifact
       severity: '{{inputs.fixSeverity}}'
     output: reReview
 
@@ -235,12 +234,12 @@ nodes:
       - fix-change
     if: inputs.fixMode == internal
     with:
-      artifact: persistedReviewArtifact
+      artifact: reviewArtifact
       review: reReview
       fixChange: fixChange
       severity: '{{inputs.fixSeverity}}'
       minIssues: '1'
-    output: persistedReviewArtifact
+    output: reviewArtifact
 
   fix-loop:
     control: loop
@@ -262,7 +261,7 @@ nodes:
       project: '{{inputs.project}}'
       mr: '{{inputs.mr}}'
       source: change
-      reviewArtifact: persistedReviewArtifact
+      reviewArtifact: reviewArtifact
       fixReview: reReview
       fixChange: fixChange
       severity: '{{inputs.fixSeverity}}'
@@ -329,7 +328,7 @@ nodes:
         Automated DRS fix stacked on MR !{{inputs.mr}} from the main gitlab-mr-review workflow.
 
         Threshold: {{inputs.fixSeverity}}, minimum issues: {{inputs.fixMinIssues}}
-        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+        Review artifact: {{artifacts.reviewArtifact.path}}
 
         <!-- drs-stack-source: gitlab:{{inputs.project}}!{{inputs.mr}} -->
         <!-- drs-stack-kind: fix -->
@@ -361,7 +360,7 @@ nodes:
       project: '{{inputs.project}}'
       mr: '{{inputs.mr}}'
       source: change
-      reviewArtifact: persistedReviewArtifact
+      reviewArtifact: reviewArtifact
       severity: '{{inputs.fixSeverity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status

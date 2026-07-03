@@ -44,7 +44,6 @@ nodes:
     if: '{{artifacts.stackGuard.allowed}} == true'
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review
 
   threshold:
@@ -77,7 +76,7 @@ nodes:
 
       Only fix findings at or above severity {{inputs.severity}} unless a lower-severity issue is directly required by such a fix.
 
-      Review artifact path: {{artifacts.persistedReviewArtifact.path}}
+      Review artifact path: {{artifacts.reviewArtifact.path}}
 
       Use the read_artifact tool with this path to get the finding manifest, then pull full details for specific findings by id. Do not assume the review JSON is in this prompt — call the tool.
 
@@ -128,7 +127,7 @@ nodes:
 
         Threshold: {{inputs.severity}}, minimum issues: {{inputs.minIssues}}
 
-        Review artifact: {{artifacts.persistedReviewArtifact.path}}
+        Review artifact: {{artifacts.reviewArtifact.path}}
 
         <!-- drs-stack-source: github:{{inputs.owner}}/{{inputs.repo}}#{{inputs.pr}} -->
         <!-- drs-stack-kind: fix -->
@@ -145,7 +144,7 @@ nodes:
       repo: '{{inputs.repo}}'
       pr: '{{inputs.pr}}'
       source: change
-      reviewArtifact: persistedReviewArtifact
+      reviewArtifact: reviewArtifact
       severity: '{{inputs.severity}}'
       stackedPrUrl: '{{artifacts.changeRequest.url}}'
       marker: drs-fix-status

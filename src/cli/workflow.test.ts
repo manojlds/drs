@@ -1949,6 +1949,17 @@ describe('workflow runner', () => {
     expect(result.artifacts.review).toMatchObject({
       issues: [expect.objectContaining({ title: 'Default artifact' })],
     });
+    expect(result.artifacts.reviewArtifact).toMatchObject({
+      kind: 'review',
+      path: expect.stringContaining('/review/'),
+      payload: {
+        findings: [
+          expect.objectContaining({
+            issue: expect.objectContaining({ title: 'Default artifact' }),
+          }),
+        ],
+      },
+    });
     const latest = JSON.parse(
       readFileSync(
         join(projectRoot, '.drs/artifacts/local/local/branch-feature/review/latest.json'),
@@ -2695,7 +2706,7 @@ describe('workflow runner', () => {
 
     // The artifact stays as the original review (no verify-fix to reconcile).
     // F001 was open/confirmed in the initial review and remains so.
-    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+    expect(result.artifacts.reviewArtifact).toMatchObject({
       payload: {
         findings: [
           expect.objectContaining({
@@ -2771,7 +2782,7 @@ describe('workflow runner', () => {
       })
     );
     expect(mocks.gitlabAdapter.createComment.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+    expect(result.artifacts.reviewArtifact).toMatchObject({
       payload: {
         findings: [
           expect.objectContaining({
@@ -4132,7 +4143,7 @@ describe('workflow runner', () => {
             review: {
               action: 'review',
               needs: ['change'],
-              with: { source: 'change', artifact: 'persistedReviewArtifact' },
+              with: { source: 'change' },
               output: 'review',
             },
             'fix-change': {
@@ -4155,7 +4166,7 @@ describe('workflow runner', () => {
                 repo: 'hello-world',
                 pr: '7',
                 source: 'change',
-                reviewArtifact: 'persistedReviewArtifact',
+                reviewArtifact: 'reviewArtifact',
                 fixReview: 'reReview',
                 fixChange: 'fixChange',
                 severity: 'high',
@@ -4167,12 +4178,12 @@ describe('workflow runner', () => {
               action: 'verify-fix',
               needs: ['re-review', 'review', 'fix-change'],
               with: {
-                artifact: 'persistedReviewArtifact',
+                artifact: 'reviewArtifact',
                 review: 'reReview',
                 fixChange: 'fixChange',
                 severity: 'high',
               },
-              output: 'persistedReviewArtifact',
+              output: 'reviewArtifact',
             },
           },
         },
@@ -4241,7 +4252,7 @@ describe('workflow runner', () => {
             review: {
               action: 'review',
               needs: ['change'],
-              with: { source: 'change', artifact: 'persistedReviewArtifact' },
+              with: { source: 'change' },
               output: 'review',
             },
             'fix-change': {
@@ -4258,7 +4269,7 @@ describe('workflow runner', () => {
                 repo: 'hello-world',
                 pr: '7',
                 source: 'change',
-                reviewArtifact: 'persistedReviewArtifact',
+                reviewArtifact: 'reviewArtifact',
                 fixChange: 'fixChange',
                 stackedPrUrl: 'https://github.com/octocat/hello-world/pull/99',
                 marker: 'drs-fix-status',

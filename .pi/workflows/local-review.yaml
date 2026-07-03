@@ -27,5 +27,4 @@ nodes:
       - change
     with:
       source: change
-      artifact: persistedReviewArtifact
     output: review

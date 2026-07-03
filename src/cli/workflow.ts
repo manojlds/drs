@@ -3012,7 +3012,13 @@ async function runReviewWorkflowNode(
     await writeWorkflowFile(workingDir, writes, JSON.stringify(reviewResult, null, 2));
   }
 
-  const artifactOutput = getStringActionOption(node, 'artifact', context)?.trim();
+  const explicitArtifactOutput = getStringActionOption(node, 'artifact', context)?.trim();
+  let artifactOutput: string | undefined;
+  if (explicitArtifactOutput) {
+    artifactOutput = explicitArtifactOutput;
+  } else if (!reviewArtifactName) {
+    artifactOutput = `${nodeId}Artifact`;
+  }
   const outputs: Record<string, unknown> = {};
   const persistedReviewArtifact = createReviewArtifactPayload(reviewResult, source);
   const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
