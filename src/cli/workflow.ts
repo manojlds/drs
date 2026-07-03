@@ -3014,17 +3014,16 @@ async function runReviewWorkflowNode(
 
   const artifactOutput = getStringActionOption(node, 'artifact', context)?.trim();
   const outputs: Record<string, unknown> = {};
-  let artifactResponse = '';
+  const persistedReviewArtifact = createReviewArtifactPayload(reviewResult, source);
+  const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
+  const saved = await saveWorkflowArtifact(workingDir, {
+    kind: 'review',
+    scope,
+    payload: persistedReviewArtifact,
+  });
+  const artifactResponse = `\nSaved review artifact ${saved.artifact.id}.`;
   if (artifactOutput) {
-    const reviewArtifact = createReviewArtifactPayload(reviewResult, source);
-    const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
-    const saved = await saveWorkflowArtifact(workingDir, {
-      kind: 'review',
-      scope,
-      payload: reviewArtifact,
-    });
     outputs[artifactOutput] = { ...saved.artifact, path: saved.path, latestPath: saved.latestPath };
-    artifactResponse = `\nSaved review artifact ${saved.artifact.id}.`;
   }
 
   return {
