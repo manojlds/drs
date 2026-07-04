@@ -465,6 +465,7 @@ export function App() {
             detail={selectedWorkflowDetail}
             inputs={workflowInputs}
             result={lastRunResult}
+            runState={runState}
             runHistory={visibleRunHistory}
             running={!!runState?.active}
             workingDir={workingDir}
@@ -666,6 +667,7 @@ function WorkflowWorkspace({
   detail,
   inputs,
   result,
+  runState,
   runHistory,
   running,
   workingDir,
@@ -679,6 +681,7 @@ function WorkflowWorkspace({
   detail: WorkflowDetail | null;
   inputs: Record<string, string>;
   result: WorkflowRunResultJson | null;
+  runState: RunBannerState | null;
   runHistory: RunHistoryEntry[];
   running: boolean;
   workingDir: string | null;
@@ -765,7 +768,13 @@ function WorkflowWorkspace({
             </div>
             {detail?.graph && <Badge variant="outline">{detail.graph.nodes.length} nodes</Badge>}
           </div>
-          <WorkflowGraphView graph={detail?.graph} />
+          <WorkflowGraphView
+            graph={detail?.graph}
+            result={result}
+            active={!!runState?.active && runState.name === selectedWorkflow}
+            error={runState?.name === selectedWorkflow ? runState.error : null}
+            activeLogs={runState?.name === selectedWorkflow ? runState.logs : []}
+          />
         </Card>
 
         <Card className="workflow-inspector-card">
