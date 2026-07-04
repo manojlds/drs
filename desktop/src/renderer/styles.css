@@ -288,12 +288,12 @@ button {
 .factory-chat-messages {
   max-height: 260px;
 }
-.factory-proposals-panel {
+.factory-history-panel {
   display: grid;
   gap: 8px;
   padding: 10px;
 }
-.factory-proposal-item {
+.factory-history-item {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -303,11 +303,11 @@ button {
   padding: 10px;
   background: var(--bg-elevated);
 }
-.factory-proposal-item p {
+.factory-history-item p {
   color: var(--text-muted);
   margin: 4px 0;
 }
-.factory-proposal-item span {
+.factory-history-item span {
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;

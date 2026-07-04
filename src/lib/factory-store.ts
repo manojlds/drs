@@ -4,7 +4,6 @@ import { addTask, listTasks, type DrsTask } from './task-store.js';
 
 export const FACTORY_DIR = '.drs/factory';
 export const PRD_INDEX_RELATIVE_PATH = `${FACTORY_DIR}/prds/index.json`;
-export const PROPOSAL_INDEX_RELATIVE_PATH = `${FACTORY_DIR}/proposals/index.json`;
 
 export const PRD_STATUSES = [
   'draft',
@@ -47,123 +46,17 @@ export interface PrdIndex {
   prds: FactoryPrd[];
 }
 
-export interface FactoryProposal {
+export interface FactoryPrdVersion {
   id: string;
-  prdId?: string;
-  title: string;
-  summary: string;
-  markdown?: string;
-  stories?: FactoryStory[];
-  status: 'draft' | 'applied' | 'discarded';
-  createdBy: string;
+  prdId: string;
+  markdown: string;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProposalIndex {
-  version: 1;
-  proposals: FactoryProposal[];
+  source: 'create' | 'update' | 'revert';
 }
 
 export async function listPrds(workingDir: string): Promise<FactoryPrd[]> {
   const index = await readPrdIndex(workingDir);
   return [...index.prds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-export async function listProposals(workingDir: string): Promise<FactoryProposal[]> {
-  const index = await readProposalIndex(workingDir);
-  return [...index.proposals].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-export async function getProposal(workingDir: string, id: string): Promise<FactoryProposal> {
-  const proposal = (await listProposals(workingDir)).find((item) => item.id === id);
-  if (!proposal) throw new Error(`Proposal not found: ${id}`);
-  return proposal;
-}
-
-export async function createProposal(
-  workingDir: string,
-  input: {
-    title: string;
-    summary?: string;
-    prdId?: string;
-    markdown?: string;
-    stories?: FactoryStory[];
-    createdBy?: string;
-  }
-): Promise<FactoryProposal> {
-  const title = input.title.trim();
-  if (!title) throw new Error('Proposal title is required.');
-  if (!input.markdown?.trim() && (!input.stories || input.stories.length === 0)) {
-    throw new Error('Proposal must include markdown or stories.');
-  }
-  if (input.prdId) await findPrd(workingDir, input.prdId);
-  const index = await readProposalIndex(workingDir);
-  const now = new Date().toISOString();
-  const createdBy = input.createdBy?.trim();
-  const proposal: FactoryProposal = {
-    id: uniqueProposalId(title, index.proposals),
-    prdId: input.prdId,
-    title,
-    summary: input.summary?.trim() ?? '',
-    markdown: input.markdown?.trim(),
-    stories: input.stories?.map(normalizeStory),
-    status: 'draft',
-    createdBy: createdBy && createdBy.length > 0 ? createdBy : 'manual',
-    createdAt: now,
-    updatedAt: now,
-  };
-  await writeProposalIndex(workingDir, { version: 1, proposals: [...index.proposals, proposal] });
-  return proposal;
-}
-
-export async function applyProposal(
-  workingDir: string,
-  id: string
-): Promise<{
-  proposal: FactoryProposal;
-  prd: FactoryPrd;
-  markdown: string;
-  stories: FactoryStory[];
-}> {
-  const index = await readProposalIndex(workingDir);
-  const proposalIndex = index.proposals.findIndex((item) => item.id === id);
-  if (proposalIndex === -1) throw new Error(`Proposal not found: ${id}`);
-  const proposal = index.proposals[proposalIndex];
-  if (proposal.status !== 'draft') throw new Error(`Proposal is not draft: ${id}`);
-  if (!proposal.prdId) throw new Error(`Proposal is not attached to a PRD: ${id}`);
-  let detail = await getPrd(workingDir, proposal.prdId);
-  if (proposal.markdown !== undefined) {
-    detail = await updatePrdMarkdown(workingDir, proposal.prdId, proposal.markdown);
-  }
-  if (proposal.stories !== undefined) {
-    await writeStoriesFile(workingDir, detail.prd, proposal.stories);
-    detail = await getPrd(workingDir, proposal.prdId);
-  }
-  const updatedProposal = {
-    ...proposal,
-    status: 'applied' as const,
-    updatedAt: new Date().toISOString(),
-  };
-  const proposals = [...index.proposals];
-  proposals[proposalIndex] = updatedProposal;
-  await writeProposalIndex(workingDir, { version: 1, proposals });
-  return { proposal: updatedProposal, ...detail };
-}
-
-export async function discardProposal(workingDir: string, id: string): Promise<FactoryProposal> {
-  const index = await readProposalIndex(workingDir);
-  const proposalIndex = index.proposals.findIndex((item) => item.id === id);
-  if (proposalIndex === -1) throw new Error(`Proposal not found: ${id}`);
-  const proposal = {
-    ...index.proposals[proposalIndex],
-    status: 'discarded' as const,
-    updatedAt: new Date().toISOString(),
-  };
-  const proposals = [...index.proposals];
-  proposals[proposalIndex] = proposal;
-  await writeProposalIndex(workingDir, { version: 1, proposals });
-  return proposal;
 }
 
 export async function getPrd(
@@ -201,6 +94,7 @@ export async function createPrd(
   let markdown = defaultPrdMarkdown(title, prd.prompt);
   if (markdownInput && markdownInput.length > 0) markdown = markdownInput;
   await writeFileEnsured(join(workingDir, prdPath), `${markdown.trim()}\n`);
+  await appendPrdVersion(workingDir, prd, markdown, 'create');
   await writeStoriesFile(workingDir, prd, []);
   await writePrdIndex(workingDir, { version: 1, prds: [...index.prds, prd] });
   return { prd, markdown, stories: [] };
@@ -218,8 +112,32 @@ export async function updatePrdMarkdown(
   const prds = [...index.prds];
   prds[prdIndex] = prd;
   await writeFileEnsured(join(workingDir, prd.prdPath), `${markdown.trim()}\n`);
+  await appendPrdVersion(workingDir, prd, markdown, 'update');
   await writePrdIndex(workingDir, { version: 1, prds });
   return getPrd(workingDir, id);
+}
+
+export async function listPrdVersions(
+  workingDir: string,
+  id: string
+): Promise<FactoryPrdVersion[]> {
+  const prd = await findPrd(workingDir, id);
+  return (await readPrdVersions(workingDir, prd)).sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt)
+  );
+}
+
+export async function revertPrdVersion(
+  workingDir: string,
+  id: string,
+  versionId: string
+): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+  const prd = await findPrd(workingDir, id);
+  const version = (await readPrdVersions(workingDir, prd)).find((item) => item.id === versionId);
+  if (!version) throw new Error(`PRD version not found: ${versionId}`);
+  await writeFileEnsured(join(workingDir, prd.prdPath), `${version.markdown.trim()}\n`);
+  await appendPrdVersion(workingDir, prd, version.markdown, 'revert');
+  return updatePrdStatusTimestampOnly(workingDir, id);
 }
 
 export async function updatePrdStatus(
@@ -306,10 +224,6 @@ export function prdIndexPath(workingDir: string): string {
   return join(workingDir, PRD_INDEX_RELATIVE_PATH);
 }
 
-export function proposalIndexPath(workingDir: string): string {
-  return join(workingDir, PROPOSAL_INDEX_RELATIVE_PATH);
-}
-
 async function readPrdIndex(workingDir: string): Promise<PrdIndex> {
   try {
     const source = await readFile(prdIndexPath(workingDir), 'utf-8');
@@ -327,27 +241,56 @@ async function writePrdIndex(workingDir: string, index: PrdIndex): Promise<void>
   await writeFileEnsured(prdIndexPath(workingDir), `${JSON.stringify(index, null, 2)}\n`);
 }
 
-async function readProposalIndex(workingDir: string): Promise<ProposalIndex> {
-  try {
-    const source = await readFile(proposalIndexPath(workingDir), 'utf-8');
-    const parsed = JSON.parse(source) as unknown;
-    validateProposalIndex(parsed);
-    return parsed;
-  } catch (error) {
-    if (isNodeError(error) && error.code === 'ENOENT') return { version: 1, proposals: [] };
-    throw error;
-  }
-}
-
-async function writeProposalIndex(workingDir: string, index: ProposalIndex): Promise<void> {
-  validateProposalIndex(index);
-  await writeFileEnsured(proposalIndexPath(workingDir), `${JSON.stringify(index, null, 2)}\n`);
-}
-
 async function findPrd(workingDir: string, id: string): Promise<FactoryPrd> {
   const prd = (await listPrds(workingDir)).find((item) => item.id === id);
   if (!prd) throw new Error(`PRD not found: ${id}`);
   return prd;
+}
+
+async function updatePrdStatusTimestampOnly(
+  workingDir: string,
+  id: string
+): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+  const index = await readPrdIndex(workingDir);
+  const prdIndex = index.prds.findIndex((item) => item.id === id);
+  if (prdIndex === -1) throw new Error(`PRD not found: ${id}`);
+  const prds = [...index.prds];
+  prds[prdIndex] = { ...prds[prdIndex], updatedAt: new Date().toISOString() };
+  await writePrdIndex(workingDir, { version: 1, prds });
+  return getPrd(workingDir, id);
+}
+
+async function readPrdVersions(workingDir: string, prd: FactoryPrd): Promise<FactoryPrdVersion[]> {
+  const source = await readOptionalFile(prdVersionsPath(workingDir, prd));
+  if (!source.trim()) return [];
+  const parsed = JSON.parse(source) as unknown;
+  if (!Array.isArray(parsed)) throw new Error(`PRD versions for ${prd.id} must be an array.`);
+  return parsed.map(normalizePrdVersion);
+}
+
+async function appendPrdVersion(
+  workingDir: string,
+  prd: FactoryPrd,
+  markdown: string,
+  source: FactoryPrdVersion['source']
+): Promise<void> {
+  const versions = await readPrdVersions(workingDir, prd);
+  const createdAt = new Date().toISOString();
+  const version: FactoryPrdVersion = {
+    id: `ver-${createdAt.replace(/[-:.TZ]/g, '')}`,
+    prdId: prd.id,
+    markdown: markdown.trim(),
+    createdAt,
+    source,
+  };
+  await writeFileEnsured(
+    prdVersionsPath(workingDir, prd),
+    `${JSON.stringify([...versions, version], null, 2)}\n`
+  );
+}
+
+function prdVersionsPath(workingDir: string, prd: FactoryPrd): string {
+  return join(workingDir, `${FACTORY_DIR}/prds/${prd.id}.versions.json`);
 }
 
 async function readStoriesFile(workingDir: string, prd: FactoryPrd): Promise<FactoryStory[]> {
@@ -493,25 +436,9 @@ function validatePrdIndex(value: unknown): asserts value is PrdIndex {
   if (!Array.isArray(value.prds)) throw new Error('PRD index prds must be an array.');
 }
 
-function validateProposalIndex(value: unknown): asserts value is ProposalIndex {
-  if (!isRecord(value)) throw new Error('Proposal index must be an object.');
-  if (value.version !== 1) throw new Error('Proposal index version must be 1.');
-  if (!Array.isArray(value.proposals))
-    throw new Error('Proposal index proposals must be an array.');
-}
-
 function uniquePrdId(title: string, prds: FactoryPrd[]): string {
   const base = slugify(title) || 'prd';
   const existing = new Set(prds.map((prd) => prd.id));
-  let id = base;
-  let suffix = 2;
-  while (existing.has(id)) id = `${base}-${suffix++}`;
-  return id;
-}
-
-function uniqueProposalId(title: string, proposals: FactoryProposal[]): string {
-  const base = `prop-${slugify(title) || 'proposal'}`;
-  const existing = new Set(proposals.map((proposal) => proposal.id));
   let id = base;
   let suffix = 2;
   while (existing.has(id)) id = `${base}-${suffix++}`;
@@ -541,4 +468,16 @@ function scalarString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return '';
+}
+
+function normalizePrdVersion(value: unknown): FactoryPrdVersion {
+  if (!isRecord(value)) throw new Error('PRD version entries must be objects.');
+  const source = value.source === 'create' || value.source === 'revert' ? value.source : 'update';
+  return {
+    id: scalarString(value.id),
+    prdId: scalarString(value.prdId),
+    markdown: scalarString(value.markdown),
+    createdAt: scalarString(value.createdAt),
+    source,
+  };
 }

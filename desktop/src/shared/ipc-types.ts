@@ -283,17 +283,12 @@ export interface FactoryPrdDetail {
   stories: FactoryStory[];
 }
 
-export interface FactoryProposal {
+export interface FactoryPrdVersion {
   id: string;
-  prdId?: string;
-  title: string;
-  summary: string;
-  markdown?: string;
-  stories?: FactoryStory[];
-  status: 'draft' | 'applied' | 'discarded';
-  createdBy: string;
+  prdId: string;
+  markdown: string;
   createdAt: string;
-  updatedAt: string;
+  source: 'create' | 'update' | 'revert';
 }
 
 export interface RunWorkflowRequest {
@@ -383,9 +378,8 @@ export interface DrsApi {
   generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   updateStoryStatus(req: { workingDir: string; prdId: string; storyId: string; status: FactoryStory['reviewStatus'] }): Promise<FactoryPrdDetail>;
   importStories(workingDir: string, prdId: string): Promise<DrsTask[]>;
-  listProposals(workingDir: string): Promise<FactoryProposal[]>;
-  applyProposal(workingDir: string, id: string): Promise<FactoryPrdDetail & { proposal: FactoryProposal }>;
-  discardProposal(workingDir: string, id: string): Promise<FactoryProposal>;
+  listPrdVersions(workingDir: string, prdId: string): Promise<FactoryPrdVersion[]>;
+  revertPrdVersion(workingDir: string, prdId: string, versionId: string): Promise<FactoryPrdDetail>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;

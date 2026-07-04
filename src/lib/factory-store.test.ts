@@ -4,13 +4,12 @@ import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   createPrd,
-  createProposal,
-  applyProposal,
-  discardProposal,
   generateStories,
   importStoriesToTasks,
-  listProposals,
+  listPrdVersions,
   listPrds,
+  revertPrdVersion,
+  updatePrdMarkdown,
   updatePrdStatus,
   updateStoryReviewStatus,
 } from './factory-store.js';
@@ -93,29 +92,21 @@ describe('factory-store', () => {
     });
   });
 
-  it('creates, applies, and discards planning proposals', async () => {
+  it('versions PRD markdown writes and can revert', async () => {
     await withTempDir(async (dir) => {
-      const created = await createPrd(dir, { title: 'Proposal Target', prompt: 'Original' });
-      const proposal = await createProposal(dir, {
-        prdId: created.prd.id,
-        title: 'Sharper PRD',
-        summary: 'Replace the draft with a clearer PRD.',
-        markdown: '# PRD: Proposal Target\n\n## Overview\nUpdated by proposal.\n',
-        createdBy: 'test-agent',
-      });
-      const spare = await createProposal(dir, {
-        title: 'Unused Alternative',
-        markdown: '# PRD: Alternative\n',
-      });
+      const created = await createPrd(dir, { title: 'Versioned Target', prompt: 'Original' });
+      await updatePrdStatus(dir, created.prd.id, 'in_review');
+      await updatePrdMarkdown(dir, created.prd.id, '# PRD: Versioned Target\n\nUpdated.\n');
+      const versions = await listPrdVersions(dir, created.prd.id);
+      const reverted = await revertPrdVersion(
+        dir,
+        created.prd.id,
+        versions.at(-1)?.id ?? 'missing'
+      );
 
-      const applied = await applyProposal(dir, proposal.id);
-      const discarded = await discardProposal(dir, spare.id);
-      const proposals = await listProposals(dir);
-
-      expect(applied.markdown).toContain('Updated by proposal');
-      expect(applied.proposal.status).toBe('applied');
-      expect(discarded.status).toBe('discarded');
-      expect(proposals.map((item) => item.status).sort()).toEqual(['applied', 'discarded']);
+      expect(versions.map((version) => version.source).sort()).toEqual(['create', 'update']);
+      expect(reverted.markdown).toContain('Original');
+      expect(await listPrdVersions(dir, created.prd.id)).toHaveLength(3);
     });
   });
 });

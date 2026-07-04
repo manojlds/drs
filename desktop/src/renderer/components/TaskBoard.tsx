@@ -3,7 +3,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
-import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryProposal, TaskStatus } from '@/shared/ipc-types';
+import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion, TaskStatus } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
@@ -45,7 +45,7 @@ const MOVE_STATUSES: TaskStatus[] = [
 export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [tasks, setTasks] = useState<DrsTask[]>([]);
   const [prds, setPrds] = useState<FactoryPrd[]>([]);
-  const [proposals, setProposals] = useState<FactoryProposal[]>([]);
+  const [versions, setVersions] = useState<FactoryPrdVersion[]>([]);
   const [selectedPrdId, setSelectedPrdId] = useState<string | null>(null);
   const [prdDetail, setPrdDetail] = useState<FactoryPrdDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,22 +59,23 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setLoading(true);
     setError(null);
     try {
-      const [taskList, prdList, proposalList] = await Promise.all([
+      const [taskList, prdList] = await Promise.all([
         window.drs.listTasks(workingDir),
         window.drs.listPrds(workingDir),
-        window.drs.listProposals(workingDir),
       ]);
       setTasks(taskList);
       setPrds(prdList);
-      setProposals(proposalList);
       const nextSelected = selectedPrdId ?? prdList[0]?.id ?? null;
       setSelectedPrdId(nextSelected);
       if (nextSelected) {
         const detail = await window.drs.getPrd(workingDir, nextSelected);
+        const versionList = await window.drs.listPrdVersions(workingDir, nextSelected);
         setPrdDetail(detail);
+        setVersions(versionList);
         setMarkdownDraft(detail.markdown);
       } else {
         setPrdDetail(null);
+        setVersions([]);
         setMarkdownDraft('');
       }
     } catch (err) {
@@ -104,7 +105,9 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setError(null);
       try {
         const detail = await window.drs.getPrd(workingDir, id);
+        const versionList = await window.drs.listPrdVersions(workingDir, id);
         setPrdDetail(detail);
+        setVersions(versionList);
         setMarkdownDraft(detail.markdown);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -120,9 +123,11 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setError(null);
     try {
       const detail = await window.drs.createPrd({ workingDir, title: trimmed, prompt });
+      const versionList = await window.drs.listPrdVersions(workingDir, detail.prd.id);
       setPrds((current) => [detail.prd, ...current]);
       setSelectedPrdId(detail.prd.id);
       setPrdDetail(detail);
+      setVersions(versionList);
       setMarkdownDraft(detail.markdown);
       setTitle('');
       setPrompt('');
@@ -142,7 +147,9 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         id: selectedPrdId,
         markdown: markdownDraft,
       });
+      const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
       setPrdDetail(detail);
+      setVersions(versionList);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -187,32 +194,21 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [selectedPrdId, workingDir]);
 
-  const handleApplyProposal = useCallback(
-    async (proposalId: string) => {
+  const handleRevertVersion = useCallback(
+    async (versionId: string) => {
+      if (!selectedPrdId) return;
       setError(null);
       try {
-        const result = await window.drs.applyProposal(workingDir, proposalId);
-        setPrdDetail({ prd: result.prd, markdown: result.markdown, stories: result.stories });
-        setMarkdownDraft(result.markdown);
-        setProposals((current) => current.map((proposal) => (proposal.id === result.proposal.id ? result.proposal : proposal)));
+        const detail = await window.drs.revertPrdVersion(workingDir, selectedPrdId, versionId);
+        const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
+        setPrdDetail(detail);
+        setMarkdownDraft(detail.markdown);
+        setVersions(versionList);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [workingDir]
-  );
-
-  const handleDiscardProposal = useCallback(
-    async (proposalId: string) => {
-      setError(null);
-      try {
-        const discarded = await window.drs.discardProposal(workingDir, proposalId);
-        setProposals((current) => current.map((proposal) => (proposal.id === discarded.id ? discarded : proposal)));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [workingDir]
+    [selectedPrdId, workingDir]
   );
 
   const handleStoryStatus = useCallback(
@@ -263,9 +259,6 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     !!prdDetail &&
     (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
     approvedStoryCount > 0;
-  const draftProposals = proposals.filter(
-    (proposal) => proposal.status === 'draft' && (!selectedPrdId || proposal.prdId === selectedPrdId)
-  );
 
   return (
     <div className="task-board-shell">
@@ -298,22 +291,21 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
 
       {error && <div className="task-board-error">{error}</div>}
 
-      {draftProposals.length > 0 && (
-        <Card className="factory-proposals-panel">
+      {versions.length > 0 && (
+        <Card className="factory-history-panel">
           <div className="task-column-header">
-            <strong>Planning Proposals</strong>
-            <Badge variant="outline">{draftProposals.length}</Badge>
+            <strong>PRD Versions</strong>
+            <Badge variant="outline">{versions.length}</Badge>
           </div>
-          {draftProposals.map((proposal) => (
-            <div key={proposal.id} className="factory-proposal-item">
+          {versions.slice(0, 4).map((version) => (
+            <div key={version.id} className="factory-history-item">
               <div>
-                <strong>{proposal.title}</strong>
-                {proposal.summary && <p>{proposal.summary}</p>}
-                <span>{proposal.id}</span>
+                <strong>{version.source}</strong>
+                <p>{version.createdAt}</p>
+                <span>{version.id}</span>
               </div>
               <div className="factory-prd-actions">
-                <Button variant="outline" onClick={() => void handleApplyProposal(proposal.id)}>Apply</Button>
-                <Button variant="outline" onClick={() => void handleDiscardProposal(proposal.id)}>Discard</Button>
+                <Button variant="outline" onClick={() => void handleRevertVersion(version.id)}>Revert</Button>
               </div>
             </div>
           ))}

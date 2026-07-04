@@ -25,15 +25,12 @@ import {
 } from '../lib/task-store.js';
 import {
   createPrd,
-  createProposal,
-  applyProposal,
-  discardProposal,
   generateStories,
   getPrd,
-  getProposal,
   importStoriesToTasks,
   listPrds,
-  listProposals,
+  listPrdVersions,
+  revertPrdVersion,
   updatePrdMarkdown,
   updatePrdStatus,
   updateStoryReviewStatus,
@@ -599,6 +596,41 @@ factoryCommand
   });
 
 factoryCommand
+  .command('prd-history <id>')
+  .description('List internally versioned PRD markdown writes')
+  .option('--json', 'Output versions as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const versions = await listPrdVersions(process.cwd(), id);
+      if (options.json) console.log(JSON.stringify({ versions }, null, 2));
+      else if (versions.length === 0) console.log('No PRD versions found.');
+      else
+        for (const version of versions)
+          console.log(`${version.id.padEnd(22)} ${version.source.padEnd(8)} ${version.createdAt}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-revert <id> <versionId>')
+  .description('Revert PRD markdown to an earlier version')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (id: string, versionId: string, options) => {
+    try {
+      const result = await revertPrdVersion(process.cwd(), id, versionId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Reverted PRD ${result.prd.id} to ${versionId}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
   .command('prd-status <id> <status>')
   .description('Set PRD review/lifecycle status')
   .option('--json', 'Output PRD as JSON')
@@ -660,105 +692,6 @@ factoryCommand
       );
       if (options.json) console.log(JSON.stringify(result, null, 2));
       else console.log(`Updated story ${storyId}: status=${status}`);
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
-  .command('proposal-list')
-  .description('List factory planning proposals')
-  .option('--json', 'Output proposals as JSON')
-  .action(async (options) => {
-    try {
-      const proposals = await listProposals(process.cwd());
-      if (options.json) console.log(JSON.stringify({ proposals }, null, 2));
-      else if (proposals.length === 0) console.log('No proposals found.');
-      else
-        for (const proposal of proposals)
-          console.log(`${proposal.id.padEnd(32)} ${proposal.status.padEnd(10)} ${proposal.title}`);
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
-  .command('proposal-create')
-  .description('Create a non-canonical planning proposal')
-  .requiredOption('-t, --title <title>', 'Proposal title')
-  .option('--prd <id>', 'Target PRD id')
-  .option('-s, --summary <summary>', 'Proposal summary')
-  .option('-m, --markdown <markdown>', 'Proposed PRD markdown')
-  .option('--created-by <name>', 'Proposal author', 'manual')
-  .option('--json', 'Output proposal as JSON')
-  .action(async (options) => {
-    try {
-      const proposal = await createProposal(process.cwd(), {
-        title: options.title,
-        prdId: options.prd,
-        summary: options.summary,
-        markdown: options.markdown,
-        createdBy: options.createdBy,
-      });
-      if (options.json) console.log(JSON.stringify(proposal, null, 2));
-      else console.log(`Created proposal ${proposal.id}`);
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
-  .command('proposal-show <id>')
-  .description('Show a factory planning proposal')
-  .option('--json', 'Output proposal as JSON')
-  .action(async (id: string, options) => {
-    try {
-      const proposal = await getProposal(process.cwd(), id);
-      if (options.json) console.log(JSON.stringify(proposal, null, 2));
-      else {
-        console.log(chalk.bold(`${proposal.id}: ${proposal.title}`));
-        console.log(`Status: ${proposal.status}`);
-        if (proposal.summary) console.log(`Summary: ${proposal.summary}`);
-        if (proposal.markdown) console.log(`\n${proposal.markdown}`);
-      }
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
-  .command('proposal-apply <id>')
-  .description('Apply a draft proposal to its target PRD')
-  .option('--json', 'Output applied result as JSON')
-  .action(async (id: string, options) => {
-    try {
-      const result = await applyProposal(process.cwd(), id);
-      if (options.json) console.log(JSON.stringify(result, null, 2));
-      else console.log(`Applied proposal ${result.proposal.id} to ${result.prd.id}`);
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
-  .command('proposal-discard <id>')
-  .description('Discard a draft proposal')
-  .option('--json', 'Output discarded proposal as JSON')
-  .action(async (id: string, options) => {
-    try {
-      const proposal = await discardProposal(process.cwd(), id);
-      if (options.json) console.log(JSON.stringify(proposal, null, 2));
-      else console.log(`Discarded proposal ${proposal.id}`);
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

@@ -8,6 +8,7 @@ Use this skill when a user wants to plan product work for DRS Factory, write or 
 - Clarify before drafting when important requirements are missing.
 - Keep PRDs and stories as reviewable artifacts until the user approves them.
 - Use DRS as the source of truth for persisted PRDs, stories, and task imports.
+- Use `drs factory prd-update` to write PRD markdown. DRS versions every write internally, so changes can be inspected and reverted.
 
 ## Planning Flow
 
@@ -25,7 +26,10 @@ Use this skill when a user wants to plan product work for DRS Factory, write or 
 drs chat --factory --prompt "Help me plan <feature>"
 drs chat --factory --prd <prdId> --prompt "Review this PRD and suggest story gaps"
 drs factory prd-create --title "<title>" --prompt "<intent>"
+drs factory prd-show <prdId>
 drs factory prd-update <prdId> --markdown "<markdown>"
+drs factory prd-history <prdId>
+drs factory prd-revert <prdId> <versionId>
 drs factory stories-generate <prdId>
 drs factory prd-status <prdId> in_review
 drs factory prd-status <prdId> approved
