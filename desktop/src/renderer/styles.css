@@ -228,13 +228,26 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .workflow-flow-node.agents { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)) !important; }
 .workflow-flow-node.control { border-style: dashed !important; border-color: color-mix(in srgb, var(--sev-medium) 60%, var(--border)) !important; }
 .workflow-flow-node.action { border-color: var(--border) !important; }
+.workflow-flow-node.running { border-color: var(--accent) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), 0 12px 30px rgba(21, 25, 35, 0.12); }
+.workflow-flow-node.success { border-color: color-mix(in srgb, var(--add-text) 58%, var(--border)) !important; }
+.workflow-flow-node.skipped { opacity: 0.58; }
+.workflow-flow-node.failed { border-color: var(--sev-critical) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--sev-critical) 22%, transparent), 0 12px 30px rgba(21, 25, 35, 0.12); }
 .workflow-node-label { display: grid; gap: 3px; text-align: left; }
-.workflow-node-label strong { font-size: 12.5px; line-height: 1.2; }
+.workflow-node-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.workflow-node-label strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.2; }
 .workflow-node-label span { color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-node-label em { color: var(--sev-medium); font-size: 10px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-node-label small { color: var(--text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-node-status { flex-shrink: 0; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); font-size: 9px; font-weight: 700; line-height: 1; padding: 3px 5px; text-transform: uppercase; }
+.workflow-node-status.running { border-color: var(--accent); color: var(--accent); }
+.workflow-node-status.success { border-color: var(--add-text); color: var(--add-text); }
+.workflow-node-status.skipped { color: var(--text-muted); }
+.workflow-node-status.failed { border-color: var(--sev-critical); color: var(--sev-critical); }
 .workflow-flow-edge.dependency .react-flow__edge-path { stroke: var(--text-muted); }
 .workflow-flow-edge.control .react-flow__edge-path { stroke: var(--accent); stroke-dasharray: 6 4; }
+.workflow-flow-edge.success .react-flow__edge-path { stroke: var(--add-text); }
+.workflow-flow-edge.skipped .react-flow__edge-path { opacity: 0.45; }
+.workflow-flow-edge.failed .react-flow__edge-path { stroke: var(--sev-critical); }
 .workflow-flow-edge .react-flow__edge-textbg { fill: var(--bg-elevated); }
 .workflow-flow-edge .react-flow__edge-text { fill: var(--text-dim); font-size: 10px; }
 .react-flow__controls,

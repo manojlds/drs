@@ -131,11 +131,27 @@ export interface WorkflowRunResultJson {
   timestamp: string;
   workflow: string;
   inputs: Record<string, string>;
-  nodes: Record<string, unknown>;
+  nodes: Record<string, WorkflowRunNodeResult>;
   artifacts: Record<string, unknown> & {
     change?: ReviewSourceArtifact;
   };
   output?: unknown;
+}
+
+export interface WorkflowRunNodeResult {
+  id: string;
+  type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
+  status?: 'success' | 'skipped';
+  agent?: string;
+  agents?: string[];
+  action?: string;
+  control?: string;
+  decision?: string;
+  target?: string;
+  response?: string;
+  output?: unknown;
+  outputs?: Record<string, unknown>;
+  writes?: string;
 }
 
 export interface ReviewSourceArtifact {
