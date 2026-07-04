@@ -1525,21 +1525,9 @@ describe('workflow runner', () => {
               with: { source: 'change' },
               output: 'review',
             },
-            artifact: {
-              action: 'create-review-artifact',
-              needs: ['review'],
-              with: { source: 'change', review: 'review' },
-              output: 'reviewArtifact',
-            },
-            save: {
-              action: 'save-artifact',
-              needs: ['artifact'],
-              with: { kind: 'review', artifact: 'reviewArtifact' },
-              output: 'persistedReviewArtifact',
-            },
             fixChange: {
               action: 'change-source',
-              needs: ['save'],
+              needs: ['review'],
               with: { type: 'local', staged: true },
               output: 'fixChange',
             },
@@ -1553,12 +1541,12 @@ describe('workflow runner', () => {
               action: 'verify-fix',
               needs: ['reReview'],
               with: {
-                artifact: 'persistedReviewArtifact',
+                artifact: 'reviewArtifact',
                 review: 'reReview',
                 fixChange: 'fixChange',
                 severity: 'high',
               },
-              output: 'persistedReviewArtifact',
+              output: 'reviewArtifact',
             },
           },
         },
@@ -1583,7 +1571,7 @@ describe('workflow runner', () => {
         expect.objectContaining({ state: 'open', disposition: 'regression' }),
       ])
     );
-    expect(result.artifacts.persistedReviewArtifact).toMatchObject({ shouldContinue: true });
+    expect(result.artifacts.reviewArtifact).toMatchObject({ shouldContinue: true });
   });
 
   it('marks fix verification converged when re-review has no matching findings', async () => {
@@ -1610,21 +1598,9 @@ describe('workflow runner', () => {
               with: { source: 'change' },
               output: 'review',
             },
-            artifact: {
-              action: 'create-review-artifact',
-              needs: ['review'],
-              with: { source: 'change', review: 'review' },
-              output: 'reviewArtifact',
-            },
-            save: {
-              action: 'save-artifact',
-              needs: ['artifact'],
-              with: { kind: 'review', artifact: 'reviewArtifact' },
-              output: 'persistedReviewArtifact',
-            },
             fixChange: {
               action: 'change-source',
-              needs: ['save'],
+              needs: ['review'],
               with: { type: 'local', staged: true },
               output: 'fixChange',
             },
@@ -1637,8 +1613,8 @@ describe('workflow runner', () => {
             verify: {
               action: 'verify-fix',
               needs: ['reReview'],
-              with: { artifact: 'persistedReviewArtifact', review: 'reReview', severity: 'high' },
-              output: 'persistedReviewArtifact',
+              with: { artifact: 'reviewArtifact', review: 'reReview', severity: 'high' },
+              output: 'reviewArtifact',
             },
           },
         },
@@ -1682,21 +1658,9 @@ describe('workflow runner', () => {
               with: { source: 'change' },
               output: 'review',
             },
-            artifact: {
-              action: 'create-review-artifact',
-              needs: ['review'],
-              with: { source: 'change', review: 'review' },
-              output: 'reviewArtifact',
-            },
-            save: {
-              action: 'save-artifact',
-              needs: ['artifact'],
-              with: { kind: 'review', artifact: 'reviewArtifact' },
-              output: 'persistedReviewArtifact',
-            },
             fixChange: {
               action: 'change-source',
-              needs: ['save'],
+              needs: ['review'],
               with: { type: 'local', staged: true },
               output: 'fixChange',
             },
@@ -1710,12 +1674,12 @@ describe('workflow runner', () => {
               action: 'verify-fix',
               needs: ['reReview'],
               with: {
-                artifact: 'persistedReviewArtifact',
+                artifact: 'reviewArtifact',
                 review: 'reReview',
                 fixChange: 'fixChange',
                 severity: 'high',
               },
-              output: 'persistedReviewArtifact',
+              output: 'reviewArtifact',
             },
           },
         },
@@ -1902,7 +1866,7 @@ describe('workflow runner', () => {
       })
     );
     expect(result.loop['fix-loop']).toBeUndefined();
-    expect(result.artifacts.persistedReviewArtifact).toMatchObject({
+    expect(result.artifacts.reviewArtifact).toMatchObject({
       shouldContinue: false,
       actionableOpen: 0,
       payload: {
