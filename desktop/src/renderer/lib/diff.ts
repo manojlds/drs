@@ -39,6 +39,37 @@ const CHANGE_STATUS: Record<FileDiffMetadata['type'], GitFileStatus> = {
   'rename-pure': 'renamed',
 };
 
+// Keep syntax highlighting useful for common review files without loading very
+// large Shiki grammars for uncommon languages in the desktop app.
+const HIGHLIGHT_LANGUAGE_ALLOWLIST = new Set([
+  'bash',
+  'css',
+  'diff',
+  'dockerfile',
+  'go',
+  'graphql',
+  'html',
+  'ini',
+  'java',
+  'javascript',
+  'json',
+  'jsonc',
+  'jsx',
+  'log',
+  'markdown',
+  'python',
+  'ruby',
+  'rust',
+  'shellscript',
+  'sql',
+  'toml',
+  'tsx',
+  'typescript',
+  'xml',
+  'yaml',
+  'zsh',
+]);
+
 function stripPrefix(path: string): string {
   if (path.startsWith('a/') || path.startsWith('b/')) return path.slice(2);
   return path;
@@ -212,20 +243,28 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
 function parsePierreDiffFiles(patch: string): DiffFile[] {
   try {
     return parsePatchFiles(patch, 'drs-desktop', true).flatMap((parsedPatch) =>
-      parsedPatch.files.map((fileDiff) => ({
-        path: fileDiff.name,
-        oldPath: fileDiff.prevName ?? null,
-        status: CHANGE_STATUS[fileDiff.type],
-        additions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.additionLines, 0),
-        deletions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.deletionLines, 0),
-        hunks: [],
-        binary: fileDiff.hunks.length === 0,
-        metadata: fileDiff,
-      }))
+      parsedPatch.files.map((fileDiff) => {
+        const metadata = withAllowedHighlightLanguage(fileDiff);
+        return {
+          path: fileDiff.name,
+          oldPath: fileDiff.prevName ?? null,
+          status: CHANGE_STATUS[fileDiff.type],
+          additions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.additionLines, 0),
+          deletions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.deletionLines, 0),
+          hunks: [],
+          binary: fileDiff.hunks.length === 0,
+          metadata,
+        };
+      })
     );
   } catch {
     return [];
   }
+}
+
+function withAllowedHighlightLanguage(fileDiff: FileDiffMetadata): FileDiffMetadata {
+  if (!fileDiff.lang || HIGHLIGHT_LANGUAGE_ALLOWLIST.has(fileDiff.lang)) return fileDiff;
+  return { ...fileDiff, lang: 'text' };
 }
 
 function pushHunkLine(hunk: DiffHunk, prefix: string, text: string): void {

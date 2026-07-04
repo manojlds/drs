@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
-import { WorkflowGraphView } from './WorkflowGraphView';
 import type { WorkflowGraph, WorkflowRunResultJson } from '../types';
+
+const WorkflowGraphView = lazy(() =>
+  import('./WorkflowGraphView').then((module) => ({ default: module.WorkflowGraphView }))
+);
 
 export interface RunBannerState {
   active: boolean;
@@ -79,13 +82,15 @@ export function RunBanner({ state, graph, result, onCancel, onDismiss }: RunBann
         <div className={`rb-panel${hasGraph ? ' has-graph' : ''}`}>
           {graph && (
             <div className="rb-graph">
-              <WorkflowGraphView
-                graph={graph}
-                result={result}
-                active={state.active}
-                error={state.error}
-                activeLogs={state.logs}
-              />
+              <Suspense fallback={<div className="rb-graph-loading">Loading workflow graph...</div>}>
+                <WorkflowGraphView
+                  graph={graph}
+                  result={result}
+                  active={state.active}
+                  error={state.error}
+                  activeLogs={state.logs}
+                />
+              </Suspense>
             </div>
           )}
           {state.logs.length > 0 && (

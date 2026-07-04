@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { AppSidebar, type ProjectMode } from './components/AppSidebar';
-import { DiffView } from './components/DiffView';
-import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
-import { ProjectSettings } from './components/ProjectSettings';
-import { ReviewChatPanel } from './components/ReviewChatPanel';
 import { RunBanner, type RunBannerState } from './components/RunBanner';
 import { ThemeToggle } from './components/ThemeToggle';
-import { WorkflowGraphView } from './components/WorkflowGraphView';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -58,6 +53,22 @@ const VISUAL_WORKFLOW = 'local-visual-explain';
 const RECENT_PROJECTS_KEY = 'drs-desktop:recent-projects';
 const RUN_HISTORY_KEY = 'drs-desktop:run-history';
 const REVIEW_SNAPSHOTS_KEY = 'drs-desktop:review-snapshots';
+
+const DiffView = lazy(() =>
+  import('./components/DiffView').then((module) => ({ default: module.DiffView }))
+);
+const FileTree = lazy(() =>
+  import('./components/FileTree').then((module) => ({ default: module.FileTree }))
+);
+const ProjectSettings = lazy(() =>
+  import('./components/ProjectSettings').then((module) => ({ default: module.ProjectSettings }))
+);
+const ReviewChatPanel = lazy(() =>
+  import('./components/ReviewChatPanel').then((module) => ({ default: module.ReviewChatPanel }))
+);
+const WorkflowGraphView = lazy(() =>
+  import('./components/WorkflowGraphView').then((module) => ({ default: module.WorkflowGraphView }))
+);
 
 type ReviewView = 'overview' | 'diff' | 'walkthrough' | 'output';
 
@@ -557,7 +568,9 @@ export function App() {
             onRun={handleRunSelectedWorkflow}
           />
         ) : projectMode === 'settings' ? (
-          <ProjectSettings workingDir={workingDir} />
+          <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
+            <ProjectSettings workingDir={workingDir} />
+          </Suspense>
         ) : (
           <>
             <ReviewViewTabs view={reviewView} onChange={setReviewView} />
@@ -617,11 +630,13 @@ export function App() {
                   maxSize={32}
                   className="file-tree-panel"
                 >
-                  <FileTree
-                    files={diffFiles}
-                    selectedFile={selectedFile}
-                    onSelectFile={handleSelectFile}
-                  />
+                  <Suspense fallback={<LoadingPanel label="Loading file tree..." />}>
+                    <FileTree
+                      files={diffFiles}
+                      selectedFile={selectedFile}
+                      onSelectFile={handleSelectFile}
+                    />
+                  </Suspense>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -631,13 +646,16 @@ export function App() {
                   minSize={30}
                   className="diff-panel"
                 >
-                  <DiffView
-                    files={diffFiles}
-                    issues={review?.issues ?? []}
-                    layout={diffLayout}
-                    scrollTarget={scrollTarget}
-                    onIssueClick={handleSelectIssue}
-                  />
+                  <Suspense fallback={<LoadingPanel label="Loading diff viewer..." />}>
+                    <DiffView
+                      files={diffFiles}
+                      issues={review?.issues ?? []}
+                      layout={diffLayout}
+                      selectedFile={selectedFile}
+                      scrollTarget={scrollTarget}
+                      onIssueClick={handleSelectIssue}
+                    />
+                  </Suspense>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -673,11 +691,13 @@ export function App() {
                       minSize={25}
                       className="chat-panel-wrap"
                     >
-                      <ReviewChatPanel
-                        workingDir={workingDir}
-                        review={review}
-                        selectedIssue={selectedIssue}
-                      />
+                      <Suspense fallback={<LoadingPanel label="Loading review chat..." />}>
+                        <ReviewChatPanel
+                          workingDir={workingDir}
+                          review={review}
+                          selectedIssue={selectedIssue}
+                        />
+                      </Suspense>
                     </ResizablePanel>
                   </ResizablePanelGroup>
                 </ResizablePanel>
@@ -747,6 +767,15 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
       >
         <X size={13} />
       </button>
+    </div>
+  );
+}
+
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <div className="lazy-panel-loading">
+      <span className="spinner" />
+      <span>{label}</span>
     </div>
   );
 }
@@ -882,13 +911,15 @@ function WorkflowWorkspace({
               </div>
               {detail?.graph && <Badge variant="outline">{detail.graph.nodes.length} nodes</Badge>}
             </div>
-            <WorkflowGraphView
-              graph={detail?.graph}
-              result={result}
-              active={!!runState?.active && runState.name === selectedWorkflow}
-              error={runState?.name === selectedWorkflow ? runState.error : null}
-              activeLogs={runState?.name === selectedWorkflow ? runState.logs : []}
-            />
+            <Suspense fallback={<LoadingPanel label="Loading workflow graph..." />}>
+              <WorkflowGraphView
+                graph={detail?.graph}
+                result={result}
+                active={!!runState?.active && runState.name === selectedWorkflow}
+                error={runState?.name === selectedWorkflow ? runState.error : null}
+                activeLogs={runState?.name === selectedWorkflow ? runState.logs : []}
+              />
+            </Suspense>
           </Card>
 
           <Card className="workflow-inspector-card">

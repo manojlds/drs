@@ -1178,6 +1178,17 @@ button {
   min-width: 0;
   background: var(--bg);
 }
+.lazy-panel-loading {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  background: var(--bg);
+  font-size: 12px;
+}
 .generic-result {
   flex: 1;
   overflow: auto;
@@ -1523,6 +1534,31 @@ button {
   overflow: hidden;
   background: var(--bg-elevated);
 }
+.diff-load-more {
+  margin: 0 12px 18px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.diff-load-more-button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.diff-load-more-button:hover {
+  border-color: var(--accent);
+}
 .diff-file-header {
   display: flex;
   align-items: center;
@@ -1745,6 +1781,14 @@ button {
 }
 .run-banner .rb-graph {
   margin: 8px;
+}
+.run-banner .rb-graph-loading {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .run-banner .rb-graph .workflow-graph-canvas {
   height: 220px;
