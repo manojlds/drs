@@ -221,7 +221,8 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .workflow-inspector-card pre { max-height: 280px; overflow: auto; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); color: var(--text-dim); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; padding: 10px; }
 .workflow-detail-skeleton { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .workflow-graph-card { min-height: 390px; }
-.workflow-graph-view { height: 330px; overflow: hidden; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg); }
+.workflow-graph-view { overflow: hidden; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg); }
+.workflow-graph-canvas { height: 330px; }
 .workflow-graph-empty { display: grid; place-items: center; height: 180px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-muted); font-size: 12px; }
 .workflow-flow-node { width: 190px; border: 1px solid var(--border) !important; border-radius: 12px !important; background: var(--bg-elevated) !important; color: var(--text) !important; box-shadow: 0 8px 24px rgba(21, 25, 35, 0.08); }
 .workflow-flow-node.agent,
@@ -253,6 +254,16 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .react-flow__controls,
 .react-flow__minimap { background: var(--bg-elevated); border: 1px solid var(--border-soft); box-shadow: none; }
 .react-flow__controls-button { background: var(--bg-elevated); border-bottom-color: var(--border-soft); color: var(--text); }
+.workflow-node-inspector { border-top: 1px solid var(--border-soft); background: var(--bg-elevated); padding: 10px; }
+.workflow-node-inspector.empty { color: var(--text-muted); font-size: 12px; }
+.workflow-node-inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.workflow-node-inspector-head span { color: var(--text-muted); display: block; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.workflow-node-inspector-head strong { display: block; font-size: 13px; margin-top: 2px; }
+.workflow-node-inspector dl { display: grid; gap: 6px; margin: 0; }
+.workflow-node-inspector dl div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; }
+.workflow-node-inspector dt { color: var(--text-muted); font-size: 11px; }
+.workflow-node-inspector dd { color: var(--text-dim); font-family: var(--mono); font-size: 11px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-node-inspector pre { max-height: 220px; margin: 10px 0 0; overflow: auto; }
 .workflow-run-row { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-soft); padding: 8px 0; font-size: 11.5px; }
 .workflow-run-row strong { font-weight: 600; }
 .workflow-run-row span { color: var(--text-muted); white-space: nowrap; }

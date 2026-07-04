@@ -31,6 +31,9 @@ export interface WorkflowNodeResult {
   id: string;
   type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
   status?: 'success' | 'skipped';
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
   agent?: string;
   agents?: string[];
   action?: string;

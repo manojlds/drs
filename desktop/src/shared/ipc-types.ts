@@ -142,6 +142,9 @@ export interface WorkflowRunNodeResult {
   id: string;
   type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
   status?: 'success' | 'skipped';
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
   agent?: string;
   agents?: string[];
   action?: string;
@@ -149,6 +152,7 @@ export interface WorkflowRunNodeResult {
   decision?: string;
   target?: string;
   response?: string;
+  responses?: Array<{ usage?: { usage?: { cost?: number } } }>;
   output?: unknown;
   outputs?: Record<string, unknown>;
   writes?: string;
