@@ -218,6 +218,23 @@ export type ReviewChatEvent =
   | { type: 'turn_done'; conversationId: string }
   | { type: 'error'; conversationId: string; message: string };
 
+export interface ProjectConfigFile {
+  path: string;
+  exists: boolean;
+  yaml: string;
+  value: Record<string, unknown>;
+  errors: string[];
+}
+
+export interface SaveProjectConfigRequest {
+  workingDir: string;
+  yaml: string;
+}
+
+export interface SaveProjectConfigResponse {
+  config: ProjectConfigFile;
+}
+
 export interface DrsApi {
   selectDirectory(): Promise<string | null>;
   getCwd(): Promise<string>;
@@ -226,6 +243,8 @@ export interface DrsApi {
   getDiff(workingDir: string, opts: { staged: boolean }): Promise<DiffResult>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
+  getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;
+  saveProjectConfig(req: SaveProjectConfigRequest): Promise<SaveProjectConfigResponse>;
   askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
   startReviewChat(req: StartReviewChatRequest): Promise<StartReviewChatResponse>;
   sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;

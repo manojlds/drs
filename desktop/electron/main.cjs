@@ -1,11 +1,14 @@
 // @ts-check
 
 /* eslint-disable @typescript-eslint/no-require-imports, no-undef */
-const { existsSync, readFileSync, readdirSync } = require('node:fs');
+const { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
 const { join, dirname, relative } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const http = require('node:http');
+const Ajv2020 = require('ajv/dist/2020');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const yaml = require('yaml');
+const drsConfigSchema = require('../src/shared/drs-config-schema.json');
 const { runDrs } = require('./drs-cli.cjs');
 const { getDiff } = require('./git.cjs');
 
@@ -21,6 +24,27 @@ const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:51
 // Relative to the reviewed repo's working directory.
 const RUN_OUTPUT_REL = '.drs/.desktop-run.json';
 const WORKFLOW_RUN_TIMEOUT_MS = 30 * 60 * 1000;
+const CONFIG_REL = '.drs/drs.config.yaml';
+const DEFAULT_PROJECT_CONFIG_YAML = `# DRS project configuration
+# Edit structured settings in the form, or use this YAML editor for advanced keys.
+
+workflow:
+  default: local-review
+
+review:
+  agents:
+    - review/unified-reviewer
+  ignorePatterns:
+    - "*.test.ts"
+    - "*.spec.ts"
+    - "**/__tests__/**"
+    - "**/__mocks__/**"
+    - "package-lock.json"
+    - "yarn.lock"
+    - "pnpm-lock.yaml"
+`;
+
+const configValidator = new Ajv2020({ allErrors: true, strict: false }).compile(drsConfigSchema);
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
 const runningProcesses = new Map();
@@ -76,6 +100,51 @@ const readJsonFile = (workingDir, relPath) => {
   } catch {
     return null;
   }
+};
+
+/** @param {string} workingDir */
+const getProjectConfigPath = (workingDir) => join(workingDir, CONFIG_REL);
+
+/** @param {unknown} value */
+const isPlainObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** @param {unknown} value */
+const validateProjectConfigValue = (value) => {
+  if (!isPlainObject(value)) return ['Configuration must be a YAML object.'];
+  const valid = configValidator(value);
+  if (valid) return [];
+  return (configValidator.errors || []).map((error) => {
+    const path = error.instancePath || '/';
+    return `${path} ${error.message || 'is invalid'}`;
+  });
+};
+
+/** @param {string} source */
+const parseProjectConfigYaml = (source) => {
+  try {
+    const value = yaml.parse(source) ?? {};
+    return { value, errors: validateProjectConfigValue(value) };
+  } catch (error) {
+    return {
+      value: {},
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+};
+
+/** @param {string} workingDir */
+const readProjectConfigFile = (workingDir) => {
+  const configPath = getProjectConfigPath(workingDir);
+  const exists = existsSync(configPath);
+  const source = exists ? readFileSync(configPath, 'utf-8') : DEFAULT_PROJECT_CONFIG_YAML;
+  const parsed = parseProjectConfigYaml(source);
+  return {
+    path: configPath,
+    exists,
+    yaml: source,
+    value: isPlainObject(parsed.value) ? parsed.value : {},
+    errors: parsed.errors,
+  };
 };
 
 /** @param {unknown} value */
@@ -153,12 +222,16 @@ const readLatestReviewArtifact = (workingDir) => {
 
 async function loadDrsConversationRuntime() {
   if (!repoRoot) {
-    throw new Error('Live review chat requires a bundled DRS runtime. Use DRS_CLI one-shot chat fallback in packaged builds for now.');
+    throw new Error(
+      'Live review chat requires a bundled DRS runtime. Use DRS_CLI one-shot chat fallback in packaged builds for now.'
+    );
   }
   const conversationPath = join(repoRoot, 'dist', 'lib', 'conversation.js');
   const configPath = join(repoRoot, 'dist', 'lib', 'config.js');
   if (!existsSync(conversationPath) || !existsSync(configPath)) {
-    throw new Error('Live review chat requires a built DRS runtime. Run `npm --prefix ../ run build` or `npm run setup:drs` from desktop/.');
+    throw new Error(
+      'Live review chat requires a built DRS runtime. Run `npm --prefix ../ run build` or `npm run setup:drs` from desktop/.'
+    );
   }
   const [{ ConversationService }, { loadConfig }] = await Promise.all([
     import(pathToFileURL(conversationPath).href),
@@ -234,6 +307,32 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {
     return readLatestReviewArtifact(workingDir);
+  });
+
+  ipcMain.handle('drs:getProjectConfig', async (_event, workingDir) => {
+    if (!workingDir || typeof workingDir !== 'string') {
+      throw new Error('A working directory is required for project settings.');
+    }
+    return readProjectConfigFile(workingDir);
+  });
+
+  ipcMain.handle('drs:saveProjectConfig', async (_event, req) => {
+    const { workingDir, yaml: source } = req || {};
+    if (!workingDir || typeof workingDir !== 'string') {
+      throw new Error('A working directory is required for project settings.');
+    }
+    if (typeof source !== 'string') {
+      throw new Error('Configuration YAML is required.');
+    }
+
+    const parsed = parseProjectConfigYaml(source);
+    if (parsed.errors.length > 0) {
+      throw new Error(`Configuration is invalid:\n${parsed.errors.join('\n')}`);
+    }
+
+    mkdirSync(join(workingDir, '.drs'), { recursive: true });
+    writeFileSync(getProjectConfigPath(workingDir), source, 'utf-8');
+    return { config: readProjectConfigFile(workingDir) };
   });
 
   ipcMain.handle('drs:runWorkflow', async (event, req) => {
