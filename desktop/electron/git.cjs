@@ -11,6 +11,9 @@ const { spawn } = require('node:child_process');
  * short `--stat` summary.
  */
 
+const DEFAULT_MAX_PATCH_BYTES = 2 * 1024 * 1024;
+const MAX_PATCH_BYTES = Number(process.env.DRS_DESKTOP_MAX_DIFF_BYTES || DEFAULT_MAX_PATCH_BYTES);
+
 /**
  * @param {string} workingDir
  * @param {string[]} args
@@ -42,7 +45,7 @@ const runGit = (workingDir, args) =>
 /**
  * @param {string} workingDir
  * @param {{ staged?: boolean }} [opts]
- * @returns {Promise<{ patch: string; nameStatus: string; stat: string }>}
+ * @returns {Promise<{ patch: string; nameStatus: string; stat: string; truncated?: boolean; patchBytes?: number; maxPatchBytes?: number }>}
  */
 const getDiff = async (workingDir, opts = {}) => {
   const flag = opts.staged ? ['--cached'] : [];
@@ -51,7 +54,18 @@ const getDiff = async (workingDir, opts = {}) => {
     runGit(workingDir, ['diff', ...flag, '--name-status']),
     runGit(workingDir, ['diff', ...flag, '--stat', '--no-color']),
   ]);
-  return { patch, nameStatus, stat };
+  const patchBytes = Buffer.byteLength(patch, 'utf-8');
+  if (patchBytes > MAX_PATCH_BYTES) {
+    return {
+      patch: '',
+      nameStatus,
+      stat,
+      truncated: true,
+      patchBytes,
+      maxPatchBytes: MAX_PATCH_BYTES,
+    };
+  }
+  return { patch, nameStatus, stat, patchBytes, maxPatchBytes: MAX_PATCH_BYTES };
 };
 
 module.exports = { runGit, getDiff };

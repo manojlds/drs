@@ -170,6 +170,9 @@ export interface DiffResult {
   patch: string;
   nameStatus: string;
   stat: string;
+  truncated?: boolean;
+  patchBytes?: number;
+  maxPatchBytes?: number;
 }
 
 export interface RunWorkflowRequest {

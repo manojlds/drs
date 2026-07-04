@@ -121,6 +121,8 @@ The current root quality gate does not include the desktop package. Run the desk
 
 - `DRS_CLI=/absolute/path/to/drs`: force the desktop app to use a specific CLI executable.
 - `ELECTRON_RENDERER_URL=http://127.0.0.1:5173`: force Electron to load a Vite dev server.
+- `DRS_DESKTOP_MAX_DIFF_BYTES=2097152`: maximum local patch size the desktop app will send
+  to the renderer. Raise only when testing very large diffs.
 - `NO_COLOR=1` and `FORCE_COLOR=0`: already set by the app when spawning DRS so logs stay parseable.
 
 ## Generated Files

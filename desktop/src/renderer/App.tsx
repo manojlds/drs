@@ -207,6 +207,18 @@ export function App() {
     setDiffError(null);
     try {
       const result = await window.drs.getDiff(dir, { staged: useStaged });
+      if (result.truncated) {
+        const message = `Diff is too large to render safely (${formatBytes(
+          result.patchBytes ?? 0
+        )}; limit ${formatBytes(
+          result.maxPatchBytes ?? 0
+        )}). Commit or stage a smaller change, or set DRS_DESKTOP_MAX_DIFF_BYTES to raise the desktop limit.`;
+        setDiffPatch('');
+        setDiffFingerprint('');
+        setDiffSourceLabel(useStaged ? 'Local staged diff' : 'Local unstaged diff');
+        setDiffError(message);
+        return { patch: '', fingerprint: '' };
+      }
       const fingerprint = hashString(result.patch);
       setDiffPatch(result.patch);
       setDiffFingerprint(fingerprint);
@@ -1474,6 +1486,18 @@ function hashString(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16);
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function projectName(project: string): string {
