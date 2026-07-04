@@ -3020,12 +3020,12 @@ async function runReviewWorkflowNode(
     artifactOutput = `${nodeId}Artifact`;
   }
   const outputs: Record<string, unknown> = {};
-  const persistedReviewArtifact = createReviewArtifactPayload(reviewResult, source);
+  const reviewArtifactPayload = createReviewArtifactPayload(reviewResult, source);
   const scope = await resolveArtifactScope(nodeId, node, workingDir, context, executionContext);
   const saved = await saveWorkflowArtifact(workingDir, {
     kind: 'review',
     scope,
-    payload: persistedReviewArtifact,
+    payload: reviewArtifactPayload,
   });
   const artifactResponse = `\nSaved review artifact ${saved.artifact.id}.`;
   if (artifactOutput) {
