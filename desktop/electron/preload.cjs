@@ -48,6 +48,7 @@ const drs = {
   saveProjectConfig: (req) => ipcRenderer.invoke('drs:saveProjectConfig', req),
   askReviewChat: (req) => ipcRenderer.invoke('drs:askReviewChat', req),
   startReviewChat: (req) => ipcRenderer.invoke('drs:startReviewChat', req),
+  startFactoryChat: (req) => ipcRenderer.invoke('drs:startFactoryChat', req),
   sendReviewChatMessage: (req) => ipcRenderer.invoke('drs:sendReviewChatMessage', req),
   closeReviewChat: (conversationId) => ipcRenderer.invoke('drs:closeReviewChat', conversationId),
   cancelWorkflow: (runId) => ipcRenderer.invoke('drs:cancelWorkflow', runId),

@@ -14,11 +14,19 @@ import {
   type Session,
   type SessionMessage,
 } from '../runtime/client.js';
+import { getPrd, listPrds, type FactoryPrd } from './factory-store.js';
+import { listTasks } from './task-store.js';
 
 export const DEFAULT_CONVERSATION_AGENT = 'task/review-assistant';
+export const DEFAULT_FACTORY_CONVERSATION_AGENT = 'task/factory-planner';
 export const DEFAULT_WORKFLOW_OUTPUT_PATH = '.drs/.desktop-run.json';
 
-export type ConversationSubjectKind = 'review' | 'workflow-run' | 'local-diff' | 'finding';
+export type ConversationSubjectKind =
+  | 'review'
+  | 'workflow-run'
+  | 'local-diff'
+  | 'finding'
+  | 'factory';
 export type ConversationMessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
 export interface ConversationSubject {
@@ -26,6 +34,7 @@ export interface ConversationSubject {
   reviewId?: string;
   workflowRunId?: string;
   findingIds?: string[];
+  prdId?: string;
 }
 
 export interface ConversationMessage {
@@ -57,6 +66,7 @@ export interface ConversationArtifact {
 export interface ConversationContext {
   reviewOutput?: unknown;
   workflowOutput?: unknown;
+  factory?: unknown;
   artifactPaths: ConversationArtifact['artifactPaths'];
 }
 
@@ -159,12 +169,17 @@ function compactJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function buildConversationPrompt(context: ConversationContext, userMessage: string): string {
-  const sections = [
-    'You are DRS review assistant, helping the user understand and act on DRS review/workflow output.',
-    'Answer using the supplied DRS artifacts as ground truth. Cite finding ids when present. If the artifacts do not contain enough information, say what is missing instead of guessing.',
-    'This first conversational implementation is read-oriented. Do not edit files unless the user explicitly asks for a fix and your available tools allow it.',
-  ];
+function buildConversationPrompt(
+  subject: ConversationSubject,
+  context: ConversationContext,
+  userMessage: string
+): string {
+  const sections =
+    subject.kind === 'factory' ? buildFactoryPromptSections() : buildReviewPromptSections();
+
+  if (context.factory !== undefined) {
+    sections.push(`## Factory Planning Context\n\n${compactJson(context.factory)}`);
+  }
 
   if (context.reviewOutput !== undefined) {
     sections.push(
@@ -178,7 +193,11 @@ function buildConversationPrompt(context: ConversationContext, userMessage: stri
     );
   }
 
-  if (context.reviewOutput === undefined && context.workflowOutput === undefined) {
+  if (
+    subject.kind !== 'factory' &&
+    context.reviewOutput === undefined &&
+    context.workflowOutput === undefined
+  ) {
     sections.push(
       'No DRS review or workflow artifact was found for this conversation. Explain that limitation and answer only from available repository context.'
     );
@@ -186,6 +205,53 @@ function buildConversationPrompt(context: ConversationContext, userMessage: stri
 
   sections.push(`## User Message\n\n${userMessage}`);
   return sections.join('\n\n');
+}
+
+function buildReviewPromptSections(): string[] {
+  return [
+    'You are DRS review assistant, helping the user understand and act on DRS review/workflow output.',
+    'Answer using the supplied DRS artifacts as ground truth. Cite finding ids when present. If the artifacts do not contain enough information, say what is missing instead of guessing.',
+    'This first conversational implementation is read-oriented. Do not edit files unless the user explicitly asks for a fix and your available tools allow it.',
+  ];
+}
+
+function buildFactoryPromptSections(): string[] {
+  return [
+    'You are the DRS Factory planning assistant.',
+    'Your job is to help turn feature intent into durable PRDs and reviewable user stories. Stay in planning mode. Do not implement code, schedule work, or claim tasks.',
+    'Use the supplied Factory context as ground truth. If requirements are unclear, ask up to 5 focused clarifying questions before drafting or changing a PRD.',
+    'When the user wants DRS to persist artifacts, tell them the exact DRS command to run or use the desktop Factory buttons. Prefer: create/update PRD, generate stories, request review, approve PRD, approve/reject stories, then import approved stories.',
+    'Stories should be independently reviewable slices with acceptance criteria and dependencies called out when known.',
+  ];
+}
+
+async function buildFactoryContext(
+  workingDir: string,
+  subject: ConversationSubject
+): Promise<unknown> {
+  const prds = await listPrds(workingDir);
+  const selectedPrd = subject.prdId ? await getPrd(workingDir, subject.prdId) : undefined;
+  const tasks = await listTasks(workingDir);
+  const selectedTasks = subject.prdId
+    ? tasks.filter((task) => task.prdId === subject.prdId)
+    : tasks;
+  return {
+    prds: prds.map(summarizePrd),
+    selectedPrd,
+    tasks: selectedTasks.map((task) => ({
+      id: task.id,
+      prdId: task.prdId,
+      storyId: task.storyId,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dependsOn: task.dependsOn,
+    })),
+  };
+}
+
+function summarizePrd(prd: FactoryPrd): Pick<FactoryPrd, 'id' | 'title' | 'status' | 'updatedAt'> {
+  return { id: prd.id, title: prd.title, status: prd.status, updatedAt: prd.updatedAt };
 }
 
 async function defaultRuntimeFactory({
@@ -238,9 +304,12 @@ export class ConversationService {
     const effectiveReviewOutputPath = latestReviewArtifact
       ? toRepoRelativePath(workingDir, latestReviewArtifact.path)
       : undefined;
+    const subject = options.subject ?? { kind: 'review' };
     const context: ConversationContext = {
       reviewOutput: canonicalReviewOutput,
       workflowOutput: await readJsonIfExists(workingDir, workflowOutputPath),
+      factory:
+        subject.kind === 'factory' ? await buildFactoryContext(workingDir, subject) : undefined,
       artifactPaths: {
         reviewOutput: effectiveReviewOutputPath,
         workflowOutput: workflowOutputPath,
@@ -253,8 +322,12 @@ export class ConversationService {
       createdAt: now,
       updatedAt: now,
       workingDir,
-      agent: options.agent ?? DEFAULT_CONVERSATION_AGENT,
-      subject: options.subject ?? { kind: 'review' },
+      agent:
+        options.agent ??
+        (subject.kind === 'factory'
+          ? DEFAULT_FACTORY_CONVERSATION_AGENT
+          : DEFAULT_CONVERSATION_AGENT),
+      subject,
       artifactPaths: context.artifactPaths,
       messages: [],
       state: 'active',
@@ -322,7 +395,7 @@ export class ConversationService {
     if (!conversation.piSessionId) {
       const session = await runtime.createSession({
         agent: conversation.agent,
-        message: buildConversationPrompt(context, options.message),
+        message: buildConversationPrompt(conversation.subject, context, options.message),
       });
       conversation.piSessionId = session.id;
     } else {

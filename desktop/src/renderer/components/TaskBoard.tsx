@@ -4,6 +4,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
 import type { DrsTask, FactoryPrd, FactoryPrdDetail, TaskStatus } from '@/shared/ipc-types';
+import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
   workingDir: string;
@@ -339,6 +340,8 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
           )}
         </section>
       </div>
+
+      <FactoryChatPanel workingDir={workingDir} prdId={selectedPrdId} />
 
       <div className="task-board-grid">
         {COLUMNS.map((column) => {

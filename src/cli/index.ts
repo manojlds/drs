@@ -315,6 +315,9 @@ program
   .command('chat')
   .description('Ask a question against the latest DRS review/workflow artifacts')
   .option('-p, --prompt <text>', 'Question to ask')
+  .option('--factory', 'Use the Factory planning assistant and PRD/story context')
+  .option('--prd <id>', 'Factory PRD id to ground the conversation')
+  .option('--agent <id>', 'Agent id to use for the conversation')
   .option('--json', 'Output the conversation turn as JSON')
   .option('--debug', 'Print debug logs')
   .option('--log-format <format>', 'Log output format: human (default) or json', 'human')
@@ -333,7 +336,10 @@ program
 
       const config = loadConfig(process.cwd());
       const service = new ConversationService({ config, workingDir: process.cwd() });
-      const conversation = await service.startConversation();
+      const conversation = await service.startConversation({
+        agent: options.agent,
+        subject: options.factory ? { kind: 'factory', prdId: options.prd } : undefined,
+      });
       const result = await service.sendMessage({
         conversationId: conversation.id,
         message: prompt,

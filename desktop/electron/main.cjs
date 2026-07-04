@@ -513,6 +513,22 @@ app.whenReady().then(() => {
     return { conversationId: conversation.id };
   });
 
+  ipcMain.handle('drs:startFactoryChat', async (_event, req) => {
+    const { workingDir, prdId, agent } = req || {};
+    if (!workingDir || typeof workingDir !== 'string') {
+      throw new Error('A working directory is required for factory chat.');
+    }
+    const { ConversationService, loadConfig } = await loadDrsConversationRuntime();
+    const config = loadConfig(workingDir);
+    const service = new ConversationService({ config, workingDir });
+    const conversation = await service.startConversation({
+      agent,
+      subject: { kind: 'factory', prdId },
+    });
+    reviewChatSessions.set(conversation.id, { service, workingDir });
+    return { conversationId: conversation.id };
+  });
+
   ipcMain.handle('drs:sendReviewChatMessage', async (event, req) => {
     const { conversationId, prompt } = req || {};
     if (!conversationId || typeof conversationId !== 'string') {

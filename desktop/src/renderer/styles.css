@@ -276,6 +276,18 @@ button {
   gap: 8px;
   margin-top: 8px;
 }
+.factory-chat-panel {
+  padding: 12px;
+}
+.factory-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.factory-chat-messages {
+  max-height: 260px;
+}
 .task-board-error {
   border: 1px solid rgba(243, 139, 168, 0.55);
   border-radius: 8px;

@@ -315,6 +315,12 @@ export interface StartReviewChatRequest {
   workingDir: string;
 }
 
+export interface StartFactoryChatRequest {
+  workingDir: string;
+  prdId?: string;
+  agent?: string;
+}
+
 export interface StartReviewChatResponse {
   conversationId: string;
 }
@@ -370,6 +376,7 @@ export interface DrsApi {
   saveProjectConfig(req: SaveProjectConfigRequest): Promise<SaveProjectConfigResponse>;
   askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
   startReviewChat(req: StartReviewChatRequest): Promise<StartReviewChatResponse>;
+  startFactoryChat(req: StartFactoryChatRequest): Promise<StartReviewChatResponse>;
   sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;
   closeReviewChat(conversationId: string): Promise<void>;
   cancelWorkflow(runId: string): Promise<void>;

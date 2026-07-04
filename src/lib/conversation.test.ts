@@ -3,6 +3,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationService, type ConversationRuntime } from './conversation.js';
+import { createPrd, generateStories, updatePrdStatus } from './factory-store.js';
 import type { SessionMessage } from '../runtime/client.js';
 import type { ReviewArtifactPayload } from './review-artifact.js';
 import type { WorkflowArtifactEnvelope } from './workflow-artifacts.js';
@@ -234,5 +235,51 @@ describe('ConversationService', () => {
     expect(closed.state).toBe('closed');
     expect(runtime.closeSession).toHaveBeenCalledWith('session-123');
     expect(runtime.shutdown).toHaveBeenCalled();
+  });
+
+  it('starts factory conversations with PRD planning context', async () => {
+    const workingDir = await createTempProject();
+    const created = await createPrd(workingDir, {
+      title: 'Factory Chat',
+      markdown: `# PRD: Factory Chat
+
+### US-001: Plan with chat
+**Description:** As a user, I want planning chat.
+`,
+    });
+    await generateStories(workingDir, created.prd.id);
+    await updatePrdStatus(workingDir, created.prd.id, 'in_review');
+    const runtime = createRuntime([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Ask two clarifying questions.',
+        timestamp: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+    const service = new ConversationService({
+      config: {} as any,
+      workingDir,
+      runtimeFactory: vi.fn(async () => runtime),
+    });
+
+    const conversation = await service.startConversation({
+      subject: { kind: 'factory', prdId: created.prd.id },
+    });
+    const result = await service.sendMessage({
+      conversationId: conversation.id,
+      message: 'What needs clarification?',
+    });
+
+    expect(conversation.agent).toBe('task/factory-planner');
+    expect(runtime.createSession).toHaveBeenCalledWith({
+      agent: 'task/factory-planner',
+      message: expect.stringContaining('Factory Planning Context'),
+    });
+    expect(runtime.createSession).toHaveBeenCalledWith({
+      agent: 'task/factory-planner',
+      message: expect.stringContaining('Factory Chat'),
+    });
+    expect(result.response).toBe('Ask two clarifying questions.');
   });
 });
