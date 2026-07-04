@@ -152,6 +152,140 @@ button {
   font-size: 13px;
 }
 
+.task-board-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
+}
+.task-board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.task-board-header h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+  letter-spacing: -0.03em;
+}
+.task-board-header p {
+  margin: 0;
+  color: var(--text-muted);
+}
+.task-create-card {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-elevated);
+}
+.task-create-card input {
+  flex: 1;
+}
+.task-board-error {
+  border: 1px solid rgba(243, 139, 168, 0.55);
+  border-radius: 8px;
+  background: rgba(243, 139, 168, 0.12);
+  color: var(--del-text);
+  padding: 10px 12px;
+}
+.task-board-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(220px, 1fr));
+  gap: 12px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+}
+.task-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+.task-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.task-column-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+.task-column-empty {
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 18px 10px;
+  text-align: center;
+}
+.task-card {
+  padding: 12px;
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.task-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.task-card strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.task-card p {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.task-card-criteria {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.task-status-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.task-status-select select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px;
+}
+
+@media (max-width: 900px) {
+  .task-board-shell {
+    padding: 12px;
+  }
+  .task-board-header,
+  .task-create-card {
+    flex-direction: column;
+  }
+  .task-board-grid {
+    grid-template-columns: repeat(7, minmax(260px, 82vw));
+  }
+}
+
 .workflow-node-summary {
   color: var(--text-muted);
   font-family: var(--mono);

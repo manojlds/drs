@@ -92,6 +92,32 @@ const parseJsonSafe = (text) => {
   }
 };
 
+const parseJsonRequired = (text, label) => {
+  const parsed = parseJsonSafe(text);
+  if (parsed === null) throw new Error(`Could not parse ${label} JSON.`);
+  return parsed;
+};
+
+/** @param {string[]} args @param {string | undefined} value */
+const pushOptional = (args, flag, value) => {
+  if (value !== undefined && value !== null && String(value).trim() !== '') args.push(flag, String(value));
+};
+
+/** @param {string[]} args @param {string[] | undefined} values */
+const pushRepeated = (args, flag, values) => {
+  for (const value of values || []) pushOptional(args, flag, value);
+};
+
+const runTaskJson = async (workingDir, args) => {
+  const { stdout } = await runDrs({
+    repoRoot,
+    workingDir,
+    args: ['task', ...args, '--json'],
+    timeoutMs: 30000,
+  });
+  return parseJsonRequired(stdout, 'task');
+};
+
 /** @param {string} workingDir @param {string} relPath */
 const readJsonFile = (workingDir, relPath) => {
   const abs = join(workingDir, relPath);
@@ -320,6 +346,30 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:getFileDiff', async (_event, workingDir, opts) => {
     return getFileDiff(workingDir, opts || {});
+  });
+
+  ipcMain.handle('drs:listTasks', async (_event, workingDir) => {
+    const result = await runTaskJson(workingDir, ['list', '--all']);
+    return result.tasks || [];
+  });
+
+  ipcMain.handle('drs:addTask', async (_event, req) => {
+    const args = ['add', '--title', req.title];
+    pushOptional(args, '--description', req.description);
+    pushOptional(args, '--status', req.status);
+    pushOptional(args, '--priority', req.priority);
+    pushRepeated(args, '--acceptance', req.acceptanceCriteria);
+    return runTaskJson(req.workingDir, args);
+  });
+
+  ipcMain.handle('drs:updateTask', async (_event, req) => {
+    const args = ['edit', req.id];
+    pushOptional(args, '--title', req.title);
+    pushOptional(args, '--description', req.description);
+    pushOptional(args, '--status', req.status);
+    pushOptional(args, '--priority', req.priority);
+    pushRepeated(args, '--acceptance', req.acceptanceCriteria);
+    return runTaskJson(req.workingDir, args);
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {

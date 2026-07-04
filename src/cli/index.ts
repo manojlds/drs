@@ -14,6 +14,15 @@ import { configureLogger, type LogFormat } from '../lib/logger.js';
 import { runTemporalWorker } from '../temporal/worker.js';
 import { createWorkflowExecutor } from './workflow-executor-selection.js';
 import { config as loadDotenv } from 'dotenv';
+import {
+  addTask,
+  getTask,
+  listTasks,
+  normalizeTaskStatus,
+  updateTask,
+  validateTaskStore,
+  type DrsTask,
+} from '../lib/task-store.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -62,6 +71,43 @@ function parseKeyValueOptions(
     parsed[value.slice(0, separatorIndex)] = value.slice(separatorIndex + 1);
   }
   return parsed;
+}
+
+function parseCsvOption(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function parseIntegerOption(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) throw new Error(`Expected an integer, got ${value}.`);
+  return parsed;
+}
+
+function printTasks(tasks: DrsTask[]): void {
+  if (tasks.length === 0) {
+    console.log('No tasks found.');
+    return;
+  }
+  for (const task of tasks) {
+    console.log(`${task.id.padEnd(8)} ${task.status.padEnd(14)} P${task.priority}  ${task.title}`);
+  }
+}
+
+function printTask(task: DrsTask): void {
+  console.log(chalk.bold(`${task.id}: ${task.title}`));
+  console.log(`Status: ${task.status}`);
+  console.log(`Priority: ${task.priority}`);
+  if (task.description) console.log(`\n${task.description}`);
+  if (task.acceptanceCriteria.length > 0) {
+    console.log('\nAcceptance criteria:');
+    for (const item of task.acceptanceCriteria) console.log(`- ${item}`);
+  }
+  if (task.dependsOn.length > 0) console.log(`\nDepends on: ${task.dependsOn.join(', ')}`);
 }
 
 const program = new Command();
@@ -318,6 +364,133 @@ temporalCommand
 
 program.addCommand(workflowCommand);
 program.addCommand(temporalCommand);
+
+const taskCommand = new Command('task').description('Manage local DRS work-factory tasks');
+
+taskCommand
+  .command('list')
+  .description('List local tasks')
+  .option('--all', 'Include done/merged/cancelled tasks')
+  .option('--json', 'Output tasks as JSON')
+  .action(async (options) => {
+    try {
+      const tasks = await listTasks(process.cwd());
+      const visible = options.all
+        ? tasks
+        : tasks.filter((task) => !['done', 'merged', 'cancelled'].includes(task.status));
+      if (options.json) {
+        console.log(JSON.stringify({ tasks: visible }, null, 2));
+      } else {
+        printTasks(visible);
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+taskCommand
+  .command('show <id>')
+  .description('Show one local task')
+  .option('--json', 'Output task as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const task = await getTask(process.cwd(), id);
+      if (options.json) console.log(JSON.stringify(task, null, 2));
+      else printTask(task);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+taskCommand
+  .command('add')
+  .description('Add a local task')
+  .option('--id <id>', 'Explicit task id')
+  .requiredOption('-t, --title <title>', 'Task title')
+  .option('-d, --description <description>', 'Task description')
+  .option('-s, --status <status>', 'Initial task status', 'open')
+  .option('-p, --priority <number>', 'Task priority', parseIntegerOption)
+  .option('--acceptance <text>', 'Acceptance criterion', collectOption, [])
+  .option('--depends-on <ids>', 'Comma-separated dependency task ids')
+  .option('--workflow <name>', 'Preferred workflow name')
+  .option('--branch <name>', 'Preferred branch name')
+  .option('--json', 'Output created task as JSON')
+  .action(async (options) => {
+    try {
+      const task = await addTask(process.cwd(), {
+        id: options.id,
+        title: options.title,
+        description: options.description,
+        status: normalizeTaskStatus(options.status),
+        priority: options.priority,
+        acceptanceCriteria: options.acceptance ?? [],
+        dependsOn: parseCsvOption(options.dependsOn),
+        workflow: options.workflow,
+        branch: options.branch,
+      });
+      if (options.json) console.log(JSON.stringify(task, null, 2));
+      else console.log(`Added ${task.id}: ${task.title}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+taskCommand
+  .command('edit <id>')
+  .description('Edit a local task')
+  .option('-t, --title <title>', 'Task title')
+  .option('-d, --description <description>', 'Task description')
+  .option('-s, --status <status>', 'Task status')
+  .option('-p, --priority <number>', 'Task priority', parseIntegerOption)
+  .option('--acceptance <text>', 'Replace acceptance criteria; repeat for multiple', collectOption)
+  .option('--depends-on <ids>', 'Replace dependencies with comma-separated task ids')
+  .option('--workflow <name>', 'Preferred workflow name')
+  .option('--branch <name>', 'Preferred branch name')
+  .option('--json', 'Output updated task as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const task = await updateTask(process.cwd(), id, {
+        title: options.title,
+        description: options.description,
+        status: options.status ? normalizeTaskStatus(options.status) : undefined,
+        priority: options.priority,
+        acceptanceCriteria: options.acceptance,
+        dependsOn: options.dependsOn === undefined ? undefined : parseCsvOption(options.dependsOn),
+        workflow: options.workflow,
+        branch: options.branch,
+      });
+      if (options.json) console.log(JSON.stringify(task, null, 2));
+      else console.log(`Updated ${task.id}: status=${task.status}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+taskCommand
+  .command('validate')
+  .description('Validate the local task store')
+  .option('--json', 'Output validation result as JSON')
+  .action(async (options) => {
+    try {
+      const result = await validateTaskStore(process.cwd());
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Task store valid (${result.count} task${result.count === 1 ? '' : 's'}).`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program.addCommand(taskCommand);
 
 program
   .command('list-agents')

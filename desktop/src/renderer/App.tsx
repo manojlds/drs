@@ -63,6 +63,9 @@ const FileTree = lazy(() =>
 const ProjectSettings = lazy(() =>
   import('./components/ProjectSettings').then((module) => ({ default: module.ProjectSettings }))
 );
+const TaskBoard = lazy(() =>
+  import('./components/TaskBoard').then((module) => ({ default: module.TaskBoard }))
+);
 const ReviewChatPanel = lazy(() =>
   import('./components/ReviewChatPanel').then((module) => ({ default: module.ReviewChatPanel }))
 );
@@ -631,6 +634,10 @@ export function App() {
             onInputChange={(key, value) => setWorkflowInputs((cur) => ({ ...cur, [key]: value }))}
             onRun={handleRunSelectedWorkflow}
           />
+        ) : projectMode === 'factory' ? (
+          <Suspense fallback={<LoadingPanel label="Loading factory board..." />}>
+            <TaskBoard workingDir={workingDir} />
+          </Suspense>
         ) : projectMode === 'settings' ? (
           <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
             <ProjectSettings workingDir={workingDir} />

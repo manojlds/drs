@@ -1,4 +1,4 @@
-import { FolderOpen, GitCompareArrows, Workflow, Settings2, X } from 'lucide-react';
+import { FolderOpen, GitCompareArrows, KanbanSquare, Workflow, Settings2, X } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -13,7 +13,7 @@ import {
   SidebarRail,
 } from '@/renderer/components/ui/sidebar';
 
-export type ProjectMode = 'review' | 'workflow' | 'settings';
+export type ProjectMode = 'review' | 'workflow' | 'factory' | 'settings';
 
 interface AppSidebarProps {
   workingDir: string | null;
@@ -28,6 +28,7 @@ interface AppSidebarProps {
 const MODE_ITEMS: Array<{ id: ProjectMode; label: string; icon: typeof GitCompareArrows }> = [
   { id: 'review', label: 'Review', icon: GitCompareArrows },
   { id: 'workflow', label: 'Workflows', icon: Workflow },
+  { id: 'factory', label: 'Factory', icon: KanbanSquare },
   { id: 'settings', label: 'Settings', icon: Settings2 },
 ];
 

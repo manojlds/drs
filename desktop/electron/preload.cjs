@@ -18,6 +18,7 @@ const { contextBridge, ipcRenderer } = require('electron');
  * @typedef {import('../src/shared/ipc-types').SendReviewChatMessageRequest} SendReviewChatMessageRequest
  * @typedef {import('../src/shared/ipc-types').ReviewChatEvent} ReviewChatEvent
  * @typedef {import('../src/shared/ipc-types').DiffResult} DiffResult
+ * @typedef {import('../src/shared/ipc-types').DrsTask} DrsTask
  * @typedef {import('../src/shared/ipc-types').WorkflowLogEvent} WorkflowLogEvent
  * @typedef {import('../src/shared/ipc-types').DrsApi} DrsApi
  */
@@ -30,6 +31,9 @@ const drs = {
   showWorkflow: (name, workingDir) => ipcRenderer.invoke('drs:showWorkflow', name, workingDir),
   getDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getDiff', workingDir, opts),
   getFileDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getFileDiff', workingDir, opts),
+  listTasks: (workingDir) => ipcRenderer.invoke('drs:listTasks', workingDir),
+  addTask: (req) => ipcRenderer.invoke('drs:addTask', req),
+  updateTask: (req) => ipcRenderer.invoke('drs:updateTask', req),
   getReviewArtifact: (workingDir) => ipcRenderer.invoke('drs:getReviewArtifact', workingDir),
   runWorkflow: (req) => ipcRenderer.invoke('drs:runWorkflow', req),
   getProjectConfig: (workingDir) => ipcRenderer.invoke('drs:getProjectConfig', workingDir),

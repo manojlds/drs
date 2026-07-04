@@ -191,6 +191,61 @@ export interface FileDiffResult {
   maxPatchBytes?: number;
 }
 
+export type TaskStatus =
+  | 'draft'
+  | 'open'
+  | 'in_progress'
+  | 'checks_failed'
+  | 'in_review'
+  | 'review_failed'
+  | 'ready_to_merge'
+  | 'merged'
+  | 'done'
+  | 'failed'
+  | 'cancelled';
+
+export interface DrsTask {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: number;
+  source: { kind: 'manual' | 'github_issue' | 'gitlab_issue' | 'review_finding'; id?: string; url?: string };
+  acceptanceCriteria: string[];
+  dependsOn: string[];
+  workflow?: string;
+  branch?: string;
+  attempts: Array<{
+    id: string;
+    workflow?: string;
+    status: 'running' | 'passed' | 'failed' | 'cancelled';
+    startedAt: string;
+    completedAt?: string;
+    summary?: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddTaskRequest {
+  workingDir: string;
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: number;
+  acceptanceCriteria?: string[];
+}
+
+export interface UpdateTaskRequest {
+  workingDir: string;
+  id: string;
+  title?: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: number;
+  acceptanceCriteria?: string[];
+}
+
 export interface RunWorkflowRequest {
   name: string;
   inputs: Record<string, string>;
@@ -261,6 +316,9 @@ export interface DrsApi {
   showWorkflow(name: string, workingDir: string): Promise<WorkflowDetail>;
   getDiff(workingDir: string, opts: { staged: boolean }): Promise<DiffResult>;
   getFileDiff(workingDir: string, opts: { staged: boolean; path: string }): Promise<FileDiffResult>;
+  listTasks(workingDir: string): Promise<DrsTask[]>;
+  addTask(req: AddTaskRequest): Promise<DrsTask>;
+  updateTask(req: UpdateTaskRequest): Promise<DrsTask>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;
