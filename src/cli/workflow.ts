@@ -3096,6 +3096,17 @@ function recordWorkflowNodeResult(
   }
 }
 
+function completeWorkflowNodeResult<T extends WorkflowNodeResult>(result: T, startedAt: string): T {
+  const completedAt = new Date().toISOString();
+  result.startedAt ??= startedAt;
+  result.completedAt ??= completedAt;
+  result.durationMs ??= Math.max(
+    0,
+    new Date(completedAt).getTime() - new Date(startedAt).getTime()
+  );
+  return result;
+}
+
 async function runWorkflowDagSegment(
   workflowNodes: Record<string, WorkflowNodeConfig>,
   nodeIds: string[],
@@ -3140,15 +3151,20 @@ async function runWorkflowDagSegment(
           throw new Error(`Workflow references unknown node "${nodeId}".`);
         }
 
+        const startedAt = new Date().toISOString();
         const skipReason = getWorkflowNodeSkipReason(node, context);
         if (skipReason) {
           logWorkflowNodeSkipped(nodeId, skipReason, options);
-          return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
+          return {
+            nodeId,
+            node,
+            result: completeWorkflowNodeResult(createSkippedWorkflowNodeResult(nodeId), startedAt),
+          };
         }
 
         logWorkflowNodeRunning(nodeId, options);
         const result = await nodeExecutor.runNode(nodeId, node, context);
-        return { nodeId, node, result };
+        return { nodeId, node, result: completeWorkflowNodeResult(result, startedAt) };
       })
     );
 
@@ -3234,9 +3250,14 @@ async function runControlWorkflowFromSegments(
     } else {
       logWorkflowNodeRunning(segment.nodeId, options);
     }
-    const { result, nextNodeId, ended } = skipReason
+    const startedAt = new Date().toISOString();
+    const controlResult = skipReason
       ? { result: createSkippedWorkflowNodeResult(segment.nodeId) }
       : runControlWorkflowNode(segment.nodeId, node, context);
+    const { result, nextNodeId, ended } = {
+      ...controlResult,
+      result: completeWorkflowNodeResult(controlResult.result, startedAt),
+    };
     recordWorkflowNodeResult(segment.nodeId, node, result, context.nodes, context.artifacts);
 
     if (ended) {
@@ -3514,15 +3535,23 @@ async function executeWorkflowRun(
               throw new Error(`Workflow references unknown node "${nodeId}".`);
             }
 
+            const startedAt = new Date().toISOString();
             const skipReason = getWorkflowNodeSkipReason(node, context);
             if (skipReason) {
               logWorkflowNodeSkipped(nodeId, skipReason, options);
-              return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
+              return {
+                nodeId,
+                node,
+                result: completeWorkflowNodeResult(
+                  createSkippedWorkflowNodeResult(nodeId),
+                  startedAt
+                ),
+              };
             }
 
             logWorkflowNodeRunning(nodeId, options);
             const result = await nodeExecutor.runNode(nodeId, node, context);
-            return { nodeId, node, result };
+            return { nodeId, node, result: completeWorkflowNodeResult(result, startedAt) };
           })
         );
 

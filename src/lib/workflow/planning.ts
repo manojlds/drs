@@ -922,10 +922,14 @@ export function runControlWorkflowNode(
 }
 
 export function createSkippedWorkflowNodeResult(nodeId: string): WorkflowNodeResult {
+  const timestamp = new Date().toISOString();
   return {
     id: nodeId,
     type: 'skipped',
     status: 'skipped',
+    startedAt: timestamp,
+    completedAt: timestamp,
+    durationMs: 0,
     response: '',
     output: undefined,
   };

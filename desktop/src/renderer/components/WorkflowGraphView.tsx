@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Background,
   Controls,
@@ -12,6 +12,7 @@ import type {
   WorkflowGraph,
   WorkflowGraphEdge,
   WorkflowGraphNode,
+  WorkflowRunNodeResult,
   WorkflowRunResultJson,
 } from '../../shared/ipc-types';
 
@@ -24,6 +25,7 @@ interface WorkflowGraphViewProps {
 }
 
 export function WorkflowGraphView({ graph, result, activeLogs = [], active = false, error = null }: WorkflowGraphViewProps) {
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const runtime = useMemo(
     () => buildWorkflowRuntime(graph, result, activeLogs, active, error),
     [active, activeLogs, error, graph, result]
@@ -34,13 +36,26 @@ export function WorkflowGraphView({ graph, result, activeLogs = [], active = fal
     return <div className="workflow-graph-empty">No workflow graph available.</div>;
   }
 
+  const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedRuntime = selectedNode ? runtime.get(selectedNode.id) : undefined;
+  const selectedResult = selectedNode ? result?.nodes[selectedNode.id] : undefined;
+
   return (
     <div className="workflow-graph-view">
-      <ReactFlow nodes={nodes} edges={edges} fitView nodesDraggable={false}>
-        <Background gap={18} />
-        <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
-      </ReactFlow>
+      <div className="workflow-graph-canvas">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          fitView
+          nodesDraggable={false}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+        >
+          <Background gap={18} />
+          <Controls showInteractive={false} />
+          <MiniMap pannable zoomable />
+        </ReactFlow>
+      </div>
+      <WorkflowNodeInspector node={selectedNode} runtime={selectedRuntime} result={selectedResult} />
     </div>
   );
 }
@@ -51,6 +66,8 @@ interface WorkflowNodeRuntime {
   status: WorkflowNodeRuntimeStatus;
   writes?: string;
   hasOutput?: boolean;
+  durationMs?: number;
+  cost?: number;
 }
 
 function layoutWorkflowGraph(
@@ -113,6 +130,8 @@ function buildWorkflowRuntime(
         status: nodeResult.status === 'skipped' ? 'skipped' : 'success',
         writes: nodeResult.writes,
         hasOutput: nodeResult.output !== undefined || !!nodeResult.outputs,
+        durationMs: nodeResult.durationMs,
+        cost: getWorkflowNodeCost(nodeResult),
       });
     }
   }
@@ -146,6 +165,53 @@ function buildWorkflowRuntime(
   }
 
   return runtime;
+}
+
+function getWorkflowNodeCost(result: WorkflowRunNodeResult): number | undefined {
+  if (Array.isArray(result.responses)) {
+    const total = result.responses.reduce((sum, response) => sum + (response.usage?.usage?.cost ?? 0), 0);
+    return total > 0 ? total : undefined;
+  }
+
+  const outputCost = getUnknownUsageCost(result.output);
+  if (outputCost !== undefined) return outputCost;
+
+  const outputsCost = getUnknownUsageCost(result.outputs);
+  return outputsCost;
+}
+
+function getUnknownUsageCost(value: unknown): number | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as {
+    usage?: { total?: { cost?: unknown }; usage?: { cost?: unknown }; cost?: unknown };
+    total?: { cost?: unknown };
+  };
+  const rawCost =
+    candidate.usage?.total?.cost ?? candidate.usage?.usage?.cost ?? candidate.usage?.cost ?? candidate.total?.cost;
+  return typeof rawCost === 'number' && rawCost > 0 ? rawCost : undefined;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) return `${durationMs}ms`;
+  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.round((durationMs % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatCost(cost: number): string {
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+function stringifyPreview(value: unknown): string {
+  if (value === undefined) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function computeNodeLevels(nodes: WorkflowGraphNode[], edges: WorkflowGraphEdge[]): Map<string, number> {
@@ -183,8 +249,48 @@ function WorkflowNodeLabel({ node, runtime }: { node: WorkflowGraphNode; runtime
       <span>{subtitle}</span>
       {node.condition && <em>if {node.condition}</em>}
       {node.output && <small>output: {node.output}</small>}
+      {runtime?.durationMs !== undefined && <small>duration: {formatDuration(runtime.durationMs)}</small>}
+      {runtime?.cost !== undefined && <small>cost: {formatCost(runtime.cost)}</small>}
       {runtime?.writes && <small>writes: {runtime.writes}</small>}
       {runtime?.hasOutput && <small>artifact/output available</small>}
+    </div>
+  );
+}
+
+function WorkflowNodeInspector({
+  node,
+  runtime,
+  result,
+}: {
+  node: WorkflowGraphNode | null;
+  runtime?: WorkflowNodeRuntime;
+  result?: WorkflowRunNodeResult;
+}) {
+  if (!node) {
+    return <div className="workflow-node-inspector empty">Select a graph node to inspect runtime details.</div>;
+  }
+
+  const outputPreview = stringifyPreview(result?.output ?? result?.outputs ?? result?.response);
+
+  return (
+    <div className="workflow-node-inspector">
+      <div className="workflow-node-inspector-head">
+        <div>
+          <span>Selected Node</span>
+          <strong>{node.id}</strong>
+        </div>
+        <b className={`workflow-node-status ${runtime?.status ?? 'pending'}`}>{runtime?.status ?? 'pending'}</b>
+      </div>
+      <dl>
+        <div><dt>Kind</dt><dd>{node.kind}</dd></div>
+        <div><dt>Handler</dt><dd>{node.agent ?? node.agentsFrom ?? node.action ?? node.control ?? 'n/a'}</dd></div>
+        {node.condition && <div><dt>Condition</dt><dd>{node.condition}</dd></div>}
+        {runtime?.durationMs !== undefined && <div><dt>Duration</dt><dd>{formatDuration(runtime.durationMs)}</dd></div>}
+        {runtime?.cost !== undefined && <div><dt>Cost</dt><dd>{formatCost(runtime.cost)}</dd></div>}
+        {runtime?.writes && <div><dt>Writes</dt><dd>{runtime.writes}</dd></div>}
+        {result?.startedAt && <div><dt>Started</dt><dd>{new Date(result.startedAt).toLocaleTimeString()}</dd></div>}
+      </dl>
+      {outputPreview && <pre>{outputPreview.slice(0, 2000)}</pre>}
     </div>
   );
 }
