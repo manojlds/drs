@@ -103,10 +103,7 @@ That's it.`;
       expect(result).toEqual(simpleReview);
     });
 
-    it('prefers inline JSON over file when raw output has fenced JSON', async () => {
-      const fileJson = { issues: [{ title: 'from file' }] };
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(fileJson));
-
+    it('prefers inline JSON when raw output has fenced JSON', async () => {
       const raw = `\`\`\`json\n${JSON.stringify(REVIEW_JSON, null, 2)}\n\`\`\``;
       const result = await parseReviewOutput(testDir, false, raw);
       expect(result).toEqual(REVIEW_JSON);
@@ -114,12 +111,11 @@ That's it.`;
   });
 
   describe('output pointer', () => {
-    it('follows outputType pointer to default review path', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
-
-      const raw = JSON.stringify({ outputType: 'review_output' });
-      const result = await parseReviewOutput(testDir, false, raw);
-      expect(result).toEqual(REVIEW_JSON);
+    it('throws for outputType-only pointers', async () => {
+      const raw = JSON.stringify({ outputType: 'describe_output' });
+      await expect(parseReviewOutput(testDir, false, raw)).rejects.toThrow(
+        'Unexpected output type for review output'
+      );
     });
 
     it('follows outputPath pointer to custom file', async () => {
@@ -131,33 +127,33 @@ That's it.`;
       expect(result).toEqual(REVIEW_JSON);
     });
 
-    it('falls back to default path when pointer file does not exist', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
-
-      const raw = JSON.stringify({ outputPath: '.drs/missing.json' });
-      const result = await parseReviewOutput(testDir, false, raw);
-      expect(result).toEqual(REVIEW_JSON);
-    });
-
-    it('throws for unexpected outputType', async () => {
-      const raw = JSON.stringify({ outputType: 'describe_output' });
-      await expect(parseReviewOutput(testDir, false, raw)).rejects.toThrow(
-        'Unexpected output type for review output'
-      );
-    });
-  });
-
-  describe('default file path fallback', () => {
-    it('prefers canonical review artifacts over .drs/review-output.json', async () => {
+    it('falls back to canonical artifacts when pointer file does not exist', async () => {
       const artifactDir = join(testDir, '.drs/artifacts/local/local/default/review');
       await mkdir(artifactDir, { recursive: true });
       await writeFile(
         join(artifactDir, 'latest.json'),
         JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
       );
+      const raw = JSON.stringify({ outputPath: '.drs/missing.json' });
+      const result = await parseReviewOutput(testDir, false, raw);
+      expect(result).toMatchObject({ issues: [{ title: 'Canonical issue' }] });
+    });
+
+    it('throws when outputType is combined with outputPath', async () => {
+      const raw = JSON.stringify({ outputType: 'describe_output', outputPath: '.drs/custom.json' });
+      await expect(parseReviewOutput(testDir, false, raw)).rejects.toThrow(
+        'Unexpected output type for review output'
+      );
+    });
+  });
+
+  describe('canonical artifact fallback', () => {
+    it('reads canonical review artifacts when raw output is unavailable', async () => {
+      const artifactDir = join(testDir, '.drs/artifacts/local/local/default/review');
+      await mkdir(artifactDir, { recursive: true });
       await writeFile(
-        join(testDir, '.drs/review-output.json'),
-        JSON.stringify({ issues: [{ title: 'Legacy issue' }] })
+        join(artifactDir, 'latest.json'),
+        JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
       );
 
       const result = await parseReviewOutput(testDir, false);
@@ -177,16 +173,9 @@ That's it.`;
       });
     });
 
-    it('reads from .drs/review-output.json when no rawOutput', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
-
-      const result = await parseReviewOutput(testDir, false);
-      expect(result).toEqual(REVIEW_JSON);
-    });
-
-    it('throws when no rawOutput and default file is missing', async () => {
+    it('throws when raw output and canonical artifacts are missing', async () => {
       await expect(parseReviewOutput(testDir, false)).rejects.toThrow(
-        'Review output file not found'
+        'Review output not found in raw output or canonical review artifacts'
       );
     });
   });
@@ -204,16 +193,22 @@ That's it.`;
     });
 
     it('logs when loading from pointer path', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
+      const customPath = '.drs/custom-review.json';
+      await writeFile(join(testDir, customPath), JSON.stringify(REVIEW_JSON));
 
-      const raw = JSON.stringify({ outputType: 'review_output' });
+      const raw = JSON.stringify({ outputPath: customPath });
       await parseReviewOutput(testDir, true, raw);
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Review output loaded from'));
     });
 
     it('logs parse failure for invalid JSON in raw output', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
+      const artifactDir = join(testDir, '.drs/artifacts/local/local/default/review');
+      await mkdir(artifactDir, { recursive: true });
+      await writeFile(
+        join(artifactDir, 'latest.json'),
+        JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
+      );
 
       await parseReviewOutput(testDir, true, 'not valid json at all');
 
@@ -223,7 +218,12 @@ That's it.`;
     });
 
     it('logs fallback when pointer file is missing', async () => {
-      await writeFile(join(testDir, '.drs/review-output.json'), JSON.stringify(REVIEW_JSON));
+      const artifactDir = join(testDir, '.drs/artifacts/local/local/default/review');
+      await mkdir(artifactDir, { recursive: true });
+      await writeFile(
+        join(artifactDir, 'latest.json'),
+        JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
+      );
 
       const raw = JSON.stringify({ outputPath: '.drs/nonexistent.json' });
       await parseReviewOutput(testDir, true, raw);

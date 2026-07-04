@@ -87,11 +87,13 @@ describe('ConversationService', () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it('starts a conversation backed by review and workflow artifacts', async () => {
+  it('starts a conversation backed by canonical review and workflow artifacts', async () => {
     const workingDir = await createTempProject();
+    const artifactDir = join(workingDir, '.drs/artifacts/local/project/default/review');
+    await mkdir(artifactDir, { recursive: true });
     await writeFile(
-      join(workingDir, '.drs/review-output.json'),
-      JSON.stringify({ summary: { issuesFound: 1 }, issues: [{ title: 'Bug' }] })
+      join(artifactDir, 'latest.json'),
+      JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
     );
     await writeFile(
       join(workingDir, '.drs/.desktop-run.json'),
@@ -120,7 +122,7 @@ describe('ConversationService', () => {
 
     expect(runtime.createSession).toHaveBeenCalledWith({
       agent: 'task/review-assistant',
-      message: expect.stringContaining('review-output.json'),
+      message: expect.stringContaining('.drs/artifacts/local/project/default/review/latest.json'),
     });
     expect(result.response).toBe('There is one issue.');
     expect(result.conversation.piSessionId).toBe('session-123');
@@ -129,42 +131,6 @@ describe('ConversationService', () => {
       await readFile(join(workingDir, '.drs/conversations/latest.json'), 'utf-8')
     ) as { messages: Array<{ role: string; content: string }> };
     expect(saved.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
-  });
-
-  it('prefers canonical review artifacts over legacy review output', async () => {
-    const workingDir = await createTempProject();
-    const artifactDir = join(workingDir, '.drs/artifacts/local/project/default/review');
-    await mkdir(artifactDir, { recursive: true });
-    await writeFile(
-      join(artifactDir, 'latest.json'),
-      JSON.stringify(createReviewArtifact('2026-01-01T00:00:00.000Z'))
-    );
-    await writeFile(
-      join(workingDir, '.drs/review-output.json'),
-      JSON.stringify({ summary: { issuesFound: 1 }, issues: [{ title: 'Legacy bug' }] })
-    );
-
-    const runtime = createRuntime([]);
-    const service = new ConversationService({
-      config: {} as any,
-      workingDir,
-      runtimeFactory: vi.fn(async () => runtime),
-    });
-
-    const conversation = await service.startConversation();
-    await service.sendMessage({
-      conversationId: conversation.id,
-      message: 'What did the review find?',
-    });
-
-    expect(runtime.createSession).toHaveBeenCalledWith({
-      agent: 'task/review-assistant',
-      message: expect.stringContaining('Canonical bug'),
-    });
-    expect(runtime.createSession).toHaveBeenCalledWith({
-      agent: 'task/review-assistant',
-      message: expect.stringContaining('.drs/artifacts/local/project/default/review/latest.json'),
-    });
   });
 
   it('continues an existing Pi session for follow-up messages', async () => {

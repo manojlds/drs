@@ -51,7 +51,7 @@ lacks, making the combination more powerful than either alone.
 │  DRS CLI  (dist/cli/index.js, ESM)                           │
 │  drs workflow run --output .drs/.desktop-run.json …          │
 │  drs workflow list --json   /   drs workflow show <name> -j  │
-│        → writes review JSON to .drs/review-output.json        │
+│        → writes review artifacts under .drs/artifacts/        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ drives the DRS CLI as a child process and reads structured JSON from disk:
   file (via DRS's `writeWorkflowFile`), avoiding stdout-mixed-with-logs parsing.
 - `drs workflow list --json` / `drs workflow show <name> --json` emit pure JSON
   to stdout.
-- `.drs/review-output.json` holds the `ReviewJsonOutput` (issues + summary).
+- `.drs/artifacts/**/review/latest.json` holds the canonical review artifact.
 
 ### DRS ↔ desktop data mapping
 
@@ -155,7 +155,7 @@ desktop/
   - `drs:listWorkflows` → `drs workflow list --json`
   - `drs:showWorkflow` → `drs workflow show <name> --json`
   - `drs:getDiff` → `git -C <dir> diff [--cached] --no-color`
-  - `drs:getReviewArtifact` → reads `.drs/review-output.json`
+  - `drs:getReviewArtifact` → reads the latest canonical review artifact
   - `drs:runWorkflow` → `drs workflow run <name> --output .drs/.desktop-run.json
     --input k=v …`, streams logs via `event.sender.send('drs:workflowLog')`
   - `drs:cancelWorkflow` → `SIGTERM` the child process
@@ -365,4 +365,3 @@ globally, or `DRS_CLI` set. The repo is already built in this workspace.
 - **Markdown preview rendering** inline (render added `.md` content live).
 - **"Viewed" toggle** per file (track review progress).
 - **Multiple windows** (one per repository).
-

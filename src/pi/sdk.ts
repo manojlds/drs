@@ -1063,7 +1063,7 @@ class PiSessionRuntime {
         label: 'write_json_output',
         description: 'Validate and write structured JSON output for DRS agents.',
         parameters: Type.Object({
-          outputType: Type.Union([Type.Literal('describe_output'), Type.Literal('review_output')]),
+          outputType: Type.Literal('describe_output'),
           payload: Type.Any(),
           pretty: Type.Optional(Type.Boolean()),
           indent: Type.Optional(Type.Number({ minimum: 2, maximum: 8 })),
@@ -1071,7 +1071,7 @@ class PiSessionRuntime {
         execute: async (
           _toolCallId,
           params: {
-            outputType: 'describe_output' | 'review_output';
+            outputType: 'describe_output';
             payload: unknown;
             pretty?: boolean;
             indent?: number;

@@ -16,7 +16,7 @@ fix-and-verify loop from a desktop app.
 - **File tree** — uses `@pierre/trees` to show changed files grouped by
   directory with git status and add/delete count decorations; selecting a file
   scrolls the diff to that file.
-- **Inline DRS reviews** — overlays `ReviewIssue`s from `.drs/review-output.json`
+- **Inline DRS reviews** — overlays findings from canonical review artifacts under `.drs/artifacts/`
   directly on the diff lines they reference, with severity/category badges.
 - **Issue panel** — filterable, clickable list of all review findings; clicking
   an issue scrolls the diff to the exact line.
@@ -80,14 +80,14 @@ React renderer (src/renderer/)
 Electron main process (electron/main.cjs, CommonJS)
   ↕ child process
 DRS CLI (drs workflow run --output .drs/.desktop-run.json ...)
-  → writes review JSON to .drs/review-output.json
-  → main process reads it and returns to renderer
+  → writes canonical review artifacts under .drs/artifacts/
+  → main process reads the latest review artifact and returns it to renderer
 ```
 
 The main process is CommonJS (Electron's convention); DRS compiles to ESM. The
 app bridges that by driving the DRS CLI as a child process and reading
-structured JSON (`--output` for run results, `.drs/review-output.json` for
-review artifacts) — the same pattern Codiff uses for its agent backends.
+structured JSON (`--output` for run results, `.drs/artifacts/` for review
+artifacts) — the same pattern Codiff uses for its agent backends.
 
 Review/diff mode is driven by workflow YAML metadata. Review workflows should set
 `metadata.kind: review` or include `review` in `metadata.tags`; optional

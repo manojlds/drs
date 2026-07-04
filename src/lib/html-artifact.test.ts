@@ -65,6 +65,6 @@ describe('html artifact output', () => {
     expect(
       parseArtifactOutputPointer('{"outputType":"artifact_output","outputPath":".drs/visual.html"}')
     ).toEqual({ outputType: 'artifact_output', outputPath: '.drs/visual.html' });
-    expect(parseArtifactOutputPointer('{"outputType":"review_output"}')).toBeUndefined();
+    expect(parseArtifactOutputPointer('{"outputType":"other_output"}')).toBeUndefined();
   });
 });

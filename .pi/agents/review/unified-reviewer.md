@@ -96,12 +96,8 @@ Follow these steps **in order** before reporting any issues:
 
 ## Output Requirements
 
-- You MUST call the `write_json_output` tool with:
-  - `outputType`: `"review_output"`
-  - `payload`: the JSON object described below
-  - After calling the tool, return **only** the JSON pointer returned by the tool
-    (e.g. `{"outputType":"review_output","outputPath":".drs/review-output.json"}`)
-- Do **not** return raw JSON directly.
+- Return **only** the raw JSON object described below.
+- Do **not** call `write_json_output`.
 - Do **not** include markdown, code fences, or extra text.
 - Follow this exact schema:
 
