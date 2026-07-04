@@ -288,6 +288,30 @@ button {
 .factory-chat-messages {
   max-height: 260px;
 }
+.factory-proposals-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+.factory-proposal-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--bg-elevated);
+}
+.factory-proposal-item p {
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.factory-proposal-item span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
 .task-board-error {
   border: 1px solid rgba(243, 139, 168, 0.55);
   border-radius: 8px;

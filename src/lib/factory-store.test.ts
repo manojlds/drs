@@ -4,8 +4,12 @@ import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   createPrd,
+  createProposal,
+  applyProposal,
+  discardProposal,
   generateStories,
   importStoriesToTasks,
+  listProposals,
   listPrds,
   updatePrdStatus,
   updateStoryReviewStatus,
@@ -86,6 +90,32 @@ describe('factory-store', () => {
       expect(imported).toHaveLength(1);
       expect(imported[0].storyId).toBe('US-001');
       expect(imported[0].status).toBe('backlog');
+    });
+  });
+
+  it('creates, applies, and discards planning proposals', async () => {
+    await withTempDir(async (dir) => {
+      const created = await createPrd(dir, { title: 'Proposal Target', prompt: 'Original' });
+      const proposal = await createProposal(dir, {
+        prdId: created.prd.id,
+        title: 'Sharper PRD',
+        summary: 'Replace the draft with a clearer PRD.',
+        markdown: '# PRD: Proposal Target\n\n## Overview\nUpdated by proposal.\n',
+        createdBy: 'test-agent',
+      });
+      const spare = await createProposal(dir, {
+        title: 'Unused Alternative',
+        markdown: '# PRD: Alternative\n',
+      });
+
+      const applied = await applyProposal(dir, proposal.id);
+      const discarded = await discardProposal(dir, spare.id);
+      const proposals = await listProposals(dir);
+
+      expect(applied.markdown).toContain('Updated by proposal');
+      expect(applied.proposal.status).toBe('applied');
+      expect(discarded.status).toBe('discarded');
+      expect(proposals.map((item) => item.status).sort()).toEqual(['applied', 'discarded']);
     });
   });
 });

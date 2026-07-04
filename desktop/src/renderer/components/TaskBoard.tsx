@@ -3,7 +3,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
-import type { DrsTask, FactoryPrd, FactoryPrdDetail, TaskStatus } from '@/shared/ipc-types';
+import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryProposal, TaskStatus } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
@@ -45,6 +45,7 @@ const MOVE_STATUSES: TaskStatus[] = [
 export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [tasks, setTasks] = useState<DrsTask[]>([]);
   const [prds, setPrds] = useState<FactoryPrd[]>([]);
+  const [proposals, setProposals] = useState<FactoryProposal[]>([]);
   const [selectedPrdId, setSelectedPrdId] = useState<string | null>(null);
   const [prdDetail, setPrdDetail] = useState<FactoryPrdDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,12 +59,14 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setLoading(true);
     setError(null);
     try {
-      const [taskList, prdList] = await Promise.all([
+      const [taskList, prdList, proposalList] = await Promise.all([
         window.drs.listTasks(workingDir),
         window.drs.listPrds(workingDir),
+        window.drs.listProposals(workingDir),
       ]);
       setTasks(taskList);
       setPrds(prdList);
+      setProposals(proposalList);
       const nextSelected = selectedPrdId ?? prdList[0]?.id ?? null;
       setSelectedPrdId(nextSelected);
       if (nextSelected) {
@@ -184,6 +187,34 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [selectedPrdId, workingDir]);
 
+  const handleApplyProposal = useCallback(
+    async (proposalId: string) => {
+      setError(null);
+      try {
+        const result = await window.drs.applyProposal(workingDir, proposalId);
+        setPrdDetail({ prd: result.prd, markdown: result.markdown, stories: result.stories });
+        setMarkdownDraft(result.markdown);
+        setProposals((current) => current.map((proposal) => (proposal.id === result.proposal.id ? result.proposal : proposal)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [workingDir]
+  );
+
+  const handleDiscardProposal = useCallback(
+    async (proposalId: string) => {
+      setError(null);
+      try {
+        const discarded = await window.drs.discardProposal(workingDir, proposalId);
+        setProposals((current) => current.map((proposal) => (proposal.id === discarded.id ? discarded : proposal)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [workingDir]
+  );
+
   const handleStoryStatus = useCallback(
     async (storyId: string, status: 'draft' | 'approved' | 'rejected') => {
       if (!selectedPrdId) return;
@@ -232,6 +263,9 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     !!prdDetail &&
     (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
     approvedStoryCount > 0;
+  const draftProposals = proposals.filter(
+    (proposal) => proposal.status === 'draft' && (!selectedPrdId || proposal.prdId === selectedPrdId)
+  );
 
   return (
     <div className="task-board-shell">
@@ -263,6 +297,28 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       </Card>
 
       {error && <div className="task-board-error">{error}</div>}
+
+      {draftProposals.length > 0 && (
+        <Card className="factory-proposals-panel">
+          <div className="task-column-header">
+            <strong>Planning Proposals</strong>
+            <Badge variant="outline">{draftProposals.length}</Badge>
+          </div>
+          {draftProposals.map((proposal) => (
+            <div key={proposal.id} className="factory-proposal-item">
+              <div>
+                <strong>{proposal.title}</strong>
+                {proposal.summary && <p>{proposal.summary}</p>}
+                <span>{proposal.id}</span>
+              </div>
+              <div className="factory-prd-actions">
+                <Button variant="outline" onClick={() => void handleApplyProposal(proposal.id)}>Apply</Button>
+                <Button variant="outline" onClick={() => void handleDiscardProposal(proposal.id)}>Discard</Button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
 
       <div className="factory-planning-layout">
         <aside className="factory-prd-list">

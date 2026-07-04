@@ -411,6 +411,19 @@ app.whenReady().then(() => {
     return result.tasks || [];
   });
 
+  ipcMain.handle('drs:listProposals', async (_event, workingDir) => {
+    const result = await runDrsJson(workingDir, ['factory', 'proposal-list']);
+    return result.proposals || [];
+  });
+
+  ipcMain.handle('drs:applyProposal', async (_event, workingDir, id) => {
+    return runDrsJson(workingDir, ['factory', 'proposal-apply', id]);
+  });
+
+  ipcMain.handle('drs:discardProposal', async (_event, workingDir, id) => {
+    return runDrsJson(workingDir, ['factory', 'proposal-discard', id]);
+  });
+
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {
     return await readLatestReviewArtifact(workingDir);
   });
