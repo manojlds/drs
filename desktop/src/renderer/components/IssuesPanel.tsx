@@ -1,7 +1,7 @@
 import { Button } from '@/renderer/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/renderer/components/ui/toggle-group';
 import { CATEGORY_EMOJI, SEVERITIES, SEVERITY_CLASS, SEVERITY_EMOJI } from '../lib/badges';
-import { issueLineKey } from '../lib/diff';
+import { issueKey } from '../lib/diff';
 import type { IssueSeverity, ReviewIssue, ReviewJsonOutput } from '../types';
 
 interface IssuesPanelProps {
@@ -30,6 +30,9 @@ export function IssuesPanel({
             {review.summary.issuesFound} found · {review.summary.filesReviewed} files
           </span>
         )}
+        <span className="issues-pane-hint muted" title="Step through issues without the mouse">
+          j/k to navigate
+        </span>
         <span style={{ marginLeft: 'auto' }}>
           <Button
             variant="outline"
@@ -117,9 +120,7 @@ function IssueList({
   return (
     <>
       {filtered.map((issue) => {
-        const key = issue.line
-          ? issueLineKey(issue.file, issue.line)
-          : `${issue.file}:${issue.title}`;
+        const key = issueKey(issue);
         return (
           <IssueCard
             key={key}

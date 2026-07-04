@@ -39,11 +39,12 @@ import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/renderer/components/ui/toggle-group';
 import { SEVERITIES, severityToInput } from './lib/badges';
 import { buildReviewMarkdown, copyToClipboard } from './lib/markdown';
-import { parseUnifiedDiff, type DiffFile, issueLineKey } from './lib/diff';
+import { parseUnifiedDiff, type DiffFile, issueKey } from './lib/diff';
 import type {
   IssueSeverity,
   ReviewIssue,
   ReviewJsonOutput,
+  WorkflowGraph,
   WorkflowListEntry,
   WorkflowDetail,
   WorkflowInputConfig,
@@ -107,6 +108,7 @@ export function App() {
   const [review, setReview] = useState<ReviewJsonOutput | null>(null);
   const [staleReview, setStaleReview] = useState<ReviewJsonOutput | null>(null);
   const [runState, setRunState] = useState<RunBannerState | null>(null);
+  const [runningGraph, setRunningGraph] = useState<WorkflowGraph | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
@@ -146,15 +148,12 @@ export function App() {
   );
   const selectedIssue = useMemo(() => {
     if (!review || !selectedIssueKey) return null;
-    return (
-      review.issues.find((issue) => {
-        const key = issue.line
-          ? issueLineKey(issue.file, issue.line)
-          : `${issue.file}:${issue.title}`;
-        return key === selectedIssueKey;
-      }) ?? null
-    );
+    return review.issues.find((issue) => issueKey(issue) === selectedIssueKey) ?? null;
   }, [review, selectedIssueKey]);
+  const visibleIssues = useMemo(
+    () => review?.issues.filter((issue) => severityFilter.has(issue.severity)) ?? [],
+    [review, severityFilter]
+  );
 
   // Subscribe to live workflow log events from the main process.
   useEffect(() => {
@@ -343,6 +342,11 @@ export function App() {
       const targetAtStart: 'staged' | 'unstaged' = staged ? 'staged' : 'unstaged';
       const fingerprintAtStart = diffFingerprint;
       setRunState({ active: true, name, runId, logs: [], error: null });
+      setRunningGraph(null);
+      void window.drs
+        .showWorkflow(name, workingDir)
+        .then((detail) => setRunningGraph(detail.graph ?? null))
+        .catch(() => setRunningGraph(null));
       try {
         const response = await window.drs.runWorkflow({ name, inputs, workingDir, runId });
         setLastRunResult(response.result);
@@ -461,8 +465,7 @@ export function App() {
   }, []);
 
   const handleSelectIssue = useCallback((issue: ReviewIssue) => {
-    const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
-    setSelectedIssueKey(key);
+    setSelectedIssueKey(issueKey(issue));
     setScrollTarget({ file: issue.file, line: issue.line ?? null });
     setSelectedFile(issue.file);
   }, []);
@@ -471,6 +474,39 @@ export function App() {
     setSelectedFile(file);
     setScrollTarget({ file, line: null });
   }, []);
+
+  // Keyboard navigation for the issue queue: j/k (or Down/Up) step through
+  // the currently visible (severity-filtered) issues while reviewing a diff.
+  // Ignored while the user is typing in a text field (chat input, settings
+  // form, etc.) so the shortcut never hijacks normal typing.
+  useEffect(() => {
+    if (projectMode !== 'review' || reviewView !== 'diff') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (visibleIssues.length === 0) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key;
+      const isNext = key === 'j' || key === 'ArrowDown';
+      const isPrev = key === 'k' || key === 'ArrowUp';
+      if (!isNext && !isPrev) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      const currentIndex = visibleIssues.findIndex((issue) => issueKey(issue) === selectedIssueKey);
+      const nextIndex = isNext
+        ? currentIndex >= visibleIssues.length - 1
+          ? 0
+          : currentIndex + 1
+        : currentIndex <= 0
+          ? visibleIssues.length - 1
+          : currentIndex - 1;
+      handleSelectIssue(visibleIssues[nextIndex]);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSelectIssue, projectMode, reviewView, selectedIssueKey, visibleIssues]);
 
   return (
     <SidebarProvider>
@@ -651,7 +687,13 @@ export function App() {
             )}
           </>
         )}
-        <RunBanner state={runState} onCancel={handleCancelWorkflow} onDismiss={handleDismissRun} />
+        <RunBanner
+          state={runState}
+          graph={projectMode === 'review' ? runningGraph : null}
+          result={lastRunResult}
+          onCancel={handleCancelWorkflow}
+          onDismiss={handleDismissRun}
+        />
       </SidebarInset>
     </SidebarProvider>
   );

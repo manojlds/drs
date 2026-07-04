@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { WorkflowGraphView } from './WorkflowGraphView';
+import type { WorkflowGraph, WorkflowRunResultJson } from '../types';
 
 export interface RunBannerState {
   active: boolean;
@@ -11,11 +13,18 @@ export interface RunBannerState {
 
 interface RunBannerProps {
   state: RunBannerState | null;
+  /** Workflow graph for the run currently tracked by `state`, if known. When
+   * provided, the expanded panel shows live per-node DAG progress instead of
+   * (or in addition to) the raw log stream. */
+  graph?: WorkflowGraph | null;
+  /** Most recently completed run result, used to backfill final per-node
+   * status/duration/cost once the run finishes. */
+  result?: WorkflowRunResultJson | null;
   onCancel: () => void;
   onDismiss: () => void;
 }
 
-export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
+export function RunBanner({ state, graph, result, onCancel, onDismiss }: RunBannerProps) {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -25,12 +34,17 @@ export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
   if (!state) return null;
 
   const status = state.active ? 'Running' : state.error ? 'Failed' : 'Finished';
-  const hasDetails = state.logs.length > 0 || !!state.error;
+  const hasGraph = !!graph;
+  const hasDetails = state.logs.length > 0 || !!state.error || hasGraph;
 
   return (
     <div className="run-banner">
       <div className="rb-head">
-        {state.active ? <span className="spinner" /> : <span className={`status-dot ${state.error ? 'error' : 'ok'}`} />}
+        {state.active ? (
+          <span className="spinner" />
+        ) : (
+          <span className={`status-dot ${state.error ? 'error' : 'ok'}`} />
+        )}
         <button
           className="rb-summary"
           disabled={!hasDetails}
@@ -39,7 +53,15 @@ export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
         >
           <span className="rb-status">{status}</span>
           <span className="rb-name">{state.name}</span>
-          {hasDetails && <span className="rb-log-count">{expanded ? 'Hide logs' : `${state.logs.length} log chunks`}</span>}
+          {hasDetails && (
+            <span className="rb-log-count">
+              {expanded
+                ? 'Hide details'
+                : hasGraph
+                  ? 'Show progress'
+                  : `${state.logs.length} log chunks`}
+            </span>
+          )}
         </button>
         <span className="rb-actions">
           {state.active ? (
@@ -54,8 +76,21 @@ export function RunBanner({ state, onCancel, onDismiss }: RunBannerProps) {
         </span>
       </div>
       {expanded && hasDetails && (
-        <div className="rb-panel">
-          {state.logs.length > 0 && <div className="rb-logs">{state.logs.join('').slice(-4000)}</div>}
+        <div className={`rb-panel${hasGraph ? ' has-graph' : ''}`}>
+          {graph && (
+            <div className="rb-graph">
+              <WorkflowGraphView
+                graph={graph}
+                result={result}
+                active={state.active}
+                error={state.error}
+                activeLogs={state.logs}
+              />
+            </div>
+          )}
+          {state.logs.length > 0 && (
+            <div className="rb-logs">{state.logs.join('').slice(-4000)}</div>
+          )}
           {state.error && <div className="rb-error">{state.error}</div>}
         </div>
       )}

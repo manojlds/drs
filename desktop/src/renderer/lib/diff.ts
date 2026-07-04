@@ -52,7 +52,9 @@ function parseDiffPath(raw: string): string | null {
 
 function parseFileHeader(line: string): DiffFile {
   const match = line.match(/^diff --git a\/(.*) b\/(.*)$/);
-  const path = match ? stripPrefix(match[2]) : line.slice('diff --git '.length).split(' b/').pop() ?? '';
+  const path = match
+    ? stripPrefix(match[2])
+    : (line.slice('diff --git '.length).split(' b/').pop() ?? '');
   return {
     path: stripPrefix(path),
     oldPath: null,
@@ -109,22 +111,54 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
       i++;
       while (i < lines.length) {
         const meta = lines[i];
-        if (meta.startsWith('new file mode')) { current.status = 'added'; i++; continue; }
-        if (meta.startsWith('deleted file mode')) { current.status = 'deleted'; i++; continue; }
-        if (meta.startsWith('rename from')) { current.oldPath = stripPrefix(meta.slice('rename from'.length).trim()); current.status = 'renamed'; i++; continue; }
-        if (meta.startsWith('rename to')) { current.path = stripPrefix(meta.slice('rename to'.length).trim()); i++; continue; }
-        if (meta.startsWith('index ') || meta.startsWith('similarity index') || meta.startsWith('dissimilarity index') || meta.startsWith('old mode') || meta.startsWith('new mode')) { i++; continue; }
+        if (meta.startsWith('new file mode')) {
+          current.status = 'added';
+          i++;
+          continue;
+        }
+        if (meta.startsWith('deleted file mode')) {
+          current.status = 'deleted';
+          i++;
+          continue;
+        }
+        if (meta.startsWith('rename from')) {
+          current.oldPath = stripPrefix(meta.slice('rename from'.length).trim());
+          current.status = 'renamed';
+          i++;
+          continue;
+        }
+        if (meta.startsWith('rename to')) {
+          current.path = stripPrefix(meta.slice('rename to'.length).trim());
+          i++;
+          continue;
+        }
+        if (
+          meta.startsWith('index ') ||
+          meta.startsWith('similarity index') ||
+          meta.startsWith('dissimilarity index') ||
+          meta.startsWith('old mode') ||
+          meta.startsWith('new mode')
+        ) {
+          i++;
+          continue;
+        }
         if (meta.startsWith('--- ')) {
           const oldPath = parseDiffPath(meta.slice(4));
           if (oldPath) current.oldPath = oldPath;
-          i++; continue;
+          i++;
+          continue;
         }
         if (meta.startsWith('+++ ')) {
           const newPath = parseDiffPath(meta.slice(4));
           if (newPath) current.path = newPath;
-          i++; break;
+          i++;
+          break;
         }
-        if (meta.startsWith('Binary files') || meta.startsWith('GIT binary patch')) { current.binary = true; i++; continue; }
+        if (meta.startsWith('Binary files') || meta.startsWith('GIT binary patch')) {
+          current.binary = true;
+          i++;
+          continue;
+        }
         if (meta.startsWith('@@')) break;
         i++;
       }
@@ -138,16 +172,30 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
         const body = lines[i];
         if (body.startsWith('diff --git ') || body.startsWith('@@')) break;
         if (body === '') {
-          if (i + 1 >= lines.length || lines[i + 1].startsWith('diff --git ') || lines[i + 1].startsWith('@@')) { i++; break; }
+          if (
+            i + 1 >= lines.length ||
+            lines[i + 1].startsWith('diff --git ') ||
+            lines[i + 1].startsWith('@@')
+          ) {
+            i++;
+            break;
+          }
           pushHunkLine(hunk, ' ', '');
-          i++; continue;
+          i++;
+          continue;
         }
         const prefix = body[0];
-        if (prefix === '+') { pushHunkLine(hunk, '+', body.slice(1)); current.additions++; }
-        else if (prefix === '-') { pushHunkLine(hunk, '-', body.slice(1)); current.deletions++; }
-        else if (prefix === ' ') { pushHunkLine(hunk, ' ', body.slice(1)); }
-        else if (body.startsWith('\\ No newline at end of file')) { /* footer */ }
-        else break;
+        if (prefix === '+') {
+          pushHunkLine(hunk, '+', body.slice(1));
+          current.additions++;
+        } else if (prefix === '-') {
+          pushHunkLine(hunk, '-', body.slice(1));
+          current.deletions++;
+        } else if (prefix === ' ') {
+          pushHunkLine(hunk, ' ', body.slice(1));
+        } else if (body.startsWith('\\ No newline at end of file')) {
+          /* footer */
+        } else break;
         i++;
       }
       current.hunks.push(hunk);
@@ -157,7 +205,7 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
     i++;
   }
 
-    if (current) files.push(current);
+  if (current) files.push(current);
   return files;
 }
 
@@ -173,7 +221,7 @@ function parsePierreDiffFiles(patch: string): DiffFile[] {
         hunks: [],
         binary: fileDiff.hunks.length === 0,
         metadata: fileDiff,
-      })),
+      }))
     );
   } catch {
     return [];
@@ -217,6 +265,13 @@ export function issueLineKey(file: string, line: number): string {
   return `${file}:${line}`;
 }
 
+/** Stable identity for a review issue, used for selection state and list
+ * keys. Line-anchored issues key on file:line; general (file-level) issues
+ * fall back to file:title since they have no line number. */
+export function issueKey(issue: ReviewIssue): string {
+  return issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
+}
+
 export function lineDomId(file: string, newLine: number | null, oldLine: number | null): string {
   const line = newLine ?? oldLine ?? 0;
   return `dl-${encodeURIComponent(file)}-${line}`;
@@ -225,4 +280,3 @@ export function lineDomId(file: string, newLine: number | null, oldLine: number 
 export function fileDomId(file: string): string {
   return `df-${encodeURIComponent(file)}`;
 }
-

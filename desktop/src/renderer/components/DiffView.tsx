@@ -106,9 +106,7 @@ function FileSection({ file, index, layout, theme, onIssueClick, scrollTarget }:
   return (
     <div className="diff-file" id={fileDomId(file.path)}>
       <div className="diff-file-header">
-        <span className={`file-status status-${file.status}`}>
-          {STATUS_LABEL[file.status]}
-        </span>
+        <span className={`file-status status-${file.status}`}>{STATUS_LABEL[file.status]}</span>
         <span className="file-path">{file.path}</span>
         <span className="file-counts">
           <span className="add-count">+{file.additions}</span>
@@ -161,7 +159,7 @@ function FileSection({ file, index, layout, theme, onIssueClick, scrollTarget }:
               {hunk.lines.map((line, li) => {
                 const issueList =
                   line.newLine !== null
-                    ? index.byFileLine.get(`${file.path}:${line.newLine}`) ?? []
+                    ? (index.byFileLine.get(`${file.path}:${line.newLine}`) ?? [])
                     : [];
                 const isTarget =
                   scrollTarget?.file === file.path &&
@@ -173,12 +171,8 @@ function FileSection({ file, index, layout, theme, onIssueClick, scrollTarget }:
                       id={lineDomId(file.path, line.newLine, line.oldLine)}
                       className={`line ${line.type}${isTarget ? ' target' : ''}`}
                     >
-                      <span className="gutter">
-                        {line.oldLine !== null ? line.oldLine : ''}
-                      </span>
-                      <span className="gutter">
-                        {line.newLine !== null ? line.newLine : ''}
-                      </span>
+                      <span className="gutter">{line.oldLine !== null ? line.oldLine : ''}</span>
+                      <span className="gutter">{line.newLine !== null ? line.newLine : ''}</span>
                       <span className="line-content">{line.text}</span>
                     </div>
                     {issueList.map((issue) => (
@@ -207,19 +201,21 @@ function FileSection({ file, index, layout, theme, onIssueClick, scrollTarget }:
 }
 
 function findPierreLine(fileEl: HTMLElement, line: number): HTMLElement | null {
-  const container = fileEl.querySelector('diffs-container') as HTMLElement & {
-    shadowRoot?: ShadowRoot | null;
-  } | null;
+  const container = fileEl.querySelector('diffs-container') as
+    | (HTMLElement & {
+        shadowRoot?: ShadowRoot | null;
+      })
+    | null;
   const root = container?.shadowRoot;
   if (!root) return null;
   return root.querySelector(
-    `[data-line="${line}"][data-line-type="change-addition"], [data-line="${line}"][data-line-type="context"], [data-line="${line}"][data-line-type="context-expanded"]`,
+    `[data-line="${line}"][data-line-type="change-addition"], [data-line="${line}"][data-line-type="context"], [data-line="${line}"][data-line-type="context-expanded"]`
   );
 }
 
 function buildAnnotations(
   file: DiffFile,
-  index: IssueLineIndex,
+  index: IssueLineIndex
 ): DiffLineAnnotation<IssueAnnotation>[] {
   if (!file.metadata) return [];
   const annotations: DiffLineAnnotation<IssueAnnotation>[] = [];
@@ -237,15 +233,9 @@ function buildAnnotations(
   return annotations;
 }
 
-function InlineIssue({
-  issue,
-  onClick,
-}: {
-  issue: ReviewIssue;
-  onClick: () => void;
-}) {
+function InlineIssue({ issue, onClick }: { issue: ReviewIssue; onClick: () => void }) {
   return (
-    <div className="line-issue" onClick={onClick}>
+    <button type="button" className="line-issue" onClick={onClick}>
       <div className="li-top">
         <span className={`sev-badge ${SEVERITY_CLASS[issue.severity]}`}>
           {SEVERITY_EMOJI[issue.severity]} {issue.severity}
@@ -255,6 +245,6 @@ function InlineIssue({
       <div className="li-body">
         {CATEGORY_EMOJI[issue.category]} {issue.problem}
       </div>
-    </div>
+    </button>
   );
 }

@@ -1228,7 +1228,12 @@ button {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+.issues-pane-hint {
+  font-size: 10px;
+  white-space: nowrap;
 }
 .issues-pane-scroll {
   overflow-y: auto;
@@ -1645,9 +1650,19 @@ button {
 }
 
 .line-issue {
+  display: block;
+  width: 100%;
+  border: 0;
   border-top: 1px solid var(--border-soft);
   background: rgba(137, 180, 250, 0.06);
   padding: 8px 12px 8px 7.4em;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.line-issue:hover {
+  background: rgba(137, 180, 250, 0.12);
 }
 .line-issue .li-top {
   display: flex;
@@ -1724,6 +1739,15 @@ button {
   background: var(--bg);
   max-height: 260px;
   overflow: auto;
+}
+.run-banner .rb-panel.has-graph {
+  max-height: 420px;
+}
+.run-banner .rb-graph {
+  margin: 8px;
+}
+.run-banner .rb-graph .workflow-graph-canvas {
+  height: 220px;
 }
 .run-banner .rb-logs {
   margin: 8px;
