@@ -86,6 +86,33 @@ export interface WorkflowNodeDetail {
   control?: string;
 }
 
+export interface WorkflowGraphNode {
+  id: string;
+  label: string;
+  kind: 'agent' | 'agents' | 'action' | 'control';
+  agent?: string;
+  agentsFrom?: string;
+  action?: string;
+  control?: string;
+  condition?: string;
+  output?: string;
+  writes?: string;
+}
+
+export interface WorkflowGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: 'dependency' | 'control';
+  label?: string;
+}
+
+export interface WorkflowGraph {
+  workflow: string;
+  nodes: WorkflowGraphNode[];
+  edges: WorkflowGraphEdge[];
+}
+
 /** Mirrors `WorkflowDetail` from `src/cli/workflow.ts`. */
 export interface WorkflowDetail {
   name: string;
@@ -96,6 +123,7 @@ export interface WorkflowDetail {
   inputs: Record<string, WorkflowInputConfig>;
   output?: string;
   nodes: WorkflowNodeDetail[];
+  graph: WorkflowGraph;
 }
 
 /** Subset of `WorkflowRunResult` relevant to the desktop UI. */

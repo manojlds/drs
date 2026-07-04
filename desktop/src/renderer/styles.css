@@ -213,11 +213,33 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .workflow-card-skeleton { min-height: 124px; display: flex; flex-direction: column; gap: 12px; padding: 13px; }
 .workflow-inspector { overflow: auto; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .workflow-inspector-card { padding: 14px; }
+.workflow-inspector-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.workflow-inspector-card-head strong { display: block; font-size: 14px; margin-top: 2px; }
 .workflow-inspector-card h3 { margin: 5px 0 8px; font-size: 17px; }
 .workflow-inspector-card p { color: var(--text-dim); line-height: 1.45; margin: 0 0 10px; }
 .workflow-inspector-card button { justify-content: center; }
 .workflow-inspector-card pre { max-height: 280px; overflow: auto; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); color: var(--text-dim); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; padding: 10px; }
 .workflow-detail-skeleton { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.workflow-graph-card { min-height: 390px; }
+.workflow-graph-view { height: 330px; overflow: hidden; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg); }
+.workflow-graph-empty { display: grid; place-items: center; height: 180px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-muted); font-size: 12px; }
+.workflow-flow-node { width: 190px; border: 1px solid var(--border) !important; border-radius: 12px !important; background: var(--bg-elevated) !important; color: var(--text) !important; box-shadow: 0 8px 24px rgba(21, 25, 35, 0.08); }
+.workflow-flow-node.agent,
+.workflow-flow-node.agents { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)) !important; }
+.workflow-flow-node.control { border-style: dashed !important; border-color: color-mix(in srgb, var(--sev-medium) 60%, var(--border)) !important; }
+.workflow-flow-node.action { border-color: var(--border) !important; }
+.workflow-node-label { display: grid; gap: 3px; text-align: left; }
+.workflow-node-label strong { font-size: 12.5px; line-height: 1.2; }
+.workflow-node-label span { color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-node-label em { color: var(--sev-medium); font-size: 10px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-node-label small { color: var(--text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-flow-edge.dependency .react-flow__edge-path { stroke: var(--text-muted); }
+.workflow-flow-edge.control .react-flow__edge-path { stroke: var(--accent); stroke-dasharray: 6 4; }
+.workflow-flow-edge .react-flow__edge-textbg { fill: var(--bg-elevated); }
+.workflow-flow-edge .react-flow__edge-text { fill: var(--text-dim); font-size: 10px; }
+.react-flow__controls,
+.react-flow__minimap { background: var(--bg-elevated); border: 1px solid var(--border-soft); box-shadow: none; }
+.react-flow__controls-button { background: var(--bg-elevated); border-bottom-color: var(--border-soft); color: var(--text); }
 .workflow-run-row { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-soft); padding: 8px 0; font-size: 11.5px; }
 .workflow-run-row strong { font-weight: 600; }
 .workflow-run-row span { color: var(--text-muted); white-space: nowrap; }

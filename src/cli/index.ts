@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runAgent } from './run-agent.js';
-import { listWorkflows, showWorkflow, validateWorkflows } from './workflow.js';
+import { listWorkflows, showWorkflow, showWorkflowGraph, validateWorkflows } from './workflow.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { loadConfig } from '../lib/config.js';
 import { ConversationService } from '../lib/conversation.js';
@@ -201,6 +201,28 @@ workflowCommand
       const config = loadConfig(process.cwd());
       showWorkflow(config, name, {
         json: options.json ?? false,
+        workingDir: process.cwd(),
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('graph <name>')
+  .description('Show workflow graph edges as text, JSON, or Mermaid')
+  .option('--format <format>', 'Output format: text, json, or mermaid', 'text')
+  .action((name: string, options) => {
+    try {
+      const format = String(options.format ?? 'text');
+      if (!['text', 'json', 'mermaid'].includes(format)) {
+        throw new Error('Invalid graph format. Expected one of: text, json, mermaid.');
+      }
+      const config = loadConfig(process.cwd());
+      showWorkflowGraph(config, name, {
+        format: format as 'text' | 'json' | 'mermaid',
         workingDir: process.cwd(),
       });
       process.exit(0);

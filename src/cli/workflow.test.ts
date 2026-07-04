@@ -8,6 +8,7 @@ import {
   runWorkflowFromCompiledPlan,
   listWorkflows,
   showWorkflow,
+  showWorkflowGraph,
   validateWorkflows,
 } from './workflow.js';
 import { compileWorkflowPlan } from '../lib/workflow/compiled-plan.js';
@@ -4019,6 +4020,59 @@ describe('workflow runner', () => {
           needs: ['start'],
           agent: 'task/review',
           if: '${{ inputs.enabled }}',
+        }),
+      ])
+    );
+    expect(detail.graph).toMatchObject({
+      workflow: 'inspect',
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: 'start', kind: 'action' }),
+        expect.objectContaining({ id: 'done', kind: 'agent', condition: '${{ inputs.enabled }}' }),
+      ]),
+      edges: expect.arrayContaining([
+        expect.objectContaining({ source: 'start', target: 'done', kind: 'dependency' }),
+      ]),
+    });
+  });
+
+  it('builds workflow graph dependencies and control routes', () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        routed: {
+          nodes: {
+            start: { action: 'write', input: 'hello' },
+            gate: {
+              needs: ['start'],
+              control: 'switch',
+              value: '{{inputs.mode}}',
+              cases: { fix: 'fix' },
+              default: 'done',
+            },
+            fix: { agent: 'task/fix' },
+            done: { control: 'end' },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const graph = showWorkflowGraph(config, 'routed', { format: 'json' });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(['start', 'gate', 'fix', 'done']);
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'start', target: 'gate', kind: 'dependency' }),
+        expect.objectContaining({
+          source: 'gate',
+          target: 'fix',
+          kind: 'control',
+          label: 'case fix',
+        }),
+        expect.objectContaining({
+          source: 'gate',
+          target: 'done',
+          kind: 'control',
+          label: 'default',
         }),
       ])
     );

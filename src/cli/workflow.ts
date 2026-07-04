@@ -98,6 +98,15 @@ export type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 export type { NodeExecutor } from '../lib/workflow/node-executor.js';
 import {
+  buildWorkflowGraph,
+  formatWorkflowGraphMermaid,
+  type WorkflowGraph,
+  type WorkflowGraphEdge,
+  type WorkflowGraphNode,
+  type WorkflowGraphNodeKind,
+  type WorkflowGraphEdgeKind,
+} from '../lib/workflow/graph.js';
+import {
   computeActiveWorkflowNodes,
   createSkippedWorkflowNodeResult,
   findWorkflowSegmentIndex,
@@ -3639,12 +3648,26 @@ export interface WorkflowDetail {
   inputs: Record<string, WorkflowInputConfig>;
   output?: string;
   nodes: WorkflowNodeDetail[];
+  graph: WorkflowGraph;
 }
 
 export interface WorkflowShowOptions {
   json?: boolean;
   workingDir?: string;
 }
+
+export interface WorkflowGraphOptions {
+  format?: 'text' | 'json' | 'mermaid';
+  workingDir?: string;
+}
+
+export type {
+  WorkflowGraph,
+  WorkflowGraphNode,
+  WorkflowGraphEdge,
+  WorkflowGraphNodeKind,
+  WorkflowGraphEdgeKind,
+};
 
 export interface WorkflowValidateOptions {
   json?: boolean;
@@ -3746,6 +3769,7 @@ function buildWorkflowDetail(
   };
   const workflowNodes = getWorkflowNodes(name, workflow);
   getWorkflowExecutionOrder(workflowNodes);
+  const graph = buildWorkflowGraph(name, workflow);
 
   return {
     name,
@@ -3771,7 +3795,43 @@ function buildWorkflowDetail(
       json: node.json,
       routes: getWorkflowNodeRoutes(node),
     })),
+    graph,
   };
+}
+
+export function showWorkflowGraph(
+  config: DRSConfig,
+  workflowName: string,
+  options: WorkflowGraphOptions = {}
+): WorkflowGraph {
+  const workflow = config.workflows?.[workflowName];
+  if (!workflow) {
+    throw new Error(`Unknown workflow "${workflowName}".`);
+  }
+
+  const graph = buildWorkflowGraph(workflowName, workflow);
+  const format = options.format ?? 'text';
+
+  if (format === 'json') {
+    console.log(JSON.stringify(graph, null, 2));
+  } else if (format === 'mermaid') {
+    console.log(formatWorkflowGraphMermaid(graph));
+  } else {
+    console.log(chalk.bold(`\nWorkflow Graph: ${graph.workflow}\n`));
+    for (const node of graph.nodes) {
+      const outgoing = graph.edges.filter((edge) => edge.source === node.id);
+      const suffix = node.condition ? chalk.yellow(` if ${node.condition}`) : '';
+      console.log(`  ${chalk.white(node.id)} ${chalk.gray(`[${node.kind}]`)}${suffix}`);
+      for (const edge of outgoing) {
+        const edgeLabel = edge.label ? ` ${chalk.gray(`(${edge.label})`)}` : '';
+        const marker = edge.kind === 'control' ? chalk.cyan('~>') : chalk.gray('->');
+        console.log(`    ${marker} ${edge.target}${edgeLabel}`);
+      }
+    }
+    console.log('');
+  }
+
+  return graph;
 }
 
 export function showWorkflow(
