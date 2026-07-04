@@ -1,3 +1,5 @@
+import { Button } from '@/renderer/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/renderer/components/ui/toggle-group';
 import { CATEGORY_EMOJI, SEVERITIES, SEVERITY_CLASS, SEVERITY_EMOJI } from '../lib/badges';
 import { issueLineKey } from '../lib/diff';
 import type { IssueSeverity, ReviewIssue, ReviewJsonOutput } from '../types';
@@ -29,14 +31,14 @@ export function IssuesPanel({
           </span>
         )}
         <span style={{ marginLeft: 'auto' }}>
-          <button
-            className="btn"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onCopyMarkdown}
             disabled={!review || review.issues.length === 0}
-            style={{ padding: '4px 9px', fontSize: 11 }}
           >
-            ⧉ MD
-          </button>
+            ⧉ Copy MD
+          </Button>
         </span>
       </div>
 
@@ -50,22 +52,34 @@ export function IssuesPanel({
 
         {review && (
           <>
-            <div className="sev-chips">
+            <ToggleGroup
+              type="multiple"
+              size="sm"
+              variant="outline"
+              value={SEVERITIES.filter((sev) => severityFilter.has(sev))}
+              onValueChange={(next) => {
+                for (const sev of SEVERITIES) {
+                  const shouldBeActive = next.includes(sev);
+                  if (shouldBeActive !== severityFilter.has(sev)) onToggleSeverity(sev);
+                }
+              }}
+              className="sev-chips"
+              aria-label="Filter issues by severity"
+            >
               {SEVERITIES.map((sev) => {
                 const count = review.summary.bySeverity[sev];
-                const active = severityFilter.has(sev);
                 return (
-                  <span
+                  <ToggleGroupItem
                     key={sev}
-                    className={`sev-chip${active ? ' active' : ''}`}
-                    onClick={() => onToggleSeverity(sev)}
-                    style={{ opacity: count === 0 && !active ? 0.5 : 1 }}
+                    value={sev}
+                    className="sev-chip"
+                    style={{ opacity: count === 0 && !severityFilter.has(sev) ? 0.5 : 1 }}
                   >
                     {SEVERITY_EMOJI[sev]} {sev.slice(0, 1)} {count}
-                  </span>
+                  </ToggleGroupItem>
                 );
               })}
-            </div>
+            </ToggleGroup>
 
             <IssueList
               issues={review.issues}
@@ -103,7 +117,9 @@ function IssueList({
   return (
     <>
       {filtered.map((issue) => {
-        const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
+        const key = issue.line
+          ? issueLineKey(issue.file, issue.line)
+          : `${issue.file}:${issue.title}`;
         return (
           <IssueCard
             key={key}
@@ -127,7 +143,12 @@ function IssueCard({
   onClick: () => void;
 }) {
   return (
-    <div className={`issue-card${selected ? ' selected' : ''}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`issue-card${selected ? ' selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onClick}
+    >
       <div className="issue-top">
         <span className={`sev-badge ${SEVERITY_CLASS[issue.severity]}`}>
           {SEVERITY_EMOJI[issue.severity]} {issue.severity}
@@ -145,6 +166,6 @@ function IssueCard({
       <div className="issue-meta">
         <span>agent: {issue.agent}</span>
       </div>
-    </div>
+    </button>
   );
 }

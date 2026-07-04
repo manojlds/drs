@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
+import { AppSidebar, type ProjectMode } from './components/AppSidebar';
 import { DiffView } from './components/DiffView';
 import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
@@ -16,8 +18,25 @@ import {
   CardHeader,
   CardTitle,
 } from '@/renderer/components/ui/card';
+import { Checkbox } from '@/renderer/components/ui/checkbox';
+import { Input } from '@/renderer/components/ui/input';
+import { Label } from '@/renderer/components/ui/label';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/renderer/components/ui/resizable';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/renderer/components/ui/select';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/renderer/components/ui/sidebar';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/renderer/components/ui/toggle-group';
 import { SEVERITIES, severityToInput } from './lib/badges';
 import { buildReviewMarkdown, copyToClipboard } from './lib/markdown';
 import { parseUnifiedDiff, type DiffFile, issueLineKey } from './lib/diff';
@@ -40,7 +59,6 @@ const RUN_HISTORY_KEY = 'drs-desktop:run-history';
 const REVIEW_SNAPSHOTS_KEY = 'drs-desktop:review-snapshots';
 
 type ReviewView = 'overview' | 'diff' | 'walkthrough' | 'output';
-type ProjectMode = 'review' | 'workflow' | 'settings';
 
 interface RunHistoryEntry {
   id: string;
@@ -63,7 +81,6 @@ interface ReviewSnapshot {
 }
 
 export function App() {
-  const [showProjectsHome, setShowProjectsHome] = useState(true);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowListEntry[]>([]);
   const [workflowsLoading, setWorkflowsLoading] = useState(false);
@@ -222,6 +239,14 @@ export function App() {
     });
   }, []);
 
+  const handleForgetProject = useCallback((dir: string) => {
+    setRecentProjects((cur) => {
+      const next = cur.filter((item) => item !== dir);
+      localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   // Boot: default to the DRS repo itself (the parent of desktop/) in dev.
   useEffect(() => {
     void (async () => {
@@ -260,7 +285,6 @@ export function App() {
   const handlePickDirectory = useCallback(async () => {
     const dir = await window.drs.selectDirectory();
     if (!dir) return;
-    setShowProjectsHome(false);
     setWorkingDir(dir);
     rememberProject(dir);
     setReview(null);
@@ -273,7 +297,6 @@ export function App() {
 
   const handleSelectRecentProject = useCallback(
     async (dir: string) => {
-      setShowProjectsHome(false);
       setWorkingDir(dir);
       rememberProject(dir);
       setReview(null);
@@ -449,35 +472,39 @@ export function App() {
     setScrollTarget({ file, line: null });
   }, []);
 
-  if (showProjectsHome) {
-    return (
-      <ProjectHome
+  return (
+    <SidebarProvider>
+      <AppSidebar
+        workingDir={workingDir}
         recentProjects={recentProjects}
-        defaultProject={workingDir}
+        projectMode={projectMode}
+        onModeChange={setProjectMode}
         onOpenProject={handlePickDirectory}
         onSelectProject={handleSelectRecentProject}
-        onContinue={workingDir ? () => setShowProjectsHome(false) : undefined}
+        onForgetProject={handleForgetProject}
       />
-    );
-  }
-
-  return (
-    <div className="app">
-      <main className="main">
-        <ReviewHeader
+      <SidebarInset className="main">
+        <TopBar
           workingDir={workingDir}
-          target={diffSourceLabel}
-          workflow={selectedWorkflow}
           mode={projectMode}
-          onModeChange={setProjectMode}
           running={!!runState?.active}
           stats={reviewStats}
-          onBackToProjects={() => setShowProjectsHome(true)}
         />
-        {globalError && <div className="error-banner">{globalError}</div>}
-        {diffError && !globalError && <div className="error-banner">Diff error: {diffError}</div>}
-        {workflowsError && !globalError && <div className="error-banner">{workflowsError}</div>}
-        {projectMode === 'workflow' ? (
+        {globalError && (
+          <ErrorBanner message={globalError} onDismiss={() => setGlobalError(null)} />
+        )}
+        {diffError && !globalError && (
+          <ErrorBanner message={`Diff error: ${diffError}`} onDismiss={() => setDiffError(null)} />
+        )}
+        {workflowsError && !globalError && (
+          <ErrorBanner message={workflowsError} onDismiss={() => setWorkflowsError(null)} />
+        )}
+        {!workingDir ? (
+          <div className="no-project-hint">
+            <div>Open a project to start a DRS review session.</div>
+            <Button onClick={handlePickDirectory}>Open Project...</Button>
+          </div>
+        ) : projectMode === 'workflow' ? (
           <WorkflowWorkspace
             workflows={workflows}
             workflowsLoading={workflowsLoading}
@@ -498,7 +525,7 @@ export function App() {
         ) : (
           <>
             <ReviewViewTabs view={reviewView} onChange={setReviewView} />
-            <ReviewContextBar
+            <ReviewToolbar
               staged={staged}
               layout={diffLayout}
               diffLoading={diffLoading}
@@ -510,6 +537,7 @@ export function App() {
                 workflows.find((workflow) => workflow.name === selectedWorkflow) ??
                 null
               }
+              showLayoutToggle={reviewView === 'diff'}
               onToggleStaged={handleToggleStaged}
               onToggleLayout={handleToggleLayout}
               onRefresh={handleRefresh}
@@ -540,154 +568,143 @@ export function App() {
                 onGenerate={handleRunVisualWalkthrough}
               />
             ) : reviewView === 'diff' && selectedWorkflowIsReview ? (
-              <div className="content">
-                <FileTree
-                  files={diffFiles}
-                  selectedFile={selectedFile}
-                  onSelectFile={handleSelectFile}
-                />
-                <DiffView
-                  files={diffFiles}
-                  issues={review?.issues ?? []}
-                  layout={diffLayout}
-                  scrollTarget={scrollTarget}
-                  onIssueClick={handleSelectIssue}
-                />
-                <aside className="review-sidecar">
-                  <IssuesPanel
-                    review={review}
-                    selectedIssueKey={selectedIssueKey}
-                    severityFilter={severityFilter}
-                    onToggleSeverity={handleToggleSeverity}
-                    onSelectIssue={handleSelectIssue}
-                    onCopyMarkdown={handleCopyMarkdown}
+              <ResizablePanelGroup
+                direction="horizontal"
+                autoSaveId="drs-review-panels"
+                className="content"
+              >
+                <ResizablePanel
+                  id="file-tree"
+                  order={1}
+                  defaultSize={18}
+                  minSize={12}
+                  maxSize={32}
+                  className="file-tree-panel"
+                >
+                  <FileTree
+                    files={diffFiles}
+                    selectedFile={selectedFile}
+                    onSelectFile={handleSelectFile}
                   />
-                  <ReviewChatPanel
-                    workingDir={workingDir}
-                    review={review}
-                    selectedIssue={selectedIssue}
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="diff"
+                  order={2}
+                  defaultSize={52}
+                  minSize={30}
+                  className="diff-panel"
+                >
+                  <DiffView
+                    files={diffFiles}
+                    issues={review?.issues ?? []}
+                    layout={diffLayout}
+                    scrollTarget={scrollTarget}
+                    onIssueClick={handleSelectIssue}
                   />
-                </aside>
-              </div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="sidecar"
+                  order={3}
+                  defaultSize={30}
+                  minSize={22}
+                  maxSize={48}
+                  className="review-sidecar-panel"
+                >
+                  <ResizablePanelGroup direction="vertical" autoSaveId="drs-review-sidecar-panels">
+                    <ResizablePanel
+                      id="issues"
+                      order={1}
+                      defaultSize={45}
+                      minSize={20}
+                      className="issues-panel-wrap"
+                    >
+                      <IssuesPanel
+                        review={review}
+                        selectedIssueKey={selectedIssueKey}
+                        severityFilter={severityFilter}
+                        onToggleSeverity={handleToggleSeverity}
+                        onSelectIssue={handleSelectIssue}
+                        onCopyMarkdown={handleCopyMarkdown}
+                      />
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="chat"
+                      order={2}
+                      defaultSize={55}
+                      minSize={25}
+                      className="chat-panel-wrap"
+                    >
+                      <ReviewChatPanel
+                        workingDir={workingDir}
+                        review={review}
+                        selectedIssue={selectedIssue}
+                      />
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+              </ResizablePanelGroup>
             ) : (
               <GenericWorkflowResult result={lastRunResult} />
             )}
           </>
         )}
         <RunBanner state={runState} onCancel={handleCancelWorkflow} onDismiss={handleDismissRun} />
-      </main>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
-function ReviewHeader({
+function TopBar({
   workingDir,
-  target,
-  workflow,
   mode,
-  onModeChange,
   running,
   stats,
-  onBackToProjects,
 }: {
   workingDir: string | null;
-  target: string;
-  workflow: string | null;
   mode: ProjectMode;
-  onModeChange: (mode: ProjectMode) => void;
   running: boolean;
   stats: ReviewStats;
-  onBackToProjects: () => void;
 }) {
   return (
-    <div className="review-header">
-      <div>
-        <div className="review-kicker">DRS Review Cockpit</div>
-        <div className="review-title">{target}</div>
-        <div className="review-subtitle">{workingDir ?? 'No project selected'}</div>
+    <header className="topbar">
+      <div className="topbar-left">
+        <SidebarTrigger />
+        <div className="topbar-identity">
+          <strong>{workingDir ? projectName(workingDir) : 'No project open'}</strong>
+          {workingDir && (
+            <span className="topbar-path" title={workingDir}>
+              {workingDir}
+            </span>
+          )}
+        </div>
       </div>
-      <div className="review-header-meta">
-        <Button variant="ghost" size="sm" onClick={onBackToProjects}>
-          &lt;- Back to projects
-        </Button>
-        <Tabs value={mode} onValueChange={(value) => onModeChange(value as ProjectMode)}>
-          <TabsList title="Switch project workspace mode">
-            <TabsTrigger value="review">Review</TabsTrigger>
-            <TabsTrigger value="workflow">Workflows</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <ThemeToggle />
-        <Badge variant="outline">{workflow ?? 'No workflow selected'}</Badge>
-        <Badge variant="outline">{stats.filesChanged} files</Badge>
+      <div className="topbar-right">
+        {mode === 'review' && workingDir && (
+          <Badge variant="outline">{stats.filesChanged} files</Badge>
+        )}
         <Badge variant={running ? 'secondary' : 'outline'}>{running ? 'Running' : 'Ready'}</Badge>
+        <ThemeToggle />
       </div>
-    </div>
+    </header>
   );
 }
 
-function ProjectHome({
-  recentProjects,
-  defaultProject,
-  onOpenProject,
-  onSelectProject,
-  onContinue,
-}: {
-  recentProjects: string[];
-  defaultProject: string | null;
-  onOpenProject: () => void;
-  onSelectProject: (project: string) => void;
-  onContinue?: () => void;
-}) {
-  const projects =
-    recentProjects.length > 0 ? recentProjects : defaultProject ? [defaultProject] : [];
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div className="projects-home">
-      <Card className="projects-hero">
-        <CardHeader className="p-0">
-          <div className="projects-hero-top">
-            <div className="review-kicker">DRS Desktop</div>
-            <ThemeToggle />
-          </div>
-          <CardTitle className="projects-title">Choose a project to review</CardTitle>
-          <CardDescription className="projects-description">
-            Open a repository, inspect the current change, run DRS workflows, and use the review
-            cockpit to understand, fix, verify, and explain agentic code changes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="projects-actions p-0">
-          <Button onClick={onOpenProject}>Open Project...</Button>
-          {onContinue && (
-            <Button variant="outline" onClick={onContinue}>
-              Continue Current Project
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <section className="projects-section">
-        <div className="projects-section-title">
-          <h2>Recent Projects</h2>
-          <Badge variant="outline">{projects.length} available</Badge>
-        </div>
-        {projects.length === 0 ? (
-          <Card className="projects-empty">
-            No projects yet. Open a repository to start a DRS review session.
-          </Card>
-        ) : (
-          <div className="project-grid">
-            {projects.map((project) => (
-              <Card key={project} asChild className="project-card">
-                <button onClick={() => onSelectProject(project)}>
-                  <Badge variant="secondary">Project</Badge>
-                  <strong>{projectName(project)}</strong>
-                  <code>{project}</code>
-                </button>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+    <div className="error-banner">
+      <span>{message}</span>
+      <button
+        type="button"
+        className="error-banner-dismiss"
+        onClick={onDismiss}
+        aria-label="Dismiss error"
+        title="Dismiss"
+      >
+        <X size={13} />
+      </button>
     </div>
   );
 }
@@ -724,118 +741,139 @@ function WorkflowWorkspace({
   const projectWorkflows = workflows.filter((workflow) => workflow.source === 'project');
   const packagedWorkflows = workflows.filter((workflow) => workflow.source === 'packaged');
   return (
-    <div className="workflow-workspace">
-      <section className="workflow-browser">
-        <div className="workflow-browser-head">
-          <div>
-            <div className="review-kicker">Workflow Mode</div>
-            <h1>Run and inspect DRS workflows</h1>
-          </div>
-          <span>{workflows.length} workflows</span>
-        </div>
-        <WorkflowSection
-          title="Project Workflows"
-          description="Workflows defined by this repository. These override or extend packaged DRS behavior."
-          workflows={projectWorkflows}
-          loading={workflowsLoading}
-          selectedWorkflow={selectedWorkflow}
-          empty="No project workflows found in this repository."
-          onSelectWorkflow={onSelectWorkflow}
-        />
-        <WorkflowSection
-          title="Packaged Workflows"
-          description="Built-in DRS workflows available to every project."
-          workflows={packagedWorkflows}
-          loading={workflowsLoading}
-          selectedWorkflow={selectedWorkflow}
-          empty="No packaged workflows available."
-          onSelectWorkflow={onSelectWorkflow}
-        />
-      </section>
-
-      <aside className="workflow-inspector">
-        <Card className="workflow-inspector-card">
-          <CardHeader className="p-0 pb-3">
-            <div className="review-kicker">Selected Workflow</div>
-            <CardTitle>{detail?.name ?? selectedWorkflow ?? 'No workflow selected'}</CardTitle>
-            {detail?.description && <CardDescription>{detail.description}</CardDescription>}
-          </CardHeader>
-          <CardContent className="p-0">
-            {selectedWorkflow && !detail && workflowsLoading ? (
-              <div className="workflow-detail-skeleton">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-              </div>
-            ) : null}
-            {detail && (
-              <div className="workflow-node-summary">
-                {detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}
-              </div>
-            )}
-            {detail &&
-              Object.entries(detail.inputs).map(([key, input]) => (
-                <WorkflowInputField
-                  key={key}
-                  name={key}
-                  input={normalizeWorkflowInput(input)}
-                  value={inputs[key] ?? ''}
-                  onChange={(value) => onInputChange(key, value)}
-                />
-              ))}
-            <Button
-              className="w-full"
-              disabled={
-                !workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)
-              }
-              onClick={onRun}
-            >
-              {running ? 'Running...' : 'Run Workflow'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="workflow-inspector-card workflow-graph-card">
-          <div className="workflow-inspector-card-head">
+    <ResizablePanelGroup
+      direction="horizontal"
+      autoSaveId="drs-workflow-panels"
+      className="workflow-workspace"
+    >
+      <ResizablePanel
+        id="workflow-browser"
+        order={1}
+        defaultSize={65}
+        minSize={40}
+        className="workflow-browser-panel"
+      >
+        <section className="workflow-browser">
+          <div className="workflow-browser-head">
             <div>
-              <div className="review-kicker">DAG</div>
-              <strong>Workflow Graph</strong>
+              <div className="review-kicker">Workflow Mode</div>
+              <h1>Run and inspect DRS workflows</h1>
             </div>
-            {detail?.graph && <Badge variant="outline">{detail.graph.nodes.length} nodes</Badge>}
+            <span>{workflows.length} workflows</span>
           </div>
-          <WorkflowGraphView
-            graph={detail?.graph}
-            result={result}
-            active={!!runState?.active && runState.name === selectedWorkflow}
-            error={runState?.name === selectedWorkflow ? runState.error : null}
-            activeLogs={runState?.name === selectedWorkflow ? runState.logs : []}
+          <WorkflowSection
+            title="Project Workflows"
+            description="Workflows defined by this repository. These override or extend packaged DRS behavior."
+            workflows={projectWorkflows}
+            loading={workflowsLoading}
+            selectedWorkflow={selectedWorkflow}
+            empty="No project workflows found in this repository."
+            onSelectWorkflow={onSelectWorkflow}
           />
-        </Card>
+          <WorkflowSection
+            title="Packaged Workflows"
+            description="Built-in DRS workflows available to every project."
+            workflows={packagedWorkflows}
+            loading={workflowsLoading}
+            selectedWorkflow={selectedWorkflow}
+            empty="No packaged workflows available."
+            onSelectWorkflow={onSelectWorkflow}
+          />
+        </section>
+      </ResizablePanel>
+      <ResizableHandle withHandle />
+      <ResizablePanel
+        id="workflow-inspector"
+        order={2}
+        defaultSize={35}
+        minSize={24}
+        maxSize={55}
+        className="workflow-inspector-panel"
+      >
+        <aside className="workflow-inspector">
+          <Card className="workflow-inspector-card">
+            <CardHeader className="p-0 pb-3">
+              <div className="review-kicker">Selected Workflow</div>
+              <CardTitle>{detail?.name ?? selectedWorkflow ?? 'No workflow selected'}</CardTitle>
+              {detail?.description && <CardDescription>{detail.description}</CardDescription>}
+            </CardHeader>
+            <CardContent className="p-0">
+              {selectedWorkflow && !detail && workflowsLoading ? (
+                <div className="workflow-detail-skeleton">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ) : null}
+              {detail && (
+                <div className="workflow-node-summary">
+                  {detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}
+                </div>
+              )}
+              {detail &&
+                Object.entries(detail.inputs).map(([key, input]) => (
+                  <WorkflowInputField
+                    key={key}
+                    name={key}
+                    input={normalizeWorkflowInput(input)}
+                    value={inputs[key] ?? ''}
+                    onChange={(value) => onInputChange(key, value)}
+                  />
+                ))}
+              <Button
+                className="w-full"
+                disabled={
+                  !workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)
+                }
+                onClick={onRun}
+              >
+                {running ? 'Running...' : 'Run Workflow'}
+              </Button>
+            </CardContent>
+          </Card>
 
-        <Card className="workflow-inspector-card">
-          <div className="review-kicker">Latest Output</div>
-          {result ? (
-            <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre>
-          ) : (
-            <p>No workflow output yet.</p>
-          )}
-        </Card>
-
-        <Card className="workflow-inspector-card">
-          <div className="review-kicker">Runs</div>
-          {runHistory.length === 0 ? (
-            <p>No runs yet for this workflow.</p>
-          ) : (
-            runHistory.slice(0, 8).map((run) => (
-              <div key={run.id} className={`workflow-run-row ${run.status}`}>
-                <strong>{run.workflow}</strong>
-                <span>{new Date(run.timestamp).toLocaleString()}</span>
+          <Card className="workflow-inspector-card workflow-graph-card">
+            <div className="workflow-inspector-card-head">
+              <div>
+                <div className="review-kicker">DAG</div>
+                <strong>Workflow Graph</strong>
               </div>
-            ))
-          )}
-        </Card>
-      </aside>
-    </div>
+              {detail?.graph && <Badge variant="outline">{detail.graph.nodes.length} nodes</Badge>}
+            </div>
+            <WorkflowGraphView
+              graph={detail?.graph}
+              result={result}
+              active={!!runState?.active && runState.name === selectedWorkflow}
+              error={runState?.name === selectedWorkflow ? runState.error : null}
+              activeLogs={runState?.name === selectedWorkflow ? runState.logs : []}
+            />
+          </Card>
+
+          <Card className="workflow-inspector-card">
+            <div className="review-kicker">Latest Output</div>
+            {result ? (
+              <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre>
+            ) : (
+              <p>No workflow output yet.</p>
+            )}
+          </Card>
+
+          <Card className="workflow-inspector-card">
+            <div className="review-kicker">Runs</div>
+            {runHistory.length === 0 ? (
+              <p>No runs yet for this workflow.</p>
+            ) : (
+              runHistory.slice(0, 8).map((run) => (
+                <div key={run.id} className={`workflow-run-row ${run.status}`}>
+                  <strong>{run.workflow}</strong>
+                  <span>{new Date(run.timestamp).toLocaleString()}</span>
+                </div>
+              ))
+            )}
+          </Card>
+        </aside>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 
@@ -914,37 +952,39 @@ function WorkflowInputField({
   const id = `workspace-wf-input-${name}`;
   if (type === 'boolean') {
     return (
-      <div className="input-row">
-        <label htmlFor={id}>
-          <input
-            id={id}
-            type="checkbox"
-            checked={value === 'true'}
-            onChange={(event) => onChange(event.target.checked ? 'true' : 'false')}
-          />
-          {name}
-        </label>
+      <div className="input-row input-row-checkbox">
+        <Checkbox
+          id={id}
+          checked={value === 'true'}
+          onCheckedChange={(checked) => onChange(checked ? 'true' : 'false')}
+        />
+        <Label htmlFor={id}>{name}</Label>
       </div>
     );
   }
   if (type === 'enum' && input.values) {
     return (
       <div className="input-row">
-        <label htmlFor={id}>{name}</label>
-        <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
-          {input.values.map((item) => (
-            <option key={String(item)} value={String(item)}>
-              {String(item)}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor={id}>{name}</Label>
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger id={id}>
+            <SelectValue placeholder={`Select ${name}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {input.values.map((item) => (
+              <SelectItem key={String(item)} value={String(item)}>
+                {String(item)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     );
   }
   return (
     <div className="input-row">
-      <label htmlFor={id}>{name}</label>
-      <input
+      <Label htmlFor={id}>{name}</Label>
+      <Input
         id={id}
         type={type === 'number' ? 'number' : 'text'}
         value={value}
@@ -999,7 +1039,7 @@ type ReviewWorkflowSummary = {
   };
 };
 
-function ReviewContextBar({
+function ReviewToolbar({
   staged,
   layout,
   diffLoading,
@@ -1007,6 +1047,7 @@ function ReviewContextBar({
   workingDir,
   target,
   workflow,
+  showLayoutToggle,
   onToggleStaged,
   onToggleLayout,
   onRefresh,
@@ -1018,43 +1059,60 @@ function ReviewContextBar({
   workingDir: string | null;
   target: string;
   workflow: ReviewWorkflowSummary | null;
+  showLayoutToggle: boolean;
   onToggleStaged: () => void;
   onToggleLayout: () => void;
   onRefresh: () => void;
 }) {
   return (
-    <div className="review-context-bar">
-      <div className="review-context-copy">
-        <span className="review-kicker">Review Target</span>
+    <div className="review-toolbar">
+      <div className="review-toolbar-copy">
         <strong>{target}</strong>
-        <span>
-          {reviewWorkflowKind(workflow)} via {workflow?.name ?? 'no workflow selected'}
-        </span>
+        <Badge variant="outline">{workflow?.name ?? 'No workflow selected'}</Badge>
       </div>
-      <div className="review-context-controls">
-        <div className="seg" title="Choose which local diff to review">
-          <button className={!staged ? 'active' : ''} onClick={() => !staged || onToggleStaged()}>
-            Unstaged
-          </button>
-          <button className={staged ? 'active' : ''} onClick={() => staged || onToggleStaged()}>
-            Staged
-          </button>
-        </div>
-        <Button
+      <div className="review-toolbar-controls">
+        <ToggleGroup
+          type="single"
+          size="sm"
           variant="outline"
-          onClick={onToggleLayout}
-          disabled={running}
-          title="Toggle unified/split diff layout"
+          value={staged ? 'staged' : 'unstaged'}
+          onValueChange={(value) => {
+            if (!value || (value === 'staged') === staged) return;
+            onToggleStaged();
+          }}
+          aria-label="Choose which local diff to review"
         >
-          {layout === 'split' ? 'Split diff' : 'Unified diff'}
-        </Button>
+          <ToggleGroupItem value="unstaged">Unstaged</ToggleGroupItem>
+          <ToggleGroupItem value="staged">Staged</ToggleGroupItem>
+        </ToggleGroup>
+        {showLayoutToggle && (
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            value={layout}
+            onValueChange={(value) => {
+              if (!value || value === layout) return;
+              onToggleLayout();
+            }}
+            aria-label="Toggle unified/split diff layout"
+          >
+            <ToggleGroupItem value="split" disabled={running}>
+              Split
+            </ToggleGroupItem>
+            <ToggleGroupItem value="unified" disabled={running}>
+              Unified
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         <Button
           variant="outline"
+          size="sm"
           onClick={onRefresh}
           disabled={!workingDir || diffLoading || running}
           title="Reload the current diff"
         >
-          {diffLoading ? <span className="spinner" /> : 'Refresh diff'}
+          {diffLoading ? <span className="spinner" /> : 'Refresh'}
         </Button>
       </div>
     </div>

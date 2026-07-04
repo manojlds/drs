@@ -119,113 +119,37 @@ button {
   width: 100vw;
 }
 
-.projects-home {
-  min-height: 100vh;
-  overflow: auto;
-  padding: 44px;
-  background:
-    radial-gradient(
-      circle at 20% 8%,
-      color-mix(in srgb, var(--accent) 18%, transparent),
-      transparent 28%
-    ),
-    radial-gradient(
-      circle at 80% 0%,
-      color-mix(in srgb, var(--add-text) 12%, transparent),
-      transparent 24%
-    ),
-    var(--bg);
-}
-.projects-hero {
-  max-width: 980px;
-  padding: 34px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.14);
-}
-.projects-hero-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.projects-title {
-  font-size: 38px;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  margin-top: 6px;
-}
-.projects-description {
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.6;
-  max-width: 760px;
-}
-.projects-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 24px;
-}
-.projects-section {
-  margin-top: 28px;
-  max-width: 1120px;
-}
-.projects-section-title {
+.sidebar-brand {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
+  padding: 6px 8px 2px;
 }
-.projects-section-title h2 {
-  margin: 0;
-  font-size: 16px;
+.sidebar-brand-mark {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.02em;
 }
-.projects-section-title span {
+.sidebar-brand-label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.sidebar-empty-hint {
   color: var(--text-muted);
   font-size: 12px;
+  padding: 8px;
 }
-.projects-empty {
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  color: var(--text-muted);
-  padding: 28px;
-  text-align: center;
-}
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-}
-.project-card {
-  color: var(--text);
-  padding: 16px;
-  text-align: left;
-  min-height: 132px;
+
+.no-project-hint {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-.project-card:hover {
-  border-color: var(--accent);
-  background: rgba(137, 180, 250, 0.1);
-  transform: translateY(-1px);
-}
-.project-card span {
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.project-card strong {
-  font-size: 18px;
-}
-.project-card code {
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex: 1;
   color: var(--text-muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.45;
-  word-break: break-all;
-  margin-top: auto;
+  font-size: 13px;
 }
 
 .workflow-node-summary {
@@ -283,25 +207,14 @@ button {
 .input-row label {
   font-size: 11px;
   color: var(--text-dim);
-  display: flex;
-  gap: 6px;
+}
+.input-row-checkbox {
+  flex-direction: row;
   align-items: center;
+  gap: 8px;
 }
-.input-row input[type='text'],
-.input-row input[type='number'],
-.input-row select {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 6px 8px;
+.input-row-checkbox label {
   font-size: 12px;
-  font-family: var(--mono);
-}
-.input-row input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
 }
 
 .main {
@@ -312,75 +225,53 @@ button {
   min-width: 0;
 }
 
-.review-header {
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
-  background:
-    radial-gradient(circle at top left, rgba(137, 180, 250, 0.16), transparent 32%),
-    var(--bg-elevated);
+  padding: 10px 16px;
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
-.review-kicker {
-  color: var(--accent);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
-.review-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 3px;
+.topbar-identity {
+  min-width: 0;
+  display: grid;
 }
-.review-subtitle {
+.topbar-identity strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-path {
   color: var(--text-muted);
   font-family: var(--mono);
-  font-size: 11px;
-  margin-top: 4px;
-  word-break: break-all;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.review-header-meta {
+.topbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-.review-header-meta > span {
-  color: var(--text-dim);
-}
-.back-link {
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 5px 3px;
-}
-.back-link:hover {
-  color: var(--text);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.mode-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-.mode-toggle button {
-  background: transparent;
-  border: 0;
-  color: var(--text-dim);
-  padding: 5px 10px;
-  font-size: 11.5px;
-}
-.mode-toggle button.active {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+
+.review-kicker {
+  color: var(--accent);
+  font-size: 10.5px;
   font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .review-tabs-shell {
@@ -393,71 +284,34 @@ button {
   gap: 6px;
 }
 
-.review-context-bar {
+.review-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-soft);
   background: var(--bg-elevated);
 }
-.review-context-copy {
+.review-toolbar-copy {
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.review-context-copy strong {
+.review-toolbar-copy strong {
   color: var(--text);
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.review-context-copy span:last-child {
-  color: var(--text-muted);
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.review-context-controls {
+.review-toolbar-controls {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-.review-context-controls .seg {
-  display: inline-flex;
-  gap: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-surface);
-  padding: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-.review-context-controls .seg button {
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: var(--text-dim);
-  padding: 5px 12px;
-  font-size: 12px;
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    box-shadow 0.12s ease;
-}
-.review-context-controls .seg button:hover:not(.active) {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.review-context-controls .seg button.active {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  font-weight: 650;
-  box-shadow: 0 1px 3px rgba(21, 25, 35, 0.16);
 }
 
 .overview-shell {
@@ -605,15 +459,27 @@ button {
 .workflow-workspace {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: 16px;
   overflow: hidden;
-  padding: 16px;
   background: var(--bg);
+}
+.workflow-browser-panel {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 8px 16px 16px;
+}
+.workflow-inspector-panel {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 16px 8px;
 }
 .workflow-browser {
   min-width: 0;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 .workflow-browser-head {
@@ -713,6 +579,8 @@ button {
 .workflow-inspector {
   overflow: auto;
   min-width: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1053,6 +921,10 @@ button {
   color: var(--text);
   box-shadow: 0 1px 6px rgba(21, 25, 35, 0.08);
 }
+.settings-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .settings-message {
   border-radius: 10px;
   display: flex;
@@ -1257,14 +1129,24 @@ button {
   }
 }
 .content {
+  /* ResizablePanelGroup supplies the flex row itself; this just lets the
+     group fill the remaining vertical space below the toolbar/tabs. */
   flex: 1;
-  display: flex;
-  overflow: hidden;
   min-height: 0;
+  overflow: hidden;
+}
+.file-tree-panel,
+.diff-panel,
+.review-sidecar-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 .file-tree-pane {
-  width: 260px;
-  min-width: 260px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-elevated);
   display: flex;
@@ -1291,6 +1173,7 @@ button {
 }
 .diff-pane {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   min-width: 0;
   background: var(--bg);
@@ -1318,17 +1201,22 @@ button {
   padding: 12px;
 }
 
-.review-sidecar {
-  width: 410px;
-  min-width: 410px;
+.review-sidecar-panel {
   border-left: 1px solid var(--border);
   background: var(--bg-elevated);
-  display: grid;
-  grid-template-rows: minmax(220px, 1fr) minmax(300px, 0.9fr);
+}
+.issues-panel-wrap,
+.chat-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 .issues-pane {
   min-width: 0;
+  flex: 1;
+  min-height: 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   display: flex;
@@ -1350,6 +1238,7 @@ button {
 
 .review-chat-panel {
   min-height: 0;
+  flex: 1;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -1512,6 +1401,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  height: auto;
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 12px;
@@ -1520,18 +1410,24 @@ button {
   cursor: pointer;
   user-select: none;
 }
-.sev-chip.active {
+.sev-chip[data-state='on'] {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--bg-surface);
 }
 
 .issue-card {
+  display: block;
+  width: 100%;
   background: var(--bg-surface);
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   padding: 10px;
   margin-bottom: 8px;
   cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
   transition: border-color 0.12s;
 }
 .issue-card:hover {
@@ -1851,6 +1747,9 @@ button {
 }
 
 .error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   background: rgba(243, 139, 168, 0.12);
   border: 1px solid rgba(243, 139, 168, 0.4);
   color: var(--sev-critical);
@@ -1858,7 +1757,27 @@ button {
   font-size: 12px;
   margin: 8px 12px;
   border-radius: 8px;
+}
+.error-banner span {
+  flex: 1;
+  min-width: 0;
   white-space: pre-wrap;
+}
+.error-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  opacity: 0.75;
+  padding: 2px;
+}
+.error-banner-dismiss:hover {
+  opacity: 1;
+  background: rgba(243, 139, 168, 0.16);
 }
 .source-banner {
   color: var(--text-muted);
@@ -1888,11 +1807,11 @@ button {
 }
 
 @media (max-width: 980px) {
-  .review-context-bar {
+  .review-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
-  .review-context-controls {
+  .review-toolbar-controls {
     justify-content: flex-start;
   }
   .overview-hero {
@@ -1905,10 +1824,6 @@ button {
   }
   .overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .workflow-workspace {
-    grid-template-columns: 1fr;
-    overflow: auto;
   }
 }
 
@@ -1923,4 +1838,30 @@ button {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@layer base {
+  :root {
+    /* Sidebar tokens mirror the app's own card/background palette so the
+       sidebar reads as part of the same surface system, not a bolted-on
+       shadcn default. */
+    --sidebar-background: var(--card);
+    --sidebar-foreground: var(--card-foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--muted);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border-shadcn);
+    --sidebar-ring: var(--ring);
+  }
+  .dark {
+    --sidebar-background: var(--card);
+    --sidebar-foreground: var(--card-foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--muted);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border-shadcn);
+    --sidebar-ring: var(--ring);
+  }
 }
