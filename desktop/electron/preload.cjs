@@ -9,6 +9,8 @@ const { contextBridge, ipcRenderer } = require('electron');
  * @typedef {import('../src/shared/ipc-types').ReviewJsonOutput} ReviewJsonOutput
  * @typedef {import('../src/shared/ipc-types').RunWorkflowRequest} RunWorkflowRequest
  * @typedef {import('../src/shared/ipc-types').RunWorkflowResponse} RunWorkflowResponse
+ * @typedef {import('../src/shared/ipc-types').SaveProjectConfigRequest} SaveProjectConfigRequest
+ * @typedef {import('../src/shared/ipc-types').SaveProjectConfigResponse} SaveProjectConfigResponse
  * @typedef {import('../src/shared/ipc-types').AskReviewChatRequest} AskReviewChatRequest
  * @typedef {import('../src/shared/ipc-types').AskReviewChatResponse} AskReviewChatResponse
  * @typedef {import('../src/shared/ipc-types').StartReviewChatRequest} StartReviewChatRequest
@@ -29,6 +31,8 @@ const drs = {
   getDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getDiff', workingDir, opts),
   getReviewArtifact: (workingDir) => ipcRenderer.invoke('drs:getReviewArtifact', workingDir),
   runWorkflow: (req) => ipcRenderer.invoke('drs:runWorkflow', req),
+  getProjectConfig: (workingDir) => ipcRenderer.invoke('drs:getProjectConfig', workingDir),
+  saveProjectConfig: (req) => ipcRenderer.invoke('drs:saveProjectConfig', req),
   askReviewChat: (req) => ipcRenderer.invoke('drs:askReviewChat', req),
   startReviewChat: (req) => ipcRenderer.invoke('drs:startReviewChat', req),
   sendReviewChatMessage: (req) => ipcRenderer.invoke('drs:sendReviewChatMessage', req),

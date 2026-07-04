@@ -2,13 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffView } from './components/DiffView';
 import { FileTree } from './components/FileTree';
 import { IssuesPanel } from './components/IssuesPanel';
+import { ProjectSettings } from './components/ProjectSettings';
 import { ReviewChatPanel } from './components/ReviewChatPanel';
 import { RunBanner, type RunBannerState } from './components/RunBanner';
 import { ThemeToggle } from './components/ThemeToggle';
 import { WorkflowGraphView } from './components/WorkflowGraphView';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/renderer/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/renderer/components/ui/card';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { SEVERITIES, severityToInput } from './lib/badges';
@@ -33,7 +40,7 @@ const RUN_HISTORY_KEY = 'drs-desktop:run-history';
 const REVIEW_SNAPSHOTS_KEY = 'drs-desktop:review-snapshots';
 
 type ReviewView = 'overview' | 'diff' | 'walkthrough' | 'output';
-type ProjectMode = 'review' | 'workflow';
+type ProjectMode = 'review' | 'workflow' | 'settings';
 
 interface RunHistoryEntry {
   id: string;
@@ -64,7 +71,9 @@ export function App() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const [selectedWorkflowDetail, setSelectedWorkflowDetail] = useState<WorkflowDetail | null>(null);
   const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
-  const [recentProjects, setRecentProjects] = useState<string[]>(() => readStringArray(RECENT_PROJECTS_KEY));
+  const [recentProjects, setRecentProjects] = useState<string[]>(() =>
+    readStringArray(RECENT_PROJECTS_KEY)
+  );
   const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => readRunHistory());
   const [lastRunResult, setLastRunResult] = useState<WorkflowRunResultJson | null>(null);
   const [staged, setStaged] = useState(false);
@@ -84,12 +93,12 @@ export function App() {
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
-    () => new Set(SEVERITIES),
+    () => new Set(SEVERITIES)
   );
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ file: string; line: number | null } | null>(
-    null,
+    null
   );
   const [copied, setCopied] = useState(false);
 
@@ -98,26 +107,33 @@ export function App() {
   const diffFiles: DiffFile[] = useMemo(() => parseUnifiedDiff(diffPatch), [diffPatch]);
   const selectedWorkflowEntry = useMemo(
     () => workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null,
-    [selectedWorkflow, workflows],
+    [selectedWorkflow, workflows]
   );
-  const selectedWorkflowIsReview = isReviewWorkflow(selectedWorkflowDetail ?? selectedWorkflowEntry);
+  const selectedWorkflowIsReview = isReviewWorkflow(
+    selectedWorkflowDetail ?? selectedWorkflowEntry
+  );
   const visibleRunHistory = useMemo(
     () =>
       runHistory.filter(
-        (run) => run.project === workingDir && (!selectedWorkflow || run.workflow === selectedWorkflow),
+        (run) =>
+          run.project === workingDir && (!selectedWorkflow || run.workflow === selectedWorkflow)
       ),
-    [runHistory, selectedWorkflow, workingDir],
+    [runHistory, selectedWorkflow, workingDir]
   );
   const reviewStats = useMemo(() => summarizeReview(diffFiles, review), [diffFiles, review]);
   const visualResult = useMemo(
-    () => runHistory.find((run) => run.project === workingDir && run.workflow.includes('visual'))?.result ?? null,
-    [runHistory, workingDir],
+    () =>
+      runHistory.find((run) => run.project === workingDir && run.workflow.includes('visual'))
+        ?.result ?? null,
+    [runHistory, workingDir]
   );
   const selectedIssue = useMemo(() => {
     if (!review || !selectedIssueKey) return null;
     return (
       review.issues.find((issue) => {
-        const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
+        const key = issue.line
+          ? issueLineKey(issue.file, issue.line)
+          : `${issue.file}:${issue.title}`;
         return key === selectedIssueKey;
       }) ?? null
     );
@@ -125,7 +141,7 @@ export function App() {
 
   // Subscribe to live workflow log events from the main process.
   useEffect(() => {
-        const cleanup = window.drs.onWorkflowLog((event: WorkflowLogEvent) => {
+    const cleanup = window.drs.onWorkflowLog((event: WorkflowLogEvent) => {
       setRunState((cur) => {
         if (!cur || cur.runId !== event.runId) return cur;
         const logs = [...cur.logs, event.text];
@@ -137,7 +153,7 @@ export function App() {
       cleanup();
       logCleanupRef.current = null;
     };
-    }, []);
+  }, []);
 
   const loadWorkflows = useCallback(async (dir: string) => {
     setWorkflowsLoading(true);
@@ -216,7 +232,10 @@ export function App() {
       const initial = guess && guess !== cwd ? guess : cwd;
       setWorkingDir(initial);
       rememberProject(initial);
-      const [{ fingerprint }] = await Promise.all([loadDiff(initial, false), loadWorkflows(initial)]);
+      const [{ fingerprint }] = await Promise.all([
+        loadDiff(initial, false),
+        loadWorkflows(initial),
+      ]);
       await loadReview(initial, false, fingerprint);
     })();
   }, [loadDiff, loadReview, loadWorkflows, rememberProject]);
@@ -264,7 +283,7 @@ export function App() {
       const [{ fingerprint }] = await Promise.all([loadDiff(dir, staged), loadWorkflows(dir)]);
       await loadReview(dir, staged, fingerprint);
     },
-    [loadDiff, loadReview, loadWorkflows, rememberProject, staged],
+    [loadDiff, loadReview, loadWorkflows, rememberProject, staged]
   );
 
   const handleToggleStaged = useCallback(() => {
@@ -327,7 +346,10 @@ export function App() {
             project: workingDir,
             target: reviewTarget,
             diffFingerprint: reviewFingerprint,
-            timestamp: response.reviewOutput.timestamp ?? response.result.timestamp ?? new Date().toISOString(),
+            timestamp:
+              response.reviewOutput.timestamp ??
+              response.result.timestamp ??
+              new Date().toISOString(),
             workflow: name,
             review: response.reviewOutput,
           });
@@ -345,7 +367,7 @@ export function App() {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setRunState((cur) =>
-          cur && cur.runId === runId ? { ...cur, active: false, error: message } : cur,
+          cur && cur.runId === runId ? { ...cur, active: false, error: message } : cur
         );
         setGlobalError(message);
         appendRunHistory({
@@ -359,7 +381,7 @@ export function App() {
         });
       }
     },
-    [diffFingerprint, loadDiff, staged, workingDir],
+    [diffFingerprint, loadDiff, staged, workingDir]
   );
 
   const appendRunHistory = useCallback((entry: RunHistoryEntry) => {
@@ -415,7 +437,7 @@ export function App() {
     });
   }, []);
 
-    const handleSelectIssue = useCallback((issue: ReviewIssue) => {
+  const handleSelectIssue = useCallback((issue: ReviewIssue) => {
     const key = issue.line ? issueLineKey(issue.file, issue.line) : `${issue.file}:${issue.title}`;
     setSelectedIssueKey(key);
     setScrollTarget({ file: issue.file, line: issue.line ?? null });
@@ -453,9 +475,7 @@ export function App() {
           onBackToProjects={() => setShowProjectsHome(true)}
         />
         {globalError && <div className="error-banner">{globalError}</div>}
-        {diffError && !globalError && (
-          <div className="error-banner">Diff error: {diffError}</div>
-        )}
+        {diffError && !globalError && <div className="error-banner">Diff error: {diffError}</div>}
         {workflowsError && !globalError && <div className="error-banner">{workflowsError}</div>}
         {projectMode === 'workflow' ? (
           <WorkflowWorkspace
@@ -473,6 +493,8 @@ export function App() {
             onInputChange={(key, value) => setWorkflowInputs((cur) => ({ ...cur, [key]: value }))}
             onRun={handleRunSelectedWorkflow}
           />
+        ) : projectMode === 'settings' ? (
+          <ProjectSettings workingDir={workingDir} />
         ) : (
           <>
             <ReviewViewTabs view={reviewView} onChange={setReviewView} />
@@ -483,68 +505,76 @@ export function App() {
               running={!!runState?.active}
               workingDir={workingDir}
               target={diffSourceLabel}
-              workflow={selectedWorkflowDetail ?? workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null}
+              workflow={
+                selectedWorkflowDetail ??
+                workflows.find((workflow) => workflow.name === selectedWorkflow) ??
+                null
+              }
               onToggleStaged={handleToggleStaged}
               onToggleLayout={handleToggleLayout}
               onRefresh={handleRefresh}
             />
             {reviewView === 'overview' ? (
-          <ReviewOverview
-            stats={reviewStats}
-            review={review}
-            staleReview={staleReview}
-            target={diffSourceLabel}
-            workflow={selectedWorkflowDetail ?? workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null}
-            running={!!runState?.active}
-            hasProject={!!workingDir}
-            hasVisualWalkthrough={!!visualResult}
-            onRunReview={handleRunReview}
-            onRunVisualWalkthrough={handleRunVisualWalkthrough}
-            onFixIssues={handleFixIssues}
-            onOpenDiff={() => setReviewView('diff')}
-          />
-        ) : reviewView === 'walkthrough' ? (
-          <VisualWalkthroughPanel
-            result={visualResult}
-            running={!!runState?.active}
-            onGenerate={handleRunVisualWalkthrough}
-          />
-        ) : reviewView === 'diff' && selectedWorkflowIsReview ? (
-          <div className="content">
-            <FileTree
-              files={diffFiles}
-              selectedFile={selectedFile}
-              onSelectFile={handleSelectFile}
-            />
-            <DiffView
-              files={diffFiles}
-              issues={review?.issues ?? []}
-              layout={diffLayout}
-              scrollTarget={scrollTarget}
-              onIssueClick={handleSelectIssue}
-            />
-            <aside className="review-sidecar">
-              <IssuesPanel
+              <ReviewOverview
+                stats={reviewStats}
                 review={review}
-                selectedIssueKey={selectedIssueKey}
-                severityFilter={severityFilter}
-                onToggleSeverity={handleToggleSeverity}
-                onSelectIssue={handleSelectIssue}
-                onCopyMarkdown={handleCopyMarkdown}
+                staleReview={staleReview}
+                target={diffSourceLabel}
+                workflow={
+                  selectedWorkflowDetail ??
+                  workflows.find((workflow) => workflow.name === selectedWorkflow) ??
+                  null
+                }
+                running={!!runState?.active}
+                hasProject={!!workingDir}
+                hasVisualWalkthrough={!!visualResult}
+                onRunReview={handleRunReview}
+                onRunVisualWalkthrough={handleRunVisualWalkthrough}
+                onFixIssues={handleFixIssues}
+                onOpenDiff={() => setReviewView('diff')}
               />
-              <ReviewChatPanel workingDir={workingDir} review={review} selectedIssue={selectedIssue} />
-            </aside>
-          </div>
-        ) : (
-          <GenericWorkflowResult result={lastRunResult} />
-        )}
+            ) : reviewView === 'walkthrough' ? (
+              <VisualWalkthroughPanel
+                result={visualResult}
+                running={!!runState?.active}
+                onGenerate={handleRunVisualWalkthrough}
+              />
+            ) : reviewView === 'diff' && selectedWorkflowIsReview ? (
+              <div className="content">
+                <FileTree
+                  files={diffFiles}
+                  selectedFile={selectedFile}
+                  onSelectFile={handleSelectFile}
+                />
+                <DiffView
+                  files={diffFiles}
+                  issues={review?.issues ?? []}
+                  layout={diffLayout}
+                  scrollTarget={scrollTarget}
+                  onIssueClick={handleSelectIssue}
+                />
+                <aside className="review-sidecar">
+                  <IssuesPanel
+                    review={review}
+                    selectedIssueKey={selectedIssueKey}
+                    severityFilter={severityFilter}
+                    onToggleSeverity={handleToggleSeverity}
+                    onSelectIssue={handleSelectIssue}
+                    onCopyMarkdown={handleCopyMarkdown}
+                  />
+                  <ReviewChatPanel
+                    workingDir={workingDir}
+                    review={review}
+                    selectedIssue={selectedIssue}
+                  />
+                </aside>
+              </div>
+            ) : (
+              <GenericWorkflowResult result={lastRunResult} />
+            )}
           </>
         )}
-        <RunBanner
-          state={runState}
-          onCancel={handleCancelWorkflow}
-          onDismiss={handleDismissRun}
-        />
+        <RunBanner state={runState} onCancel={handleCancelWorkflow} onDismiss={handleDismissRun} />
       </main>
     </div>
   );
@@ -584,6 +614,7 @@ function ReviewHeader({
           <TabsList title="Switch project workspace mode">
             <TabsTrigger value="review">Review</TabsTrigger>
             <TabsTrigger value="workflow">Workflows</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
         </Tabs>
         <ThemeToggle />
@@ -608,7 +639,8 @@ function ProjectHome({
   onSelectProject: (project: string) => void;
   onContinue?: () => void;
 }) {
-  const projects = recentProjects.length > 0 ? recentProjects : defaultProject ? [defaultProject] : [];
+  const projects =
+    recentProjects.length > 0 ? recentProjects : defaultProject ? [defaultProject] : [];
   return (
     <div className="projects-home">
       <Card className="projects-hero">
@@ -619,8 +651,8 @@ function ProjectHome({
           </div>
           <CardTitle className="projects-title">Choose a project to review</CardTitle>
           <CardDescription className="projects-description">
-            Open a repository, inspect the current change, run DRS workflows, and use the
-            review cockpit to understand, fix, verify, and explain agentic code changes.
+            Open a repository, inspect the current change, run DRS workflows, and use the review
+            cockpit to understand, fix, verify, and explain agentic code changes.
           </CardDescription>
         </CardHeader>
         <CardContent className="projects-actions p-0">
@@ -741,18 +773,21 @@ function WorkflowWorkspace({
                 {detail.nodes.length} nodes{detail.output ? ` · output: ${detail.output}` : ''}
               </div>
             )}
-            {detail && Object.entries(detail.inputs).map(([key, input]) => (
-              <WorkflowInputField
-                key={key}
-                name={key}
-                input={normalizeWorkflowInput(input)}
-                value={inputs[key] ?? ''}
-                onChange={(value) => onInputChange(key, value)}
-              />
-            ))}
+            {detail &&
+              Object.entries(detail.inputs).map(([key, input]) => (
+                <WorkflowInputField
+                  key={key}
+                  name={key}
+                  input={normalizeWorkflowInput(input)}
+                  value={inputs[key] ?? ''}
+                  onChange={(value) => onInputChange(key, value)}
+                />
+              ))}
             <Button
               className="w-full"
-              disabled={!workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)}
+              disabled={
+                !workingDir || running || !detail || hasMissingWorkflowInputs(detail, inputs)
+              }
               onClick={onRun}
             >
               {running ? 'Running...' : 'Run Workflow'}
@@ -779,17 +814,25 @@ function WorkflowWorkspace({
 
         <Card className="workflow-inspector-card">
           <div className="review-kicker">Latest Output</div>
-          {result ? <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre> : <p>No workflow output yet.</p>}
+          {result ? (
+            <pre>{JSON.stringify(result.output ?? result, null, 2)}</pre>
+          ) : (
+            <p>No workflow output yet.</p>
+          )}
         </Card>
 
         <Card className="workflow-inspector-card">
           <div className="review-kicker">Runs</div>
-          {runHistory.length === 0 ? <p>No runs yet for this workflow.</p> : runHistory.slice(0, 8).map((run) => (
-            <div key={run.id} className={`workflow-run-row ${run.status}`}>
-              <strong>{run.workflow}</strong>
-              <span>{new Date(run.timestamp).toLocaleString()}</span>
-            </div>
-          ))}
+          {runHistory.length === 0 ? (
+            <p>No runs yet for this workflow.</p>
+          ) : (
+            runHistory.slice(0, 8).map((run) => (
+              <div key={run.id} className={`workflow-run-row ${run.status}`}>
+                <strong>{run.workflow}</strong>
+                <span>{new Date(run.timestamp).toLocaleString()}</span>
+              </div>
+            ))
+          )}
         </Card>
       </aside>
     </div>
@@ -838,7 +881,11 @@ function WorkflowSection({
       ) : (
         <div className="workflow-card-grid">
           {workflows.map((workflow) => (
-            <Card key={workflow.name} asChild className={`workflow-card ${selectedWorkflow === workflow.name ? 'active' : ''}`}>
+            <Card
+              key={workflow.name}
+              asChild
+              className={`workflow-card ${selectedWorkflow === workflow.name ? 'active' : ''}`}
+            >
               <button onClick={() => onSelectWorkflow(workflow.name)}>
                 <Badge variant="secondary">{workflowIntentLabel(workflow)}</Badge>
                 <strong>{workflow.name}</strong>
@@ -869,7 +916,12 @@ function WorkflowInputField({
     return (
       <div className="input-row">
         <label htmlFor={id}>
-          <input id={id} type="checkbox" checked={value === 'true'} onChange={(event) => onChange(event.target.checked ? 'true' : 'false')} />
+          <input
+            id={id}
+            type="checkbox"
+            checked={value === 'true'}
+            onChange={(event) => onChange(event.target.checked ? 'true' : 'false')}
+          />
           {name}
         </label>
       </div>
@@ -880,7 +932,11 @@ function WorkflowInputField({
       <div className="input-row">
         <label htmlFor={id}>{name}</label>
         <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
-          {input.values.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}
+          {input.values.map((item) => (
+            <option key={String(item)} value={String(item)}>
+              {String(item)}
+            </option>
+          ))}
         </select>
       </div>
     );
@@ -888,12 +944,23 @@ function WorkflowInputField({
   return (
     <div className="input-row">
       <label htmlFor={id}>{name}</label>
-      <input id={id} type={type === 'number' ? 'number' : 'text'} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input
+        id={id}
+        type={type === 'number' ? 'number' : 'text'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </div>
   );
 }
 
-function ReviewViewTabs({ view, onChange }: { view: ReviewView; onChange: (view: ReviewView) => void }) {
+function ReviewViewTabs({
+  view,
+  onChange,
+}: {
+  view: ReviewView;
+  onChange: (view: ReviewView) => void;
+}) {
   const tabs: Array<{ id: ReviewView; label: string }> = [
     { id: 'overview', label: 'Overview' },
     { id: 'diff', label: 'Diff Review' },
@@ -901,10 +968,16 @@ function ReviewViewTabs({ view, onChange }: { view: ReviewView; onChange: (view:
     { id: 'output', label: 'Workflow Output' },
   ];
   return (
-    <Tabs value={view} onValueChange={(value) => onChange(value as ReviewView)} className="review-tabs-shell">
+    <Tabs
+      value={view}
+      onValueChange={(value) => onChange(value as ReviewView)}
+      className="review-tabs-shell"
+    >
       <TabsList className="review-tabs">
         {tabs.map((tab) => (
-          <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>
+          <TabsTrigger key={tab.id} value={tab.id}>
+            {tab.label}
+          </TabsTrigger>
         ))}
       </TabsList>
     </Tabs>
@@ -954,7 +1027,9 @@ function ReviewContextBar({
       <div className="review-context-copy">
         <span className="review-kicker">Review Target</span>
         <strong>{target}</strong>
-        <span>{reviewWorkflowKind(workflow)} via {workflow?.name ?? 'no workflow selected'}</span>
+        <span>
+          {reviewWorkflowKind(workflow)} via {workflow?.name ?? 'no workflow selected'}
+        </span>
       </div>
       <div className="review-context-controls">
         <div className="seg" title="Choose which local diff to review">
@@ -965,10 +1040,20 @@ function ReviewContextBar({
             Staged
           </button>
         </div>
-        <Button variant="outline" onClick={onToggleLayout} disabled={running} title="Toggle unified/split diff layout">
+        <Button
+          variant="outline"
+          onClick={onToggleLayout}
+          disabled={running}
+          title="Toggle unified/split diff layout"
+        >
           {layout === 'split' ? 'Split diff' : 'Unified diff'}
         </Button>
-        <Button variant="outline" onClick={onRefresh} disabled={!workingDir || diffLoading || running} title="Reload the current diff">
+        <Button
+          variant="outline"
+          onClick={onRefresh}
+          disabled={!workingDir || diffLoading || running}
+          title="Reload the current diff"
+        >
           {diffLoading ? <span className="spinner" /> : 'Refresh diff'}
         </Button>
       </div>
@@ -1023,7 +1108,9 @@ function ReviewOverview({
       <Card className="overview-hero">
         <CardHeader className="p-0">
           <div className="review-kicker">Review Session</div>
-          <CardTitle>{review ? 'Review findings are ready' : 'Start by reviewing this change'}</CardTitle>
+          <CardTitle>
+            {review ? 'Review findings are ready' : 'Start by reviewing this change'}
+          </CardTitle>
           <CardDescription>
             {staleReview && !review
               ? 'A previous review artifact exists, but it does not match the current diff. Run a new review to attach findings to this change.'
@@ -1048,30 +1135,56 @@ function ReviewOverview({
           <Button disabled={!hasProject || running} onClick={onRunReview}>
             Run Review
           </Button>
-          <Button variant="outline" disabled={!hasProject || running} onClick={onRunVisualWalkthrough}>
+          <Button
+            variant="outline"
+            disabled={!hasProject || running}
+            onClick={onRunVisualWalkthrough}
+          >
             {hasVisualWalkthrough ? 'Regenerate Walkthrough' : 'Generate Walkthrough'}
           </Button>
-          <Button variant="outline" disabled={!hasProject || running || actionable === 0} onClick={onFixIssues}>
+          <Button
+            variant="outline"
+            disabled={!hasProject || running || actionable === 0}
+            onClick={onFixIssues}
+          >
             Fix High+{actionable ? ` (${actionable})` : ''}
           </Button>
         </div>
       </Card>
       <section className="overview-grid">
-        <OverviewCard label="Changed Files" value={stats.filesChanged} detail={`+${stats.additions} / -${stats.deletions}`} />
+        <OverviewCard
+          label="Changed Files"
+          value={stats.filesChanged}
+          detail={`+${stats.additions} / -${stats.deletions}`}
+        />
         <OverviewCard label="Findings" value={stats.issues} detail="from latest DRS review" />
-        <OverviewCard label="Critical / High" value={actionable} detail={`${stats.critical} critical, ${stats.high} high`} />
-        <OverviewCard label="Medium / Low" value={stats.medium + stats.low} detail={`${stats.medium} medium, ${stats.low} low`} />
+        <OverviewCard
+          label="Critical / High"
+          value={actionable}
+          detail={`${stats.critical} critical, ${stats.high} high`}
+        />
+        <OverviewCard
+          label="Medium / Low"
+          value={stats.medium + stats.low}
+          detail={`${stats.medium} medium, ${stats.low} low`}
+        />
       </section>
       <Card className="review-next-step">
         <CardTitle>Suggested next step</CardTitle>
         {staleReview && !review ? (
           <p>The saved review is stale for this diff. Run Review to create a current snapshot.</p>
         ) : review ? (
-          <p>{actionable > 0 ? 'Fix high-impact findings, then re-run the review.' : 'Open the diff or generate a visual walkthrough for reviewer context.'}</p>
+          <p>
+            {actionable > 0
+              ? 'Fix high-impact findings, then re-run the review.'
+              : 'Open the diff or generate a visual walkthrough for reviewer context.'}
+          </p>
         ) : (
           <p>Run a DRS review to get inline findings and a triage queue for this change.</p>
         )}
-        <Button variant="outline" onClick={onOpenDiff}>Open Diff Review</Button>
+        <Button variant="outline" onClick={onOpenDiff}>
+          Open Diff Review
+        </Button>
       </Card>
     </div>
   );
@@ -1101,10 +1214,12 @@ function VisualWalkthroughPanel({
     <div className="visual-panel">
       <Card className="visual-empty">
         <div className="review-kicker">Visual Walkthrough</div>
-        <CardTitle>{result ? 'Walkthrough artifact generated' : 'No visual walkthrough yet'}</CardTitle>
+        <CardTitle>
+          {result ? 'Walkthrough artifact generated' : 'No visual walkthrough yet'}
+        </CardTitle>
         <CardDescription>
-          Generate an HTML explainer that walks reviewers through the change at a higher level
-          than the raw diff. Artifact rendering will be wired here next.
+          Generate an HTML explainer that walks reviewers through the change at a higher level than
+          the raw diff. Artifact rendering will be wired here next.
         </CardDescription>
         <Button disabled={running} onClick={onGenerate}>
           {result ? 'Regenerate Visual Walkthrough' : 'Generate Visual Walkthrough'}
@@ -1147,7 +1262,7 @@ function actionableMinSeverity(review: ReviewJsonOutput): string {
 }
 
 function patchFromWorkflowResult(
-  result: WorkflowRunResultJson,
+  result: WorkflowRunResultJson
 ): { patch: string; label: string } | null {
   const change = result.artifacts.change;
   if (!change?.filesWithDiffs?.length) return null;
@@ -1160,7 +1275,10 @@ function patchFromWorkflowResult(
 
 function visualHtmlFromResult(result: WorkflowRunResultJson | null): string | null {
   if (!result) return null;
-  if (typeof result.output === 'string' && result.output.trimStart().startsWith('<!DOCTYPE html>')) {
+  if (
+    typeof result.output === 'string' &&
+    result.output.trimStart().startsWith('<!DOCTYPE html>')
+  ) {
     return result.output;
   }
   const visualOutput = result.artifacts.visualExplainer;
@@ -1172,18 +1290,29 @@ function visualHtmlFromResult(result: WorkflowRunResultJson | null): string | nu
 
 function normalizeFilePatch(filename: string, patch: string): string {
   if (patch.startsWith('diff --git ')) return patch.trimEnd();
-  const header = [`diff --git a/${filename} b/${filename}`, `--- a/${filename}`, `+++ b/${filename}`];
+  const header = [
+    `diff --git a/${filename} b/${filename}`,
+    `--- a/${filename}`,
+    `+++ b/${filename}`,
+  ];
   return `${header.join('\n')}\n${patch.trimEnd()}`;
 }
 
-function isReviewWorkflow(workflow: { metadata?: { kind?: string; tags?: string[] } } | null): boolean {
-  return workflow?.metadata?.kind === 'review' || workflow?.metadata?.tags?.includes('review') || false;
+function isReviewWorkflow(
+  workflow: { metadata?: { kind?: string; tags?: string[] } } | null
+): boolean {
+  return (
+    workflow?.metadata?.kind === 'review' || workflow?.metadata?.tags?.includes('review') || false
+  );
 }
 
 function defaultWorkflowSelection(workflows: WorkflowListEntry[]): string | null {
   return (
     workflows.find((workflow) => workflow.name === REVIEW_WORKFLOW)?.name ??
-    workflows.find((workflow) => workflow.metadata?.review?.source === 'local' && workflow.name.includes('review'))?.name ??
+    workflows.find(
+      (workflow) =>
+        workflow.metadata?.review?.source === 'local' && workflow.name.includes('review')
+    )?.name ??
     workflows.find((workflow) => isReviewWorkflow(workflow))?.name ??
     workflows[0]?.name ??
     null
@@ -1255,13 +1384,18 @@ function defaultWorkflowInputs(detail: WorkflowDetail): Record<string, string> {
   for (const [key, input] of Object.entries(detail.inputs)) {
     if (typeof input === 'string') defaults[key] = input;
     else if (input.type === 'boolean') defaults[key] = input.default === true ? 'true' : 'false';
-    else if (input.default !== undefined && input.default !== null) defaults[key] = String(input.default);
+    else if (input.default !== undefined && input.default !== null)
+      defaults[key] = String(input.default);
     else defaults[key] = '';
   }
   return defaults;
 }
 
-function reviewSnapshotKey(project: string, target: 'staged' | 'unstaged', diffFingerprint: string): string {
+function reviewSnapshotKey(
+  project: string,
+  target: 'staged' | 'unstaged',
+  diffFingerprint: string
+): string {
   return `${project}::${target}::${diffFingerprint}`;
 }
 
@@ -1277,7 +1411,7 @@ function readReviewSnapshots(): Record<string, ReviewSnapshot> {
 function readReviewSnapshot(
   project: string,
   target: 'staged' | 'unstaged',
-  diffFingerprint: string,
+  diffFingerprint: string
 ): ReviewSnapshot | null {
   if (!diffFingerprint) return null;
   return readReviewSnapshots()[reviewSnapshotKey(project, target, diffFingerprint)] ?? null;
@@ -1285,11 +1419,12 @@ function readReviewSnapshot(
 
 function writeReviewSnapshot(snapshot: ReviewSnapshot): void {
   const snapshots = readReviewSnapshots();
-  snapshots[reviewSnapshotKey(snapshot.project, snapshot.target, snapshot.diffFingerprint)] = snapshot;
+  snapshots[reviewSnapshotKey(snapshot.project, snapshot.target, snapshot.diffFingerprint)] =
+    snapshot;
   const recent = Object.fromEntries(
     Object.entries(snapshots)
       .sort(([, a], [, b]) => b.timestamp.localeCompare(a.timestamp))
-      .slice(0, 50),
+      .slice(0, 50)
   );
   localStorage.setItem(REVIEW_SNAPSHOTS_KEY, JSON.stringify(recent));
 }
@@ -1297,7 +1432,9 @@ function writeReviewSnapshot(snapshot: ReviewSnapshot): void {
 function readStringArray(key: string): string[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(key) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
   } catch {
     return [];
   }
