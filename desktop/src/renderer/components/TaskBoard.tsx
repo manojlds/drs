@@ -144,6 +144,21 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [markdownDraft, selectedPrdId, workingDir]);
 
+  const handlePrdStatus = useCallback(
+    async (status: FactoryPrd['status']) => {
+      if (!selectedPrdId) return;
+      setError(null);
+      try {
+        const detail = await window.drs.updatePrdStatus({ workingDir, id: selectedPrdId, status });
+        setPrdDetail(detail);
+        setPrds((current) => current.map((prd) => (prd.id === detail.prd.id ? detail.prd : prd)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [selectedPrdId, workingDir]
+  );
+
   const handleGenerateStories = useCallback(async () => {
     if (!selectedPrdId) return;
     setError(null);
@@ -167,6 +182,20 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [selectedPrdId, workingDir]);
+
+  const handleStoryStatus = useCallback(
+    async (storyId: string, status: 'draft' | 'approved' | 'rejected') => {
+      if (!selectedPrdId) return;
+      setError(null);
+      try {
+        const detail = await window.drs.updateStoryStatus({ workingDir, prdId: selectedPrdId, storyId, status });
+        setPrdDetail(detail);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [selectedPrdId, workingDir]
+  );
 
   const handleAddTask = useCallback(async () => {
     const trimmed = title.trim();
@@ -196,6 +225,12 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     },
     [workingDir]
   );
+
+  const approvedStoryCount = prdDetail?.stories.filter((story) => story.reviewStatus === 'approved').length ?? 0;
+  const canImportStories =
+    !!prdDetail &&
+    (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
+    approvedStoryCount > 0;
 
   return (
     <div className="task-board-shell">
@@ -258,11 +293,14 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                 <div>
                   <div className="review-kicker">PRD</div>
                   <h2>{prdDetail.prd.title}</h2>
+                  <Badge variant="outline">{prdDetail.prd.status.replace(/_/g, ' ')}</Badge>
                 </div>
                 <div className="factory-prd-actions">
                   <Button variant="outline" onClick={handleSavePrd}>Save PRD</Button>
                   <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>
-                  <Button onClick={handleImportStories} disabled={prdDetail.stories.length === 0}>
+                  <Button variant="outline" onClick={() => void handlePrdStatus('in_review')}>Request Review</Button>
+                  <Button variant="outline" onClick={() => void handlePrdStatus('approved')}>Approve PRD</Button>
+                  <Button onClick={handleImportStories} disabled={!canImportStories}>
                     Import Stories
                   </Button>
                 </div>
@@ -285,7 +323,12 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                       <div className="task-card-topline"><Badge variant="secondary">{story.id}</Badge><span>P{story.priority}</span></div>
                       <strong>{story.title}</strong>
                       <p>{story.description}</p>
+                      <Badge variant="outline">{story.reviewStatus}</Badge>
                       <div className="task-card-criteria">{story.acceptanceCriteria.length} acceptance criteria</div>
+                      <div className="factory-story-actions">
+                        <Button variant="outline" onClick={() => void handleStoryStatus(story.id, 'approved')}>Approve</Button>
+                        <Button variant="outline" onClick={() => void handleStoryStatus(story.id, 'rejected')}>Reject</Button>
+                      </div>
                     </Card>
                   ))
                 )}

@@ -257,7 +257,7 @@ export interface UpdateTaskRequest {
 export interface FactoryPrd {
   id: string;
   title: string;
-  status: 'draft' | 'active' | 'paused' | 'done' | 'archived';
+  status: 'draft' | 'in_review' | 'approved' | 'active' | 'paused' | 'done' | 'archived';
   prompt: string;
   prdPath: string;
   storiesPath: string;
@@ -272,6 +272,7 @@ export interface FactoryStory {
   acceptanceCriteria: string[];
   priority: number;
   status: 'draft' | 'backlog' | 'todo';
+  reviewStatus: 'draft' | 'approved' | 'rejected';
   dependsOn: string[];
   notes: string;
 }
@@ -359,7 +360,9 @@ export interface DrsApi {
   createPrd(req: { workingDir: string; title: string; prompt?: string; markdown?: string }): Promise<FactoryPrdDetail>;
   getPrd(workingDir: string, id: string): Promise<FactoryPrdDetail>;
   updatePrd(req: { workingDir: string; id: string; markdown: string }): Promise<FactoryPrdDetail>;
+  updatePrdStatus(req: { workingDir: string; id: string; status: FactoryPrd['status'] }): Promise<FactoryPrdDetail>;
   generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  updateStoryStatus(req: { workingDir: string; prdId: string; storyId: string; status: FactoryStory['reviewStatus'] }): Promise<FactoryPrdDetail>;
   importStories(workingDir: string, prdId: string): Promise<DrsTask[]>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;

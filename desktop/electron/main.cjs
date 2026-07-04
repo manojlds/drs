@@ -394,8 +394,16 @@ app.whenReady().then(() => {
     return runDrsJson(req.workingDir, ['factory', 'prd-update', req.id, '--markdown', req.markdown]);
   });
 
+  ipcMain.handle('drs:updatePrdStatus', async (_event, req) => {
+    return runDrsJson(req.workingDir, ['factory', 'prd-status', req.id, req.status]);
+  });
+
   ipcMain.handle('drs:generateStories', async (_event, workingDir, prdId) => {
     return runDrsJson(workingDir, ['factory', 'stories-generate', prdId]);
+  });
+
+  ipcMain.handle('drs:updateStoryStatus', async (_event, req) => {
+    return runDrsJson(req.workingDir, ['factory', 'story-status', req.prdId, req.storyId, req.status]);
   });
 
   ipcMain.handle('drs:importStories', async (_event, workingDir, prdId) => {

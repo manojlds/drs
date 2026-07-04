@@ -30,6 +30,10 @@ import {
   importStoriesToTasks,
   listPrds,
   updatePrdMarkdown,
+  updatePrdStatus,
+  updateStoryReviewStatus,
+  type PrdStatus,
+  type StoryReviewStatus,
 } from '../lib/factory-store.js';
 
 // Load environment variables from .env in current working directory (if present)
@@ -584,6 +588,22 @@ factoryCommand
   });
 
 factoryCommand
+  .command('prd-status <id> <status>')
+  .description('Set PRD review/lifecycle status')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (id: string, status: string, options) => {
+    try {
+      const result = await updatePrdStatus(process.cwd(), id, status as PrdStatus);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Updated PRD ${result.prd.id}: status=${result.prd.status}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
   .command('stories-generate <prdId>')
   .description('Generate reviewable stories from PRD markdown')
   .option('--json', 'Output stories as JSON')
@@ -608,6 +628,27 @@ factoryCommand
       const tasks = await importStoriesToTasks(process.cwd(), prdId);
       if (options.json) console.log(JSON.stringify({ tasks }, null, 2));
       else console.log(`Imported ${tasks.length} tasks from ${prdId}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('story-status <prdId> <storyId> <status>')
+  .description('Set story review status')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, storyId: string, status: string, options) => {
+    try {
+      const result = await updateStoryReviewStatus(
+        process.cwd(),
+        prdId,
+        storyId,
+        status as StoryReviewStatus
+      );
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Updated story ${storyId}: status=${status}`);
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

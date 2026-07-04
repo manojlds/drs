@@ -2,7 +2,14 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { createPrd, generateStories, importStoriesToTasks, listPrds } from './factory-store.js';
+import {
+  createPrd,
+  generateStories,
+  importStoriesToTasks,
+  listPrds,
+  updatePrdStatus,
+  updateStoryReviewStatus,
+} from './factory-store.js';
 import { listTasks } from './task-store.js';
 
 describe('factory-store', () => {
@@ -37,6 +44,9 @@ describe('factory-store', () => {
 `;
       const created = await createPrd(dir, { title: 'Example', markdown });
       const generated = await generateStories(dir, created.prd.id);
+      await updatePrdStatus(dir, created.prd.id, 'approved');
+      await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
+      await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'approved');
       const imported = await importStoriesToTasks(dir, created.prd.id);
       const secondImport = await importStoriesToTasks(dir, created.prd.id);
 
@@ -48,6 +58,34 @@ describe('factory-store', () => {
       expect(secondImport).toHaveLength(0);
       expect(imported[0]).toMatchObject({ prdId: created.prd.id, storyId: 'US-001' });
       expect(await listTasks(dir)).toHaveLength(2);
+    });
+  });
+
+  it('requires approved PRDs and approved stories before import', async () => {
+    await withTempDir(async (dir) => {
+      const created = await createPrd(dir, {
+        title: 'Gated Plan',
+        markdown: `# PRD: Gated Plan
+
+### US-001: Approved work
+**Description:** Ready work.
+
+### US-002: Rejected work
+**Description:** Not ready.
+`,
+      });
+      await generateStories(dir, created.prd.id);
+
+      await expect(importStoriesToTasks(dir, created.prd.id)).rejects.toThrow('must be approved');
+
+      await updatePrdStatus(dir, created.prd.id, 'approved');
+      await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
+      await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'rejected');
+      const imported = await importStoriesToTasks(dir, created.prd.id);
+
+      expect(imported).toHaveLength(1);
+      expect(imported[0].storyId).toBe('US-001');
+      expect(imported[0].status).toBe('backlog');
     });
   });
 });

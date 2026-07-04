@@ -5,8 +5,18 @@ import { addTask, listTasks, type DrsTask } from './task-store.js';
 export const FACTORY_DIR = '.drs/factory';
 export const PRD_INDEX_RELATIVE_PATH = `${FACTORY_DIR}/prds/index.json`;
 
-export const PRD_STATUSES = ['draft', 'active', 'paused', 'done', 'archived'] as const;
+export const PRD_STATUSES = [
+  'draft',
+  'in_review',
+  'approved',
+  'active',
+  'paused',
+  'done',
+  'archived',
+] as const;
 export type PrdStatus = (typeof PRD_STATUSES)[number];
+export const STORY_REVIEW_STATUSES = ['draft', 'approved', 'rejected'] as const;
+export type StoryReviewStatus = (typeof STORY_REVIEW_STATUSES)[number];
 
 export interface FactoryPrd {
   id: string;
@@ -26,6 +36,7 @@ export interface FactoryStory {
   acceptanceCriteria: string[];
   priority: number;
   status: 'draft' | 'backlog' | 'todo';
+  reviewStatus: StoryReviewStatus;
   dependsOn: string[];
   notes: string;
 }
@@ -96,6 +107,22 @@ export async function updatePrdMarkdown(
   return getPrd(workingDir, id);
 }
 
+export async function updatePrdStatus(
+  workingDir: string,
+  id: string,
+  status: PrdStatus
+): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+  if (!PRD_STATUSES.includes(status)) throw new Error(`Invalid PRD status: ${status}`);
+  const index = await readPrdIndex(workingDir);
+  const prdIndex = index.prds.findIndex((item) => item.id === id);
+  if (prdIndex === -1) throw new Error(`PRD not found: ${id}`);
+  const prd = { ...index.prds[prdIndex], status, updatedAt: new Date().toISOString() };
+  const prds = [...index.prds];
+  prds[prdIndex] = prd;
+  await writePrdIndex(workingDir, { version: 1, prds });
+  return getPrd(workingDir, id);
+}
+
 export async function generateStories(
   workingDir: string,
   id: string
@@ -106,8 +133,30 @@ export async function generateStories(
   return { ...current, stories };
 }
 
+export async function updateStoryReviewStatus(
+  workingDir: string,
+  prdId: string,
+  storyId: string,
+  reviewStatus: StoryReviewStatus
+): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+  if (!STORY_REVIEW_STATUSES.includes(reviewStatus)) {
+    throw new Error(`Invalid story review status: ${reviewStatus}`);
+  }
+  const current = await getPrd(workingDir, prdId);
+  const stories = current.stories.map((story) =>
+    story.id === storyId ? { ...story, reviewStatus } : story
+  );
+  if (!stories.some((story) => story.id === storyId))
+    throw new Error(`Story not found: ${storyId}`);
+  await writeStoriesFile(workingDir, current.prd, stories);
+  return { ...current, stories };
+}
+
 export async function importStoriesToTasks(workingDir: string, id: string): Promise<DrsTask[]> {
   const { prd, stories } = await getPrd(workingDir, id);
+  if (prd.status !== 'approved' && prd.status !== 'active') {
+    throw new Error(`PRD must be approved before importing stories: ${prd.id}`);
+  }
   const existingTasks = await listTasks(workingDir);
   const existingByStory = new Set(
     existingTasks
@@ -119,14 +168,14 @@ export async function importStoriesToTasks(workingDir: string, id: string): Prom
   for (const task of existingTasks) {
     if (task.prdId === prd.id && task.storyId) storyToTask.set(task.storyId, task.id);
   }
-  for (const story of stories) {
+  for (const story of stories.filter((item) => item.reviewStatus === 'approved')) {
     if (existingByStory.has(story.id)) continue;
     const task = await addTask(workingDir, {
       prdId: prd.id,
       storyId: story.id,
       title: story.title,
       description: story.description,
-      status: story.status,
+      status: story.status === 'draft' ? 'backlog' : story.status,
       priority: story.priority,
       acceptanceCriteria: story.acceptanceCriteria,
       dependsOn: story.dependsOn.map((storyId) => storyToTask.get(storyId)).filter(isString),
@@ -224,6 +273,7 @@ function parseStoriesFromMarkdown(markdown: string): FactoryStory[] {
       acceptanceCriteria: extractAcceptanceCriteria(body),
       priority: storyIndex + 1,
       status: 'draft',
+      reviewStatus: 'draft',
       dependsOn: [],
       notes: '',
     };
@@ -292,6 +342,10 @@ function normalizeStory(value: unknown): FactoryStory {
       : [],
     priority: Number(value.priority) || 1,
     status: value.status === 'todo' || value.status === 'backlog' ? value.status : 'draft',
+    reviewStatus:
+      value.reviewStatus === 'approved' || value.reviewStatus === 'rejected'
+        ? value.reviewStatus
+        : 'draft',
     dependsOn: Array.isArray(value.dependsOn) ? value.dependsOn.map(scalarString) : [],
     notes: scalarString(value.notes),
   };

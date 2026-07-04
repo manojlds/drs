@@ -271,6 +271,11 @@ button {
   overflow: auto;
   padding-bottom: 10px;
 }
+.factory-story-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
 .task-board-error {
   border: 1px solid rgba(243, 139, 168, 0.55);
   border-radius: 8px;
