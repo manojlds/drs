@@ -108,15 +108,17 @@ const pushRepeated = (args, flag, values) => {
   for (const value of values || []) pushOptional(args, flag, value);
 };
 
-const runTaskJson = async (workingDir, args) => {
+const runDrsJson = async (workingDir, args) => {
   const { stdout } = await runDrs({
     repoRoot,
     workingDir,
-    args: ['task', ...args, '--json'],
+    args: [...args, '--json'],
     timeoutMs: 30000,
   });
   return parseJsonRequired(stdout, 'task');
 };
+
+const runTaskJson = async (workingDir, args) => runDrsJson(workingDir, ['task', ...args]);
 
 /** @param {string} workingDir @param {string} relPath */
 const readJsonFile = (workingDir, relPath) => {
@@ -370,6 +372,35 @@ app.whenReady().then(() => {
     pushOptional(args, '--priority', req.priority);
     pushRepeated(args, '--acceptance', req.acceptanceCriteria);
     return runTaskJson(req.workingDir, args);
+  });
+
+  ipcMain.handle('drs:listPrds', async (_event, workingDir) => {
+    const result = await runDrsJson(workingDir, ['factory', 'list']);
+    return result.prds || [];
+  });
+
+  ipcMain.handle('drs:createPrd', async (_event, req) => {
+    const args = ['factory', 'prd-create', '--title', req.title];
+    pushOptional(args, '--prompt', req.prompt);
+    pushOptional(args, '--markdown', req.markdown);
+    return runDrsJson(req.workingDir, args);
+  });
+
+  ipcMain.handle('drs:getPrd', async (_event, workingDir, id) => {
+    return runDrsJson(workingDir, ['factory', 'prd-show', id]);
+  });
+
+  ipcMain.handle('drs:updatePrd', async (_event, req) => {
+    return runDrsJson(req.workingDir, ['factory', 'prd-update', req.id, '--markdown', req.markdown]);
+  });
+
+  ipcMain.handle('drs:generateStories', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'stories-generate', prdId]);
+  });
+
+  ipcMain.handle('drs:importStories', async (_event, workingDir, prdId) => {
+    const result = await runDrsJson(workingDir, ['factory', 'stories-import', prdId]);
+    return result.tasks || [];
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {

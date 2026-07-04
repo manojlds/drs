@@ -185,6 +185,92 @@ button {
 .task-create-card input {
   flex: 1;
 }
+.task-create-card-stacked {
+  align-items: center;
+}
+.factory-planning-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 360px;
+  max-height: 48vh;
+}
+.factory-prd-list,
+.factory-prd-detail {
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.factory-prd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+.factory-prd-item {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 10px;
+  padding: 10px;
+  text-align: left;
+}
+.factory-prd-item span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.factory-prd-item.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.factory-prd-detail {
+  display: grid;
+  grid-template-rows: auto minmax(170px, 1fr) minmax(120px, 0.65fr);
+}
+.factory-prd-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.factory-prd-detail-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.factory-prd-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.factory-prd-editor {
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 12px;
+  outline: none;
+}
+.factory-story-preview {
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 10px;
+}
 .task-board-error {
   border: 1px solid rgba(243, 139, 168, 0.55);
   border-radius: 8px;
@@ -282,7 +368,11 @@ button {
     flex-direction: column;
   }
   .task-board-grid {
-    grid-template-columns: repeat(7, minmax(260px, 82vw));
+    grid-template-columns: repeat(8, minmax(260px, 82vw));
+  }
+  .factory-planning-layout {
+    grid-template-columns: 1fr;
+    max-height: none;
   }
 }
 

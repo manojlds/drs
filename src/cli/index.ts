@@ -23,6 +23,14 @@ import {
   validateTaskStore,
   type DrsTask,
 } from '../lib/task-store.js';
+import {
+  createPrd,
+  generateStories,
+  getPrd,
+  importStoriesToTasks,
+  listPrds,
+  updatePrdMarkdown,
+} from '../lib/factory-store.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -491,6 +499,123 @@ taskCommand
   });
 
 program.addCommand(taskCommand);
+
+const factoryCommand = new Command('factory').description('Plan PRDs and generate factory tasks');
+
+factoryCommand
+  .command('prd-list')
+  .alias('list')
+  .description('List factory PRDs')
+  .option('--json', 'Output PRDs as JSON')
+  .action(async (options) => {
+    try {
+      const prds = await listPrds(process.cwd());
+      if (options.json) console.log(JSON.stringify({ prds }, null, 2));
+      else if (prds.length === 0) console.log('No PRDs found.');
+      else
+        for (const prd of prds)
+          console.log(`${prd.id.padEnd(28)} ${prd.status.padEnd(8)} ${prd.title}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-create')
+  .description('Create a factory PRD markdown artifact')
+  .requiredOption('-t, --title <title>', 'PRD title')
+  .option('-p, --prompt <prompt>', 'Original planning prompt')
+  .option('-m, --markdown <markdown>', 'Initial PRD markdown')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (options) => {
+    try {
+      const result = await createPrd(process.cwd(), {
+        title: options.title,
+        prompt: options.prompt,
+        markdown: options.markdown,
+      });
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Created PRD ${result.prd.id}: ${result.prd.title}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-show <id>')
+  .description('Show a factory PRD with generated stories')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const result = await getPrd(process.cwd(), id);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(chalk.bold(`${result.prd.id}: ${result.prd.title}`));
+        console.log(`Status: ${result.prd.status}`);
+        console.log(`Stories: ${result.stories.length}`);
+        console.log(`\n${result.markdown}`);
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-update <id>')
+  .description('Replace PRD markdown')
+  .requiredOption('-m, --markdown <markdown>', 'PRD markdown')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const result = await updatePrdMarkdown(process.cwd(), id, options.markdown);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Updated PRD ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('stories-generate <prdId>')
+  .description('Generate reviewable stories from PRD markdown')
+  .option('--json', 'Output stories as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await generateStories(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Generated ${result.stories.length} stories for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('stories-import <prdId>')
+  .description('Import generated PRD stories into the task backlog')
+  .option('--json', 'Output imported tasks as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const tasks = await importStoriesToTasks(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify({ tasks }, null, 2));
+      else console.log(`Imported ${tasks.length} tasks from ${prdId}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program.addCommand(factoryCommand);
 
 program
   .command('list-agents')

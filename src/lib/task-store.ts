@@ -5,6 +5,8 @@ export const TASK_STORE_RELATIVE_PATH = '.drs/tasks/tasks.json';
 
 export const TASK_STATUSES = [
   'draft',
+  'backlog',
+  'todo',
   'open',
   'in_progress',
   'checks_failed',
@@ -36,6 +38,8 @@ export interface DrsTaskAttempt {
 
 export interface DrsTask {
   id: string;
+  prdId?: string;
+  storyId?: string;
   title: string;
   description: string;
   status: TaskStatus;
@@ -57,6 +61,8 @@ export interface DrsTaskStore {
 
 export interface AddTaskInput {
   id?: string;
+  prdId?: string;
+  storyId?: string;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -69,6 +75,8 @@ export interface AddTaskInput {
 }
 
 export interface UpdateTaskInput {
+  prdId?: string;
+  storyId?: string;
   title?: string;
   description?: string;
   status?: TaskStatus;
@@ -103,6 +111,8 @@ export async function addTask(workingDir: string, input: AddTaskInput): Promise<
 
   const task: DrsTask = {
     id,
+    prdId: input.prdId,
+    storyId: input.storyId,
     title,
     description: input.description?.trim() ?? '',
     status: normalizeTaskStatus(input.status ?? 'open'),

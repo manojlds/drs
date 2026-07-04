@@ -1,0 +1,62 @@
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { describe, expect, it } from 'vitest';
+import { createPrd, generateStories, importStoriesToTasks, listPrds } from './factory-store.js';
+import { listTasks } from './task-store.js';
+
+describe('factory-store', () => {
+  it('creates and lists durable PRDs', async () => {
+    await withTempDir(async (dir) => {
+      const created = await createPrd(dir, { title: 'Factory Planning', prompt: 'Plan factory' });
+      const prds = await listPrds(dir);
+
+      expect(created.prd.id).toBe('factory-planning');
+      expect(created.markdown).toContain('# PRD: Factory Planning');
+      expect(prds).toHaveLength(1);
+    });
+  });
+
+  it('generates stories from PRD markdown and imports them as PRD-scoped tasks', async () => {
+    await withTempDir(async (dir) => {
+      const markdown = `# PRD: Example
+
+## User Stories
+### US-001: Add PRD list
+**Description:** As a user, I want to list PRDs.
+
+**Acceptance Criteria:**
+- [ ] PRDs are listed in newest-first order.
+- [ ] Required checks pass.
+
+### US-002: Show PRD board
+**Description:** As a user, I want a scoped board.
+
+**Acceptance Criteria:**
+- [ ] Board filters tasks by PRD.
+`;
+      const created = await createPrd(dir, { title: 'Example', markdown });
+      const generated = await generateStories(dir, created.prd.id);
+      const imported = await importStoriesToTasks(dir, created.prd.id);
+      const secondImport = await importStoriesToTasks(dir, created.prd.id);
+
+      expect(generated.stories.map((story) => story.title)).toEqual([
+        'Add PRD list',
+        'Show PRD board',
+      ]);
+      expect(imported).toHaveLength(2);
+      expect(secondImport).toHaveLength(0);
+      expect(imported[0]).toMatchObject({ prdId: created.prd.id, storyId: 'US-001' });
+      expect(await listTasks(dir)).toHaveLength(2);
+    });
+  });
+});
+
+async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), 'drs-factory-store-'));
+  try {
+    await run(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}

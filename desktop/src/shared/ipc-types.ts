@@ -193,6 +193,8 @@ export interface FileDiffResult {
 
 export type TaskStatus =
   | 'draft'
+  | 'backlog'
+  | 'todo'
   | 'open'
   | 'in_progress'
   | 'checks_failed'
@@ -206,6 +208,8 @@ export type TaskStatus =
 
 export interface DrsTask {
   id: string;
+  prdId?: string;
+  storyId?: string;
   title: string;
   description: string;
   status: TaskStatus;
@@ -229,6 +233,8 @@ export interface DrsTask {
 
 export interface AddTaskRequest {
   workingDir: string;
+  prdId?: string;
+  storyId?: string;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -239,11 +245,41 @@ export interface AddTaskRequest {
 export interface UpdateTaskRequest {
   workingDir: string;
   id: string;
+  prdId?: string;
+  storyId?: string;
   title?: string;
   description?: string;
   status?: TaskStatus;
   priority?: number;
   acceptanceCriteria?: string[];
+}
+
+export interface FactoryPrd {
+  id: string;
+  title: string;
+  status: 'draft' | 'active' | 'paused' | 'done' | 'archived';
+  prompt: string;
+  prdPath: string;
+  storiesPath: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FactoryStory {
+  id: string;
+  title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  priority: number;
+  status: 'draft' | 'backlog' | 'todo';
+  dependsOn: string[];
+  notes: string;
+}
+
+export interface FactoryPrdDetail {
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
 }
 
 export interface RunWorkflowRequest {
@@ -319,6 +355,12 @@ export interface DrsApi {
   listTasks(workingDir: string): Promise<DrsTask[]>;
   addTask(req: AddTaskRequest): Promise<DrsTask>;
   updateTask(req: UpdateTaskRequest): Promise<DrsTask>;
+  listPrds(workingDir: string): Promise<FactoryPrd[]>;
+  createPrd(req: { workingDir: string; title: string; prompt?: string; markdown?: string }): Promise<FactoryPrdDetail>;
+  getPrd(workingDir: string, id: string): Promise<FactoryPrdDetail>;
+  updatePrd(req: { workingDir: string; id: string; markdown: string }): Promise<FactoryPrdDetail>;
+  generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  importStories(workingDir: string, prdId: string): Promise<DrsTask[]>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;
