@@ -1,7 +1,8 @@
 // @ts-check
 
 /* eslint-disable @typescript-eslint/no-require-imports, no-undef */
-const { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const fs = require('node:fs/promises');
 const { join, dirname, relative } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const http = require('node:http');
@@ -172,28 +173,40 @@ const isReviewArtifactEnvelope = (value) =>
   isReviewArtifactPayload(value.payload);
 
 /** @param {string} directory */
-const collectLatestReviewArtifactPaths = (directory) => {
-  if (!existsSync(directory)) return [];
+const collectLatestReviewArtifactPaths = async (directory) => {
   const paths = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return [];
+    throw error;
+  }
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const entryPath = join(directory, entry.name);
     if (entry.name === 'review') {
       paths.push(join(entryPath, 'latest.json'));
     } else {
-      paths.push(...collectLatestReviewArtifactPaths(entryPath));
+      paths.push(...(await collectLatestReviewArtifactPaths(entryPath)));
     }
   }
   return paths;
 };
 
 /** @param {string} workingDir */
-const readLatestReviewArtifact = (workingDir) => {
-  const latestPaths = collectLatestReviewArtifactPaths(join(workingDir, '.drs/artifacts'));
+const readLatestReviewArtifact = async (workingDir) => {
+  const latestPaths = await collectLatestReviewArtifactPaths(join(workingDir, '.drs/artifacts'));
   const candidates = [];
   for (const absPath of latestPaths) {
-    if (!existsSync(absPath)) continue;
-    const parsed = parseJsonSafe(readFileSync(absPath, 'utf-8'));
+    let source;
+    try {
+      source = await fs.readFile(absPath, 'utf-8');
+    } catch (error) {
+      if (error && error.code === 'ENOENT') continue;
+      throw error;
+    }
+    const parsed = parseJsonSafe(source);
     if (isReviewArtifactEnvelope(parsed)) {
       candidates.push({ artifact: parsed, path: absPath });
     }
@@ -306,7 +319,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {
-    return readLatestReviewArtifact(workingDir);
+    return await readLatestReviewArtifact(workingDir);
   });
 
   ipcMain.handle('drs:getProjectConfig', async (_event, workingDir) => {
@@ -364,7 +377,7 @@ app.whenReady().then(() => {
     if (!result) {
       throw new Error('Workflow completed but no result file was produced.');
     }
-    const reviewOutput = readLatestReviewArtifact(workingDir);
+    const reviewOutput = await readLatestReviewArtifact(workingDir);
     return { result, reviewOutput };
   });
 
