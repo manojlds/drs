@@ -5,6 +5,7 @@ import { IssuesPanel } from './components/IssuesPanel';
 import { ReviewChatPanel } from './components/ReviewChatPanel';
 import { RunBanner, type RunBannerState } from './components/RunBanner';
 import { ThemeToggle } from './components/ThemeToggle';
+import { WorkflowGraphView } from './components/WorkflowGraphView';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/renderer/components/ui/card';
@@ -754,6 +755,17 @@ function WorkflowWorkspace({
               {running ? 'Running...' : 'Run Workflow'}
             </Button>
           </CardContent>
+        </Card>
+
+        <Card className="workflow-inspector-card workflow-graph-card">
+          <div className="workflow-inspector-card-head">
+            <div>
+              <div className="review-kicker">DAG</div>
+              <strong>Workflow Graph</strong>
+            </div>
+            {detail?.graph && <Badge variant="outline">{detail.graph.nodes.length} nodes</Badge>}
+          </div>
+          <WorkflowGraphView graph={detail?.graph} />
         </Card>
 
         <Card className="workflow-inspector-card">
