@@ -1620,6 +1620,14 @@ button {
   width: 100%;
   border-collapse: collapse;
 }
+.diff-file-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
 .pierre-diff-wrap {
   font-family: var(--mono);
   font-size: 12px;

@@ -112,6 +112,7 @@ export function App() {
   const [projectMode, setProjectMode] = useState<ProjectMode>('review');
 
   const [diffPatch, setDiffPatch] = useState('');
+  const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [diffFingerprint, setDiffFingerprint] = useState('');
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
@@ -134,7 +135,6 @@ export function App() {
 
   const logCleanupRef = useRef<(() => void) | null>(null);
 
-  const diffFiles: DiffFile[] = useMemo(() => parseUnifiedDiff(diffPatch), [diffPatch]);
   const selectedWorkflowEntry = useMemo(
     () => workflows.find((workflow) => workflow.name === selectedWorkflow) ?? null,
     [selectedWorkflow, workflows]
@@ -214,18 +214,21 @@ export function App() {
           result.maxPatchBytes ?? 0
         )}). Commit or stage a smaller change, or set DRS_DESKTOP_MAX_DIFF_BYTES to raise the desktop limit.`;
         setDiffPatch('');
+        setDiffFiles(result.files.map((file) => ({ ...file, hunks: [], patchLoaded: false })));
         setDiffFingerprint('');
         setDiffSourceLabel(useStaged ? 'Local staged diff' : 'Local unstaged diff');
         setDiffError(message);
         return { patch: '', fingerprint: '' };
       }
-      const fingerprint = hashString(result.patch);
-      setDiffPatch(result.patch);
+      const fingerprint = result.fingerprint;
+      setDiffPatch('');
+      setDiffFiles(result.files.map((file) => ({ ...file, hunks: [], patchLoaded: false })));
       setDiffFingerprint(fingerprint);
       setDiffSourceLabel(useStaged ? 'Local staged diff' : 'Local unstaged diff');
-      return { patch: result.patch, fingerprint };
+      return { patch: '', fingerprint };
     } catch (error) {
       setDiffPatch('');
+      setDiffFiles([]);
       setDiffFingerprint('');
       setDiffError(error instanceof Error ? error.message : String(error));
       return { patch: '', fingerprint: '' };
@@ -233,6 +236,54 @@ export function App() {
       setDiffLoading(false);
     }
   }, []);
+
+  const loadFileDiff = useCallback(
+    async (path: string) => {
+      if (!workingDir || diffPatch) return;
+      setDiffFiles((files) =>
+        files.map((file) =>
+          file.path === path ? { ...file, loading: true, error: undefined } : file
+        )
+      );
+      try {
+        const result = await window.drs.getFileDiff(workingDir, { staged, path });
+        if (result.truncated) {
+          const message = `File diff is too large to render safely (${formatBytes(
+            result.patchBytes ?? 0
+          )}; limit ${formatBytes(result.maxPatchBytes ?? 0)}).`;
+          setDiffFiles((files) =>
+            files.map((file) =>
+              file.path === path
+                ? { ...file, loading: false, patchLoaded: true, truncated: true, error: message }
+                : file
+            )
+          );
+          return;
+        }
+        const parsed = parseUnifiedDiff(result.patch);
+        const loaded = parsed.find((file) => file.path === path) ?? parsed[0] ?? null;
+        setDiffFiles((files) =>
+          files.map((file) =>
+            file.path === path
+              ? loaded
+                ? { ...file, ...loaded, loading: false, patchLoaded: true }
+                : { ...file, loading: false, patchLoaded: true }
+              : file
+          )
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setDiffFiles((files) =>
+          files.map((file) =>
+            file.path === path
+              ? { ...file, loading: false, patchLoaded: true, error: message }
+              : file
+          )
+        );
+      }
+    },
+    [diffPatch, staged, workingDir]
+  );
 
   const loadReview = useCallback(async (dir: string, useStaged: boolean, fingerprint: string) => {
     const snapshot = readReviewSnapshot(dir, useStaged ? 'staged' : 'unstaged', fingerprint);
@@ -380,6 +431,7 @@ export function App() {
         let reviewTarget: 'staged' | 'unstaged' = targetAtStart;
         if (remotePatch) {
           setDiffPatch(remotePatch.patch);
+          setDiffFiles(parseUnifiedDiff(remotePatch.patch));
           reviewFingerprint = hashString(remotePatch.patch);
           setDiffFingerprint(reviewFingerprint);
           setDiffSourceLabel(remotePatch.label);
@@ -666,6 +718,7 @@ export function App() {
                       selectedFile={selectedFile}
                       scrollTarget={scrollTarget}
                       onIssueClick={handleSelectIssue}
+                      onLoadFilePatch={loadFileDiff}
                     />
                   </Suspense>
                 </ResizablePanel>

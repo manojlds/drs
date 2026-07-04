@@ -28,6 +28,10 @@ export interface DiffFile {
   deletions: number;
   hunks: DiffHunk[];
   binary: boolean;
+  patchLoaded?: boolean;
+  loading?: boolean;
+  truncated?: boolean;
+  error?: string;
   metadata?: FileDiffMetadata;
 }
 
@@ -237,7 +241,7 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
   }
 
   if (current) files.push(current);
-  return files;
+  return files.map((file) => ({ ...file, patchLoaded: true }));
 }
 
 function parsePierreDiffFiles(patch: string): DiffFile[] {
@@ -253,6 +257,7 @@ function parsePierreDiffFiles(patch: string): DiffFile[] {
           deletions: fileDiff.hunks.reduce((sum, hunk) => sum + hunk.deletionLines, 0),
           hunks: [],
           binary: fileDiff.hunks.length === 0,
+          patchLoaded: true,
           metadata,
         };
       })

@@ -11,7 +11,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const yaml = require('yaml');
 const drsConfigSchema = require('../src/shared/drs-config-schema.json');
 const { runDrs } = require('./drs-cli.cjs');
-const { getDiff } = require('./git.cjs');
+const { getDiff, getFileDiff } = require('./git.cjs');
 
 const isDev = !app.isPackaged;
 // desktop/ — electron/ is one level below it.
@@ -316,6 +316,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:getDiff', async (_event, workingDir, opts) => {
     return getDiff(workingDir, opts || {});
+  });
+
+  ipcMain.handle('drs:getFileDiff', async (_event, workingDir, opts) => {
+    return getFileDiff(workingDir, opts || {});
   });
 
   ipcMain.handle('drs:getReviewArtifact', async (_event, workingDir) => {

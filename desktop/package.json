@@ -12,6 +12,7 @@
     "start": "vite build && electron .",
     "electron": "electron .",
     "electron:dev": "ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "test": "node --test electron/*.test.cjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "setup:drs": "npm --prefix ../ run build"
   },

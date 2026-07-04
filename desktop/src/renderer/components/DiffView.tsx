@@ -19,6 +19,7 @@ interface DiffViewProps {
   selectedFile: string | null;
   scrollTarget: { file: string; line: number | null } | null;
   onIssueClick: (issue: ReviewIssue) => void;
+  onLoadFilePatch: (path: string) => void;
 }
 
 type IssueAnnotation = { issue: ReviewIssue };
@@ -42,6 +43,7 @@ export function DiffView({
   selectedFile,
   scrollTarget,
   onIssueClick,
+  onLoadFilePatch,
 }: DiffViewProps) {
   const [visibleFileCount, setVisibleFileCount] = useState(INITIAL_VISIBLE_FILES);
   const index: IssueLineIndex = useMemo(() => buildIssueLineIndex(issues), [issues]);
@@ -62,6 +64,12 @@ export function DiffView({
   useEffect(() => {
     setVisibleFileCount(INITIAL_VISIBLE_FILES);
   }, [files]);
+
+  useEffect(() => {
+    for (const file of visibleFiles) {
+      if (!file.patchLoaded && !file.loading && !file.error) onLoadFilePatch(file.path);
+    }
+  }, [onLoadFilePatch, visibleFiles]);
 
   // Scroll the targeted line into view when the selection changes.
   useEffect(() => {
@@ -195,6 +203,12 @@ function FileSection({
               onClick={() => onIssueClick(issue)}
             />
           ))}
+        </div>
+      ) : file.error ? (
+        <div className="diff-file-message">{file.error}</div>
+      ) : !file.patchLoaded ? (
+        <div className="diff-file-message">
+          <span className="spinner" /> Loading file diff...
         </div>
       ) : file.binary ? (
         <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 12 }}>

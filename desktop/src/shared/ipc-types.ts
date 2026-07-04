@@ -170,6 +170,22 @@ export interface DiffResult {
   patch: string;
   nameStatus: string;
   stat: string;
+  files: Array<{
+    path: string;
+    oldPath: string | null;
+    status: 'added' | 'deleted' | 'modified' | 'renamed' | 'untracked';
+    additions: number;
+    deletions: number;
+    binary: boolean;
+  }>;
+  fingerprint: string;
+  truncated?: boolean;
+  patchBytes?: number;
+  maxPatchBytes?: number;
+}
+
+export interface FileDiffResult {
+  patch: string;
   truncated?: boolean;
   patchBytes?: number;
   maxPatchBytes?: number;
@@ -244,6 +260,7 @@ export interface DrsApi {
   listWorkflows(workingDir: string): Promise<WorkflowListEntry[]>;
   showWorkflow(name: string, workingDir: string): Promise<WorkflowDetail>;
   getDiff(workingDir: string, opts: { staged: boolean }): Promise<DiffResult>;
+  getFileDiff(workingDir: string, opts: { staged: boolean; path: string }): Promise<FileDiffResult>;
   getReviewArtifact(workingDir: string): Promise<ReviewJsonOutput | null>;
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;

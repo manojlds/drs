@@ -29,6 +29,7 @@ const drs = {
   listWorkflows: (workingDir) => ipcRenderer.invoke('drs:listWorkflows', workingDir),
   showWorkflow: (name, workingDir) => ipcRenderer.invoke('drs:showWorkflow', name, workingDir),
   getDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getDiff', workingDir, opts),
+  getFileDiff: (workingDir, opts) => ipcRenderer.invoke('drs:getFileDiff', workingDir, opts),
   getReviewArtifact: (workingDir) => ipcRenderer.invoke('drs:getReviewArtifact', workingDir),
   runWorkflow: (req) => ipcRenderer.invoke('drs:runWorkflow', req),
   getProjectConfig: (workingDir) => ipcRenderer.invoke('drs:getProjectConfig', workingDir),
