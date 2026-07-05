@@ -24,9 +24,13 @@ interface ChatMessage {
 interface FactoryChatPanelProps {
   workingDir: string;
   prdId: string | null;
+  prdTitle?: string;
+  prdPrompt?: string;
+  autoStart?: boolean;
+  onAutoStarted?: () => void;
 }
 
-export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
+export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoStart, onAutoStarted }: FactoryChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage]);
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
@@ -197,6 +201,19 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
       setSending(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoStart || !prdId || sending) return;
+    onAutoStarted?.();
+    const autoPrompt = [
+      `Let's work on this PRD: ${prdTitle || prdId}.`,
+      prdPrompt ? `Original prompt:\n${prdPrompt}` : null,
+      'Start by reading the PRD context, identifying the key open questions, and suggesting the next planning steps. Stay in planning mode.',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    void ask(autoPrompt);
+  }, [autoStart, onAutoStarted, prdId, prdPrompt, prdTitle, sending]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();

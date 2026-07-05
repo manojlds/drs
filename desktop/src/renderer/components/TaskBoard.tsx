@@ -24,6 +24,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [markdownDraft, setMarkdownDraft] = useState('');
   const [adding, setAdding] = useState(false);
   const [showNewPrd, setShowNewPrd] = useState(false);
+  const [autoStartPrdId, setAutoStartPrdId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -91,6 +92,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setPrdDetail(detail);
       setVersions(versionList);
       setMarkdownDraft(detail.markdown);
+      setAutoStartPrdId(detail.prd.id);
       setTitle('');
       setPrompt('');
       setView('workspace');
@@ -217,7 +219,14 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         {error && <div className="task-board-error">{error}</div>}
 
         <div className="factory-workspace-layout">
-          <FactoryChatPanel workingDir={workingDir} prdId={selectedPrdId} />
+          <FactoryChatPanel
+            workingDir={workingDir}
+            prdId={selectedPrdId}
+            prdTitle={prdDetail.prd.title}
+            prdPrompt={prdDetail.prd.prompt}
+            autoStart={autoStartPrdId === selectedPrdId}
+            onAutoStarted={() => setAutoStartPrdId(null)}
+          />
 
           <section className="factory-prd-detail factory-workspace-document">
             <div className="factory-prd-detail-header">
