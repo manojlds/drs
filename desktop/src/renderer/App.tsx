@@ -630,7 +630,7 @@ export function App() {
   }, [handleSelectIssue, projectMode, reviewView, selectedIssueKey, visibleIssues]);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="app-shell">
       <AppSidebar
         workingDir={workingDir}
         recentProjects={recentProjects}

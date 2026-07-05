@@ -10,7 +10,7 @@ const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
 
 interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'error';
   content: string;
   permission?: {
     permissionId: string;
@@ -36,13 +36,13 @@ interface FactoryChatPanelProps {
   workingDir: string;
   prdId: string | null;
   prdTitle?: string;
-  prdPrompt?: string;
+  prdDescription?: string;
   autoStart?: boolean;
   onAutoStarted?: () => void;
 }
 
-export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoStart, onAutoStarted }: FactoryChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage]);
+export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, autoStart, onAutoStarted }: FactoryChatPanelProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
@@ -134,7 +134,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
       } else if (event.type === 'error') {
         currentAssistantMessageIdRef.current = null;
         setSending(false);
-        setMessages((current) => [...current, { id: `error-${Date.now()}`, role: 'system', content: event.message }]);
+        setMessages((current) => [...current, { id: `error-${Date.now()}`, role: 'error', content: event.message }]);
       }
     });
   }, []);
@@ -164,7 +164,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     conversationScopeRef.current = null;
     currentAssistantMessageIdRef.current = null;
     setSending(false);
-    setMessages([welcomeMessage]);
+    setMessages([]);
   }, [workingDir, prdId, selectedCodingAgentId, thinkingLevel]);
 
   const getOrStartConversation = async (): Promise<string> => {
@@ -202,7 +202,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     } catch (error) {
       setMessages((current) => [
         ...current,
-        { id: `error-${Date.now()}`, role: 'system', content: error instanceof Error ? error.message : String(error) },
+        { id: `error-${Date.now()}`, role: 'error', content: error instanceof Error ? error.message : String(error) },
       ]);
     }
   };
@@ -250,7 +250,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     } catch (error) {
       setMessages((current) => [
         ...current,
-        { id: `error-${Date.now()}`, role: 'system', content: error instanceof Error ? error.message : String(error) },
+        { id: `error-${Date.now()}`, role: 'error', content: error instanceof Error ? error.message : String(error) },
       ]);
     }
   };
@@ -273,7 +273,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
       currentAssistantMessageIdRef.current = null;
       setMessages((current) => [
         ...current.filter((message) => message.id !== assistantId || message.content.trim()),
-        { id: `error-${Date.now()}`, role: 'system', content: error instanceof Error ? error.message : String(error) },
+        { id: `error-${Date.now()}`, role: 'error', content: error instanceof Error ? error.message : String(error) },
       ]);
     } finally {
       setSending(false);
@@ -281,17 +281,18 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
   };
 
   useEffect(() => {
-    if (!autoStart || !prdId || sending) return;
+    if (!autoStart || !prdId || sending || globalSettings === null) return;
     onAutoStarted?.();
     const autoPrompt = [
-      `Let's work on this PRD: ${prdTitle || prdId}.`,
-      prdPrompt ? `Original prompt:\n${prdPrompt}` : null,
-      'Use the Factory planning skill. Start by reading the PRD context, identifying the key open questions, and suggesting the next planning steps. Stay in planning mode.',
+      'Load and execute the drs-factory-planning skill now.',
+      `PRD id: ${prdId}`,
+      `PRD title: ${prdTitle || prdId}`,
+      prdDescription ? `PRD description:\n${prdDescription}` : null,
     ]
       .filter(Boolean)
       .join('\n\n');
     void ask(autoPrompt);
-  }, [autoStart, onAutoStarted, prdId, prdPrompt, prdTitle, sending]);
+  }, [autoStart, globalSettings, onAutoStarted, prdDescription, prdId, prdTitle, sending]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -309,50 +310,15 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
           <strong>Factory Planner</strong>
           <span>{selectedCodingAgentId ? 'ACP-backed planning agent' : 'Falls back to built-in planner chat'}</span>
         </div>
-        <div className="factory-chat-controls">
-          <label className="factory-chat-agent-select">
-            <span>Agent</span>
-            <select
-              value={selectedCodingAgentId}
-              disabled={sending}
-              onChange={(event) => {
-                setSelectedCodingAgentId(event.target.value);
-                setThinkingLevel('');
-              }}
-            >
-              <option value="">Built-in planner</option>
-              {(globalSettings?.codingAgents ?? []).map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name || agent.id}
-                </option>
-              ))}
-            </select>
-          </label>
-          {supportsThinking && (
-            <label className="factory-chat-agent-select">
-              <span>Thinking</span>
-              <select value={thinkingLevel} disabled={sending} onChange={(event) => setThinkingLevel(event.target.value as CodingAgentThinkingLevel | '')}>
-                <option value="">Default{selectedAgent?.thinkingLevel ? ` (${selectedAgent.thinkingLevel})` : ''}</option>
-                {THINKING_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-              </select>
-            </label>
-          )}
-        </div>
-      </div>
-      <div className="review-chat-suggestions">
-        <Button variant="outline" size="sm" disabled={sending} onClick={() => void ask('Ask the key clarifying questions before this PRD is approved.')}>
-          Clarify
-        </Button>
-        <Button variant="outline" size="sm" disabled={sending || !prdId} onClick={() => void ask('Review this PRD and point out missing scope, risks, and story gaps.')}>
-          Review PRD
-        </Button>
-        <Button variant="outline" size="sm" disabled={sending || !prdId} onClick={() => void ask('Suggest an independently reviewable story breakdown with dependencies and acceptance criteria.')}>
-          Slice Stories
-        </Button>
       </div>
       <div ref={scrollRef} className="review-chat-messages factory-chat-messages">
+        {messages.length === 0 && !sending && (
+          <div className="factory-chat-empty">
+            Start by describing what is unclear, or create a PRD to let the planning agent interview you.
+          </div>
+        )}
         {messages.map((message) => (
-          <Message key={message.id} from={message.role}>
+          <Message key={message.id} from={message.role === 'error' ? 'system' : message.role} className={message.role === 'error' ? 'ai-message-error' : undefined}>
             <MessageAvatar>{message.role === 'user' ? <User size={13} /> : <Bot size={13} />}</MessageAvatar>
             <MessageContent>
               {message.content}
@@ -439,6 +405,35 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
           }}
         />
         <PromptInputActions>
+          <div className="factory-chat-input-controls">
+            <label className="factory-chat-agent-select">
+              <span>Agent</span>
+              <select
+                value={selectedCodingAgentId}
+                disabled={sending}
+                onChange={(event) => {
+                  setSelectedCodingAgentId(event.target.value);
+                  setThinkingLevel('');
+                }}
+              >
+                <option value="">Built-in</option>
+                {(globalSettings?.codingAgents ?? []).map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name || agent.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {supportsThinking && (
+              <label className="factory-chat-agent-select">
+                <span>Thinking</span>
+                <select value={thinkingLevel} disabled={sending} onChange={(event) => setThinkingLevel(event.target.value as CodingAgentThinkingLevel | '')}>
+                  <option value="">Default{selectedAgent?.thinkingLevel ? ` (${selectedAgent.thinkingLevel})` : ''}</option>
+                  {THINKING_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
           <Button type="submit" size="sm" disabled={sending || !prompt.trim()}>
             <Send size={13} /> Send
           </Button>
@@ -447,12 +442,6 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     </Card>
   );
 }
-
-const welcomeMessage: ChatMessage = {
-  id: 'welcome',
-  role: 'assistant',
-  content: 'Use me to clarify requirements, critique PRDs, and shape approved stories. I stay in planning mode and will not implement.',
-};
 
 function defaultElicitationValue(property: ElicitationPropertySchema): string | number | boolean | string[] {
   if (property.default !== undefined && property.default !== null) return property.default;

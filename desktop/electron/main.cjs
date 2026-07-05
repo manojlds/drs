@@ -14,6 +14,7 @@ const yaml = require('yaml');
 const drsConfigSchema = require('../src/shared/drs-config-schema.json');
 const { runDrs } = require('./drs-cli.cjs');
 const { getDiff, getFileDiff } = require('./git.cjs');
+const { buildPermissionResponse, buildElicitationResponse } = require('./acp-utils.cjs');
 
 const isDev = !app.isPackaged;
 // desktop/ — electron/ is one level below it.
@@ -75,13 +76,20 @@ const buildCodingAgentLaunch = (agent, overrides = {}) => {
   const args = Array.isArray(agent.args) ? agent.args.map(String) : [];
   const provider = typeof agent.provider === 'string' ? agent.provider.trim() : '';
   const model = typeof agent.model === 'string' ? agent.model.trim() : '';
+  const env = { ...process.env, ...(agent.env || {}), ...(overrides.env || {}) };
   if (agent.kind === 'opencode' && model && !args.includes('--model')) {
-    args.push('--model', provider && !model.includes('/') ? `${provider}/${model}` : model);
+    const modelValue = provider && !model.includes('/') ? `${provider}/${model}` : model;
+    if (args.includes('acp')) {
+      const config = parseJsonSafe(env.OPENCODE_CONFIG_CONTENT || '') || {};
+      env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ ...config, model: modelValue });
+    } else {
+      args.push('--model', modelValue);
+    }
   }
   return {
     command: agent.command,
     args,
-    env: { ...process.env, ...(agent.env || {}), ...(overrides.env || {}) },
+    env,
   };
 };
 
@@ -473,13 +481,11 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
 
   const selectedThinkingLevel = normalizeThinkingLevel(thinkingLevel) || agent.thinkingLevel;
   acpChatSessions.get(sessionId).systemPrompt = [
-    'You are running inside DRS Desktop Factory as a planning-only coding agent.',
+    'You are running inside DRS Desktop Factory.',
     `Working directory: ${workingDir}`,
     prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
     selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
-    'Use the Factory planning skill when planning, refining, or reviewing Factory PRDs and stories.',
-    'Use DRS CLI commands to persist Factory artifacts. Prefer drs factory prd-show/prd-update/prd-history/prd-revert/stories-generate/status/import commands.',
-    'Stay in planning mode. Do not implement application code or claim implementation tasks.',
+    'Load and follow the drs-factory-planning skill for Factory PRD work.',
   ].filter(Boolean).join('\n\n');
 
   connectionPromise.catch((error) => {
@@ -811,7 +817,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:createPrd', async (_event, req) => {
     const args = ['factory', 'prd-create', '--title', req.title];
-    pushOptional(args, '--prompt', req.prompt);
+    pushOptional(args, '--description', req.description);
     pushOptional(args, '--markdown', req.markdown);
     return runDrsJson(req.workingDir, args);
   });
@@ -822,6 +828,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:updatePrd', async (_event, req) => {
     return runDrsJson(req.workingDir, ['factory', 'prd-update', req.id, '--markdown', req.markdown]);
+  });
+
+  ipcMain.handle('drs:deletePrd', async (_event, workingDir, id) => {
+    const result = await runDrsJson(workingDir, ['factory', 'prd-delete', id]);
+    return result.prd;
   });
 
   ipcMain.handle('drs:updatePrdStatus', async (_event, req) => {
@@ -1043,12 +1054,7 @@ app.whenReady().then(() => {
       throw new Error(`Permission request not found: ${permissionId}`);
     }
     acpPermissionRequests.delete(permissionId);
-    const fallbackOption = optionId || (cancelled ? undefined : 'reject-once');
-    pending.resolve({
-      outcome: cancelled
-        ? { outcome: 'cancelled' }
-        : { outcome: 'selected', optionId: fallbackOption },
-    });
+    pending.resolve(buildPermissionResponse({ optionId, cancelled }));
     return null;
   });
 
@@ -1060,15 +1066,13 @@ app.whenReady().then(() => {
     if (!elicitationId || typeof elicitationId !== 'string') {
       throw new Error('An elicitation id is required for elicitation responses.');
     }
-    if (!['accept', 'decline', 'cancel'].includes(action)) {
-      throw new Error('A valid elicitation action is required.');
-    }
+    if (!['accept', 'decline', 'cancel'].includes(action)) throw new Error('A valid elicitation action is required.');
     const pending = acpElicitationRequests.get(elicitationId);
     if (!pending || pending.conversationId !== conversationId) {
       throw new Error(`Elicitation request not found: ${elicitationId}`);
     }
     acpElicitationRequests.delete(elicitationId);
-    pending.resolve(action === 'accept' ? { action, content: content || {} } : { action });
+    pending.resolve(buildElicitationResponse({ action, content }));
     return null;
   });
 

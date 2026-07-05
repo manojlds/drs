@@ -258,7 +258,7 @@ export interface FactoryPrd {
   id: string;
   title: string;
   status: 'draft' | 'in_review' | 'approved' | 'active' | 'paused' | 'done' | 'archived';
-  prompt: string;
+  description: string;
   prdPath: string;
   storiesPath: string;
   createdAt: string;
@@ -473,9 +473,10 @@ export interface DrsApi {
   addTask(req: AddTaskRequest): Promise<DrsTask>;
   updateTask(req: UpdateTaskRequest): Promise<DrsTask>;
   listPrds(workingDir: string): Promise<FactoryPrd[]>;
-  createPrd(req: { workingDir: string; title: string; prompt?: string; markdown?: string }): Promise<FactoryPrdDetail>;
+  createPrd(req: { workingDir: string; title: string; description?: string; markdown?: string }): Promise<FactoryPrdDetail>;
   getPrd(workingDir: string, id: string): Promise<FactoryPrdDetail>;
   updatePrd(req: { workingDir: string; id: string; markdown: string }): Promise<FactoryPrdDetail>;
+  deletePrd(workingDir: string, id: string): Promise<FactoryPrd>;
   updatePrdStatus(req: { workingDir: string; id: string; status: FactoryPrd['status'] }): Promise<FactoryPrdDetail>;
   generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   updateStoryStatus(req: { workingDir: string; prdId: string; storyId: string; status: FactoryStory['reviewStatus'] }): Promise<FactoryPrdDetail>;

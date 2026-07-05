@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { MessageSquare, PanelRightClose, PanelRightOpen, Trash2 } from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion } from '@/shared/ipc-types';
-import { parseTextBlobDiff } from '../lib/diff';
-import { DiffView } from './DiffView';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
@@ -23,12 +21,13 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
-  const [prompt, setPrompt] = useState('');
+  const [description, setDescription] = useState('');
   const [markdownDraft, setMarkdownDraft] = useState('');
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showNewPrd, setShowNewPrd] = useState(false);
   const [autoStartPrdId, setAutoStartPrdId] = useState<string | null>(null);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -48,12 +47,10 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setVersions(versionList);
         setMarkdownDraft(detail.markdown);
-        setSelectedVersionId(versionList[0]?.id ?? null);
       } else {
         setPrdDetail(null);
         setVersions([]);
         setMarkdownDraft('');
-        setSelectedVersionId(null);
         setView('index');
       }
     } catch (err) {
@@ -77,7 +74,6 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setVersions(versionList);
         setMarkdownDraft(detail.markdown);
-        setSelectedVersionId(versionList[0]?.id ?? null);
         setView('workspace');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -92,17 +88,16 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setAdding(true);
     setError(null);
     try {
-      const detail = await window.drs.createPrd({ workingDir, title: trimmed, prompt });
+      const detail = await window.drs.createPrd({ workingDir, title: trimmed, description });
       const versionList = await window.drs.listPrdVersions(workingDir, detail.prd.id);
       setPrds((current) => [detail.prd, ...current]);
       setSelectedPrdId(detail.prd.id);
       setPrdDetail(detail);
       setVersions(versionList);
       setMarkdownDraft(detail.markdown);
-      setSelectedVersionId(versionList[0]?.id ?? null);
       setAutoStartPrdId(detail.prd.id);
       setTitle('');
-      setPrompt('');
+      setDescription('');
       setView('workspace');
       setShowNewPrd(false);
     } catch (err) {
@@ -110,7 +105,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     } finally {
       setAdding(false);
     }
-  }, [prompt, title, workingDir]);
+  }, [description, title, workingDir]);
 
   const handleSavePrd = useCallback(async () => {
     if (!selectedPrdId) return;
@@ -124,11 +119,28 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
       setPrdDetail(detail);
       setVersions(versionList);
-      setSelectedVersionId(versionList[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [markdownDraft, selectedPrdId, workingDir]);
+
+  const handleDeletePrd = useCallback(async () => {
+    if (!selectedPrdId) return;
+    setError(null);
+    try {
+      await window.drs.deletePrd(workingDir, selectedPrdId);
+      setPrds((current) => current.filter((prd) => prd.id !== selectedPrdId));
+      setSelectedPrdId(null);
+      setPrdDetail(null);
+      setVersions([]);
+      setMarkdownDraft('');
+      setDeleteConfirmOpen(false);
+      setAutoStartPrdId(null);
+      setView('index');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [selectedPrdId, workingDir]);
 
   const handlePrdStatus = useCallback(
     async (status: FactoryPrd['status']) => {
@@ -179,7 +191,6 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setMarkdownDraft(detail.markdown);
         setVersions(versionList);
-        setSelectedVersionId(versionList[0]?.id ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -202,15 +213,16 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   );
 
   const handleBackToIndex = useCallback(() => {
+    setDeleteConfirmOpen(false);
     setView('index');
   }, []);
 
   const approvedStoryCount = prdDetail?.stories.filter((story) => story.reviewStatus === 'approved').length ?? 0;
+  const showApprovedWorkflow = prdDetail ? ['approved', 'active', 'done'].includes(prdDetail.prd.status) : false;
   const canImportStories =
     !!prdDetail &&
     (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
     approvedStoryCount > 0;
-  const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
 
   if (view === 'workspace' && prdDetail) {
     return (
@@ -219,7 +231,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
           <div>
             <div className="review-kicker">Factory</div>
             <h1>{prdDetail.prd.title}</h1>
-            <p>{prdDetail.prd.prompt || 'Plan with the agent while the PRD evolves on the right.'}</p>
+            <p>{prdDetail.prd.description || 'Plan with the agent while the PRD evolves on the right.'}</p>
           </div>
           <div className="factory-prd-actions">
             <Button variant="outline" onClick={handleBackToIndex}>All PRDs</Button>
@@ -229,16 +241,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
 
         {error && <div className="task-board-error">{error}</div>}
 
-        <div className="factory-workspace-layout">
-          <FactoryChatPanel
-            workingDir={workingDir}
-            prdId={selectedPrdId}
-            prdTitle={prdDetail.prd.title}
-            prdPrompt={prdDetail.prd.prompt}
-            autoStart={autoStartPrdId === selectedPrdId}
-            onAutoStarted={() => setAutoStartPrdId(null)}
-          />
-
+        <div className={`factory-workspace-layout${chatCollapsed ? ' chat-collapsed' : ''}`}>
           <section className="factory-prd-detail factory-workspace-document">
             <div className="factory-prd-detail-header">
               <div>
@@ -248,57 +251,18 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               </div>
               <div className="factory-prd-actions">
                 <Button variant="outline" onClick={handleSavePrd}>Save PRD</Button>
-                <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>
                 <Button variant="outline" onClick={() => void handlePrdStatus('in_review')}>Request Review</Button>
                 <Button variant="outline" onClick={() => void handlePrdStatus('approved')}>Approve PRD</Button>
-                <Button onClick={handleImportStories} disabled={!canImportStories}>Import Stories</Button>
+                {showApprovedWorkflow && <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>}
+                {showApprovedWorkflow && <Button onClick={handleImportStories} disabled={!canImportStories}>Import Stories</Button>}
+                <Button variant="outline" className="factory-danger-action" onClick={() => setDeleteConfirmOpen(true)}>
+                  <Trash2 size={14} /> Delete
+                </Button>
               </div>
             </div>
-            <Tabs defaultValue="edit" className="factory-prd-tabs">
-              <TabsList>
-                <TabsTrigger value="edit">Edit</TabsTrigger>
-                <TabsTrigger value="preview">Preview</TabsTrigger>
-                <TabsTrigger value="diff" disabled={!selectedVersion}>Version Diff</TabsTrigger>
-              </TabsList>
-              <TabsContent value="edit">
-                <textarea className="factory-prd-editor" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
-              </TabsContent>
-              <TabsContent value="preview">
-                <MarkdownPreview markdown={markdownDraft} />
-              </TabsContent>
-              <TabsContent value="diff">
-                {selectedVersion ? (
-                  <div className="factory-version-diff-panel">
-                    <div className="factory-version-select-row">
-                      <label className="settings-field-row">
-                        <span>Compare current draft with version</span>
-                        <select value={selectedVersion.id} onChange={(event) => setSelectedVersionId(event.target.value)}>
-                          {versions.map((version) => (
-                            <option key={version.id} value={version.id}>
-                              {version.source} · {version.createdAt} · {version.id}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <Button variant="outline" onClick={() => void handleRevertVersion(selectedVersion.id)}>Revert to Version</Button>
-                    </div>
-                    <DiffView
-                      files={parseTextBlobDiff('PRD.md', selectedVersion.markdown, markdownDraft)}
-                      issues={[]}
-                      layout="split"
-                      selectedFile={null}
-                      scrollTarget={null}
-                      onIssueClick={() => undefined}
-                      onLoadFilePatch={() => undefined}
-                    />
-                  </div>
-                ) : (
-                  <div className="task-column-empty">No versions yet.</div>
-                )}
-              </TabsContent>
-            </Tabs>
+            <textarea className="factory-prd-editor factory-prd-editor-full" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
 
-            <div className="factory-workspace-secondary">
+            {showApprovedWorkflow && <div className="factory-workspace-secondary">
               <Card className="factory-story-preview">
                 <div className="task-column-header">
                   <strong>Generated Stories</strong>
@@ -337,16 +301,63 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                         <span>{version.id}</span>
                       </div>
                       <div className="factory-prd-actions">
-                        <Button variant="outline" onClick={() => setSelectedVersionId(version.id)}>Diff</Button>
                         <Button variant="outline" onClick={() => void handleRevertVersion(version.id)}>Revert</Button>
                       </div>
                     </div>
                   ))}
                 </Card>
               )}
-            </div>
+            </div>}
           </section>
+
+          <aside className="factory-chat-sidebar">
+            <Button
+              variant="outline"
+              size="sm"
+              className="factory-chat-collapse"
+              onClick={() => setChatCollapsed((current) => !current)}
+              title={chatCollapsed ? 'Open planning chat' : 'Collapse planning chat'}
+            >
+              {chatCollapsed ? <PanelRightOpen size={14} /> : <PanelRightClose size={14} />}
+              <span>{chatCollapsed ? 'Chat' : 'Collapse'}</span>
+            </Button>
+            {chatCollapsed ? (
+              <button className="factory-chat-collapsed-card" type="button" onClick={() => setChatCollapsed(false)}>
+                <MessageSquare size={18} />
+                <span>Planning chat</span>
+              </button>
+            ) : (
+              <FactoryChatPanel
+                workingDir={workingDir}
+                prdId={selectedPrdId}
+                prdTitle={prdDetail.prd.title}
+                prdDescription={prdDetail.prd.description}
+                autoStart={autoStartPrdId === selectedPrdId}
+                onAutoStarted={() => setAutoStartPrdId(null)}
+              />
+            )}
+          </aside>
         </div>
+
+        {deleteConfirmOpen && (
+          <div className="factory-modal-backdrop" role="presentation">
+            <Card className="factory-modal factory-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="factory-delete-prd-title">
+              <div className="factory-modal-header">
+                <div>
+                  <div className="review-kicker">Delete PRD</div>
+                  <h2 id="factory-delete-prd-title">Delete {prdDetail.prd.title}?</h2>
+                  <p>This removes the PRD markdown, generated stories, and PRD versions. Imported backlog tasks are not deleted.</p>
+                </div>
+              </div>
+              <div className="factory-prd-actions">
+                <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+                <Button className="factory-danger-button" onClick={() => void handleDeletePrd()}>
+                  <Trash2 size={14} /> Delete PRD
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -383,8 +394,8 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="PRD title..." />
             </label>
             <label className="settings-field-row">
-              <span>Prompt</span>
-              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Initial prompt or feature intent..." />
+              <span>Description</span>
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the feature or maintenance effort..." />
             </label>
             <div className="factory-prd-actions">
               <Button variant="outline" onClick={() => setShowNewPrd(false)}>Cancel</Button>
@@ -405,7 +416,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
           <div className="factory-prd-table">
             <div className="factory-prd-table-row factory-prd-table-head">
               <span>Name</span>
-              <span>Prompt</span>
+              <span>Description</span>
               <span>Status</span>
               <span>Stories</span>
               <span>Updated</span>
@@ -415,7 +426,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               return (
                 <button key={prd.id} type="button" className="factory-prd-table-row" onClick={() => void handleSelectPrd(prd.id)}>
                   <strong>{prd.title}</strong>
-                  <span>{prd.prompt || 'No prompt captured.'}</span>
+                  <span>{prd.description || 'No description captured.'}</span>
                   <Badge variant="outline">{prd.status.replace(/_/g, ' ')}</Badge>
                   <span>{storyCount}</span>
                   <span>{prd.updatedAt}</span>
@@ -431,40 +442,4 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
 
 function sortTasks(a: DrsTask, b: DrsTask): number {
   return a.priority - b.priority || a.id.localeCompare(b.id);
-}
-
-function MarkdownPreview({ markdown }: { markdown: string }) {
-  const blocks = markdown.split(/\n{2,}/);
-  return (
-    <div className="factory-markdown-preview">
-      {blocks.map((block, index) => {
-        const trimmed = block.trim();
-        if (!trimmed) return null;
-        if (trimmed.startsWith('```')) {
-          return <pre key={index}>{trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '')}</pre>;
-        }
-        const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
-        if (heading) {
-          const Tag = `h${Math.min(heading[1].length + 1, 5)}` as keyof JSX.IntrinsicElements;
-          return <Tag key={index}>{heading[2]}</Tag>;
-        }
-        const lines = trimmed.split('\n');
-        if (lines.every((line) => /^[-*]\s+/.test(line.trim()))) {
-          return (
-            <ul key={index}>
-              {lines.map((line, itemIndex) => <li key={itemIndex}>{line.replace(/^[-*]\s+/, '')}</li>)}
-            </ul>
-          );
-        }
-        if (lines.every((line) => /^\d+\.\s+/.test(line.trim()))) {
-          return (
-            <ol key={index}>
-              {lines.map((line, itemIndex) => <li key={itemIndex}>{line.replace(/^\d+\.\s+/, '')}</li>)}
-            </ol>
-          );
-        }
-        return <p key={index}>{trimmed}</p>;
-      })}
-    </div>
-  );
 }

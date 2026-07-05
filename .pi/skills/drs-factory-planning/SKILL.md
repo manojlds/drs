@@ -20,7 +20,7 @@ Use this skill when a user wants to plan product work, write or review a PRD, cl
 
 ## Session Start
 
-When a PRD chat starts, first orient on the selected PRD and classify readiness:
+When a PRD chat starts from DRS Desktop/ACP, the first user message should be treated as the kickoff. Do not expect extra runtime instructions. First orient on the selected PRD and classify readiness:
 
 - `ready`: enough context exists to critique or refine the PRD.
 - `needs clarification`: important gaps exist; ask focused questions before drafting or updating.
@@ -33,6 +33,8 @@ drs factory prd-show <prdId>
 ```
 
 Then tell the user what is missing, risky, or ready to proceed.
+
+For a newly created PRD, do not just summarize. Run the PRD Review Loop immediately: inspect the artifact, ask the most important clarifying questions, and persist a better skeleton only when it improves the user's current draft.
 
 ## Clarification Grill
 
@@ -168,14 +170,14 @@ Use DRS Factory commands for durable state:
 
 ```bash
 drs factory list
-drs factory prd-create --title "..." --prompt "..."
+drs factory prd-create --title "..." --description "..."
 drs factory prd-show <prdId>
 drs factory prd-update <prdId> --markdown "..."
-drs factory prd-status <prdId> draft|active|approved|archived
+drs factory prd-status <prdId> draft|in_review|approved|active|paused|done|archived
 drs factory prd-history <prdId>
 drs factory prd-revert <prdId> <versionId>
 drs factory stories-generate <prdId>
-drs factory story-status <prdId> <storyId> pending|approved|rejected
+drs factory story-status <prdId> <storyId> draft|approved|rejected
 drs factory stories-import <prdId>
 ```
 

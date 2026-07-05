@@ -25,6 +25,7 @@ import {
 } from '../lib/task-store.js';
 import {
   createPrd,
+  deletePrd,
   generateStories,
   getPrd,
   importStoriesToTasks,
@@ -564,14 +565,14 @@ factoryCommand
   .command('prd-create')
   .description('Create a factory PRD markdown artifact')
   .requiredOption('-t, --title <title>', 'PRD title')
-  .option('-p, --prompt <prompt>', 'Original planning prompt')
+  .option('-d, --description <description>', 'PRD description')
   .option('-m, --markdown <markdown>', 'Initial PRD markdown')
   .option('--json', 'Output PRD as JSON')
   .action(async (options) => {
     try {
       const result = await createPrd(process.cwd(), {
         title: options.title,
-        prompt: options.prompt,
+        description: options.description,
         markdown: options.markdown,
       });
       if (options.json) console.log(JSON.stringify(result, null, 2));
@@ -614,6 +615,22 @@ factoryCommand
       const result = await updatePrdMarkdown(process.cwd(), id, options.markdown);
       if (options.json) console.log(JSON.stringify(result, null, 2));
       else console.log(`Updated PRD ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-delete <id>')
+  .description('Delete a factory PRD and its generated story/version artifacts')
+  .option('--json', 'Output deleted PRD as JSON')
+  .action(async (id: string, options) => {
+    try {
+      const prd = await deletePrd(process.cwd(), id);
+      if (options.json) console.log(JSON.stringify({ prd }, null, 2));
+      else console.log(`Deleted PRD ${prd.id}: ${prd.title}`);
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));

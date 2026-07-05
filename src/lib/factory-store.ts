@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { addTask, listTasks, type DrsTask } from './task-store.js';
 
@@ -22,7 +22,7 @@ export interface FactoryPrd {
   id: string;
   title: string;
   status: PrdStatus;
-  prompt: string;
+  description: string;
   prdPath: string;
   storiesPath: string;
   createdAt: string;
@@ -71,7 +71,7 @@ export async function getPrd(
 
 export async function createPrd(
   workingDir: string,
-  input: { title: string; prompt?: string; markdown?: string; status?: PrdStatus }
+  input: { title: string; description?: string; markdown?: string; status?: PrdStatus }
 ): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
   const title = input.title.trim();
   if (!title) throw new Error('PRD title is required.');
@@ -84,14 +84,14 @@ export async function createPrd(
     id,
     title,
     status: input.status ?? 'draft',
-    prompt: input.prompt?.trim() ?? '',
+    description: input.description?.trim() ?? '',
     prdPath,
     storiesPath,
     createdAt: now,
     updatedAt: now,
   };
   const markdownInput = input.markdown?.trim();
-  let markdown = defaultPrdMarkdown(title, prd.prompt);
+  let markdown = defaultPrdMarkdown(title, prd.description);
   if (markdownInput && markdownInput.length > 0) markdown = markdownInput;
   await writeFileEnsured(join(workingDir, prdPath), `${markdown.trim()}\n`);
   await appendPrdVersion(workingDir, prd, markdown, 'create');
@@ -115,6 +115,22 @@ export async function updatePrdMarkdown(
   await appendPrdVersion(workingDir, prd, markdown, 'update');
   await writePrdIndex(workingDir, { version: 1, prds });
   return getPrd(workingDir, id);
+}
+
+export async function deletePrd(workingDir: string, id: string): Promise<FactoryPrd> {
+  const index = await readPrdIndex(workingDir);
+  const prd = index.prds.find((item) => item.id === id);
+  if (!prd) throw new Error(`PRD not found: ${id}`);
+  await Promise.all([
+    rm(join(workingDir, prd.prdPath), { force: true }),
+    rm(join(workingDir, prd.storiesPath), { force: true }),
+    rm(prdVersionsPath(workingDir, prd), { recursive: true, force: true }),
+  ]);
+  await writePrdIndex(workingDir, {
+    version: 1,
+    prds: index.prds.filter((item) => item.id !== id),
+  });
+  return prd;
 }
 
 export async function listPrdVersions(
@@ -228,8 +244,7 @@ async function readPrdIndex(workingDir: string): Promise<PrdIndex> {
   try {
     const source = await readFile(prdIndexPath(workingDir), 'utf-8');
     const parsed = JSON.parse(source) as unknown;
-    validatePrdIndex(parsed);
-    return parsed;
+    return normalizePrdIndex(parsed);
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') return { version: 1, prds: [] };
     throw error;
@@ -434,6 +449,27 @@ function validatePrdIndex(value: unknown): asserts value is PrdIndex {
   if (!isRecord(value)) throw new Error('PRD index must be an object.');
   if (value.version !== 1) throw new Error('PRD index version must be 1.');
   if (!Array.isArray(value.prds)) throw new Error('PRD index prds must be an array.');
+}
+
+function normalizePrdIndex(value: unknown): PrdIndex {
+  validatePrdIndex(value);
+  return { version: 1, prds: value.prds.map(normalizePrd) };
+}
+
+function normalizePrd(value: unknown): FactoryPrd {
+  if (!isRecord(value)) throw new Error('PRD index entries must be objects.');
+  return {
+    id: scalarString(value.id).trim(),
+    title: scalarString(value.title).trim(),
+    status: PRD_STATUSES.includes(value.status as PrdStatus)
+      ? (value.status as PrdStatus)
+      : 'draft',
+    description: scalarString(value.description ?? value.prompt),
+    prdPath: scalarString(value.prdPath),
+    storiesPath: scalarString(value.storiesPath),
+    createdAt: scalarString(value.createdAt),
+    updatedAt: scalarString(value.updatedAt),
+  };
 }
 
 function uniquePrdId(title: string, prds: FactoryPrd[]): string {

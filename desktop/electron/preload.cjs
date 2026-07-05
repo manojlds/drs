@@ -41,6 +41,7 @@ const drs = {
   createPrd: (req) => ipcRenderer.invoke('drs:createPrd', req),
   getPrd: (workingDir, id) => ipcRenderer.invoke('drs:getPrd', workingDir, id),
   updatePrd: (req) => ipcRenderer.invoke('drs:updatePrd', req),
+  deletePrd: (workingDir, id) => ipcRenderer.invoke('drs:deletePrd', workingDir, id),
   updatePrdStatus: (req) => ipcRenderer.invoke('drs:updatePrdStatus', req),
   generateStories: (workingDir, prdId) => ipcRenderer.invoke('drs:generateStories', workingDir, prdId),
   updateStoryStatus: (req) => ipcRenderer.invoke('drs:updateStoryStatus', req),

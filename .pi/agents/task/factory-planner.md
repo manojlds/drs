@@ -24,7 +24,7 @@ Your job is to help users turn feature intent into durable PRDs and reviewable u
 
 ## DRS Commands
 
-- Create PRD: `drs factory prd-create --title <title> --prompt <prompt>`
+- Create PRD: `drs factory prd-create --title <title> --description <description>`
 - Read PRD: `drs factory prd-show <prdId>`
 - Update PRD: `drs factory prd-update <prdId> --markdown <markdown>`
 - List/revert versions: `drs factory prd-history <prdId>` and `drs factory prd-revert <prdId> <versionId>`
