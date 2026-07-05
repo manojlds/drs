@@ -1,4 +1,4 @@
-import { FolderOpen, GitCompareArrows, KanbanSquare, Workflow, Settings2, X } from 'lucide-react';
+import { FileCog, FolderOpen, GitCompareArrows, KanbanSquare, Workflow, Settings2, X } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -13,7 +13,7 @@ import {
   SidebarRail,
 } from '@/renderer/components/ui/sidebar';
 
-export type ProjectMode = 'review' | 'workflow' | 'factory' | 'settings';
+export type ProjectMode = 'review' | 'workflow' | 'factory' | 'config' | 'settings';
 
 interface AppSidebarProps {
   workingDir: string | null;
@@ -25,11 +25,11 @@ interface AppSidebarProps {
   onForgetProject: (dir: string) => void;
 }
 
-const MODE_ITEMS: Array<{ id: ProjectMode; label: string; icon: typeof GitCompareArrows }> = [
+const WORKSPACE_MODE_ITEMS: Array<{ id: ProjectMode; label: string; icon: typeof GitCompareArrows }> = [
   { id: 'review', label: 'Review', icon: GitCompareArrows },
   { id: 'workflow', label: 'Workflows', icon: Workflow },
   { id: 'factory', label: 'Factory', icon: KanbanSquare },
-  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'config', label: 'Config', icon: FileCog },
 ];
 
 export function AppSidebar({
@@ -55,7 +55,7 @@ export function AppSidebar({
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {MODE_ITEMS.map(({ id, label, icon: Icon }) => (
+                {WORKSPACE_MODE_ITEMS.map(({ id, label, icon: Icon }) => (
                   <SidebarMenuItem key={id}>
                     <SidebarMenuButton
                       isActive={projectMode === id}
@@ -71,6 +71,24 @@ export function AppSidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        <SidebarGroup>
+          <SidebarGroupLabel>DRS</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={projectMode === 'settings'}
+                  tooltip="Global Settings"
+                  onClick={() => onModeChange('settings')}
+                >
+                  <Settings2 />
+                  <span>Settings</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         <SidebarGroup>
           <SidebarGroupLabel>Projects</SidebarGroupLabel>

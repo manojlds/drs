@@ -4,11 +4,21 @@ import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Message, MessageAvatar, MessageContent } from './ai/message';
 import { PromptInput, PromptInputActions, PromptInputTextarea } from './ai/prompt-input';
+import type { CodingAgentThinkingLevel, GlobalSettings } from '../../shared/ipc-types';
+
+const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  permission?: {
+    permissionId: string;
+    options: Array<{ optionId: string; name: string; kind: string }>;
+    risk?: 'low' | 'medium' | 'high';
+    rawInput?: unknown;
+    resolved?: string;
+  };
 }
 
 interface FactoryChatPanelProps {
@@ -20,6 +30,9 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage]);
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+  const [selectedCodingAgentId, setSelectedCodingAgentId] = useState('');
+  const [thinkingLevel, setThinkingLevel] = useState<CodingAgentThinkingLevel | ''>('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<string | null>(null);
   const conversationScopeRef = useRef<string | null>(null);
@@ -46,12 +59,68 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
       } else if (event.type === 'turn_done') {
         currentAssistantMessageIdRef.current = null;
         setSending(false);
+      } else if (event.type === 'tool_call') {
+        setMessages((current) => [
+          ...current,
+          {
+            id: `tool-${event.toolCallId}`,
+            role: 'system',
+            content: `${event.title}${event.status ? ` (${event.status})` : ''}${event.content ? `\n${event.content}` : ''}`,
+          },
+        ]);
+      } else if (event.type === 'tool_call_update') {
+        setMessages((current) => [
+          ...current,
+          {
+            id: `tool-update-${event.toolCallId}-${Date.now()}`,
+            role: 'system',
+            content: `Tool ${event.toolCallId}${event.status ? ` ${event.status}` : ''}${event.content ? `\n${event.content}` : ''}`,
+          },
+        ]);
+      } else if (event.type === 'permission_request') {
+        const content = [
+          'Permission required',
+          event.risk ? `Risk: ${event.risk}` : null,
+          event.title ? `Tool: ${event.title}` : null,
+          event.kind ? `Kind: ${event.kind}` : null,
+          event.content || null,
+          event.rawInput ? `Input: ${JSON.stringify(event.rawInput, null, 2)}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
+        setMessages((current) => [
+          ...current,
+          {
+            id: `permission-${event.permissionId}`,
+            role: 'system',
+            content,
+            permission: { permissionId: event.permissionId, options: event.options, risk: event.risk, rawInput: event.rawInput },
+          },
+        ]);
       } else if (event.type === 'error') {
         currentAssistantMessageIdRef.current = null;
         setSending(false);
         setMessages((current) => [...current, { id: `error-${Date.now()}`, role: 'system', content: event.message }]);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadGlobalSettings = async () => {
+      try {
+        const settings = await window.drs.getGlobalSettings();
+        if (cancelled) return;
+        setGlobalSettings(settings);
+        setSelectedCodingAgentId((current) => current || settings.defaultCodingAgentId || settings.codingAgents[0]?.id || '');
+      } catch {
+        if (!cancelled) setGlobalSettings({ codingAgents: [] });
+      }
+    };
+    void loadGlobalSettings();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -62,15 +131,46 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
     currentAssistantMessageIdRef.current = null;
     setSending(false);
     setMessages([welcomeMessage]);
-  }, [workingDir, prdId]);
+  }, [workingDir, prdId, selectedCodingAgentId, thinkingLevel]);
 
   const getOrStartConversation = async (): Promise<string> => {
-    const scope = `${workingDir}:${prdId ?? ''}`;
+    const scope = `${workingDir}:${prdId ?? ''}:${selectedCodingAgentId}:${thinkingLevel}`;
     if (conversationIdRef.current && conversationScopeRef.current === scope) return conversationIdRef.current;
-    const result = await window.drs.startFactoryChat({ workingDir, prdId: prdId ?? undefined });
+    const result = await window.drs.startFactoryChat({
+      workingDir,
+      prdId: prdId ?? undefined,
+      codingAgentId: selectedCodingAgentId || undefined,
+      thinkingLevel: thinkingLevel || undefined,
+    });
     conversationIdRef.current = result.conversationId;
     conversationScopeRef.current = scope;
     return result.conversationId;
+  };
+
+  const respondPermission = async (permissionId: string, optionId?: string, cancelled = false) => {
+    const conversationId = conversationIdRef.current;
+    if (!conversationId) return;
+    setMessages((current) =>
+      current.map((message) =>
+        message.permission?.permissionId === permissionId
+          ? {
+              ...message,
+              permission: {
+                ...message.permission,
+                resolved: cancelled ? 'Rejected' : `Selected ${optionId}`,
+              },
+            }
+          : message
+      )
+    );
+    try {
+      await window.drs.respondChatPermission({ conversationId, permissionId, optionId, cancelled });
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        { id: `error-${Date.now()}`, role: 'system', content: error instanceof Error ? error.message : String(error) },
+      ]);
+    }
   };
 
   const ask = async (text: string) => {
@@ -103,12 +203,45 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
     void ask(prompt);
   };
 
+  const selectedAgent = (globalSettings?.codingAgents ?? []).find((agent) => agent.id === selectedCodingAgentId);
+  const supportsThinking = selectedAgent?.kind === 'opencode';
+
   return (
     <Card className="factory-chat-panel">
       <div className="factory-chat-header">
         <div>
           <div className="review-kicker">Planning Chat</div>
           <strong>Factory Planner</strong>
+          <span>{selectedCodingAgentId ? 'ACP-backed planning agent' : 'Falls back to built-in planner chat'}</span>
+        </div>
+        <div className="factory-chat-controls">
+          <label className="factory-chat-agent-select">
+            <span>Agent</span>
+            <select
+              value={selectedCodingAgentId}
+              disabled={sending}
+              onChange={(event) => {
+                setSelectedCodingAgentId(event.target.value);
+                setThinkingLevel('');
+              }}
+            >
+              <option value="">Built-in planner</option>
+              {(globalSettings?.codingAgents ?? []).map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name || agent.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          {supportsThinking && (
+            <label className="factory-chat-agent-select">
+              <span>Thinking</span>
+              <select value={thinkingLevel} disabled={sending} onChange={(event) => setThinkingLevel(event.target.value as CodingAgentThinkingLevel | '')}>
+                <option value="">Default{selectedAgent?.thinkingLevel ? ` (${selectedAgent.thinkingLevel})` : ''}</option>
+                {THINKING_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+              </select>
+            </label>
+          )}
         </div>
       </div>
       <div className="review-chat-suggestions">
@@ -126,7 +259,37 @@ export function FactoryChatPanel({ workingDir, prdId }: FactoryChatPanelProps) {
         {messages.map((message) => (
           <Message key={message.id} from={message.role}>
             <MessageAvatar>{message.role === 'user' ? <User size={13} /> : <Bot size={13} />}</MessageAvatar>
-            <MessageContent>{message.content}</MessageContent>
+            <MessageContent>
+              {message.content}
+              {message.permission && (
+                <div className="factory-chat-permission-actions">
+                  {message.permission.risk && <span className={`factory-chat-risk ${message.permission.risk}`}>{message.permission.risk} risk</span>}
+                  {message.permission.resolved ? (
+                    <span>{message.permission.resolved}</span>
+                  ) : (
+                    <>
+                      {message.permission.options.map((option) => (
+                        <Button
+                          key={option.optionId}
+                          variant={option.kind.startsWith('allow') ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => void respondPermission(message.permission!.permissionId, option.optionId)}
+                        >
+                          {option.name}
+                        </Button>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void respondPermission(message.permission!.permissionId, undefined, true)}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </MessageContent>
           </Message>
         ))}
       </div>

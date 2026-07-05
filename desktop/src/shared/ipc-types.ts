@@ -327,6 +327,8 @@ export interface StartFactoryChatRequest {
   workingDir: string;
   prdId?: string;
   agent?: string;
+  codingAgentId?: string;
+  thinkingLevel?: CodingAgentThinkingLevel;
 }
 
 export interface StartReviewChatResponse {
@@ -340,8 +342,55 @@ export interface SendReviewChatMessageRequest {
 
 export type ReviewChatEvent =
   | { type: 'message_delta'; conversationId: string; messageId: string; text: string }
+  | { type: 'tool_call'; conversationId: string; toolCallId: string; title: string; kind?: string; status?: string; content?: string }
+  | { type: 'tool_call_update'; conversationId: string; toolCallId: string; status?: string; content?: string }
+  | {
+      type: 'permission_request';
+      conversationId: string;
+      permissionId: string;
+      toolCallId?: string;
+      title?: string;
+      kind?: string;
+      status?: string;
+      content?: string;
+      risk?: 'low' | 'medium' | 'high';
+      rawInput?: unknown;
+      options: Array<{ optionId: string; name: string; kind: string }>;
+    }
   | { type: 'turn_done'; conversationId: string }
   | { type: 'error'; conversationId: string; message: string };
+
+export interface RespondChatPermissionRequest {
+  conversationId: string;
+  permissionId: string;
+  optionId?: string;
+  cancelled?: boolean;
+}
+
+export interface TestCodingAgentResponse {
+  ok: boolean;
+  message: string;
+}
+
+export type CodingAgentKind = 'generic' | 'opencode';
+export type CodingAgentThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
+export interface CodingAgentConfig {
+  id: string;
+  name: string;
+  kind?: CodingAgentKind;
+  command: string;
+  args: string[];
+  provider?: string;
+  model?: string;
+  thinkingLevel?: CodingAgentThinkingLevel;
+  env?: Record<string, string>;
+}
+
+export interface GlobalSettings {
+  codingAgents: CodingAgentConfig[];
+  defaultCodingAgentId?: string;
+}
 
 export interface ProjectConfigFile {
   path: string;
@@ -384,10 +433,14 @@ export interface DrsApi {
   runWorkflow(req: RunWorkflowRequest): Promise<RunWorkflowResponse>;
   getProjectConfig(workingDir: string): Promise<ProjectConfigFile>;
   saveProjectConfig(req: SaveProjectConfigRequest): Promise<SaveProjectConfigResponse>;
+  getGlobalSettings(): Promise<GlobalSettings>;
+  saveGlobalSettings(settings: GlobalSettings): Promise<GlobalSettings>;
+  testCodingAgent(agentId: string): Promise<TestCodingAgentResponse>;
   askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
   startReviewChat(req: StartReviewChatRequest): Promise<StartReviewChatResponse>;
   startFactoryChat(req: StartFactoryChatRequest): Promise<StartReviewChatResponse>;
   sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;
+  respondChatPermission(req: RespondChatPermissionRequest): Promise<void>;
   closeReviewChat(conversationId: string): Promise<void>;
   cancelWorkflow(runId: string): Promise<void>;
   readFile(filePath: string): Promise<string>;

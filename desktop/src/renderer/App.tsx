@@ -613,7 +613,12 @@ export function App() {
         {workflowsError && !globalError && (
           <ErrorBanner message={workflowsError} onDismiss={() => setWorkflowsError(null)} />
         )}
-        {!workingDir ? (
+        <div className="main-scroll">
+        {projectMode === 'settings' ? (
+          <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
+            <ProjectSettings workingDir={workingDir} scope="global" />
+          </Suspense>
+        ) : !workingDir ? (
           <div className="no-project-hint">
             <div>Open a project to start a DRS review session.</div>
             <Button onClick={handlePickDirectory}>Open Project...</Button>
@@ -638,9 +643,9 @@ export function App() {
           <Suspense fallback={<LoadingPanel label="Loading factory board..." />}>
             <TaskBoard workingDir={workingDir} />
           </Suspense>
-        ) : projectMode === 'settings' ? (
-          <Suspense fallback={<LoadingPanel label="Loading settings..." />}>
-            <ProjectSettings workingDir={workingDir} />
+        ) : projectMode === 'config' ? (
+          <Suspense fallback={<LoadingPanel label="Loading config..." />}>
+            <ProjectSettings workingDir={workingDir} scope="project" />
           </Suspense>
         ) : (
           <>
@@ -779,6 +784,7 @@ export function App() {
             )}
           </>
         )}
+        </div>
         <RunBanner
           state={runState}
           graph={projectMode === 'review' ? runningGraph : null}

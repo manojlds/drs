@@ -1,46 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
-import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion, TaskStatus } from '@/shared/ipc-types';
+import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
   workingDir: string;
 }
-
-type BoardColumn = {
-  id: string;
-  title: string;
-  statuses: TaskStatus[];
-};
-
-const COLUMNS: BoardColumn[] = [
-  { id: 'draft', title: 'Draft', statuses: ['draft'] },
-  { id: 'backlog', title: 'Backlog', statuses: ['backlog', 'open'] },
-  { id: 'todo', title: 'Todo', statuses: ['todo'] },
-  { id: 'dev', title: 'In Dev', statuses: ['in_progress'] },
-  { id: 'checks', title: 'Checks', statuses: ['checks_failed'] },
-  { id: 'review', title: 'Review', statuses: ['in_review', 'review_failed'] },
-  { id: 'ready', title: 'Ready', statuses: ['ready_to_merge'] },
-  { id: 'done', title: 'Done', statuses: ['merged', 'done'] },
-  { id: 'failed', title: 'Stopped', statuses: ['failed', 'cancelled'] },
-];
-
-const MOVE_STATUSES: TaskStatus[] = [
-  'draft',
-  'backlog',
-  'todo',
-  'open',
-  'checks_failed',
-  'in_review',
-  'review_failed',
-  'ready_to_merge',
-  'done',
-  'failed',
-  'cancelled',
-];
 
 export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [tasks, setTasks] = useState<DrsTask[]>([]);
@@ -48,12 +16,14 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [versions, setVersions] = useState<FactoryPrdVersion[]>([]);
   const [selectedPrdId, setSelectedPrdId] = useState<string | null>(null);
   const [prdDetail, setPrdDetail] = useState<FactoryPrdDetail | null>(null);
+  const [view, setView] = useState<'index' | 'workspace'>('index');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [markdownDraft, setMarkdownDraft] = useState('');
   const [adding, setAdding] = useState(false);
+  const [showNewPrd, setShowNewPrd] = useState(false);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -65,7 +35,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       ]);
       setTasks(taskList);
       setPrds(prdList);
-      const nextSelected = selectedPrdId ?? prdList[0]?.id ?? null;
+      const nextSelected = selectedPrdId && prdList.some((prd) => prd.id === selectedPrdId) ? selectedPrdId : null;
       setSelectedPrdId(nextSelected);
       if (nextSelected) {
         const detail = await window.drs.getPrd(workingDir, nextSelected);
@@ -77,6 +47,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(null);
         setVersions([]);
         setMarkdownDraft('');
+        setView('index');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -89,16 +60,6 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     void loadTasks();
   }, [loadTasks]);
 
-  const byColumn = useMemo(() => {
-    const grouped = new Map<string, DrsTask[]>();
-    for (const column of COLUMNS) grouped.set(column.id, []);
-    for (const task of tasks.filter((item) => !selectedPrdId || item.prdId === selectedPrdId)) {
-      const column = COLUMNS.find((item) => item.statuses.includes(task.status));
-      grouped.get(column?.id ?? 'backlog')?.push(task);
-    }
-    return grouped;
-  }, [selectedPrdId, tasks]);
-
   const handleSelectPrd = useCallback(
     async (id: string) => {
       setSelectedPrdId(id);
@@ -109,6 +70,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setVersions(versionList);
         setMarkdownDraft(detail.markdown);
+        setView('workspace');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -131,6 +93,8 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setMarkdownDraft(detail.markdown);
       setTitle('');
       setPrompt('');
+      setView('workspace');
+      setShowNewPrd(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -225,34 +189,9 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     [selectedPrdId, workingDir]
   );
 
-  const handleAddTask = useCallback(async () => {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    setAdding(true);
-    setError(null);
-    try {
-      const task = await window.drs.addTask({ workingDir, title: trimmed, status: 'open' });
-      setTasks((current) => [...current, task].sort(sortTasks));
-      setTitle('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAdding(false);
-    }
-  }, [title, workingDir]);
-
-  const handleMoveTask = useCallback(
-    async (task: DrsTask, status: TaskStatus) => {
-      setError(null);
-      try {
-        const updated = await window.drs.updateTask({ workingDir, id: task.id, status });
-        setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [workingDir]
-  );
+  const handleBackToIndex = useCallback(() => {
+    setView('index');
+  }, []);
 
   const approvedStoryCount = prdDetail?.stories.filter((story) => story.reviewStatus === 'approved').length ?? 0;
   const canImportStories =
@@ -260,106 +199,45 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
     approvedStoryCount > 0;
 
-  return (
-    <div className="task-board-shell">
-      <div className="task-board-header">
-        <div>
-          <div className="review-kicker">Factory</div>
-          <h1>Planning Board</h1>
-          <p>Create PRDs, generate reviewable stories, then import them into a scoped kanban.</p>
-        </div>
-        <Button variant="outline" onClick={loadTasks} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </Button>
-      </div>
-
-      <Card className="task-create-card task-create-card-stacked">
-        <Input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="New PRD title..."
-        />
-        <Input
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Planning prompt or feature intent..."
-        />
-        <Button onClick={handleCreatePrd} disabled={adding || !title.trim()}>
-          {adding ? 'Creating...' : 'Create PRD'}
-        </Button>
-      </Card>
-
-      {error && <div className="task-board-error">{error}</div>}
-
-      {versions.length > 0 && (
-        <Card className="factory-history-panel">
-          <div className="task-column-header">
-            <strong>PRD Versions</strong>
-            <Badge variant="outline">{versions.length}</Badge>
+  if (view === 'workspace' && prdDetail) {
+    return (
+      <div className="task-board-shell factory-workspace-shell">
+        <div className="task-board-header">
+          <div>
+            <div className="review-kicker">Factory</div>
+            <h1>{prdDetail.prd.title}</h1>
+            <p>{prdDetail.prd.prompt || 'Plan with the agent while the PRD evolves on the right.'}</p>
           </div>
-          {versions.slice(0, 4).map((version) => (
-            <div key={version.id} className="factory-history-item">
+          <div className="factory-prd-actions">
+            <Button variant="outline" onClick={handleBackToIndex}>All PRDs</Button>
+            <Button variant="outline" onClick={loadTasks} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button>
+          </div>
+        </div>
+
+        {error && <div className="task-board-error">{error}</div>}
+
+        <div className="factory-workspace-layout">
+          <FactoryChatPanel workingDir={workingDir} prdId={selectedPrdId} />
+
+          <section className="factory-prd-detail factory-workspace-document">
+            <div className="factory-prd-detail-header">
               <div>
-                <strong>{version.source}</strong>
-                <p>{version.createdAt}</p>
-                <span>{version.id}</span>
+                <div className="review-kicker">Current PRD</div>
+                <h2>{prdDetail.prd.title}</h2>
+                <Badge variant="outline">{prdDetail.prd.status.replace(/_/g, ' ')}</Badge>
               </div>
               <div className="factory-prd-actions">
-                <Button variant="outline" onClick={() => void handleRevertVersion(version.id)}>Revert</Button>
+                <Button variant="outline" onClick={handleSavePrd}>Save PRD</Button>
+                <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>
+                <Button variant="outline" onClick={() => void handlePrdStatus('in_review')}>Request Review</Button>
+                <Button variant="outline" onClick={() => void handlePrdStatus('approved')}>Approve PRD</Button>
+                <Button onClick={handleImportStories} disabled={!canImportStories}>Import Stories</Button>
               </div>
             </div>
-          ))}
-        </Card>
-      )}
+            <textarea className="factory-prd-editor" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
 
-      <div className="factory-planning-layout">
-        <aside className="factory-prd-list">
-          <div className="task-column-header">
-            <strong>PRDs</strong>
-            <Badge variant="outline">{prds.length}</Badge>
-          </div>
-          {prds.length === 0 ? (
-            <div className="task-column-empty">Create a PRD to start planning.</div>
-          ) : (
-            prds.map((prd) => (
-              <button
-                key={prd.id}
-                type="button"
-                className={`factory-prd-item ${selectedPrdId === prd.id ? 'active' : ''}`}
-                onClick={() => void handleSelectPrd(prd.id)}
-              >
-                <strong>{prd.title}</strong>
-                <span>{prd.id}</span>
-              </button>
-            ))
-          )}
-        </aside>
-
-        <section className="factory-prd-detail">
-          {prdDetail ? (
-            <>
-              <div className="factory-prd-detail-header">
-                <div>
-                  <div className="review-kicker">PRD</div>
-                  <h2>{prdDetail.prd.title}</h2>
-                  <Badge variant="outline">{prdDetail.prd.status.replace(/_/g, ' ')}</Badge>
-                </div>
-                <div className="factory-prd-actions">
-                  <Button variant="outline" onClick={handleSavePrd}>Save PRD</Button>
-                  <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>
-                  <Button variant="outline" onClick={() => void handlePrdStatus('in_review')}>Request Review</Button>
-                  <Button variant="outline" onClick={() => void handlePrdStatus('approved')}>Approve PRD</Button>
-                  <Button onClick={handleImportStories} disabled={!canImportStories}>
-                    Import Stories
-                  </Button>
-                </div>
-              </div>
-              <textarea
-                className="factory-prd-editor"
-                value={markdownDraft}
-                onChange={(event) => setMarkdownDraft(event.target.value)}
-              />
-              <div className="factory-story-preview">
+            <div className="factory-workspace-secondary">
+              <Card className="factory-story-preview">
                 <div className="task-column-header">
                   <strong>Generated Stories</strong>
                   <Badge variant="outline">{prdDetail.stories.length}</Badge>
@@ -381,75 +259,110 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                     </Card>
                   ))
                 )}
-              </div>
-            </>
-          ) : (
-            <div className="task-column-empty">No PRD selected.</div>
-          )}
-        </section>
+              </Card>
+
+              {versions.length > 0 && (
+                <Card className="factory-history-panel">
+                  <div className="task-column-header">
+                    <strong>PRD Versions</strong>
+                    <Badge variant="outline">{versions.length}</Badge>
+                  </div>
+                  {versions.slice(0, 4).map((version) => (
+                    <div key={version.id} className="factory-history-item">
+                      <div>
+                        <strong>{version.source}</strong>
+                        <p>{version.createdAt}</p>
+                        <span>{version.id}</span>
+                      </div>
+                      <div className="factory-prd-actions">
+                        <Button variant="outline" onClick={() => void handleRevertVersion(version.id)}>Revert</Button>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
+    );
+  }
 
-      <FactoryChatPanel workingDir={workingDir} prdId={selectedPrdId} />
-
-      <div className="task-board-grid">
-        {COLUMNS.map((column) => {
-          const columnTasks = byColumn.get(column.id) ?? [];
-          return (
-            <section key={column.id} className="task-column">
-              <div className="task-column-header">
-                <strong>{column.title}</strong>
-                <Badge variant="outline">{columnTasks.length}</Badge>
-              </div>
-              <div className="task-column-cards">
-                {columnTasks.length === 0 ? (
-                  <div className="task-column-empty">No tasks</div>
-                ) : (
-                  columnTasks.map((task) => (
-                    <TaskCard key={task.id} task={task} onMove={handleMoveTask} />
-                  ))
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TaskCard({
-  task,
-  onMove,
-}: {
-  task: DrsTask;
-  onMove: (task: DrsTask, status: TaskStatus) => void;
-}) {
   return (
-    <Card className="task-card">
-      <div className="task-card-topline">
-        <Badge variant="secondary">{task.id}</Badge>
-        <span>P{task.priority}</span>
+    <div className="task-board-shell">
+      <div className="task-board-header">
+        <div>
+          <div className="review-kicker">Factory</div>
+          <h1>PRDs</h1>
+          <p>Start from a planning document, then use chat to shape it into reviewable stories.</p>
+        </div>
+        <div className="factory-prd-actions">
+          <Button variant="outline" onClick={loadTasks} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button>
+          <Button onClick={() => setShowNewPrd(true)}>New PRD</Button>
+        </div>
       </div>
-      <strong>{task.title}</strong>
-      {task.description && <p>{task.description}</p>}
-      {task.acceptanceCriteria.length > 0 && (
-        <div className="task-card-criteria">{task.acceptanceCriteria.length} acceptance criteria</div>
+
+      {error && <div className="task-board-error">{error}</div>}
+
+      {showNewPrd && (
+        <div className="factory-modal-backdrop" role="presentation">
+          <Card className="factory-modal" role="dialog" aria-modal="true" aria-labelledby="factory-new-prd-title">
+            <div className="factory-modal-header">
+              <div>
+                <div className="review-kicker">Factory</div>
+                <h2 id="factory-new-prd-title">New PRD</h2>
+                <p>Describe the feature or maintenance effort. Creating opens the PRD workspace.</p>
+              </div>
+              <Button variant="ghost" onClick={() => setShowNewPrd(false)}>Close</Button>
+            </div>
+            <label className="settings-field-row">
+              <span>Title</span>
+              <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="PRD title..." />
+            </label>
+            <label className="settings-field-row">
+              <span>Prompt</span>
+              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Initial prompt or feature intent..." />
+            </label>
+            <div className="factory-prd-actions">
+              <Button variant="outline" onClick={() => setShowNewPrd(false)}>Cancel</Button>
+              <Button onClick={handleCreatePrd} disabled={adding || !title.trim()}>{adding ? 'Creating...' : 'Create PRD'}</Button>
+            </div>
+          </Card>
+        </div>
       )}
-      <label className="task-status-select">
-        <span>Move to</span>
-        <select
-          value={task.status}
-          disabled={task.status === 'in_progress'}
-          onChange={(event) => onMove(task, event.target.value as TaskStatus)}
-        >
-          {[...new Set([task.status, ...MOVE_STATUSES])].map((status) => (
-            <option key={status} value={status}>
-              {status.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
-      </label>
-    </Card>
+
+      <Card className="factory-prd-table-card">
+        <div className="task-column-header">
+          <strong>Planning Documents</strong>
+          <Badge variant="outline">{prds.length}</Badge>
+        </div>
+        {prds.length === 0 ? (
+          <div className="task-column-empty">Create a PRD to start planning.</div>
+        ) : (
+          <div className="factory-prd-table">
+            <div className="factory-prd-table-row factory-prd-table-head">
+              <span>Name</span>
+              <span>Prompt</span>
+              <span>Status</span>
+              <span>Stories</span>
+              <span>Updated</span>
+            </div>
+            {prds.map((prd) => {
+              const storyCount = tasks.filter((task) => task.prdId === prd.id).length;
+              return (
+                <button key={prd.id} type="button" className="factory-prd-table-row" onClick={() => void handleSelectPrd(prd.id)}>
+                  <strong>{prd.title}</strong>
+                  <span>{prd.prompt || 'No prompt captured.'}</span>
+                  <Badge variant="outline">{prd.status.replace(/_/g, ' ')}</Badge>
+                  <span>{storyCount}</span>
+                  <span>{prd.updatedAt}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
