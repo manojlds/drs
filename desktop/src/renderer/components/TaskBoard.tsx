@@ -3,6 +3,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
@@ -22,6 +23,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [markdownDraft, setMarkdownDraft] = useState('');
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showNewPrd, setShowNewPrd] = useState(false);
   const [autoStartPrdId, setAutoStartPrdId] = useState<string | null>(null);
@@ -44,10 +46,12 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setVersions(versionList);
         setMarkdownDraft(detail.markdown);
+        setSelectedVersionId(versionList[0]?.id ?? null);
       } else {
         setPrdDetail(null);
         setVersions([]);
         setMarkdownDraft('');
+        setSelectedVersionId(null);
         setView('index');
       }
     } catch (err) {
@@ -71,6 +75,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setVersions(versionList);
         setMarkdownDraft(detail.markdown);
+        setSelectedVersionId(versionList[0]?.id ?? null);
         setView('workspace');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -92,6 +97,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setPrdDetail(detail);
       setVersions(versionList);
       setMarkdownDraft(detail.markdown);
+      setSelectedVersionId(versionList[0]?.id ?? null);
       setAutoStartPrdId(detail.prd.id);
       setTitle('');
       setPrompt('');
@@ -116,6 +122,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
       setPrdDetail(detail);
       setVersions(versionList);
+      setSelectedVersionId(versionList[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -170,6 +177,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         setPrdDetail(detail);
         setMarkdownDraft(detail.markdown);
         setVersions(versionList);
+        setSelectedVersionId(versionList[0]?.id ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -200,6 +208,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     !!prdDetail &&
     (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
     approvedStoryCount > 0;
+  const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
 
   if (view === 'workspace' && prdDetail) {
     return (
@@ -243,7 +252,41 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                 <Button onClick={handleImportStories} disabled={!canImportStories}>Import Stories</Button>
               </div>
             </div>
-            <textarea className="factory-prd-editor" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
+            <Tabs defaultValue="edit" className="factory-prd-tabs">
+              <TabsList>
+                <TabsTrigger value="edit">Edit</TabsTrigger>
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+                <TabsTrigger value="diff" disabled={!selectedVersion}>Version Diff</TabsTrigger>
+              </TabsList>
+              <TabsContent value="edit">
+                <textarea className="factory-prd-editor" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
+              </TabsContent>
+              <TabsContent value="preview">
+                <MarkdownPreview markdown={markdownDraft} />
+              </TabsContent>
+              <TabsContent value="diff">
+                {selectedVersion ? (
+                  <div className="factory-version-diff-panel">
+                    <div className="factory-version-select-row">
+                      <label className="settings-field-row">
+                        <span>Compare current draft with version</span>
+                        <select value={selectedVersion.id} onChange={(event) => setSelectedVersionId(event.target.value)}>
+                          {versions.map((version) => (
+                            <option key={version.id} value={version.id}>
+                              {version.source} · {version.createdAt} · {version.id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Button variant="outline" onClick={() => void handleRevertVersion(selectedVersion.id)}>Revert to Version</Button>
+                    </div>
+                    <MarkdownDiff before={selectedVersion.markdown} after={markdownDraft} />
+                  </div>
+                ) : (
+                  <div className="task-column-empty">No versions yet.</div>
+                )}
+              </TabsContent>
+            </Tabs>
 
             <div className="factory-workspace-secondary">
               <Card className="factory-story-preview">
@@ -276,7 +319,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                     <strong>PRD Versions</strong>
                     <Badge variant="outline">{versions.length}</Badge>
                   </div>
-                  {versions.slice(0, 4).map((version) => (
+                  {versions.slice(0, 6).map((version) => (
                     <div key={version.id} className="factory-history-item">
                       <div>
                         <strong>{version.source}</strong>
@@ -284,6 +327,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                         <span>{version.id}</span>
                       </div>
                       <div className="factory-prd-actions">
+                        <Button variant="outline" onClick={() => setSelectedVersionId(version.id)}>Diff</Button>
                         <Button variant="outline" onClick={() => void handleRevertVersion(version.id)}>Revert</Button>
                       </div>
                     </div>
@@ -377,4 +421,83 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
 
 function sortTasks(a: DrsTask, b: DrsTask): number {
   return a.priority - b.priority || a.id.localeCompare(b.id);
+}
+
+function MarkdownPreview({ markdown }: { markdown: string }) {
+  const blocks = markdown.split(/\n{2,}/);
+  return (
+    <div className="factory-markdown-preview">
+      {blocks.map((block, index) => {
+        const trimmed = block.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith('```')) {
+          return <pre key={index}>{trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '')}</pre>;
+        }
+        const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+        if (heading) {
+          const Tag = `h${Math.min(heading[1].length + 1, 5)}` as keyof JSX.IntrinsicElements;
+          return <Tag key={index}>{heading[2]}</Tag>;
+        }
+        const lines = trimmed.split('\n');
+        if (lines.every((line) => /^[-*]\s+/.test(line.trim()))) {
+          return (
+            <ul key={index}>
+              {lines.map((line, itemIndex) => <li key={itemIndex}>{line.replace(/^[-*]\s+/, '')}</li>)}
+            </ul>
+          );
+        }
+        if (lines.every((line) => /^\d+\.\s+/.test(line.trim()))) {
+          return (
+            <ol key={index}>
+              {lines.map((line, itemIndex) => <li key={itemIndex}>{line.replace(/^\d+\.\s+/, '')}</li>)}
+            </ol>
+          );
+        }
+        return <p key={index}>{trimmed}</p>;
+      })}
+    </div>
+  );
+}
+
+function MarkdownDiff({ before, after }: { before: string; after: string }) {
+  const rows = buildLineDiff(before, after);
+  return (
+    <div className="factory-markdown-diff">
+      {rows.map((row, index) => (
+        <div key={`${row.kind}-${index}`} className={`factory-markdown-diff-row ${row.kind}`}>
+          <span>{row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}</span>
+          <code>{row.text || ' '}</code>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function buildLineDiff(before: string, after: string) {
+  const beforeLines = before.split('\n');
+  const afterLines = after.split('\n');
+  const rows: Array<{ kind: 'same' | 'added' | 'removed'; text: string }> = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+  while (beforeIndex < beforeLines.length || afterIndex < afterLines.length) {
+    const beforeLine = beforeLines[beforeIndex];
+    const afterLine = afterLines[afterIndex];
+    if (beforeLine === afterLine) {
+      rows.push({ kind: 'same', text: beforeLine ?? '' });
+      beforeIndex += 1;
+      afterIndex += 1;
+    } else if (afterLines[afterIndex + 1] === beforeLine) {
+      rows.push({ kind: 'added', text: afterLine ?? '' });
+      afterIndex += 1;
+    } else if (beforeLines[beforeIndex + 1] === afterLine) {
+      rows.push({ kind: 'removed', text: beforeLine ?? '' });
+      beforeIndex += 1;
+    } else {
+      if (beforeLine !== undefined) rows.push({ kind: 'removed', text: beforeLine });
+      if (afterLine !== undefined) rows.push({ kind: 'added', text: afterLine });
+      beforeIndex += 1;
+      afterIndex += 1;
+    }
+  }
+  return rows;
 }
