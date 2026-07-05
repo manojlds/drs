@@ -244,6 +244,39 @@ export function parseUnifiedDiff(patch: string): DiffFile[] {
   return files.map((file) => ({ ...file, patchLoaded: true }));
 }
 
+export function parseTextBlobDiff(path: string, before: string, after: string): DiffFile[] {
+  if (before === after) return [];
+  return parseUnifiedDiff(buildTextBlobPatch(path, before, after));
+}
+
+function buildTextBlobPatch(path: string, before: string, after: string): string {
+  const beforeLines = splitPatchLines(before);
+  const afterLines = splitPatchLines(after);
+  const oldCount = beforeLines.length;
+  const newCount = afterLines.length;
+  const oldStart = oldCount === 0 ? 0 : 1;
+  const newStart = newCount === 0 ? 0 : 1;
+  const oldRange = oldCount === 1 ? String(oldStart) : `${oldStart},${oldCount}`;
+  const newRange = newCount === 1 ? String(newStart) : `${newStart},${newCount}`;
+  const removed = beforeLines.map((line) => `-${line}`);
+  const added = afterLines.map((line) => `+${line}`);
+  return [
+    `diff --git a/${path} b/${path}`,
+    'index 0000000..0000000 100644',
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -${oldRange} +${newRange} @@`,
+    ...removed,
+    ...added,
+    '',
+  ].join('\n');
+}
+
+function splitPatchLines(text: string): string[] {
+  if (!text) return [];
+  return text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n');
+}
+
 function parsePierreDiffFiles(patch: string): DiffFile[] {
   try {
     return parsePatchFiles(patch, 'drs-desktop', true).flatMap((parsedPatch) =>

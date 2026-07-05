@@ -5,6 +5,8 @@ import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion } from '@/shared/ipc-types';
+import { parseTextBlobDiff } from '../lib/diff';
+import { DiffView } from './DiffView';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
@@ -280,7 +282,15 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                       </label>
                       <Button variant="outline" onClick={() => void handleRevertVersion(selectedVersion.id)}>Revert to Version</Button>
                     </div>
-                    <MarkdownDiff before={selectedVersion.markdown} after={markdownDraft} />
+                    <DiffView
+                      files={parseTextBlobDiff('PRD.md', selectedVersion.markdown, markdownDraft)}
+                      issues={[]}
+                      layout="split"
+                      selectedFile={null}
+                      scrollTarget={null}
+                      onIssueClick={() => undefined}
+                      onLoadFilePatch={() => undefined}
+                    />
                   </div>
                 ) : (
                   <div className="task-column-empty">No versions yet.</div>
@@ -457,47 +467,4 @@ function MarkdownPreview({ markdown }: { markdown: string }) {
       })}
     </div>
   );
-}
-
-function MarkdownDiff({ before, after }: { before: string; after: string }) {
-  const rows = buildLineDiff(before, after);
-  return (
-    <div className="factory-markdown-diff">
-      {rows.map((row, index) => (
-        <div key={`${row.kind}-${index}`} className={`factory-markdown-diff-row ${row.kind}`}>
-          <span>{row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}</span>
-          <code>{row.text || ' '}</code>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function buildLineDiff(before: string, after: string) {
-  const beforeLines = before.split('\n');
-  const afterLines = after.split('\n');
-  const rows: Array<{ kind: 'same' | 'added' | 'removed'; text: string }> = [];
-  let beforeIndex = 0;
-  let afterIndex = 0;
-  while (beforeIndex < beforeLines.length || afterIndex < afterLines.length) {
-    const beforeLine = beforeLines[beforeIndex];
-    const afterLine = afterLines[afterIndex];
-    if (beforeLine === afterLine) {
-      rows.push({ kind: 'same', text: beforeLine ?? '' });
-      beforeIndex += 1;
-      afterIndex += 1;
-    } else if (afterLines[afterIndex + 1] === beforeLine) {
-      rows.push({ kind: 'added', text: afterLine ?? '' });
-      afterIndex += 1;
-    } else if (beforeLines[beforeIndex + 1] === afterLine) {
-      rows.push({ kind: 'removed', text: beforeLine ?? '' });
-      beforeIndex += 1;
-    } else {
-      if (beforeLine !== undefined) rows.push({ kind: 'removed', text: beforeLine });
-      if (afterLine !== undefined) rows.push({ kind: 'added', text: afterLine });
-      beforeIndex += 1;
-      afterIndex += 1;
-    }
-  }
-  return rows;
 }

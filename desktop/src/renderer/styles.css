@@ -393,43 +393,10 @@ button {
   gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
-.factory-markdown-diff {
-  background: var(--bg);
+.factory-version-diff-panel .diff-pane {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  max-height: 520px;
-  overflow: auto;
-  padding: 8px 0;
-}
-.factory-markdown-diff-row {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 28px minmax(0, 1fr);
-  padding: 2px 12px;
-  white-space: pre-wrap;
-}
-.factory-markdown-diff-row span {
-  color: var(--text-muted);
-  user-select: none;
-}
-.factory-markdown-diff-row code {
-  color: var(--text-muted);
-}
-.factory-markdown-diff-row.added {
-  background: rgba(34, 197, 94, 0.12);
-}
-.factory-markdown-diff-row.added code,
-.factory-markdown-diff-row.added span {
-  color: #86efac;
-}
-.factory-markdown-diff-row.removed {
-  background: rgba(239, 68, 68, 0.12);
-}
-.factory-markdown-diff-row.removed code,
-.factory-markdown-diff-row.removed span {
-  color: #fca5a5;
+  max-height: 560px;
 }
 .factory-workspace-secondary {
   display: grid;
