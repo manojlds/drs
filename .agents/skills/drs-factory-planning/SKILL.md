@@ -99,6 +99,15 @@ When improving a PRD:
 
 Stories must be independently reviewable and testable. Prefer vertical slices that deliver observable behavior.
 
+When asked to go from PRD to stories:
+
+1. Confirm the PRD passes the Completeness Gate.
+2. Draft the proposed story breakdown in chat first; do not mutate tracker state yet.
+3. Ask for explicit confirmation before generating or approving stories.
+4. After confirmation, ensure the PRD Markdown contains clearly headed story sections that `drs factory stories-generate` can parse.
+5. Run `drs factory stories-generate <prdId>` to materialize reviewable stories.
+6. Ask for explicit story approval before running `drs factory story-status ... approved` or `drs factory stories-import ...`.
+
 Good stories:
 
 - Have one user/system outcome.

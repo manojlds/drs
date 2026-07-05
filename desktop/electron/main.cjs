@@ -477,7 +477,7 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     `Working directory: ${workingDir}`,
     prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
     selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
-    'Use the drs-factory-planning skill when planning, refining, or reviewing Factory PRDs and stories.',
+    'Use the Factory planning skill when planning, refining, or reviewing Factory PRDs and stories.',
     'Use DRS CLI commands to persist Factory artifacts. Prefer drs factory prd-show/prd-update/prd-history/prd-revert/stories-generate/status/import commands.',
     'Stay in planning mode. Do not implement application code or claim implementation tasks.',
   ].filter(Boolean).join('\n\n');

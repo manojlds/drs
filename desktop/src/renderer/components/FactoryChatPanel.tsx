@@ -286,7 +286,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     const autoPrompt = [
       `Let's work on this PRD: ${prdTitle || prdId}.`,
       prdPrompt ? `Original prompt:\n${prdPrompt}` : null,
-      'Use the drs-factory-planning skill if needed. Start by reading the PRD context, identifying the key open questions, and suggesting the next planning steps. Stay in planning mode.',
+      'Use the Factory planning skill. Start by reading the PRD context, identifying the key open questions, and suggesting the next planning steps. Stay in planning mode.',
     ]
       .filter(Boolean)
       .join('\n\n');
