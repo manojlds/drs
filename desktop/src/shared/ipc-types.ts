@@ -329,10 +329,12 @@ export interface StartFactoryChatRequest {
   agent?: string;
   codingAgentId?: string;
   thinkingLevel?: CodingAgentThinkingLevel;
+  resumeSessionId?: string;
 }
 
 export interface StartReviewChatResponse {
   conversationId: string;
+  agentSessionId?: string;
 }
 
 export interface SendReviewChatMessageRequest {

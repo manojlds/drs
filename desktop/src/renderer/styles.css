@@ -374,6 +374,7 @@ button {
   display: none;
 }
 .factory-chat-collapsed-card {
+  display: none;
   flex: 1;
   min-height: 0;
   border: 1px solid var(--border);
@@ -386,6 +387,12 @@ button {
   justify-content: center;
   gap: 8px;
   writing-mode: vertical-rl;
+}
+.factory-workspace-layout.chat-collapsed .factory-chat-collapsed-card {
+  display: flex;
+}
+.factory-workspace-layout.chat-collapsed .factory-chat-panel {
+  display: none;
 }
 .factory-chat-input-controls {
   display: flex;

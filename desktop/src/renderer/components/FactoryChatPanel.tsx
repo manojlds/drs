@@ -7,6 +7,7 @@ import { PromptInput, PromptInputActions, PromptInputTextarea } from './ai/promp
 import type { CodingAgentThinkingLevel, ElicitationPropertySchema, GlobalSettings } from '../../shared/ipc-types';
 
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
+const STORAGE_PREFIX = 'drs.factoryChat';
 
 interface ChatMessage {
   id: string;
@@ -39,9 +40,10 @@ interface FactoryChatPanelProps {
   prdDescription?: string;
   autoStart?: boolean;
   onAutoStarted?: () => void;
+  onTurnDone?: () => void;
 }
 
-export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, autoStart, onAutoStarted }: FactoryChatPanelProps) {
+export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, autoStart, onAutoStarted, onTurnDone }: FactoryChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
@@ -52,6 +54,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
   const conversationIdRef = useRef<string | null>(null);
   const conversationScopeRef = useRef<string | null>(null);
   const currentAssistantMessageIdRef = useRef<string | null>(null);
+  const skipNextMessagePersistRef = useRef(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -74,6 +77,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
       } else if (event.type === 'turn_done') {
         currentAssistantMessageIdRef.current = null;
         setSending(false);
+        onTurnDone?.();
       } else if (event.type === 'tool_call') {
         setMessages((current) => [
           ...current,
@@ -137,7 +141,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
         setMessages((current) => [...current, { id: `error-${Date.now()}`, role: 'error', content: event.message }]);
       }
     });
-  }, []);
+  }, [onTurnDone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,27 +161,38 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
     };
   }, []);
 
+  const scope = `${workingDir}:${prdId ?? ''}:${selectedCodingAgentId}:${thinkingLevel}`;
+
   useEffect(() => {
-    const previousConversationId = conversationIdRef.current;
-    if (previousConversationId) void window.drs.closeReviewChat(previousConversationId);
-    conversationIdRef.current = null;
-    conversationScopeRef.current = null;
+    conversationScopeRef.current = scope;
+    conversationIdRef.current = readStoredConversationId(scope);
     currentAssistantMessageIdRef.current = null;
+    skipNextMessagePersistRef.current = true;
     setSending(false);
-    setMessages([]);
-  }, [workingDir, prdId, selectedCodingAgentId, thinkingLevel]);
+    setMessages(readStoredMessages(scope));
+  }, [scope]);
+
+  useEffect(() => {
+    if (skipNextMessagePersistRef.current) {
+      skipNextMessagePersistRef.current = false;
+      return;
+    }
+    writeStoredMessages(scope, messages);
+  }, [messages, scope]);
 
   const getOrStartConversation = async (): Promise<string> => {
-    const scope = `${workingDir}:${prdId ?? ''}:${selectedCodingAgentId}:${thinkingLevel}`;
     if (conversationIdRef.current && conversationScopeRef.current === scope) return conversationIdRef.current;
     const result = await window.drs.startFactoryChat({
       workingDir,
       prdId: prdId ?? undefined,
       codingAgentId: selectedCodingAgentId || undefined,
       thinkingLevel: thinkingLevel || undefined,
+      resumeSessionId: readStoredAgentSessionId(scope) || undefined,
     });
     conversationIdRef.current = result.conversationId;
     conversationScopeRef.current = scope;
+    writeStoredConversationId(scope, result.conversationId);
+    if (result.agentSessionId) writeStoredAgentSessionId(scope, result.agentSessionId);
     return result.conversationId;
   };
 
@@ -267,8 +282,16 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
     setPrompt('');
     setSending(true);
     try {
-      const conversationId = await getOrStartConversation();
-      await window.drs.sendReviewChatMessage({ conversationId, prompt: text.trim() });
+      let conversationId = await getOrStartConversation();
+      try {
+        await window.drs.sendReviewChatMessage({ conversationId, prompt: text.trim() });
+      } catch (error) {
+        if (!(error instanceof Error) || !/session not found/i.test(error.message)) throw error;
+        clearStoredConversationId(scope);
+        conversationIdRef.current = null;
+        conversationId = await getOrStartConversation();
+        await window.drs.sendReviewChatMessage({ conversationId, prompt: text.trim() });
+      }
     } catch (error) {
       currentAssistantMessageIdRef.current = null;
       setMessages((current) => [
@@ -449,6 +472,56 @@ function defaultElicitationValue(property: ElicitationPropertySchema): string | 
   if (property.type === 'number' || property.type === 'integer') return 0;
   if (property.type === 'array') return [];
   return property.oneOf?.[0]?.const ?? property.enum?.[0] ?? '';
+}
+
+function storageKey(scope: string, name: 'conversationId' | 'agentSessionId' | 'messages'): string {
+  return `${STORAGE_PREFIX}.${name}.${scope}`;
+}
+
+function readStoredConversationId(scope: string): string | null {
+  return window.localStorage.getItem(storageKey(scope, 'conversationId')) || null;
+}
+
+function writeStoredConversationId(scope: string, conversationId: string): void {
+  window.localStorage.setItem(storageKey(scope, 'conversationId'), conversationId);
+}
+
+function clearStoredConversationId(scope: string): void {
+  window.localStorage.removeItem(storageKey(scope, 'conversationId'));
+}
+
+function readStoredAgentSessionId(scope: string): string | null {
+  return window.localStorage.getItem(storageKey(scope, 'agentSessionId')) || null;
+}
+
+function writeStoredAgentSessionId(scope: string, agentSessionId: string): void {
+  window.localStorage.setItem(storageKey(scope, 'agentSessionId'), agentSessionId);
+}
+
+function readStoredMessages(scope: string): ChatMessage[] {
+  const source = window.localStorage.getItem(storageKey(scope, 'messages'));
+  if (!source) return [];
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isChatMessage);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMessages(scope: string, messages: ChatMessage[]): void {
+  window.localStorage.setItem(storageKey(scope, 'messages'), JSON.stringify(messages.slice(-80)));
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { id?: unknown; role?: unknown; content?: unknown };
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.content === 'string' &&
+    (candidate.role === 'user' || candidate.role === 'assistant' || candidate.role === 'system' || candidate.role === 'error')
+  );
 }
 
 function ElicitationField({

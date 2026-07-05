@@ -124,6 +124,20 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [markdownDraft, selectedPrdId, workingDir]);
 
+  const refreshSelectedPrd = useCallback(async () => {
+    if (!selectedPrdId) return;
+    try {
+      const detail = await window.drs.getPrd(workingDir, selectedPrdId);
+      const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
+      setPrdDetail(detail);
+      setPrds((current) => current.map((prd) => (prd.id === detail.prd.id ? detail.prd : prd)));
+      setVersions(versionList);
+      setMarkdownDraft(detail.markdown);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [selectedPrdId, workingDir]);
+
   const handleDeletePrd = useCallback(async () => {
     if (!selectedPrdId) return;
     setError(null);
@@ -321,21 +335,19 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               {chatCollapsed ? <PanelRightOpen size={14} /> : <PanelRightClose size={14} />}
               <span>{chatCollapsed ? 'Chat' : 'Collapse'}</span>
             </Button>
-            {chatCollapsed ? (
-              <button className="factory-chat-collapsed-card" type="button" onClick={() => setChatCollapsed(false)}>
-                <MessageSquare size={18} />
-                <span>Planning chat</span>
-              </button>
-            ) : (
-              <FactoryChatPanel
-                workingDir={workingDir}
-                prdId={selectedPrdId}
-                prdTitle={prdDetail.prd.title}
-                prdDescription={prdDetail.prd.description}
-                autoStart={autoStartPrdId === selectedPrdId}
-                onAutoStarted={() => setAutoStartPrdId(null)}
-              />
-            )}
+            <button className="factory-chat-collapsed-card" type="button" onClick={() => setChatCollapsed(false)}>
+              <MessageSquare size={18} />
+              <span>Planning chat</span>
+            </button>
+            <FactoryChatPanel
+              workingDir={workingDir}
+              prdId={selectedPrdId}
+              prdTitle={prdDetail.prd.title}
+              prdDescription={prdDetail.prd.description}
+              autoStart={autoStartPrdId === selectedPrdId}
+              onAutoStarted={() => setAutoStartPrdId(null)}
+              onTurnDone={refreshSelectedPrd}
+            />
           </aside>
         </div>
 

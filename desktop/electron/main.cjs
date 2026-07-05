@@ -378,7 +378,7 @@ const requireClientToolPermission = async (conversationId, webContents, toolCall
   if (!permissionAllows(response)) throw new Error(`Rejected ${toolCall.title || 'tool call'}.`);
 };
 
-const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinkingLevel }, webContents) => {
+const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinkingLevel, resumeSessionId }, webContents) => {
   const settings = readGlobalSettings();
   const selectedId = codingAgentId || settings.defaultCodingAgentId || settings.codingAgents[0]?.id;
   const agent = settings.codingAgents.find((candidate) => candidate.id === selectedId);
@@ -459,8 +459,10 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
       return {};
     });
 
+  const selectedThinkingLevel = normalizeThinkingLevel(thinkingLevel) || agent.thinkingLevel;
+  let agentSessionId;
   const connectionPromise = client.connectWith(stream, async (ctx) => {
-    await ctx.request(acp.methods.agent.initialize, {
+    const initializeResponse = await ctx.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
@@ -468,9 +470,55 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
         elicitation: { form: {}, url: {} },
       },
     });
-    return ctx.buildSession(workingDir).withSession(async (builtSession) => new Promise((resolve) => {
-      acpChatSessions.set(sessionId, { child, session: builtSession, resolve, active: false, agent });
-    }));
+    const sessionRequest = { cwd: workingDir, mcpServers: [] };
+    let sessionResponse;
+    let sessionMethod = 'new';
+    if (resumeSessionId && initializeResponse.agentCapabilities?.sessionCapabilities?.resume) {
+      try {
+        const resumed = await ctx.request(acp.methods.agent.session.resume, {
+          ...sessionRequest,
+          sessionId: resumeSessionId,
+        });
+        sessionResponse = { ...resumed, sessionId: resumeSessionId };
+        sessionMethod = 'resume';
+      } catch {
+        sessionResponse = undefined;
+      }
+    }
+    if (!sessionResponse && resumeSessionId && initializeResponse.agentCapabilities?.loadSession) {
+      try {
+        const loaded = await ctx.request(acp.methods.agent.session.load, {
+          ...sessionRequest,
+          sessionId: resumeSessionId,
+        });
+        sessionResponse = { ...loaded, sessionId: resumeSessionId };
+        sessionMethod = 'load';
+      } catch {
+        sessionResponse = undefined;
+      }
+    }
+    const builtSession = sessionResponse
+      ? ctx.attachSession(sessionResponse)
+      : await ctx.buildSession(sessionRequest).start();
+    agentSessionId = builtSession.sessionId;
+    if (selectedThinkingLevel) {
+      const effortOption = builtSession.newSessionResponse.configOptions?.find(
+        (option) => option.id === 'effort' || option.category === 'thought_level'
+      );
+      if (effortOption && 'options' in effortOption) {
+        const supported = effortOption.options.flatMap((option) => 'options' in option ? option.options : [option]);
+        if (supported.some((option) => option.value === selectedThinkingLevel)) {
+          await ctx.request(acp.methods.agent.session.setConfigOption, {
+            sessionId: builtSession.sessionId,
+            configId: effortOption.id,
+            value: selectedThinkingLevel,
+          });
+        }
+      }
+    }
+    return new Promise((resolve) => {
+      acpChatSessions.set(sessionId, { child, session: builtSession, resolve, active: false, agent, agentSessionId, sessionMethod });
+    }).finally(() => builtSession.dispose());
   });
 
   const start = Date.now();
@@ -479,7 +527,6 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
-  const selectedThinkingLevel = normalizeThinkingLevel(thinkingLevel) || agent.thinkingLevel;
   acpChatSessions.get(sessionId).systemPrompt = [
     'You are running inside DRS Desktop Factory.',
     `Working directory: ${workingDir}`,
@@ -496,7 +543,7 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     });
   });
 
-  return { conversationId: sessionId };
+  return { conversationId: sessionId, agentSessionId };
 };
 
 const sendAcpFactoryMessage = async ({ conversationId, prompt }, webContents) => {
@@ -973,14 +1020,14 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('drs:startFactoryChat', async (_event, req) => {
-    const { workingDir, prdId, agent, codingAgentId, thinkingLevel } = req || {};
+    const { workingDir, prdId, agent, codingAgentId, thinkingLevel, resumeSessionId } = req || {};
     if (!workingDir || typeof workingDir !== 'string') {
       throw new Error('A working directory is required for factory chat.');
     }
     const globalSettings = readGlobalSettings();
     const selectedCodingAgentId = codingAgentId || globalSettings.defaultCodingAgentId;
     if (selectedCodingAgentId) {
-      return startAcpFactorySession({ workingDir, prdId, codingAgentId: selectedCodingAgentId, thinkingLevel }, _event.sender);
+      return startAcpFactorySession({ workingDir, prdId, codingAgentId: selectedCodingAgentId, thinkingLevel, resumeSessionId }, _event.sender);
     }
     const { ConversationService, loadConfig } = await loadDrsConversationRuntime();
     const config = loadConfig(workingDir);
