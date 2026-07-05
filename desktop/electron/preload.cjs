@@ -43,7 +43,16 @@ const drs = {
   updatePrd: (req) => ipcRenderer.invoke('drs:updatePrd', req),
   deletePrd: (workingDir, id) => ipcRenderer.invoke('drs:deletePrd', workingDir, id),
   updatePrdStatus: (req) => ipcRenderer.invoke('drs:updatePrdStatus', req),
+  getFactoryWorkflowStatus: (workingDir, prdId) =>
+    ipcRenderer.invoke('drs:getFactoryWorkflowStatus', workingDir, prdId),
+  requestPrdReview: (workingDir, prdId) => ipcRenderer.invoke('drs:requestPrdReview', workingDir, prdId),
+  approvePrd: (workingDir, prdId) => ipcRenderer.invoke('drs:approvePrd', workingDir, prdId),
+  requestPrdChanges: (workingDir, prdId) =>
+    ipcRenderer.invoke('drs:requestPrdChanges', workingDir, prdId),
   generateStories: (workingDir, prdId) => ipcRenderer.invoke('drs:generateStories', workingDir, prdId),
+  requestStoriesReview: (workingDir, prdId) =>
+    ipcRenderer.invoke('drs:requestStoriesReview', workingDir, prdId),
+  approveStories: (workingDir, prdId) => ipcRenderer.invoke('drs:approveStories', workingDir, prdId),
   updateStoryStatus: (req) => ipcRenderer.invoke('drs:updateStoryStatus', req),
   importStories: (workingDir, prdId) => ipcRenderer.invoke('drs:importStories', workingDir, prdId),
   listPrdVersions: (workingDir, prdId) => ipcRenderer.invoke('drs:listPrdVersions', workingDir, prdId),

@@ -473,8 +473,8 @@ export async function initProject(
     const installedSkills = installFactorySkills(projectPath);
     console.log(
       chalk.green('✓'),
-      'Installed Factory skill in',
-      chalk.cyan(installedSkills[0]?.installedPath ?? '.agents/skills')
+      'Installed Factory skills in',
+      chalk.cyan(installedSkills.map((skill) => skill.installedPath).join(', ') || '.agents/skills')
     );
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -488,7 +488,7 @@ export async function initProject(
     );
     console.log(`  Default Model: ${initConfig.defaultModel}`);
     console.log(`  Agents: ${initConfig.agents.join(', ')}`);
-    console.log('  Skills: drs-factory-planning');
+    console.log('  Skills: drs-factory-planning, drs-factory-stories');
 
     if (Object.keys(initConfig.agentModels).length > 0) {
       console.log('  Model Overrides:');

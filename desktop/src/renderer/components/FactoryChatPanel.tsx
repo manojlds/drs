@@ -38,12 +38,13 @@ interface FactoryChatPanelProps {
   prdId: string | null;
   prdTitle?: string;
   prdDescription?: string;
+  workflowStage?: string;
   autoStart?: boolean;
   onAutoStarted?: () => void;
   onTurnDone?: () => void;
 }
 
-export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, autoStart, onAutoStarted, onTurnDone }: FactoryChatPanelProps) {
+export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, workflowStage, autoStart, onAutoStarted, onTurnDone }: FactoryChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [sending, setSending] = useState(false);
@@ -306,16 +307,20 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
   useEffect(() => {
     if (!autoStart || !prdId || sending || globalSettings === null) return;
     onAutoStarted?.();
+    const skillPrompt = workflowStage?.startsWith('stories')
+      ? 'Use the Factory stories skill now.'
+      : 'Use the Factory planning skill now.';
     const autoPrompt = [
-      'Load and execute the drs-factory-planning skill now.',
+      skillPrompt,
       `PRD id: ${prdId}`,
+      workflowStage ? `Factory workflow stage: ${workflowStage}` : null,
       `PRD title: ${prdTitle || prdId}`,
       prdDescription ? `PRD description:\n${prdDescription}` : null,
     ]
       .filter(Boolean)
       .join('\n\n');
     void ask(autoPrompt);
-  }, [autoStart, globalSettings, onAutoStarted, prdDescription, prdId, prdTitle, sending]);
+  }, [autoStart, globalSettings, onAutoStarted, prdDescription, prdId, prdTitle, sending, workflowStage]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();

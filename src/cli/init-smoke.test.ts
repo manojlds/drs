@@ -27,6 +27,14 @@ describe('DRS project onboarding smoke', () => {
           outdated: false,
         })
       );
+      expect(initialized.skills).toContainEqual(
+        expect.objectContaining({
+          name: 'drs-factory-stories',
+          installed: true,
+          modified: false,
+          outdated: false,
+        })
+      );
 
       const synced = syncProjectSetup(repo);
       expect(synced.initialized).toBe(true);

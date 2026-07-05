@@ -1,19 +1,19 @@
 ---
 name: drs-factory-planning
-description: Use when planning, creating, refining, or reviewing PRDs; clarifying product requirements; splitting feature work into stories; or working in DRS Factory mode.
+description: Use when planning, creating, refining, or reviewing PRDs; clarifying product requirements; or working in DRS Factory PRD mode.
 drsManaged: true
 drsSkillVersion: 1
 ---
 
 # DRS Factory Planning Skill
 
-Use this skill when a user wants to plan product work, write or review a PRD, clarify requirements, split work into reviewable stories, or prepare approved Factory work for import.
+Use this skill when a user wants to plan product work, write or review a PRD, or clarify requirements before story conversion.
 
 ## Operating Contract
 
 - Planning only: do not implement code, run scheduler work, create branches, commit, or claim implementation tasks unless the user explicitly exits planning mode.
 - Artifact first: durable PRD changes must go through DRS Factory commands so DRS can version, inspect, and revert them.
-- Approval gated: keep PRDs and stories reviewable until the user explicitly approves them.
+- Approval gated: keep PRDs reviewable until the user explicitly approves them.
 - Challenge vague inputs. Do not passively summarize unclear requirements into confident-looking PRDs.
 - Separate `what/why` from `how`. Technical notes are allowed, but label them as constraints, options, or assumptions unless confirmed.
 - Preserve user intent. When revising a PRD, explain material scope changes and keep unresolved decisions visible.
@@ -97,18 +97,16 @@ When improving a PRD:
 - If enough information exists, propose concrete edits and persist them with `drs factory prd-update`.
 - After updating, explain the important changes and remaining open questions.
 
-## Story Slicing Rules
+## Story Handoff Rules
 
-Stories must be independently reviewable and testable. Prefer vertical slices that deliver observable behavior.
+Story conversion belongs to the Factory stories skill after PRD approval.
 
 When asked to go from PRD to stories:
 
 1. Confirm the PRD passes the Completeness Gate.
-2. Draft the proposed story breakdown in chat first; do not mutate tracker state yet.
-3. Ask for explicit confirmation before generating or approving stories.
-4. After confirmation, ensure the PRD Markdown contains clearly headed story sections that `drs factory stories-generate` can parse.
-5. Run `drs factory stories-generate <prdId>` to materialize reviewable stories.
-6. Ask for explicit story approval before running `drs factory story-status ... approved` or `drs factory stories-import ...`.
+2. Request PRD review with `drs factory prd-review-request <prdId>` when the PRD is ready.
+3. Ask for explicit PRD approval before running `drs factory prd-approve <prdId>`.
+4. Tell the user the next step is: use the Factory stories skill to convert the approved PRD into structured stories.
 
 Good stories:
 
@@ -129,22 +127,22 @@ Use technical tasks only when they unblock or de-risk a user-facing story, and l
 
 ## Approval And Import Gates
 
-Do not import stories into the task board until:
+Do not move past PRD planning until:
 
-- The PRD is approved or explicitly marked ready by the user.
-- Candidate stories have review status approved.
-- The user explicitly asks to import or confirms import.
+- The PRD passes the Completeness Gate.
+- The user explicitly requests review or approval.
+- DRS Factory coordinator state has been updated through the PRD review/approval commands.
 
 Useful commands:
 
 ```bash
-drs factory prd-status <prdId> approved
-drs factory stories-generate <prdId>
-drs factory story-status <prdId> <storyId> approved
-drs factory stories-import <prdId>
+drs factory workflow-status <prdId>
+drs factory prd-review-request <prdId>
+drs factory prd-approve <prdId>
+drs factory prd-changes-request <prdId>
 ```
 
-If the user asks to import before approval, explain the missing gate and ask for explicit approval.
+If the user asks to import before story approval, explain that story conversion/import is handled by the Factory stories skill after PRD approval.
 
 ## Handoff Package
 
@@ -153,7 +151,7 @@ Before ending a planning session, provide:
 - Current PRD status.
 - Key resolved decisions.
 - Open questions or accepted risks.
-- Recommended next action: clarify, update PRD, generate stories, approve PRD, approve stories, or import.
+- Recommended next action: clarify, update PRD, request PRD review, approve PRD, or hand off to the Factory stories skill.
 
 ## Anti-Patterns
 
@@ -174,11 +172,12 @@ drs factory prd-create --title "..." --description "..."
 drs factory prd-show <prdId>
 drs factory prd-update <prdId> --markdown "..."
 drs factory prd-status <prdId> draft|in_review|approved|active|paused|done|archived
+drs factory workflow-status <prdId>
+drs factory prd-review-request <prdId>
+drs factory prd-approve <prdId>
+drs factory prd-changes-request <prdId>
 drs factory prd-history <prdId>
 drs factory prd-revert <prdId> <versionId>
-drs factory stories-generate <prdId>
-drs factory story-status <prdId> <storyId> draft|approved|rejected
-drs factory stories-import <prdId>
 ```
 
 Prefer these commands over editing Factory files directly so DRS can maintain versions, approvals, and task import state.

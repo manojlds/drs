@@ -253,7 +253,7 @@ button {
 }
 .factory-prd-detail {
   display: grid;
-  grid-template-rows: auto minmax(170px, 1fr) minmax(120px, 0.65fr);
+  grid-template-rows: auto auto minmax(170px, 1fr) minmax(120px, 0.65fr);
 }
 .factory-prd-detail-header {
   display: flex;
@@ -272,6 +272,14 @@ button {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.factory-workflow-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  color: var(--text-muted);
 }
 .factory-prd-editor {
   width: 100%;

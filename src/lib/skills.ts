@@ -99,7 +99,10 @@ export function installFactorySkills(
   workingDir: string,
   options: { force?: boolean } = {}
 ): SkillStatus[] {
-  return [installBundledSkill(workingDir, 'drs-factory-planning', options)];
+  return [
+    installBundledSkill(workingDir, 'drs-factory-planning', options),
+    installBundledSkill(workingDir, 'drs-factory-stories', options),
+  ];
 }
 
 export function syncBundledSkills(workingDir: string): SkillStatus[] {

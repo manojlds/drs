@@ -3,7 +3,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationService, type ConversationRuntime } from './conversation.js';
-import { createPrd, generateStories, updatePrdStatus } from './factory-store.js';
+import { createPrd, requestPrdReview } from './factory-store.js';
 import type { SessionMessage } from '../runtime/client.js';
 import type { ReviewArtifactPayload } from './review-artifact.js';
 import type { WorkflowArtifactEnvelope } from './workflow-artifacts.js';
@@ -247,8 +247,7 @@ describe('ConversationService', () => {
 **Description:** As a user, I want planning chat.
 `,
     });
-    await generateStories(workingDir, created.prd.id);
-    await updatePrdStatus(workingDir, created.prd.id, 'in_review');
+    await requestPrdReview(workingDir, created.prd.id);
     const runtime = createRuntime([
       {
         id: 'assistant-1',

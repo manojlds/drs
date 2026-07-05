@@ -17,6 +17,25 @@ export const PRD_STATUSES = [
 export type PrdStatus = (typeof PRD_STATUSES)[number];
 export const STORY_REVIEW_STATUSES = ['draft', 'approved', 'rejected'] as const;
 export type StoryReviewStatus = (typeof STORY_REVIEW_STATUSES)[number];
+export const FACTORY_WORKFLOW_STAGES = [
+  'prd_draft',
+  'prd_review_requested',
+  'prd_approved',
+  'stories_draft',
+  'stories_review_requested',
+  'stories_approved',
+  'stories_imported',
+] as const;
+export type FactoryWorkflowStage = (typeof FACTORY_WORKFLOW_STAGES)[number];
+export const STORY_SET_STATUSES = [
+  'not_started',
+  'draft',
+  'review_requested',
+  'approved',
+  'imported',
+] as const;
+export type FactoryStorySetStatus = (typeof STORY_SET_STATUSES)[number];
+export type FactoryStorySetSource = 'agent' | 'markdown_extract' | 'manual';
 
 export interface FactoryPrd {
   id: string;
@@ -25,6 +44,7 @@ export interface FactoryPrd {
   description: string;
   prdPath: string;
   storiesPath: string;
+  workflowStage: FactoryWorkflowStage;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +66,26 @@ export interface PrdIndex {
   prds: FactoryPrd[];
 }
 
+export interface FactoryStorySet {
+  version: 1;
+  prdId: string;
+  status: FactoryStorySetStatus;
+  source: FactoryStorySetSource;
+  generatedAt?: string;
+  approvedAt?: string;
+  importedAt?: string;
+  stories: FactoryStory[];
+}
+
+export interface FactoryWorkflowStatus {
+  prdId: string;
+  stage: FactoryWorkflowStage;
+  prdStatus: PrdStatus;
+  storySetStatus: FactoryStorySetStatus;
+  allowedActions: string[];
+  blockedReason: string | null;
+}
+
 export interface FactoryPrdVersion {
   id: string;
   prdId: string;
@@ -62,17 +102,27 @@ export async function listPrds(workingDir: string): Promise<FactoryPrd[]> {
 export async function getPrd(
   workingDir: string,
   id: string
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   const prd = await findPrd(workingDir, id);
   const markdown = await readOptionalFile(join(workingDir, prd.prdPath));
-  const stories = await readStoriesFile(workingDir, prd);
-  return { prd, markdown, stories };
+  const storySet = await readStorySetFile(workingDir, prd);
+  return { prd, markdown, stories: storySet.stories, storySet };
 }
 
 export async function createPrd(
   workingDir: string,
   input: { title: string; description?: string; markdown?: string; status?: PrdStatus }
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   const title = input.title.trim();
   if (!title) throw new Error('PRD title is required.');
   const index = await readPrdIndex(workingDir);
@@ -87,6 +137,7 @@ export async function createPrd(
     description: input.description?.trim() ?? '',
     prdPath,
     storiesPath,
+    workflowStage: 'prd_draft',
     createdAt: now,
     updatedAt: now,
   };
@@ -95,16 +146,22 @@ export async function createPrd(
   if (markdownInput && markdownInput.length > 0) markdown = markdownInput;
   await writeFileEnsured(join(workingDir, prdPath), `${markdown.trim()}\n`);
   await appendPrdVersion(workingDir, prd, markdown, 'create');
-  await writeStoriesFile(workingDir, prd, []);
+  const storySet = emptyStorySet(prd.id);
+  await writeStorySetFile(workingDir, prd, storySet);
   await writePrdIndex(workingDir, { version: 1, prds: [...index.prds, prd] });
-  return { prd, markdown, stories: [] };
+  return { prd, markdown, stories: [], storySet };
 }
 
 export async function updatePrdMarkdown(
   workingDir: string,
   id: string,
   markdown: string
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   const index = await readPrdIndex(workingDir);
   const prdIndex = index.prds.findIndex((item) => item.id === id);
   if (prdIndex === -1) throw new Error(`PRD not found: ${id}`);
@@ -147,7 +204,12 @@ export async function revertPrdVersion(
   workingDir: string,
   id: string,
   versionId: string
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   const prd = await findPrd(workingDir, id);
   const version = (await readPrdVersions(workingDir, prd)).find((item) => item.id === versionId);
   if (!version) throw new Error(`PRD version not found: ${versionId}`);
@@ -160,26 +222,114 @@ export async function updatePrdStatus(
   workingDir: string,
   id: string,
   status: PrdStatus
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   if (!PRD_STATUSES.includes(status)) throw new Error(`Invalid PRD status: ${status}`);
-  const index = await readPrdIndex(workingDir);
-  const prdIndex = index.prds.findIndex((item) => item.id === id);
-  if (prdIndex === -1) throw new Error(`PRD not found: ${id}`);
-  const prd = { ...index.prds[prdIndex], status, updatedAt: new Date().toISOString() };
-  const prds = [...index.prds];
-  prds[prdIndex] = prd;
-  await writePrdIndex(workingDir, { version: 1, prds });
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({ ...prd, status }));
+  return getPrd(workingDir, id);
+}
+
+export async function requestPrdReview(workingDir: string, id: string) {
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({
+    ...prd,
+    status: 'in_review',
+    workflowStage: 'prd_review_requested',
+  }));
+  return getPrd(workingDir, id);
+}
+
+export async function approvePrd(workingDir: string, id: string) {
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({
+    ...prd,
+    status: 'approved',
+    workflowStage: 'prd_approved',
+  }));
+  return getPrd(workingDir, id);
+}
+
+export async function requestPrdChanges(workingDir: string, id: string) {
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({
+    ...prd,
+    status: 'draft',
+    workflowStage: 'prd_draft',
+  }));
   return getPrd(workingDir, id);
 }
 
 export async function generateStories(
   workingDir: string,
   id: string
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   const current = await getPrd(workingDir, id);
+  ensurePrdApprovedForStories(current.prd);
   const stories = parseStoriesFromMarkdown(current.markdown);
-  await writeStoriesFile(workingDir, current.prd, stories);
-  return { ...current, stories };
+  const storySet = buildStorySet(current.prd.id, stories, 'markdown_extract', 'draft');
+  await writeStorySetFile(workingDir, current.prd, storySet);
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({ ...prd, workflowStage: 'stories_draft' }));
+  return getPrd(workingDir, id);
+}
+
+export async function draftStories(
+  workingDir: string,
+  id: string,
+  stories: FactoryStory[],
+  source: FactoryStorySetSource = 'agent'
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
+  const current = await getPrd(workingDir, id);
+  ensurePrdApprovedForStories(current.prd);
+  const storySet = buildStorySet(current.prd.id, stories, source, 'draft');
+  await writeStorySetFile(workingDir, current.prd, storySet);
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({ ...prd, workflowStage: 'stories_draft' }));
+  return getPrd(workingDir, id);
+}
+
+export async function requestStoriesReview(workingDir: string, id: string) {
+  const current = await getPrd(workingDir, id);
+  if (current.storySet.stories.length === 0)
+    throw new Error(`No draft stories found for PRD: ${id}`);
+  await writeStorySetFile(workingDir, current.prd, {
+    ...current.storySet,
+    status: 'review_requested',
+  });
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({
+    ...prd,
+    workflowStage: 'stories_review_requested',
+  }));
+  return getPrd(workingDir, id);
+}
+
+export async function approveStories(workingDir: string, id: string) {
+  const current = await getPrd(workingDir, id);
+  if (current.storySet.stories.length === 0) throw new Error(`No stories found for PRD: ${id}`);
+  const now = new Date().toISOString();
+  await writeStorySetFile(workingDir, current.prd, {
+    ...current.storySet,
+    status: 'approved',
+    approvedAt: now,
+    stories: current.storySet.stories.map((story) => ({
+      ...story,
+      reviewStatus: story.reviewStatus === 'rejected' ? 'rejected' : 'approved',
+    })),
+  });
+  await updatePrdIndexEntry(workingDir, id, (prd) => ({
+    ...prd,
+    workflowStage: 'stories_approved',
+  }));
+  return getPrd(workingDir, id);
 }
 
 export async function updateStoryReviewStatus(
@@ -187,7 +337,12 @@ export async function updateStoryReviewStatus(
   prdId: string,
   storyId: string,
   reviewStatus: StoryReviewStatus
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
   if (!STORY_REVIEW_STATUSES.includes(reviewStatus)) {
     throw new Error(`Invalid story review status: ${reviewStatus}`);
   }
@@ -197,14 +352,17 @@ export async function updateStoryReviewStatus(
   );
   if (!stories.some((story) => story.id === storyId))
     throw new Error(`Story not found: ${storyId}`);
-  await writeStoriesFile(workingDir, current.prd, stories);
-  return { ...current, stories };
+  await writeStorySetFile(workingDir, current.prd, { ...current.storySet, stories });
+  return getPrd(workingDir, prdId);
 }
 
 export async function importStoriesToTasks(workingDir: string, id: string): Promise<DrsTask[]> {
-  const { prd, stories } = await getPrd(workingDir, id);
+  const { prd, storySet, stories } = await getPrd(workingDir, id);
   if (prd.status !== 'approved' && prd.status !== 'active') {
     throw new Error(`PRD must be approved before importing stories: ${prd.id}`);
+  }
+  if (storySet.status !== 'approved' && storySet.status !== 'imported') {
+    throw new Error(`Stories must be approved before importing: ${prd.id}`);
   }
   const existingTasks = await listTasks(workingDir);
   const existingByStory = new Set(
@@ -233,7 +391,33 @@ export async function importStoriesToTasks(workingDir: string, id: string): Prom
     storyToTask.set(story.id, task.id);
     created.push(task);
   }
+  await writeStorySetFile(workingDir, prd, {
+    ...storySet,
+    status: 'imported',
+    importedAt: new Date().toISOString(),
+  });
+  await updatePrdIndexEntry(workingDir, id, (item) => ({
+    ...item,
+    status: 'active',
+    workflowStage: 'stories_imported',
+  }));
   return created;
+}
+
+export async function getFactoryWorkflowStatus(
+  workingDir: string,
+  id: string
+): Promise<FactoryWorkflowStatus> {
+  const { prd, storySet } = await getPrd(workingDir, id);
+  const allowedActions = allowedFactoryActions(prd, storySet);
+  return {
+    prdId: prd.id,
+    stage: prd.workflowStage,
+    prdStatus: prd.status,
+    storySetStatus: storySet.status,
+    allowedActions,
+    blockedReason: allowedActions.length > 0 ? null : blockedFactoryReason(prd, storySet),
+  };
 }
 
 export function prdIndexPath(workingDir: string): string {
@@ -262,16 +446,31 @@ async function findPrd(workingDir: string, id: string): Promise<FactoryPrd> {
   return prd;
 }
 
-async function updatePrdStatusTimestampOnly(
+async function updatePrdIndexEntry(
   workingDir: string,
-  id: string
-): Promise<{ prd: FactoryPrd; markdown: string; stories: FactoryStory[] }> {
+  id: string,
+  update: (prd: FactoryPrd) => FactoryPrd
+): Promise<FactoryPrd> {
   const index = await readPrdIndex(workingDir);
   const prdIndex = index.prds.findIndex((item) => item.id === id);
   if (prdIndex === -1) throw new Error(`PRD not found: ${id}`);
   const prds = [...index.prds];
-  prds[prdIndex] = { ...prds[prdIndex], updatedAt: new Date().toISOString() };
+  const next = { ...update(prds[prdIndex]), updatedAt: new Date().toISOString() };
+  prds[prdIndex] = next;
   await writePrdIndex(workingDir, { version: 1, prds });
+  return next;
+}
+
+async function updatePrdStatusTimestampOnly(
+  workingDir: string,
+  id: string
+): Promise<{
+  prd: FactoryPrd;
+  markdown: string;
+  stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}> {
+  await updatePrdIndexEntry(workingDir, id, (prd) => prd);
   return getPrd(workingDir, id);
 }
 
@@ -308,23 +507,78 @@ function prdVersionsPath(workingDir: string, prd: FactoryPrd): string {
   return join(workingDir, `${FACTORY_DIR}/prds/${prd.id}.versions.json`);
 }
 
-async function readStoriesFile(workingDir: string, prd: FactoryPrd): Promise<FactoryStory[]> {
+async function readStorySetFile(workingDir: string, prd: FactoryPrd): Promise<FactoryStorySet> {
   const source = await readOptionalFile(join(workingDir, prd.storiesPath));
-  if (!source.trim()) return [];
+  if (!source.trim()) return emptyStorySet(prd.id);
   const parsed = JSON.parse(source) as unknown;
-  if (!Array.isArray(parsed)) throw new Error(`Stories file for ${prd.id} must be an array.`);
-  return parsed.map(normalizeStory);
+  if (Array.isArray(parsed))
+    return buildStorySet(prd.id, parsed.map(normalizeStory), 'markdown_extract');
+  return normalizeStorySet(parsed, prd.id);
 }
 
-async function writeStoriesFile(
+async function writeStorySetFile(
   workingDir: string,
   prd: FactoryPrd,
-  stories: FactoryStory[]
+  storySet: FactoryStorySet
 ): Promise<void> {
   await writeFileEnsured(
     join(workingDir, prd.storiesPath),
-    `${JSON.stringify(stories, null, 2)}\n`
+    `${JSON.stringify(normalizeStorySet(storySet, prd.id), null, 2)}\n`
   );
+}
+
+function emptyStorySet(prdId: string): FactoryStorySet {
+  return { version: 1, prdId, status: 'not_started', source: 'manual', stories: [] };
+}
+
+function buildStorySet(
+  prdId: string,
+  stories: FactoryStory[],
+  source: FactoryStorySetSource,
+  status: FactoryStorySetStatus = stories.length > 0 ? 'draft' : 'not_started'
+): FactoryStorySet {
+  return {
+    version: 1,
+    prdId,
+    status,
+    source,
+    generatedAt: new Date().toISOString(),
+    stories: stories.map(normalizeStory),
+  };
+}
+
+function ensurePrdApprovedForStories(prd: FactoryPrd): void {
+  if (prd.status !== 'approved' && prd.status !== 'active') {
+    throw new Error(`PRD must be approved before drafting stories: ${prd.id}`);
+  }
+}
+
+function allowedFactoryActions(prd: FactoryPrd, storySet: FactoryStorySet): string[] {
+  const actions: string[] = [];
+  if (prd.workflowStage === 'prd_draft') actions.push('request-prd-review');
+  if (prd.workflowStage === 'prd_review_requested') {
+    actions.push('approve-prd', 'request-prd-changes');
+  }
+  if (
+    (prd.status === 'approved' || prd.status === 'active') &&
+    storySet.status !== 'approved' &&
+    storySet.status !== 'imported'
+  ) {
+    actions.push('draft-stories');
+  }
+  if (storySet.status === 'draft' && storySet.stories.length > 0)
+    actions.push('request-stories-review');
+  if (storySet.status === 'review_requested') actions.push('approve-stories');
+  if (storySet.status === 'approved') actions.push('import-stories');
+  return actions;
+}
+
+function blockedFactoryReason(prd: FactoryPrd, storySet: FactoryStorySet): string | null {
+  if (prd.workflowStage === 'stories_imported') return 'Stories are already imported.';
+  if (storySet.status === 'not_started' && prd.status !== 'approved' && prd.status !== 'active') {
+    return 'PRD approval is required before drafting stories.';
+  }
+  return null;
 }
 
 async function readOptionalFile(path: string): Promise<string> {
@@ -445,6 +699,26 @@ function normalizeStory(value: unknown): FactoryStory {
   };
 }
 
+function normalizeStorySet(value: unknown, prdId: string): FactoryStorySet {
+  if (!isRecord(value)) throw new Error(`Stories file for ${prdId} must be an object or array.`);
+  if (value.version !== 1) throw new Error(`Stories file version for ${prdId} must be 1.`);
+  const status = STORY_SET_STATUSES.includes(value.status as FactoryStorySetStatus)
+    ? (value.status as FactoryStorySetStatus)
+    : 'not_started';
+  const source = isStorySetSource(value.source) ? value.source : 'manual';
+  const stories = Array.isArray(value.stories) ? value.stories.map(normalizeStory) : [];
+  return {
+    version: 1,
+    prdId: scalarString(value.prdId) || prdId,
+    status: stories.length === 0 && status !== 'imported' ? 'not_started' : status,
+    source,
+    generatedAt: optionalString(value.generatedAt),
+    approvedAt: optionalString(value.approvedAt),
+    importedAt: optionalString(value.importedAt),
+    stories,
+  };
+}
+
 function validatePrdIndex(value: unknown): asserts value is PrdIndex {
   if (!isRecord(value)) throw new Error('PRD index must be an object.');
   if (value.version !== 1) throw new Error('PRD index version must be 1.');
@@ -458,18 +732,29 @@ function normalizePrdIndex(value: unknown): PrdIndex {
 
 function normalizePrd(value: unknown): FactoryPrd {
   if (!isRecord(value)) throw new Error('PRD index entries must be objects.');
+  const status = PRD_STATUSES.includes(value.status as PrdStatus)
+    ? (value.status as PrdStatus)
+    : 'draft';
   return {
     id: scalarString(value.id).trim(),
     title: scalarString(value.title).trim(),
-    status: PRD_STATUSES.includes(value.status as PrdStatus)
-      ? (value.status as PrdStatus)
-      : 'draft',
+    status,
     description: scalarString(value.description ?? value.prompt),
     prdPath: scalarString(value.prdPath),
     storiesPath: scalarString(value.storiesPath),
+    workflowStage: FACTORY_WORKFLOW_STAGES.includes(value.workflowStage as FactoryWorkflowStage)
+      ? (value.workflowStage as FactoryWorkflowStage)
+      : inferWorkflowStage(status),
     createdAt: scalarString(value.createdAt),
     updatedAt: scalarString(value.updatedAt),
   };
+}
+
+function inferWorkflowStage(status: PrdStatus): FactoryWorkflowStage {
+  if (status === 'in_review') return 'prd_review_requested';
+  if (status === 'approved') return 'prd_approved';
+  if (status === 'active' || status === 'done') return 'stories_imported';
+  return 'prd_draft';
 }
 
 function uniquePrdId(title: string, prds: FactoryPrd[]): string {
@@ -500,10 +785,19 @@ function isString(value: unknown): value is string {
   return typeof value === 'string';
 }
 
+function isStorySetSource(value: unknown): value is FactoryStorySetSource {
+  return value === 'agent' || value === 'markdown_extract' || value === 'manual';
+}
+
 function scalarString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return '';
+}
+
+function optionalString(value: unknown): string | undefined {
+  const stringValue = scalarString(value);
+  return stringValue || undefined;
 }
 
 function normalizePrdVersion(value: unknown): FactoryPrdVersion {

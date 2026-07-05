@@ -261,6 +261,14 @@ export interface FactoryPrd {
   description: string;
   prdPath: string;
   storiesPath: string;
+  workflowStage:
+    | 'prd_draft'
+    | 'prd_review_requested'
+    | 'prd_approved'
+    | 'stories_draft'
+    | 'stories_review_requested'
+    | 'stories_approved'
+    | 'stories_imported';
   createdAt: string;
   updatedAt: string;
 }
@@ -281,6 +289,27 @@ export interface FactoryPrdDetail {
   prd: FactoryPrd;
   markdown: string;
   stories: FactoryStory[];
+  storySet: FactoryStorySet;
+}
+
+export interface FactoryStorySet {
+  version: 1;
+  prdId: string;
+  status: 'not_started' | 'draft' | 'review_requested' | 'approved' | 'imported';
+  source: 'agent' | 'markdown_extract' | 'manual';
+  generatedAt?: string;
+  approvedAt?: string;
+  importedAt?: string;
+  stories: FactoryStory[];
+}
+
+export interface FactoryWorkflowStatus {
+  prdId: string;
+  stage: FactoryPrd['workflowStage'];
+  prdStatus: FactoryPrd['status'];
+  storySetStatus: FactoryStorySet['status'];
+  allowedActions: string[];
+  blockedReason: string | null;
 }
 
 export interface FactoryPrdVersion {
@@ -480,7 +509,13 @@ export interface DrsApi {
   updatePrd(req: { workingDir: string; id: string; markdown: string }): Promise<FactoryPrdDetail>;
   deletePrd(workingDir: string, id: string): Promise<FactoryPrd>;
   updatePrdStatus(req: { workingDir: string; id: string; status: FactoryPrd['status'] }): Promise<FactoryPrdDetail>;
+  getFactoryWorkflowStatus(workingDir: string, prdId: string): Promise<FactoryWorkflowStatus>;
+  requestPrdReview(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  approvePrd(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  requestPrdChanges(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  requestStoriesReview(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
+  approveStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   updateStoryStatus(req: { workingDir: string; prdId: string; storyId: string; status: FactoryStory['reviewStatus'] }): Promise<FactoryPrdDetail>;
   importStories(workingDir: string, prdId: string): Promise<DrsTask[]>;
   listPrdVersions(workingDir: string, prdId: string): Promise<FactoryPrdVersion[]>;

@@ -24,17 +24,25 @@ import {
   type DrsTask,
 } from '../lib/task-store.js';
 import {
+  approvePrd,
+  approveStories,
   createPrd,
   deletePrd,
+  draftStories,
   generateStories,
+  getFactoryWorkflowStatus,
   getPrd,
   importStoriesToTasks,
   listPrds,
   listPrdVersions,
+  requestPrdChanges,
+  requestPrdReview,
+  requestStoriesReview,
   revertPrdVersion,
   updatePrdMarkdown,
   updatePrdStatus,
   updateStoryReviewStatus,
+  type FactoryStory,
   type PrdStatus,
   type StoryReviewStatus,
 } from '../lib/factory-store.js';
@@ -690,8 +698,78 @@ factoryCommand
   });
 
 factoryCommand
+  .command('workflow-status <prdId>')
+  .description('Show Factory coordinator stage and allowed actions')
+  .option('--json', 'Output status as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const status = await getFactoryWorkflowStatus(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify({ status }, null, 2));
+      else {
+        console.log(`Stage: ${status.stage}`);
+        console.log(`PRD: ${status.prdStatus}`);
+        console.log(`Stories: ${status.storySetStatus}`);
+        console.log(`Allowed: ${status.allowedActions.join(', ') || 'none'}`);
+        if (status.blockedReason) console.log(`Blocked: ${status.blockedReason}`);
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-review-request <prdId>')
+  .description('Request human review for a PRD draft')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await requestPrdReview(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Requested PRD review for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-approve <prdId>')
+  .description('Approve a PRD for story drafting')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await approvePrd(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Approved PRD ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('prd-changes-request <prdId>')
+  .description('Return a PRD to draft for changes')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await requestPrdChanges(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Requested PRD changes for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
   .command('stories-generate <prdId>')
-  .description('Generate reviewable stories from PRD markdown')
+  .description('Generate draft stories from PRD markdown after PRD approval')
   .option('--json', 'Output stories as JSON')
   .action(async (prdId: string, options) => {
     try {
@@ -706,8 +784,64 @@ factoryCommand
   });
 
 factoryCommand
+  .command('stories-draft <prdId>')
+  .description('Save structured draft stories from JSON')
+  .requiredOption('-f, --file <path>', 'JSON file containing an array of stories')
+  .option('--source <source>', 'Story source: agent, markdown_extract, or manual', 'agent')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const source = String(options.source);
+      if (source !== 'agent' && source !== 'markdown_extract' && source !== 'manual') {
+        throw new Error(`Invalid story source: ${source}`);
+      }
+      const parsed = JSON.parse(readFileSync(options.file, 'utf-8')) as unknown;
+      if (!Array.isArray(parsed)) throw new Error('Story draft file must contain a JSON array.');
+      const result = await draftStories(process.cwd(), prdId, parsed as FactoryStory[], source);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Saved ${result.stories.length} draft stories for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('stories-review-request <prdId>')
+  .description('Request human review for drafted stories')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await requestStoriesReview(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Requested story review for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
+  .command('stories-approve <prdId>')
+  .description('Approve drafted stories for import')
+  .option('--json', 'Output PRD as JSON')
+  .action(async (prdId: string, options) => {
+    try {
+      const result = await approveStories(process.cwd(), prdId);
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Approved stories for ${result.prd.id}`);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+factoryCommand
   .command('stories-import <prdId>')
-  .description('Import generated PRD stories into the task backlog')
+  .description('Import approved PRD stories into the task backlog')
   .option('--json', 'Output imported tasks as JSON')
   .action(async (prdId: string, options) => {
     try {

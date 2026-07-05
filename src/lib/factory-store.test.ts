@@ -3,12 +3,18 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
+  approvePrd,
+  approveStories,
   createPrd,
   deletePrd,
+  draftStories,
   generateStories,
+  getFactoryWorkflowStatus,
   importStoriesToTasks,
   listPrdVersions,
   listPrds,
+  requestPrdReview,
+  requestStoriesReview,
   revertPrdVersion,
   updatePrdMarkdown,
   updatePrdStatus,
@@ -50,10 +56,11 @@ describe('factory-store', () => {
 - [ ] Board filters tasks by PRD.
 `;
       const created = await createPrd(dir, { title: 'Example', markdown });
+      await approvePrd(dir, created.prd.id);
       const generated = await generateStories(dir, created.prd.id);
-      await updatePrdStatus(dir, created.prd.id, 'approved');
       await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
       await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'approved');
+      await approveStories(dir, created.prd.id);
       const imported = await importStoriesToTasks(dir, created.prd.id);
       const secondImport = await importStoriesToTasks(dir, created.prd.id);
 
@@ -81,13 +88,18 @@ describe('factory-store', () => {
 **Description:** Not ready.
 `,
       });
-      await generateStories(dir, created.prd.id);
+      await expect(generateStories(dir, created.prd.id)).rejects.toThrow('PRD must be approved');
 
       await expect(importStoriesToTasks(dir, created.prd.id)).rejects.toThrow('must be approved');
 
       await updatePrdStatus(dir, created.prd.id, 'approved');
+      await generateStories(dir, created.prd.id);
       await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
       await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'rejected');
+      await expect(importStoriesToTasks(dir, created.prd.id)).rejects.toThrow(
+        'Stories must be approved'
+      );
+      await approveStories(dir, created.prd.id);
       const imported = await importStoriesToTasks(dir, created.prd.id);
 
       expect(imported).toHaveLength(1);
@@ -114,9 +126,46 @@ describe('factory-store', () => {
     });
   });
 
+  it('tracks explicit Factory coordinator stages', async () => {
+    await withTempDir(async (dir) => {
+      const created = await createPrd(dir, { title: 'Coordinator Plan' });
+
+      expect(await getFactoryWorkflowStatus(dir, created.prd.id)).toMatchObject({
+        stage: 'prd_draft',
+        storySetStatus: 'not_started',
+        allowedActions: expect.arrayContaining(['request-prd-review']),
+      });
+
+      await requestPrdReview(dir, created.prd.id);
+      await approvePrd(dir, created.prd.id);
+      await draftStories(dir, created.prd.id, [
+        {
+          id: 'US-001',
+          title: 'Plan slice',
+          description: 'As a planner, I want a slice.',
+          acceptanceCriteria: ['The slice is reviewable.'],
+          priority: 1,
+          status: 'draft',
+          reviewStatus: 'draft',
+          dependsOn: [],
+          notes: '',
+        },
+      ]);
+      await requestStoriesReview(dir, created.prd.id);
+      await approveStories(dir, created.prd.id);
+      await importStoriesToTasks(dir, created.prd.id);
+
+      expect(await getFactoryWorkflowStatus(dir, created.prd.id)).toMatchObject({
+        stage: 'stories_imported',
+        storySetStatus: 'imported',
+      });
+    });
+  });
+
   it('deletes PRDs and their PRD-scoped artifacts', async () => {
     await withTempDir(async (dir) => {
       const created = await createPrd(dir, { title: 'Delete Me', description: 'Temporary plan' });
+      await approvePrd(dir, created.prd.id);
       await generateStories(dir, created.prd.id);
       expect(await listPrdVersions(dir, created.prd.id)).toHaveLength(1);
 

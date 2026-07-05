@@ -527,12 +527,26 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
+  let factoryStage = null;
+  if (prdId) {
+    try {
+      const workflow = await runDrsJson(workingDir, ['factory', 'workflow-status', prdId]);
+      factoryStage = workflow.status?.stage ?? null;
+    } catch {
+      factoryStage = null;
+    }
+  }
+  const skillInstruction = factoryStage && String(factoryStage).startsWith('stories')
+    ? 'Use the Factory stories skill to convert approved PRDs into structured implementation stories.'
+    : 'Use the Factory planning skill for PRD clarification, drafting, and approval.';
+
   acpChatSessions.get(sessionId).systemPrompt = [
     'You are running inside DRS Desktop Factory.',
     `Working directory: ${workingDir}`,
     prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
+    factoryStage ? `Current Factory workflow stage: ${factoryStage}.` : null,
     selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
-    'Load and follow the drs-factory-planning skill for Factory PRD work.',
+    skillInstruction,
   ].filter(Boolean).join('\n\n');
 
   connectionPromise.catch((error) => {
@@ -886,8 +900,33 @@ app.whenReady().then(() => {
     return runDrsJson(req.workingDir, ['factory', 'prd-status', req.id, req.status]);
   });
 
+  ipcMain.handle('drs:getFactoryWorkflowStatus', async (_event, workingDir, prdId) => {
+    const result = await runDrsJson(workingDir, ['factory', 'workflow-status', prdId]);
+    return result.status;
+  });
+
+  ipcMain.handle('drs:requestPrdReview', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'prd-review-request', prdId]);
+  });
+
+  ipcMain.handle('drs:approvePrd', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'prd-approve', prdId]);
+  });
+
+  ipcMain.handle('drs:requestPrdChanges', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'prd-changes-request', prdId]);
+  });
+
   ipcMain.handle('drs:generateStories', async (_event, workingDir, prdId) => {
     return runDrsJson(workingDir, ['factory', 'stories-generate', prdId]);
+  });
+
+  ipcMain.handle('drs:requestStoriesReview', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'stories-review-request', prdId]);
+  });
+
+  ipcMain.handle('drs:approveStories', async (_event, workingDir, prdId) => {
+    return runDrsJson(workingDir, ['factory', 'stories-approve', prdId]);
   });
 
   ipcMain.handle('drs:updateStoryStatus', async (_event, req) => {

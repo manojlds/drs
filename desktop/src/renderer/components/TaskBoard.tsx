@@ -4,7 +4,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Input } from '@/renderer/components/ui/input';
-import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion } from '@/shared/ipc-types';
+import type { DrsTask, FactoryPrd, FactoryPrdDetail, FactoryPrdVersion, FactoryWorkflowStatus } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
 
 interface TaskBoardProps {
@@ -17,6 +17,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [versions, setVersions] = useState<FactoryPrdVersion[]>([]);
   const [selectedPrdId, setSelectedPrdId] = useState<string | null>(null);
   const [prdDetail, setPrdDetail] = useState<FactoryPrdDetail | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<FactoryWorkflowStatus | null>(null);
   const [view, setView] = useState<'index' | 'workspace'>('index');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,14 +43,19 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       const nextSelected = selectedPrdId && prdList.some((prd) => prd.id === selectedPrdId) ? selectedPrdId : null;
       setSelectedPrdId(nextSelected);
       if (nextSelected) {
-        const detail = await window.drs.getPrd(workingDir, nextSelected);
-        const versionList = await window.drs.listPrdVersions(workingDir, nextSelected);
+        const [detail, versionList, status] = await Promise.all([
+          window.drs.getPrd(workingDir, nextSelected),
+          window.drs.listPrdVersions(workingDir, nextSelected),
+          window.drs.getFactoryWorkflowStatus(workingDir, nextSelected),
+        ]);
         setPrdDetail(detail);
         setVersions(versionList);
+        setWorkflowStatus(status);
         setMarkdownDraft(detail.markdown);
       } else {
         setPrdDetail(null);
         setVersions([]);
+        setWorkflowStatus(null);
         setMarkdownDraft('');
         setView('index');
       }
@@ -69,10 +75,14 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setSelectedPrdId(id);
       setError(null);
       try {
-        const detail = await window.drs.getPrd(workingDir, id);
-        const versionList = await window.drs.listPrdVersions(workingDir, id);
+        const [detail, versionList, status] = await Promise.all([
+          window.drs.getPrd(workingDir, id),
+          window.drs.listPrdVersions(workingDir, id),
+          window.drs.getFactoryWorkflowStatus(workingDir, id),
+        ]);
         setPrdDetail(detail);
         setVersions(versionList);
+        setWorkflowStatus(status);
         setMarkdownDraft(detail.markdown);
         setView('workspace');
       } catch (err) {
@@ -89,11 +99,15 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setError(null);
     try {
       const detail = await window.drs.createPrd({ workingDir, title: trimmed, description });
-      const versionList = await window.drs.listPrdVersions(workingDir, detail.prd.id);
+      const [versionList, status] = await Promise.all([
+        window.drs.listPrdVersions(workingDir, detail.prd.id),
+        window.drs.getFactoryWorkflowStatus(workingDir, detail.prd.id),
+      ]);
       setPrds((current) => [detail.prd, ...current]);
       setSelectedPrdId(detail.prd.id);
       setPrdDetail(detail);
       setVersions(versionList);
+      setWorkflowStatus(status);
       setMarkdownDraft(detail.markdown);
       setAutoStartPrdId(detail.prd.id);
       setTitle('');
@@ -117,8 +131,10 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         markdown: markdownDraft,
       });
       const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
+      const status = await window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId);
       setPrdDetail(detail);
       setVersions(versionList);
+      setWorkflowStatus(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -127,11 +143,15 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const refreshSelectedPrd = useCallback(async () => {
     if (!selectedPrdId) return;
     try {
-      const detail = await window.drs.getPrd(workingDir, selectedPrdId);
-      const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
+      const [detail, versionList, status] = await Promise.all([
+        window.drs.getPrd(workingDir, selectedPrdId),
+        window.drs.listPrdVersions(workingDir, selectedPrdId),
+        window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId),
+      ]);
       setPrdDetail(detail);
       setPrds((current) => current.map((prd) => (prd.id === detail.prd.id ? detail.prd : prd)));
       setVersions(versionList);
+      setWorkflowStatus(status);
       setMarkdownDraft(detail.markdown);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -147,6 +167,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       setSelectedPrdId(null);
       setPrdDetail(null);
       setVersions([]);
+      setWorkflowStatus(null);
       setMarkdownDraft('');
       setDeleteConfirmOpen(false);
       setAutoStartPrdId(null);
@@ -156,28 +177,15 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [selectedPrdId, workingDir]);
 
-  const handlePrdStatus = useCallback(
-    async (status: FactoryPrd['status']) => {
-      if (!selectedPrdId) return;
-      setError(null);
-      try {
-        const detail = await window.drs.updatePrdStatus({ workingDir, id: selectedPrdId, status });
-        setPrdDetail(detail);
-        setPrds((current) => current.map((prd) => (prd.id === detail.prd.id ? detail.prd : prd)));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [selectedPrdId, workingDir]
-  );
-
   const handleGenerateStories = useCallback(async () => {
     if (!selectedPrdId) return;
     setError(null);
     try {
       const saved = await window.drs.updatePrd({ workingDir, id: selectedPrdId, markdown: markdownDraft });
       const detail = await window.drs.generateStories(workingDir, saved.prd.id);
+      const status = await window.drs.getFactoryWorkflowStatus(workingDir, saved.prd.id);
       setPrdDetail(detail);
+      setWorkflowStatus(status);
       setMarkdownDraft(detail.markdown);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -189,11 +197,36 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     setError(null);
     try {
       const imported = await window.drs.importStories(workingDir, selectedPrdId);
+      const status = await window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId);
       setTasks((current) => [...current, ...imported].sort(sortTasks));
+      setWorkflowStatus(status);
+      await refreshSelectedPrd();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [selectedPrdId, workingDir]);
+  }, [refreshSelectedPrd, selectedPrdId, workingDir]);
+
+  const handleCoordinatorAction = useCallback(
+    async (action: 'request-prd-review' | 'approve-prd' | 'request-prd-changes' | 'request-stories-review' | 'approve-stories') => {
+      if (!selectedPrdId) return;
+      setError(null);
+      try {
+        let detail: FactoryPrdDetail;
+        if (action === 'request-prd-review') detail = await window.drs.requestPrdReview(workingDir, selectedPrdId);
+        else if (action === 'approve-prd') detail = await window.drs.approvePrd(workingDir, selectedPrdId);
+        else if (action === 'request-prd-changes') detail = await window.drs.requestPrdChanges(workingDir, selectedPrdId);
+        else if (action === 'request-stories-review') detail = await window.drs.requestStoriesReview(workingDir, selectedPrdId);
+        else detail = await window.drs.approveStories(workingDir, selectedPrdId);
+        const status = await window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId);
+        setPrdDetail(detail);
+        setWorkflowStatus(status);
+        setPrds((current) => current.map((prd) => (prd.id === detail.prd.id ? detail.prd : prd)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [selectedPrdId, workingDir]
+  );
 
   const handleRevertVersion = useCallback(
     async (versionId: string) => {
@@ -202,9 +235,11 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
       try {
         const detail = await window.drs.revertPrdVersion(workingDir, selectedPrdId, versionId);
         const versionList = await window.drs.listPrdVersions(workingDir, selectedPrdId);
+        const status = await window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId);
         setPrdDetail(detail);
         setMarkdownDraft(detail.markdown);
         setVersions(versionList);
+        setWorkflowStatus(status);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -232,10 +267,11 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   }, []);
 
   const approvedStoryCount = prdDetail?.stories.filter((story) => story.reviewStatus === 'approved').length ?? 0;
-  const showApprovedWorkflow = prdDetail ? ['approved', 'active', 'done'].includes(prdDetail.prd.status) : false;
+  const hasAction = (action: string) => workflowStatus?.allowedActions.includes(action) ?? false;
+  const showApprovedWorkflow = prdDetail ? prdDetail.storySet.status !== 'not_started' || ['approved', 'active', 'done'].includes(prdDetail.prd.status) : false;
   const canImportStories =
     !!prdDetail &&
-    (prdDetail.prd.status === 'approved' || prdDetail.prd.status === 'active') &&
+    hasAction('import-stories') &&
     approvedStoryCount > 0;
 
   if (view === 'workspace' && prdDetail) {
@@ -265,15 +301,26 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               </div>
               <div className="factory-prd-actions">
                 <Button variant="outline" onClick={handleSavePrd}>Save PRD</Button>
-                <Button variant="outline" onClick={() => void handlePrdStatus('in_review')}>Request Review</Button>
-                <Button variant="outline" onClick={() => void handlePrdStatus('approved')}>Approve PRD</Button>
-                {showApprovedWorkflow && <Button variant="outline" onClick={handleGenerateStories}>Generate Stories</Button>}
+                {hasAction('request-prd-review') && <Button variant="outline" onClick={() => void handleCoordinatorAction('request-prd-review')}>Request PRD Review</Button>}
+                {hasAction('approve-prd') && <Button variant="outline" onClick={() => void handleCoordinatorAction('approve-prd')}>Approve PRD</Button>}
+                {hasAction('request-prd-changes') && <Button variant="outline" onClick={() => void handleCoordinatorAction('request-prd-changes')}>Request Changes</Button>}
+                {hasAction('draft-stories') && <Button variant="outline" onClick={handleGenerateStories}>Extract Stories</Button>}
+                {hasAction('request-stories-review') && <Button variant="outline" onClick={() => void handleCoordinatorAction('request-stories-review')}>Request Story Review</Button>}
+                {hasAction('approve-stories') && <Button variant="outline" onClick={() => void handleCoordinatorAction('approve-stories')}>Approve Stories</Button>}
                 {showApprovedWorkflow && <Button onClick={handleImportStories} disabled={!canImportStories}>Import Stories</Button>}
                 <Button variant="outline" className="factory-danger-action" onClick={() => setDeleteConfirmOpen(true)}>
                   <Trash2 size={14} /> Delete
                 </Button>
               </div>
             </div>
+            {workflowStatus && (
+              <Card className="factory-workflow-status">
+                <strong>Coordinator</strong>
+                <Badge variant="outline">{workflowStatus.stage.replace(/_/g, ' ')}</Badge>
+                <span>Stories: {workflowStatus.storySetStatus.replace(/_/g, ' ')}</span>
+                {workflowStatus.blockedReason && <span>{workflowStatus.blockedReason}</span>}
+              </Card>
+            )}
             <textarea className="factory-prd-editor factory-prd-editor-full" value={markdownDraft} onChange={(event) => setMarkdownDraft(event.target.value)} />
 
             {showApprovedWorkflow && <div className="factory-workspace-secondary">
@@ -344,6 +391,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
               prdId={selectedPrdId}
               prdTitle={prdDetail.prd.title}
               prdDescription={prdDetail.prd.description}
+              workflowStage={workflowStatus?.stage}
               autoStart={autoStartPrdId === selectedPrdId}
               onAutoStarted={() => setAutoStartPrdId(null)}
               onTurnDone={refreshSelectedPrd}
