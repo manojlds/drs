@@ -357,14 +357,48 @@ export type ReviewChatEvent =
       rawInput?: unknown;
       options: Array<{ optionId: string; name: string; kind: string }>;
     }
+  | {
+      type: 'elicitation_request';
+      conversationId: string;
+      elicitationId: string;
+      mode: 'form' | 'url';
+      message: string;
+      toolCallId?: string;
+      url?: string;
+      schema?: ElicitationSchema;
+    }
   | { type: 'turn_done'; conversationId: string }
   | { type: 'error'; conversationId: string; message: string };
+
+export type ElicitationSchema = {
+  title?: string | null;
+  description?: string | null;
+  properties?: Record<string, ElicitationPropertySchema>;
+  required?: string[] | null;
+};
+
+export type ElicitationPropertySchema = {
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array';
+  title?: string | null;
+  description?: string | null;
+  default?: string | number | boolean | string[] | null;
+  enum?: string[] | null;
+  oneOf?: Array<{ const: string; title: string }> | null;
+  items?: { enum?: string[]; anyOf?: Array<{ const: string; title: string }> } | null;
+};
 
 export interface RespondChatPermissionRequest {
   conversationId: string;
   permissionId: string;
   optionId?: string;
   cancelled?: boolean;
+}
+
+export interface RespondChatElicitationRequest {
+  conversationId: string;
+  elicitationId: string;
+  action: 'accept' | 'decline' | 'cancel';
+  content?: Record<string, string | number | boolean | string[]>;
 }
 
 export interface TestCodingAgentResponse {
@@ -441,6 +475,7 @@ export interface DrsApi {
   startFactoryChat(req: StartFactoryChatRequest): Promise<StartReviewChatResponse>;
   sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;
   respondChatPermission(req: RespondChatPermissionRequest): Promise<void>;
+  respondChatElicitation(req: RespondChatElicitationRequest): Promise<void>;
   closeReviewChat(conversationId: string): Promise<void>;
   cancelWorkflow(runId: string): Promise<void>;
   readFile(filePath: string): Promise<string>;

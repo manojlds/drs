@@ -424,6 +424,50 @@ button {
   gap: 8px;
   margin-top: 10px;
 }
+.factory-chat-elicitation {
+  border-top: 1px solid var(--border-soft);
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.factory-chat-elicitation-field {
+  display: grid;
+  gap: 5px;
+}
+.factory-chat-elicitation-field span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.factory-chat-elicitation-field small {
+  color: var(--text-muted);
+}
+.factory-chat-elicitation-field input,
+.factory-chat-elicitation-field select,
+.factory-chat-elicitation-field textarea {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 8px;
+}
+.factory-chat-elicitation-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.factory-chat-elicitation-options label {
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  display: flex;
+  gap: 6px;
+  padding: 6px 9px;
+}
+.factory-chat-elicitation-options span {
+  font-weight: 500;
+}
 .factory-chat-risk {
   border-radius: 999px;
   padding: 5px 8px;

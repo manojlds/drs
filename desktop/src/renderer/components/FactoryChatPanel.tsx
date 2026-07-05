@@ -4,7 +4,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Message, MessageAvatar, MessageContent } from './ai/message';
 import { PromptInput, PromptInputActions, PromptInputTextarea } from './ai/prompt-input';
-import type { CodingAgentThinkingLevel, GlobalSettings } from '../../shared/ipc-types';
+import type { CodingAgentThinkingLevel, ElicitationPropertySchema, GlobalSettings } from '../../shared/ipc-types';
 
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
 
@@ -17,6 +17,17 @@ interface ChatMessage {
     options: Array<{ optionId: string; name: string; kind: string }>;
     risk?: 'low' | 'medium' | 'high';
     rawInput?: unknown;
+    resolved?: string;
+  };
+  elicitation?: {
+    elicitationId: string;
+    mode: 'form' | 'url';
+    url?: string;
+    schema?: {
+      properties?: Record<string, ElicitationPropertySchema>;
+      required?: string[] | null;
+    };
+    values: Record<string, string | number | boolean | string[]>;
     resolved?: string;
   };
 }
@@ -101,6 +112,25 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
             permission: { permissionId: event.permissionId, options: event.options, risk: event.risk, rawInput: event.rawInput },
           },
         ]);
+      } else if (event.type === 'elicitation_request') {
+        const values = Object.fromEntries(
+          Object.entries(event.schema?.properties ?? {}).map(([key, property]) => [key, defaultElicitationValue(property)])
+        ) as Record<string, string | number | boolean | string[]>;
+        setMessages((current) => [
+          ...current,
+          {
+            id: `elicitation-${event.elicitationId}`,
+            role: 'system',
+            content: event.message,
+            elicitation: {
+              elicitationId: event.elicitationId,
+              mode: event.mode,
+              url: event.url,
+              schema: event.schema,
+              values,
+            },
+          },
+        ]);
       } else if (event.type === 'error') {
         currentAssistantMessageIdRef.current = null;
         setSending(false);
@@ -169,6 +199,54 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
     );
     try {
       await window.drs.respondChatPermission({ conversationId, permissionId, optionId, cancelled });
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        { id: `error-${Date.now()}`, role: 'system', content: error instanceof Error ? error.message : String(error) },
+      ]);
+    }
+  };
+
+  const updateElicitationValue = (elicitationId: string, key: string, value: string | number | boolean | string[]) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.elicitation?.elicitationId === elicitationId
+          ? {
+              ...message,
+              elicitation: {
+                ...message.elicitation,
+                values: { ...message.elicitation.values, [key]: value },
+              },
+            }
+          : message
+      )
+    );
+  };
+
+  const respondElicitation = async (elicitationId: string, action: 'accept' | 'decline' | 'cancel') => {
+    const conversationId = conversationIdRef.current;
+    const target = messages.find((message) => message.elicitation?.elicitationId === elicitationId)?.elicitation;
+    if (!conversationId || !target) return;
+    setMessages((current) =>
+      current.map((message) =>
+        message.elicitation?.elicitationId === elicitationId
+          ? {
+              ...message,
+              elicitation: {
+                ...message.elicitation,
+                resolved: action === 'accept' ? 'Answered' : action === 'decline' ? 'Declined' : 'Cancelled',
+              },
+            }
+          : message
+      )
+    );
+    try {
+      await window.drs.respondChatElicitation({
+        conversationId,
+        elicitationId,
+        action,
+        content: action === 'accept' ? target.values : undefined,
+      });
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -306,6 +384,42 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdPrompt, autoS
                   )}
                 </div>
               )}
+              {message.elicitation && (
+                <div className="factory-chat-elicitation">
+                  {message.elicitation.mode === 'url' && message.elicitation.url && (
+                    <Button variant="outline" size="sm" onClick={() => void window.drs.openExternal(message.elicitation!.url!)}>
+                      Open link
+                    </Button>
+                  )}
+                  {Object.entries(message.elicitation.schema?.properties ?? {}).map(([key, property]) => (
+                    <ElicitationField
+                      key={key}
+                      name={key}
+                      property={property}
+                      value={message.elicitation!.values[key]}
+                      disabled={!!message.elicitation!.resolved}
+                      onChange={(value) => updateElicitationValue(message.elicitation!.elicitationId, key, value)}
+                    />
+                  ))}
+                  <div className="factory-chat-permission-actions">
+                    {message.elicitation.resolved ? (
+                      <span>{message.elicitation.resolved}</span>
+                    ) : (
+                      <>
+                        <Button size="sm" onClick={() => void respondElicitation(message.elicitation!.elicitationId, 'accept')}>
+                          Submit
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => void respondElicitation(message.elicitation!.elicitationId, 'decline')}>
+                          Decline
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => void respondElicitation(message.elicitation!.elicitationId, 'cancel')}>
+                          Cancel
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </MessageContent>
           </Message>
         ))}
@@ -339,3 +453,67 @@ const welcomeMessage: ChatMessage = {
   role: 'assistant',
   content: 'Use me to clarify requirements, critique PRDs, and shape approved stories. I stay in planning mode and will not implement.',
 };
+
+function defaultElicitationValue(property: ElicitationPropertySchema): string | number | boolean | string[] {
+  if (property.default !== undefined && property.default !== null) return property.default;
+  if (property.type === 'boolean') return false;
+  if (property.type === 'number' || property.type === 'integer') return 0;
+  if (property.type === 'array') return [];
+  return property.oneOf?.[0]?.const ?? property.enum?.[0] ?? '';
+}
+
+function ElicitationField({
+  name,
+  property,
+  value,
+  disabled,
+  onChange,
+}: {
+  name: string;
+  property: ElicitationPropertySchema;
+  value: string | number | boolean | string[] | undefined;
+  disabled: boolean;
+  onChange: (value: string | number | boolean | string[]) => void;
+}) {
+  const label = property.title || name;
+  const singleOptions = property.oneOf?.map((option) => ({ value: option.const, label: option.title })) ?? property.enum?.map((option) => ({ value: option, label: option })) ?? [];
+  const multiOptions = property.items?.anyOf?.map((option) => ({ value: option.const, label: option.title })) ?? property.items?.enum?.map((option) => ({ value: option, label: option })) ?? [];
+
+  return (
+    <label className="factory-chat-elicitation-field">
+      <span>{label}</span>
+      {property.description && <small>{property.description}</small>}
+      {property.type === 'boolean' ? (
+        <input type="checkbox" disabled={disabled} checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
+      ) : property.type === 'number' || property.type === 'integer' ? (
+        <input type="number" disabled={disabled} value={Number(value ?? 0)} onChange={(event) => onChange(Number(event.target.value))} />
+      ) : property.type === 'array' ? (
+        <div className="factory-chat-elicitation-options">
+          {multiOptions.map((option) => {
+            const selected = Array.isArray(value) && value.includes(option.value);
+            return (
+              <label key={option.value}>
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={selected}
+                  onChange={(event) => {
+                    const current = Array.isArray(value) ? value : [];
+                    onChange(event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value));
+                  }}
+                />
+                <span>{option.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      ) : singleOptions.length > 0 ? (
+        <select disabled={disabled} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>
+          {singleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : (
+        <textarea disabled={disabled} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} />
+      )}
+    </label>
+  );
+}

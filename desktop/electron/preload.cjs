@@ -56,6 +56,7 @@ const drs = {
   startFactoryChat: (req) => ipcRenderer.invoke('drs:startFactoryChat', req),
   sendReviewChatMessage: (req) => ipcRenderer.invoke('drs:sendReviewChatMessage', req),
   respondChatPermission: (req) => ipcRenderer.invoke('drs:respondChatPermission', req),
+  respondChatElicitation: (req) => ipcRenderer.invoke('drs:respondChatElicitation', req),
   closeReviewChat: (conversationId) => ipcRenderer.invoke('drs:closeReviewChat', conversationId),
   cancelWorkflow: (runId) => ipcRenderer.invoke('drs:cancelWorkflow', runId),
   readFile: (filePath) => ipcRenderer.invoke('drs:readFile', filePath),

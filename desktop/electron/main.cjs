@@ -61,6 +61,8 @@ const activeReviewChatTurns = new Set();
 const acpChatSessions = new Map();
 /** @type {Map<string, { conversationId: string; resolve: (value: any) => void }>} */
 const acpPermissionRequests = new Map();
+/** @type {Map<string, { conversationId: string; resolve: (value: any) => void }>} */
+const acpElicitationRequests = new Map();
 /** @type {Map<string, { child: import('child_process').ChildProcess; output: string; truncated: boolean; exitStatus: null | { exitCode: number | null; signal: string | null } }>} */
 const acpTerminals = new Map();
 
@@ -329,6 +331,23 @@ const requestAcpPermission = (conversationId, webContents, params) => {
   });
 };
 
+const requestAcpElicitation = (conversationId, webContents, params) => {
+  const elicitationId = params.elicitationId || `elic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  webContents.send('drs:reviewChatEvent', {
+    type: 'elicitation_request',
+    conversationId,
+    elicitationId,
+    mode: params.mode,
+    message: params.message || 'Input required',
+    toolCallId: params.toolCallId,
+    url: params.url,
+    schema: params.requestedSchema,
+  });
+  return new Promise((resolve) => {
+    acpElicitationRequests.set(elicitationId, { conversationId, resolve });
+  });
+};
+
 const requireClientToolPermission = async (conversationId, webContents, toolCall) => {
   const response = await requestAcpPermission(conversationId, webContents, {
     toolCall,
@@ -372,6 +391,9 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     .client({ name: 'drs-desktop' })
     .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
       requestAcpPermission(sessionId, webContents, ctx.params)
+    )
+    .onRequest(acp.methods.client.elicitation.create, (ctx) =>
+      requestAcpElicitation(sessionId, webContents, ctx.params)
     )
     .onRequest(acp.methods.client.fs.readTextFile, async (ctx) => ({
       content: await fs.readFile(ctx.params.path, 'utf-8'),
@@ -422,6 +444,7 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
         terminal: true,
+        elicitation: { form: {}, url: {} },
       },
     });
     return ctx.buildSession(workingDir).withSession(async (builtSession) => new Promise((resolve) => {
@@ -1005,6 +1028,26 @@ app.whenReady().then(() => {
     return null;
   });
 
+  ipcMain.handle('drs:respondChatElicitation', async (_event, req) => {
+    const { conversationId, elicitationId, action, content } = req || {};
+    if (!conversationId || typeof conversationId !== 'string') {
+      throw new Error('A conversation id is required for elicitation responses.');
+    }
+    if (!elicitationId || typeof elicitationId !== 'string') {
+      throw new Error('An elicitation id is required for elicitation responses.');
+    }
+    if (!['accept', 'decline', 'cancel'].includes(action)) {
+      throw new Error('A valid elicitation action is required.');
+    }
+    const pending = acpElicitationRequests.get(elicitationId);
+    if (!pending || pending.conversationId !== conversationId) {
+      throw new Error(`Elicitation request not found: ${elicitationId}`);
+    }
+    acpElicitationRequests.delete(elicitationId);
+    pending.resolve(action === 'accept' ? { action, content: content || {} } : { action });
+    return null;
+  });
+
   ipcMain.handle('drs:closeReviewChat', async (_event, conversationId) => {
     const acpRecord = acpChatSessions.get(conversationId);
     if (acpRecord) {
@@ -1012,6 +1055,12 @@ app.whenReady().then(() => {
         if (pending.conversationId === conversationId) {
           pending.resolve({ outcome: { outcome: 'cancelled' } });
           acpPermissionRequests.delete(permissionId);
+        }
+      }
+      for (const [elicitationId, pending] of acpElicitationRequests) {
+        if (pending.conversationId === conversationId) {
+          pending.resolve({ action: 'cancel' });
+          acpElicitationRequests.delete(elicitationId);
         }
       }
       acpRecord.resolve?.({ stopReason: 'cancelled' });
