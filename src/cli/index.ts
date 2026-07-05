@@ -37,6 +37,15 @@ import {
   type PrdStatus,
   type StoryReviewStatus,
 } from '../lib/factory-store.js';
+import {
+  getSkillStatuses,
+  installBundledSkill,
+  installFactorySkills,
+  listBundledSkills,
+  syncBundledSkills,
+  type SkillStatus,
+} from '../lib/skills.js';
+import { getProjectSetupStatus, syncProjectSetup } from '../lib/project-setup.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -122,6 +131,23 @@ function printTask(task: DrsTask): void {
     for (const item of task.acceptanceCriteria) console.log(`- ${item}`);
   }
   if (task.dependsOn.length > 0) console.log(`\nDepends on: ${task.dependsOn.join(', ')}`);
+}
+
+function printSkillStatuses(statuses: SkillStatus[]): void {
+  if (statuses.length === 0) {
+    console.log('No bundled skills found.');
+    return;
+  }
+  for (const status of statuses) {
+    const state = !status.installed
+      ? 'missing'
+      : status.modified
+        ? 'modified'
+        : status.outdated
+          ? 'outdated'
+          : 'installed';
+    console.log(`${status.name.padEnd(24)} ${state.padEnd(10)} ${status.installedPath}`);
+  }
 }
 
 const program = new Command();
@@ -701,6 +727,88 @@ factoryCommand
 
 program.addCommand(factoryCommand);
 
+const skillsCommand = new Command('skills').description('Manage project-installed DRS skills');
+
+skillsCommand
+  .command('list')
+  .description('List bundled DRS skills')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const skills = listBundledSkills();
+      if (options.json) console.log(JSON.stringify({ skills }, null, 2));
+      else for (const skill of skills) console.log(skill);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+skillsCommand
+  .command('status')
+  .description('Show installed status for bundled DRS skills')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const statuses = getSkillStatuses(process.cwd());
+      if (options.json) console.log(JSON.stringify({ skills: statuses }, null, 2));
+      else printSkillStatuses(statuses);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+skillsCommand
+  .command('install [name]')
+  .description('Install a bundled DRS skill into .agents/skills')
+  .option('--factory', 'Install Factory skills')
+  .option('--all', 'Install all bundled skills')
+  .option('--force', 'Overwrite existing skill files')
+  .option('--json', 'Output as JSON')
+  .action((name: string | undefined, options) => {
+    try {
+      let statuses: SkillStatus[];
+      if (options.all) {
+        statuses = listBundledSkills().map((skill) =>
+          installBundledSkill(process.cwd(), skill, { force: options.force ?? false })
+        );
+      } else if (options.factory) {
+        statuses = installFactorySkills(process.cwd(), { force: options.force ?? false });
+      } else if (name) {
+        statuses = [installBundledSkill(process.cwd(), name, { force: options.force ?? false })];
+      } else {
+        throw new Error('Provide a skill name, --factory, or --all.');
+      }
+      if (options.json) console.log(JSON.stringify({ skills: statuses }, null, 2));
+      else printSkillStatuses(statuses);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+skillsCommand
+  .command('sync')
+  .description('Update DRS-managed installed skills when they have no local changes')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const statuses = syncBundledSkills(process.cwd());
+      if (options.json) console.log(JSON.stringify({ skills: statuses }, null, 2));
+      else printSkillStatuses(statuses);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program.addCommand(skillsCommand);
+
 program
   .command('list-agents')
   .description('List available agents')
@@ -726,10 +834,59 @@ program
 program
   .command('init')
   .description('Initialize DRS configuration in current project')
-  .action(async () => {
+  .option('-y, --yes', 'Use non-interactive defaults')
+  .option('--force', 'Overwrite existing project config')
+  .action(async (options) => {
     try {
       const { initProject } = await import('./init.js');
-      await initProject(process.cwd());
+      await initProject(process.cwd(), {
+        yes: options.yes ?? false,
+        force: options.force ?? false,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('doctor')
+  .description('Check DRS project setup without modifying files')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const status = getProjectSetupStatus(process.cwd());
+      if (options.json) console.log(JSON.stringify(status, null, 2));
+      else {
+        console.log(`Config: ${status.initialized ? 'present' : 'missing'} (${status.configPath})`);
+        printSkillStatuses(status.skills);
+        if (status.issues.length > 0) {
+          console.log(`Issues: ${status.issues.join(', ')}`);
+        } else {
+          console.log('DRS project setup looks good.');
+        }
+      }
+      process.exit(status.initialized ? 0 : 1);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('sync')
+  .description('Safely sync DRS-managed project assets')
+  .option('--json', 'Output as JSON')
+  .action((options) => {
+    try {
+      const status = syncProjectSetup(process.cwd());
+      if (options.json) console.log(JSON.stringify(status, null, 2));
+      else {
+        console.log(`Config: ${status.initialized ? 'present' : 'missing'} (${status.configPath})`);
+        printSkillStatuses(status.skills);
+        if (status.issues.length > 0) console.log(`Issues: ${status.issues.join(', ')}`);
+      }
+      process.exit(status.initialized ? 0 : 1);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);

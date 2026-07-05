@@ -1041,7 +1041,11 @@ class PiSessionRuntime {
     const configuredPaths = this.runtimeConfig.skillSearchPaths ?? [];
 
     if (configuredPaths.length === 0) {
-      return [join(cwd, '.drs', 'skills'), join(cwd, '.pi', 'skills')];
+      return [
+        join(cwd, '.agents', 'skills'),
+        join(cwd, '.drs', 'skills'),
+        join(cwd, '.pi', 'skills'),
+      ];
     }
 
     return configuredPaths.map((skillPath) => normalizeSkillPath(cwd, skillPath));

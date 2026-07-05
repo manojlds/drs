@@ -1,3 +1,10 @@
+---
+name: drs-factory-planning
+description: Use when planning, creating, refining, or reviewing PRDs; clarifying product requirements; splitting feature work into stories; or working in DRS Factory mode.
+drsManaged: true
+drsSkillVersion: 1
+---
+
 # DRS Factory Planning Skill
 
 Use this skill when a user wants to plan product work, write or review a PRD, clarify requirements, split work into reviewable stories, or prepare approved Factory work for import.
@@ -80,110 +87,87 @@ If the gate fails, ask clarifying questions or propose PRD edits instead of gene
 
 ## PRD Review Loop
 
-When reviewing a PRD, use these lenses:
+When improving a PRD:
 
-- Product manager: user value, scope, non-goals, success metrics.
-- Designer/researcher: workflows, states, user confusion, edge cases.
-- Architect: constraints, integrations, data flow, compatibility, risks.
-- QA/reviewer: acceptance criteria, testability, failure modes.
-- Delivery lead: story slicing, dependencies, sequencing, reviewability.
-
-Prefer targeted edits over full rewrites. For material changes, summarize what changed and why.
-
-Persist accepted PRD edits through:
-
-```bash
-drs factory prd-update <prdId> --markdown "<markdown>"
-```
-
-Inspect and revert versions when needed:
-
-```bash
-drs factory prd-history <prdId>
-drs factory prd-revert <prdId> <versionId>
-```
+- Summarize the current intent in one short paragraph.
+- Identify gaps and risky assumptions before editing.
+- Ask clarifying questions when uncertainty would materially change scope.
+- If enough information exists, propose concrete edits and persist them with `drs factory prd-update`.
+- After updating, explain the important changes and remaining open questions.
 
 ## Story Slicing Rules
 
-Generate candidate stories only after the PRD is clear enough or the user explicitly asks for draft slices. Stories should be vertical, reviewable increments, not architecture-layer tasks.
+Stories must be independently reviewable and testable. Prefer vertical slices that deliver observable behavior.
 
-Each story should include:
+Good stories:
 
-- User/system value
-- Acceptance criteria
-- Dependencies
-- Priority or sequencing hint
-- Test/review notes
-- Trace back to PRD goals or requirements
-- Non-goals when boundaries are easy to confuse
+- Have one user/system outcome.
+- Include acceptance criteria.
+- Name dependencies and sequencing constraints.
+- Avoid bundling unrelated UI, API, persistence, and cleanup work unless required for one thin slice.
 
-Preferred slicing patterns:
+Avoid stories that are only:
 
-- Smallest useful end-to-end workflow
-- Workflow step
-- Operation or CRUD variation
-- Business rule variation
-- Data variation
-- User role or permission variation
-- Simple case before complex case
-- Error/empty-state follow-up
-- Non-functional requirement follow-up
-- Spike only when uncertainty blocks responsible planning
+- "Build backend"
+- "Build frontend"
+- "Refactor everything"
+- "Add tests"
+- "Integrate all APIs"
 
-Reject weak slices such as "build backend", "build UI", "wire everything", or "implement feature" unless they are reframed as independently reviewable value slices.
+Use technical tasks only when they unblock or de-risk a user-facing story, and label them clearly.
 
 ## Approval And Import Gates
 
-Use explicit approval language. Do not infer approval from casual agreement.
+Do not import stories into the task board until:
 
-Recommended flow:
+- The PRD is approved or explicitly marked ready by the user.
+- Candidate stories have review status approved.
+- The user explicitly asks to import or confirms import.
 
-1. Move the PRD to review when the user is ready.
-2. Approve the PRD only after scope and open questions are acceptable.
-3. Generate story candidates.
-4. Ask the user to approve, reject, split, merge, or revise stories.
-5. Import only approved stories.
-
-State transition commands:
+Useful commands:
 
 ```bash
-drs factory stories-generate <prdId>
-drs factory prd-status <prdId> in_review
 drs factory prd-status <prdId> approved
+drs factory stories-generate <prdId>
 drs factory story-status <prdId> <storyId> approved
-drs factory story-status <prdId> <storyId> rejected
 drs factory stories-import <prdId>
 ```
 
-Never import stories before the PRD and desired stories are approved.
+If the user asks to import before approval, explain the missing gate and ask for explicit approval.
 
 ## Handoff Package
 
-When planning is complete, produce a concise handoff package:
+Before ending a planning session, provide:
 
-- Approved PRD id and version context
-- Approved story list and recommended sequence
-- Key decisions
-- Remaining risks and assumptions
-- Validation expectations
-- Constraints an implementation agent must not ignore
-- Explicit statement that implementation has not started
+- Current PRD status.
+- Key resolved decisions.
+- Open questions or accepted risks.
+- Recommended next action: clarify, update PRD, generate stories, approve PRD, approve stories, or import.
 
 ## Anti-Patterns
 
-- Do not write or edit application code.
-- Do not create implementation tasks before planning approval.
-- Do not hide uncertainty or convert assumptions into facts.
-- Do not generate broad story backlogs from vague prompts.
-- Do not split by frontend/backend/database unless the slice has standalone review value.
-- Do not import stories or move work into execution because the PRD "looks good"; ask for explicit approval.
+- Do not write directly to `.drs/factory` files.
+- Do not invent approvals.
+- Do not generate a large backlog from an unclear PRD.
+- Do not hide unresolved questions inside acceptance criteria.
+- Do not turn implementation suggestions into requirements without confirmation.
+- Do not use recursive chat commands from inside an already-running agent session.
 
 ## Artifact Commands
 
+Use DRS Factory commands for durable state:
+
 ```bash
-drs factory prd-create --title "<title>" --prompt "<intent>"
+drs factory list
+drs factory prd-create --title "..." --prompt "..."
 drs factory prd-show <prdId>
-drs factory prd-update <prdId> --markdown "<markdown>"
+drs factory prd-update <prdId> --markdown "..."
+drs factory prd-status <prdId> draft|active|approved|archived
 drs factory prd-history <prdId>
 drs factory prd-revert <prdId> <versionId>
+drs factory stories-generate <prdId>
+drs factory story-status <prdId> <storyId> pending|approved|rejected
+drs factory stories-import <prdId>
 ```
+
+Prefer these commands over editing Factory files directly so DRS can maintain versions, approvals, and task import state.

@@ -93,6 +93,7 @@ const resolveDrsCli = (options = {}) => {
  *   onOutput?: (text: string, stream: 'stdout' | 'stderr') => void;
  *   onStart?: (child: import('child_process').ChildProcess) => void;
  *   timeoutMs?: number;
+ *   allowNonZero?: boolean;
  * }} RunDrsOptions
  */
 
@@ -100,7 +101,7 @@ const resolveDrsCli = (options = {}) => {
  * Run a DRS CLI command and stream output.
  *
  * @param {RunDrsOptions} options
- * @returns {Promise<{ stdout: string; stderr: string }>}
+ * @returns {Promise<{ stdout: string; stderr: string; code: number | null }>}
  */
 const runDrs = (options) =>
   new Promise((resolve, reject) => {
@@ -147,11 +148,15 @@ const runDrs = (options) =>
         return;
       }
       if (code !== 0) {
+        if (options.allowNonZero) {
+          resolve({ stdout, stderr, code });
+          return;
+        }
         const detail = (stderr || stdout).trim();
         reject(new Error(`DRS CLI exited with code ${code}.${detail ? `\n${detail}` : ''}`));
         return;
       }
-      resolve({ stdout, stderr });
+      resolve({ stdout, stderr, code });
     });
   });
 

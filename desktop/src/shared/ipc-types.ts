@@ -443,12 +443,31 @@ export interface SaveProjectConfigResponse {
   config: ProjectConfigFile;
 }
 
+export interface SkillStatus {
+  name: string;
+  bundled: boolean;
+  installed: boolean;
+  installedPath: string;
+  modified: boolean;
+  outdated: boolean;
+}
+
+export interface ProjectSetupStatus {
+  initialized: boolean;
+  configPath: string;
+  skills: SkillStatus[];
+  issues: string[];
+}
+
 export interface DrsApi {
   selectDirectory(): Promise<string | null>;
   getCwd(): Promise<string>;
   listWorkflows(workingDir: string): Promise<WorkflowListEntry[]>;
   showWorkflow(name: string, workingDir: string): Promise<WorkflowDetail>;
   getDiff(workingDir: string, opts: { staged: boolean }): Promise<DiffResult>;
+  getProjectSetupStatus(workingDir: string): Promise<ProjectSetupStatus>;
+  initProject(workingDir: string): Promise<ProjectSetupStatus>;
+  syncProjectSetup(workingDir: string): Promise<ProjectSetupStatus>;
   getFileDiff(workingDir: string, opts: { staged: boolean; path: string }): Promise<FileDiffResult>;
   listTasks(workingDir: string): Promise<DrsTask[]>;
   addTask(req: AddTaskRequest): Promise<DrsTask>;

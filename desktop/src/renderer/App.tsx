@@ -39,6 +39,7 @@ import type {
   IssueSeverity,
   ReviewIssue,
   ReviewJsonOutput,
+  ProjectSetupStatus,
   WorkflowGraph,
   WorkflowListEntry,
   WorkflowDetail,
@@ -125,6 +126,8 @@ export function App() {
   const [runState, setRunState] = useState<RunBannerState | null>(null);
   const [runningGraph, setRunningGraph] = useState<WorkflowGraph | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [projectSetup, setProjectSetup] = useState<ProjectSetupStatus | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
 
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
     () => new Set(SEVERITIES)
@@ -315,6 +318,15 @@ export function App() {
     });
   }, []);
 
+  const checkProjectSetup = useCallback(async (dir: string) => {
+    try {
+      setProjectSetup(await window.drs.getProjectSetupStatus(dir));
+    } catch (error) {
+      setProjectSetup(null);
+      setGlobalError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
   const handleForgetProject = useCallback((dir: string) => {
     setRecentProjects((cur) => {
       const next = cur.filter((item) => item !== dir);
@@ -333,13 +345,14 @@ export function App() {
       const initial = guess && guess !== cwd ? guess : cwd;
       setWorkingDir(initial);
       rememberProject(initial);
+      await checkProjectSetup(initial);
       const [{ fingerprint }] = await Promise.all([
         loadDiff(initial, false),
         loadWorkflows(initial),
       ]);
       await loadReview(initial, false, fingerprint);
     })();
-  }, [loadDiff, loadReview, loadWorkflows, rememberProject]);
+  }, [checkProjectSetup, loadDiff, loadReview, loadWorkflows, rememberProject]);
 
   useEffect(() => {
     if (!workingDir || !selectedWorkflow) {
@@ -363,18 +376,20 @@ export function App() {
     if (!dir) return;
     setWorkingDir(dir);
     rememberProject(dir);
+    await checkProjectSetup(dir);
     setReview(null);
     setStaleReview(null);
     setSelectedIssueKey(null);
     setScrollTarget(null);
     const [{ fingerprint }] = await Promise.all([loadDiff(dir, staged), loadWorkflows(dir)]);
     await loadReview(dir, staged, fingerprint);
-  }, [loadDiff, loadReview, loadWorkflows, rememberProject, staged]);
+  }, [checkProjectSetup, loadDiff, loadReview, loadWorkflows, rememberProject, staged]);
 
   const handleSelectRecentProject = useCallback(
     async (dir: string) => {
       setWorkingDir(dir);
       rememberProject(dir);
+      await checkProjectSetup(dir);
       setReview(null);
       setStaleReview(null);
       setSelectedIssueKey(null);
@@ -382,8 +397,36 @@ export function App() {
       const [{ fingerprint }] = await Promise.all([loadDiff(dir, staged), loadWorkflows(dir)]);
       await loadReview(dir, staged, fingerprint);
     },
-    [loadDiff, loadReview, loadWorkflows, rememberProject, staged]
+    [checkProjectSetup, loadDiff, loadReview, loadWorkflows, rememberProject, staged]
   );
+
+  const handleInitializeProject = useCallback(async () => {
+    if (!workingDir) return;
+    setSetupBusy(true);
+    setGlobalError(null);
+    try {
+      setProjectSetup(await window.drs.initProject(workingDir));
+      await loadWorkflows(workingDir);
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSetupBusy(false);
+    }
+  }, [loadWorkflows, workingDir]);
+
+  const handleSyncProjectSetup = useCallback(async () => {
+    if (!workingDir) return;
+    setSetupBusy(true);
+    setGlobalError(null);
+    try {
+      setProjectSetup(await window.drs.syncProjectSetup(workingDir));
+      await loadWorkflows(workingDir);
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSetupBusy(false);
+    }
+  }, [loadWorkflows, workingDir]);
 
   const handleToggleStaged = useCallback(() => {
     setStaged((cur) => {
@@ -612,6 +655,15 @@ export function App() {
         )}
         {workflowsError && !globalError && (
           <ErrorBanner message={workflowsError} onDismiss={() => setWorkflowsError(null)} />
+        )}
+        {workingDir && projectSetup && projectMode !== 'settings' && (
+          <ProjectSetupBanner
+            status={projectSetup}
+            busy={setupBusy}
+            onInitialize={handleInitializeProject}
+            onSync={handleSyncProjectSetup}
+            onDismiss={() => setProjectSetup(null)}
+          />
         )}
         <div className="main-scroll">
         {projectMode === 'settings' ? (
@@ -845,6 +897,45 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
       >
         <X size={13} />
       </button>
+    </div>
+  );
+}
+
+function ProjectSetupBanner({
+  status,
+  busy,
+  onInitialize,
+  onSync,
+  onDismiss,
+}: {
+  status: ProjectSetupStatus;
+  busy: boolean;
+  onInitialize: () => void;
+  onSync: () => void;
+  onDismiss: () => void;
+}) {
+  if (status.issues.length === 0) return null;
+  const modifiedSkills = status.issues.filter((issue) => issue.startsWith('modified-skill:'));
+  const actionableIssues = status.issues.filter((issue) => !issue.startsWith('modified-skill:'));
+  const message = !status.initialized
+    ? 'This project is not initialized for DRS.'
+    : modifiedSkills.length > 0 && actionableIssues.length === 0
+      ? 'DRS skills have local changes. Sync will not overwrite them.'
+      : 'DRS project setup can be updated.';
+  return (
+    <div className="project-setup-banner">
+      <div>
+        <strong>{message}</strong>
+        <span>{status.issues.join(', ')}</span>
+      </div>
+      <div className="project-setup-actions">
+        {!status.initialized ? (
+          <Button size="sm" onClick={onInitialize} disabled={busy}>{busy ? 'Initializing...' : 'Initialize DRS'}</Button>
+        ) : actionableIssues.length > 0 ? (
+          <Button size="sm" onClick={onSync} disabled={busy}>{busy ? 'Syncing...' : 'Sync DRS Assets'}</Button>
+        ) : null}
+        <Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import * as readline from 'readline';
 import chalk from 'chalk';
+import { installFactorySkills } from '../lib/skills.js';
 
 /**
  * Interactive prompt helper using readline
@@ -57,6 +58,11 @@ interface InitConfig {
   agentModels: Record<string, string>;
 }
 
+interface InitProjectOptions {
+  yes?: boolean;
+  force?: boolean;
+}
+
 /**
  * Generate drs.config.yaml content from init config
  */
@@ -98,6 +104,9 @@ pi:
   }
 
   yaml += `agents:
+  paths:
+    skills: .agents/skills
+
   # Default model and skills for all agents
   default:
     model: ${config.defaultModel}
@@ -262,7 +271,10 @@ review:
 /**
  * Initialize DRS configuration in a project with interactive prompts
  */
-export async function initProject(projectPath: string): Promise<void> {
+export async function initProject(
+  projectPath: string,
+  options: InitProjectOptions = {}
+): Promise<void> {
   console.log(chalk.bold.cyan('\n📋 DRS | Diff Review System Setup\n'));
 
   const prompt = createPrompt();
@@ -273,14 +285,21 @@ export async function initProject(projectPath: string): Promise<void> {
     const configPath = join(drsDir, 'drs.config.yaml');
 
     if (existsSync(configPath)) {
-      const overwrite = await prompt.confirm(
-        chalk.yellow('⚠ .drs/drs.config.yaml already exists. Overwrite?'),
-        false
-      );
-      if (!overwrite) {
-        console.log(chalk.gray('\nInit cancelled. Existing config preserved.\n'));
-        prompt.close();
-        return;
+      if (options.yes && !options.force) {
+        throw new Error('.drs/drs.config.yaml already exists. Use --force to overwrite.');
+      }
+      if (options.yes && options.force) {
+        console.log(chalk.yellow('⚠'), 'Overwriting existing', chalk.cyan('.drs/drs.config.yaml'));
+      } else {
+        const overwrite = await prompt.confirm(
+          chalk.yellow('⚠ .drs/drs.config.yaml already exists. Overwrite?'),
+          options.force ?? false
+        );
+        if (!overwrite) {
+          console.log(chalk.gray('\nInit cancelled. Existing config preserved.\n'));
+          prompt.close();
+          return;
+        }
       }
     }
 
@@ -296,10 +315,9 @@ export async function initProject(projectPath: string): Promise<void> {
       agentModels: {},
     };
 
-    initConfig.useCustomProvider = await prompt.confirm(
-      'Do you need a custom OpenAI-compatible provider?',
-      false
-    );
+    initConfig.useCustomProvider = options.yes
+      ? false
+      : await prompt.confirm('Do you need a custom OpenAI-compatible provider?', false);
 
     if (initConfig.useCustomProvider) {
       console.log(chalk.gray('\nConfiguring custom provider...\n'));
@@ -339,10 +357,9 @@ export async function initProject(projectPath: string): Promise<void> {
       console.log(chalk.gray('  • openai/gpt-4o (OpenAI)'));
       console.log(chalk.gray('  • zhipuai/glm-4.7 (budget)\n'));
 
-      initConfig.defaultModel = await prompt.ask(
-        'Default model for all agents',
-        'anthropic/claude-sonnet-4-5-20250929'
-      );
+      initConfig.defaultModel = options.yes
+        ? 'anthropic/claude-sonnet-4-5-20250929'
+        : await prompt.ask('Default model for all agents', 'anthropic/claude-sonnet-4-5-20250929');
     } else {
       console.log(chalk.gray(`Using custom provider model: ${initConfig.defaultModel}\n`));
     }
@@ -360,10 +377,9 @@ export async function initProject(projectPath: string): Promise<void> {
       chalk.gray('  • review/<your-agent>      - Optional custom project reviewer (you define)\n')
     );
 
-    const agentsInput = await prompt.ask(
-      'Agents to enable (comma-separated)',
-      'review/unified-reviewer'
-    );
+    const agentsInput = options.yes
+      ? 'review/unified-reviewer'
+      : await prompt.ask('Agents to enable (comma-separated)', 'review/unified-reviewer');
 
     initConfig.agents = agentsInput
       .split(',')
@@ -386,10 +402,9 @@ export async function initProject(projectPath: string): Promise<void> {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     console.log(chalk.bold('\n━━━ Per-Agent Model Overrides ━━━━━━━━━━━━━━━━━━━━━\n'));
 
-    const configureOverrides = await prompt.confirm(
-      'Configure different models for specific agents?',
-      false
-    );
+    const configureOverrides = options.yes
+      ? false
+      : await prompt.confirm('Configure different models for specific agents?', false);
 
     if (configureOverrides) {
       console.log(chalk.gray(`\nPress Enter to use default (${initConfig.defaultModel})\n`));
@@ -455,6 +470,13 @@ export async function initProject(projectPath: string): Promise<void> {
       console.log(chalk.green('✓'), 'Created', chalk.cyan('.drs/agents/README.md'));
     }
 
+    const installedSkills = installFactorySkills(projectPath);
+    console.log(
+      chalk.green('✓'),
+      'Installed Factory skill in',
+      chalk.cyan(installedSkills[0]?.installedPath ?? '.agents/skills')
+    );
+
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Summary
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -466,6 +488,7 @@ export async function initProject(projectPath: string): Promise<void> {
     );
     console.log(`  Default Model: ${initConfig.defaultModel}`);
     console.log(`  Agents: ${initConfig.agents.join(', ')}`);
+    console.log('  Skills: drs-factory-planning');
 
     if (Object.keys(initConfig.agentModels).length > 0) {
       console.log('  Model Overrides:');

@@ -236,6 +236,17 @@ const runDrsJson = async (workingDir, args) => {
   return parseJsonRequired(stdout, 'task');
 };
 
+const runDrsJsonAllowNonZero = async (workingDir, args) => {
+  const { stdout } = await runDrs({
+    repoRoot,
+    workingDir,
+    args: [...args, '--json'],
+    timeoutMs: 30000,
+    allowNonZero: true,
+  });
+  return parseJsonRequired(stdout, 'project setup');
+};
+
 const runTaskJson = async (workingDir, args) => runDrsJson(workingDir, ['task', ...args]);
 
 const contentToText = (content) => {
@@ -365,6 +376,8 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
   const agent = settings.codingAgents.find((candidate) => candidate.id === selectedId);
   if (!agent) throw new Error('Configure a global ACP coding agent in Settings before using Factory agent chat.');
 
+  await runDrsJsonAllowNonZero(workingDir, ['sync']);
+
   const acp = await import('@agentclientprotocol/sdk');
   const launch = buildCodingAgentLaunch(agent);
   const child = spawn(launch.command, launch.args, {
@@ -458,17 +471,15 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
-  const skill = readFileSync(join(repoRoot || root, '.drs/skills/drs-factory-planning.md'), 'utf-8');
   const selectedThinkingLevel = normalizeThinkingLevel(thinkingLevel) || agent.thinkingLevel;
   acpChatSessions.get(sessionId).systemPrompt = [
     'You are running inside DRS Desktop Factory as a planning-only coding agent.',
     `Working directory: ${workingDir}`,
     prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
     selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
+    'Use the drs-factory-planning skill when planning, refining, or reviewing Factory PRDs and stories.',
     'Use DRS CLI commands to persist Factory artifacts. Prefer drs factory prd-show/prd-update/prd-history/prd-revert/stories-generate/status/import commands.',
     'Stay in planning mode. Do not implement application code or claim implementation tasks.',
-    'Factory planning skill:',
-    skill,
   ].filter(Boolean).join('\n\n');
 
   connectionPromise.catch((error) => {
@@ -750,6 +761,19 @@ app.whenReady().then(() => {
 
   ipcMain.handle('drs:getDiff', async (_event, workingDir, opts) => {
     return getDiff(workingDir, opts || {});
+  });
+
+  ipcMain.handle('drs:getProjectSetupStatus', async (_event, workingDir) => {
+    return runDrsJsonAllowNonZero(workingDir, ['doctor']);
+  });
+
+  ipcMain.handle('drs:initProject', async (_event, workingDir) => {
+    await runDrs({ repoRoot, workingDir, args: ['init', '--yes'], timeoutMs: 30000 });
+    return runDrsJsonAllowNonZero(workingDir, ['doctor']);
+  });
+
+  ipcMain.handle('drs:syncProjectSetup', async (_event, workingDir) => {
+    return runDrsJsonAllowNonZero(workingDir, ['sync']);
   });
 
   ipcMain.handle('drs:getFileDiff', async (_event, workingDir, opts) => {
