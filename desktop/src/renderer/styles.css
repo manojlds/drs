@@ -273,13 +273,115 @@ button {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-.factory-workflow-status {
+.factory-prd-actions-left {
+  justify-content: flex-start;
+}
+.factory-workflow-panel {
+  display: grid;
+  gap: 12px;
+  margin: 10px 12px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 54%),
+    var(--bg-elevated);
+}
+.factory-workflow-panel-top {
+  align-items: flex-start;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 12px 0;
-  padding: 10px 12px;
+  gap: 12px;
+  justify-content: space-between;
+}
+.factory-workflow-panel-top strong {
+  display: block;
+  font-size: 14px;
+  margin-top: 2px;
+}
+.factory-workflow-panel-top p,
+.factory-workflow-action-card p,
+.task-column-header p {
   color: var(--text-muted);
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+.factory-workflow-badges {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.factory-workflow-stepper {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.factory-workflow-step {
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+.factory-workflow-step span {
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+.factory-workflow-step strong {
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.factory-workflow-step.complete {
+  border-color: color-mix(in srgb, var(--add-text) 45%, var(--border-soft));
+  color: var(--add-text);
+}
+.factory-workflow-step.current {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.factory-workflow-step.current span {
+  border-color: var(--accent);
+}
+.factory-workflow-blocked {
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+  padding: 8px 10px;
+}
+.factory-workflow-actions-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.factory-workflow-action-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, var(--bg));
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+.factory-workflow-action-card > strong {
+  font-size: 13px;
+}
+.factory-workflow-action-card span {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .factory-prd-editor {
   width: 100%;
@@ -304,6 +406,19 @@ button {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+.factory-story-empty {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  display: grid;
+  gap: 6px;
+  line-height: 1.5;
+  margin: 10px;
+  padding: 18px;
+}
+.factory-story-empty strong {
+  color: var(--text);
 }
 .factory-chat-panel {
   display: flex;
