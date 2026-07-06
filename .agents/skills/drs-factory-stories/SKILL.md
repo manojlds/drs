@@ -76,7 +76,7 @@ Each story must use this shape:
 
 ## Anti-Patterns
 
-- Do not rely on Markdown headings as the primary conversion method.
+- Do not mechanically extract Markdown headings into stories. Create structured stories intentionally from the approved PRD.
 - Do not import draft stories.
 - Do not mark stories approved without explicit user approval.
 - Do not bypass `drs factory` commands by editing generated JSON directly.

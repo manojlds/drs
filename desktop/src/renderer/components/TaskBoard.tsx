@@ -184,25 +184,6 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
     }
   }, [selectedPrdId, workingDir]);
 
-  const handleGenerateStories = useCallback(async () => {
-    if (!selectedPrdId) return;
-    setError(null);
-    try {
-      const saved = await window.drs.updatePrd({
-        workingDir,
-        id: selectedPrdId,
-        markdown: markdownDraft,
-      });
-      const detail = await window.drs.generateStories(workingDir, saved.prd.id);
-      const status = await window.drs.getFactoryWorkflowStatus(workingDir, saved.prd.id);
-      setPrdDetail(detail);
-      setWorkflowStatus(status);
-      setMarkdownDraft(detail.markdown);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [markdownDraft, selectedPrdId, workingDir]);
-
   const handleImportStories = useCallback(async () => {
     if (!selectedPrdId) return;
     setError(null);
@@ -416,14 +397,11 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                   <div className="factory-workflow-action-card">
                     <strong>Story handoff</strong>
                     <p>
-                      Use chat for structured story drafts. Markdown extraction is available only as
-                      a fallback.
+                      Use Factory chat and the story skill to create structured story drafts.
                     </p>
                     <div className="factory-prd-actions factory-prd-actions-left">
                       {hasAction('draft-stories') && (
-                        <Button variant="outline" onClick={handleGenerateStories}>
-                          Extract from Markdown
-                        </Button>
+                        <span>Ask Factory chat to draft stories from the approved PRD.</span>
                       )}
                       {hasAction('request-stories-review') && (
                         <Button
@@ -473,8 +451,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                       <strong>No stories drafted yet</strong>
                       <span>
                         After PRD approval, ask the Factory chat to draft stories with the story
-                        skill. Use Markdown extraction only if the PRD already contains story
-                        headings.
+                        skill.
                       </span>
                     </div>
                   ) : (
@@ -785,7 +762,7 @@ function getFactoryNextActionHint(status: FactoryWorkflowStatus): string {
   if (status.allowedActions.includes('approve-prd'))
     return 'Review the PRD document. Approve it to unlock story drafting, or request changes.';
   if (status.allowedActions.includes('draft-stories'))
-    return 'PRD is approved. Use Factory chat for story drafting, or extract from Markdown as a fallback.';
+    return 'PRD is approved. Use Factory chat and the story skill to draft structured stories.';
   if (status.allowedActions.includes('request-stories-review'))
     return 'Story draft exists. Request story review when the story set is ready for approval.';
   if (status.allowedActions.includes('approve-stories'))

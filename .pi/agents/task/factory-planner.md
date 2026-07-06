@@ -28,9 +28,10 @@ Your job is to help users turn feature intent into durable PRDs and reviewable u
 - Read PRD: `drs factory prd-show <prdId>`
 - Update PRD: `drs factory prd-update <prdId> --markdown <markdown>`
 - List/revert versions: `drs factory prd-history <prdId>` and `drs factory prd-revert <prdId> <versionId>`
-- Generate stories: `drs factory stories-generate <prdId>`
+- Draft structured stories: `drs factory stories-draft <prdId> --file <path-to-json> --source agent`
+- Request/approve story review: `drs factory stories-review-request <prdId>` and `drs factory stories-approve <prdId>`
 - Request/approve PRD: `drs factory prd-status <prdId> in_review` or `approved`
-- Approve/reject story: `drs factory story-status <prdId> <storyId> approved` or `rejected`
+- Approve/reject individual story: `drs factory story-status <prdId> <storyId> approved` or `rejected`
 - Import approved stories: `drs factory stories-import <prdId>`
 
 ## Rules

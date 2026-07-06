@@ -35,7 +35,7 @@ export const STORY_SET_STATUSES = [
   'imported',
 ] as const;
 export type FactoryStorySetStatus = (typeof STORY_SET_STATUSES)[number];
-export type FactoryStorySetSource = 'agent' | 'markdown_extract' | 'manual';
+export type FactoryStorySetSource = 'agent' | 'manual';
 
 export interface FactoryPrd {
   id: string;
@@ -257,24 +257,6 @@ export async function requestPrdChanges(workingDir: string, id: string) {
     status: 'draft',
     workflowStage: 'prd_draft',
   }));
-  return getPrd(workingDir, id);
-}
-
-export async function generateStories(
-  workingDir: string,
-  id: string
-): Promise<{
-  prd: FactoryPrd;
-  markdown: string;
-  stories: FactoryStory[];
-  storySet: FactoryStorySet;
-}> {
-  const current = await getPrd(workingDir, id);
-  ensurePrdApprovedForStories(current.prd);
-  const stories = parseStoriesFromMarkdown(current.markdown);
-  const storySet = buildStorySet(current.prd.id, stories, 'markdown_extract', 'draft');
-  await writeStorySetFile(workingDir, current.prd, storySet);
-  await updatePrdIndexEntry(workingDir, id, (prd) => ({ ...prd, workflowStage: 'stories_draft' }));
   return getPrd(workingDir, id);
 }
 
@@ -511,8 +493,7 @@ async function readStorySetFile(workingDir: string, prd: FactoryPrd): Promise<Fa
   const source = await readOptionalFile(join(workingDir, prd.storiesPath));
   if (!source.trim()) return emptyStorySet(prd.id);
   const parsed = JSON.parse(source) as unknown;
-  if (Array.isArray(parsed))
-    return buildStorySet(prd.id, parsed.map(normalizeStory), 'markdown_extract');
+  if (Array.isArray(parsed)) return buildStorySet(prd.id, parsed.map(normalizeStory), 'manual');
   return normalizeStorySet(parsed, prd.id);
 }
 
@@ -593,65 +574,6 @@ async function readOptionalFile(path: string): Promise<string> {
 async function writeFileEnsured(path: string, source: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, source, 'utf-8');
-}
-
-function parseStoriesFromMarkdown(markdown: string): FactoryStory[] {
-  const lines = markdown.split('\n');
-  const headingIndexes = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => /^#{2,4}\s+(?:US-\d+[:.)\s-]+)?/.test(line));
-  const storyHeadings = headingIndexes.filter(({ line }) =>
-    /(?:^#{2,4}\s+US-\d+|story)/i.test(line)
-  );
-  const headings = storyHeadings.length > 0 ? storyHeadings : headingIndexes;
-  return headings.slice(0, 20).map(({ line, index }, storyIndex) => {
-    const next = headings[storyIndex + 1]?.index ?? lines.length;
-    const body = lines
-      .slice(index + 1, next)
-      .join('\n')
-      .trim();
-    const title = line
-      .replace(/^#{2,4}\s+/, '')
-      .replace(/^US-\d+[:.)\s-]*/i, '')
-      .trim();
-    return {
-      id: `US-${String(storyIndex + 1).padStart(3, '0')}`,
-      title: title || `Story ${storyIndex + 1}`,
-      description: extractDescription(body),
-      acceptanceCriteria: extractAcceptanceCriteria(body),
-      priority: storyIndex + 1,
-      status: 'draft',
-      reviewStatus: 'draft',
-      dependsOn: [],
-      notes: '',
-    };
-  });
-}
-
-function extractDescription(body: string): string {
-  const description = body.match(/\*\*Description:\*\*\s*([^\n]+)/i)?.[1]?.trim();
-  if (description) return description;
-  return (
-    body
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line && !line.startsWith('-') && !/^\*\*Acceptance/i.test(line)) ?? ''
-  );
-}
-
-function extractAcceptanceCriteria(body: string): string[] {
-  const lines = body.split('\n');
-  const criteria = lines
-    .map((line) => line.trim())
-    .filter((line) => /^- \[[ xX]?\]\s+/.test(line) || /^-\s+/.test(line))
-    .map((line) =>
-      line
-        .replace(/^- \[[ xX]?\]\s+/, '')
-        .replace(/^-\s+/, '')
-        .trim()
-    )
-    .filter(Boolean);
-  return criteria.length > 0 ? criteria : ['Implementation satisfies the story description.'];
 }
 
 function defaultPrdMarkdown(title: string, prompt: string): string {
@@ -786,7 +708,7 @@ function isString(value: unknown): value is string {
 }
 
 function isStorySetSource(value: unknown): value is FactoryStorySetSource {
-  return value === 'agent' || value === 'markdown_extract' || value === 'manual';
+  return value === 'agent' || value === 'manual';
 }
 
 function scalarString(value: unknown): string {

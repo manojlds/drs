@@ -47,7 +47,6 @@ const drs = {
   approvePrd: (workingDir, prdId) => ipcRenderer.invoke('drs:approvePrd', workingDir, prdId),
   requestPrdChanges: (workingDir, prdId) =>
     ipcRenderer.invoke('drs:requestPrdChanges', workingDir, prdId),
-  generateStories: (workingDir, prdId) => ipcRenderer.invoke('drs:generateStories', workingDir, prdId),
   requestStoriesReview: (workingDir, prdId) =>
     ipcRenderer.invoke('drs:requestStoriesReview', workingDir, prdId),
   approveStories: (workingDir, prdId) => ipcRenderer.invoke('drs:approveStories', workingDir, prdId),

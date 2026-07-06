@@ -926,10 +926,6 @@ app.whenReady().then(() => {
     return runDrsJson(workingDir, ['factory', 'prd-changes-request', prdId]);
   });
 
-  ipcMain.handle('drs:generateStories', async (_event, workingDir, prdId) => {
-    return runDrsJson(workingDir, ['factory', 'stories-generate', prdId]);
-  });
-
   ipcMain.handle('drs:requestStoriesReview', async (_event, workingDir, prdId) => {
     return runDrsJson(workingDir, ['factory', 'stories-review-request', prdId]);
   });

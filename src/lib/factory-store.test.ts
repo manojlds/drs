@@ -8,7 +8,6 @@ import {
   createPrd,
   deletePrd,
   draftStories,
-  generateStories,
   getFactoryWorkflowStatus,
   importStoriesToTasks,
   listPrdVersions,
@@ -37,34 +36,26 @@ describe('factory-store', () => {
     });
   });
 
-  it('generates stories from PRD markdown and imports them as PRD-scoped tasks', async () => {
+  it('drafts structured stories and imports them as PRD-scoped tasks', async () => {
     await withTempDir(async (dir) => {
-      const markdown = `# PRD: Example
-
-## User Stories
-### US-001: Add PRD list
-**Description:** As a user, I want to list PRDs.
-
-**Acceptance Criteria:**
-- [ ] PRDs are listed in newest-first order.
-- [ ] Required checks pass.
-
-### US-002: Show PRD board
-**Description:** As a user, I want a scoped board.
-
-**Acceptance Criteria:**
-- [ ] Board filters tasks by PRD.
-`;
-      const created = await createPrd(dir, { title: 'Example', markdown });
+      const created = await createPrd(dir, { title: 'Example' });
       await approvePrd(dir, created.prd.id);
-      const generated = await generateStories(dir, created.prd.id);
+      const drafted = await draftStories(dir, created.prd.id, [
+        story('US-001', 'Add PRD list', 'As a user, I want to list PRDs.', [
+          'PRDs are listed in newest-first order.',
+          'Required checks pass.',
+        ]),
+        story('US-002', 'Show PRD board', 'As a user, I want a scoped board.', [
+          'Board filters tasks by PRD.',
+        ]),
+      ]);
       await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
       await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'approved');
       await approveStories(dir, created.prd.id);
       const imported = await importStoriesToTasks(dir, created.prd.id);
       const secondImport = await importStoriesToTasks(dir, created.prd.id);
 
-      expect(generated.stories.map((story) => story.title)).toEqual([
+      expect(drafted.stories.map((story) => story.title)).toEqual([
         'Add PRD list',
         'Show PRD board',
       ]);
@@ -77,23 +68,18 @@ describe('factory-store', () => {
 
   it('requires approved PRDs and approved stories before import', async () => {
     await withTempDir(async (dir) => {
-      const created = await createPrd(dir, {
-        title: 'Gated Plan',
-        markdown: `# PRD: Gated Plan
-
-### US-001: Approved work
-**Description:** Ready work.
-
-### US-002: Rejected work
-**Description:** Not ready.
-`,
-      });
-      await expect(generateStories(dir, created.prd.id)).rejects.toThrow('PRD must be approved');
+      const created = await createPrd(dir, { title: 'Gated Plan' });
+      await expect(
+        draftStories(dir, created.prd.id, [story('US-001', 'Approved work', 'Ready work.')])
+      ).rejects.toThrow('PRD must be approved');
 
       await expect(importStoriesToTasks(dir, created.prd.id)).rejects.toThrow('must be approved');
 
       await updatePrdStatus(dir, created.prd.id, 'approved');
-      await generateStories(dir, created.prd.id);
+      await draftStories(dir, created.prd.id, [
+        story('US-001', 'Approved work', 'Ready work.'),
+        story('US-002', 'Rejected work', 'Not ready.'),
+      ]);
       await updateStoryReviewStatus(dir, created.prd.id, 'US-001', 'approved');
       await updateStoryReviewStatus(dir, created.prd.id, 'US-002', 'rejected');
       await expect(importStoriesToTasks(dir, created.prd.id)).rejects.toThrow(
@@ -166,7 +152,7 @@ describe('factory-store', () => {
     await withTempDir(async (dir) => {
       const created = await createPrd(dir, { title: 'Delete Me', description: 'Temporary plan' });
       await approvePrd(dir, created.prd.id);
-      await generateStories(dir, created.prd.id);
+      await draftStories(dir, created.prd.id, [story('US-001', 'Delete slice', 'Temporary work.')]);
       expect(await listPrdVersions(dir, created.prd.id)).toHaveLength(1);
 
       const deleted = await deletePrd(dir, created.prd.id);
@@ -178,6 +164,25 @@ describe('factory-store', () => {
     });
   });
 });
+
+function story(
+  id: string,
+  title: string,
+  description: string,
+  acceptanceCriteria: string[] = ['Implementation satisfies the story description.']
+) {
+  return {
+    id,
+    title,
+    description,
+    acceptanceCriteria,
+    priority: Number(id.match(/\d+/)?.[0] ?? 1),
+    status: 'draft' as const,
+    reviewStatus: 'draft' as const,
+    dependsOn: [],
+    notes: '',
+  };
+}
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'drs-factory-store-'));

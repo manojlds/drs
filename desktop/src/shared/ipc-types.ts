@@ -296,7 +296,7 @@ export interface FactoryStorySet {
   version: 1;
   prdId: string;
   status: 'not_started' | 'draft' | 'review_requested' | 'approved' | 'imported';
-  source: 'agent' | 'markdown_extract' | 'manual';
+  source: 'agent' | 'manual';
   generatedAt?: string;
   approvedAt?: string;
   importedAt?: string;
@@ -506,7 +506,6 @@ export interface DrsApi {
   requestPrdReview(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   approvePrd(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   requestPrdChanges(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
-  generateStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   requestStoriesReview(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   approveStories(workingDir: string, prdId: string): Promise<FactoryPrdDetail>;
   updateStoryStatus(req: { workingDir: string; prdId: string; storyId: string; status: FactoryStory['reviewStatus'] }): Promise<FactoryPrdDetail>;

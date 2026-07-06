@@ -28,7 +28,6 @@ import {
   createPrd,
   deletePrd,
   draftStories,
-  generateStories,
   getFactoryWorkflowStatus,
   getPrd,
   importStoriesToTasks,
@@ -720,31 +719,15 @@ factoryCommand
   });
 
 factoryCommand
-  .command('stories-generate <prdId>')
-  .description('Generate draft stories from PRD markdown after PRD approval')
-  .option('--json', 'Output stories as JSON')
-  .action(async (prdId: string, options) => {
-    try {
-      const result = await generateStories(process.cwd(), prdId);
-      if (options.json) console.log(JSON.stringify(result, null, 2));
-      else console.log(`Generated ${result.stories.length} stories for ${result.prd.id}`);
-      process.exit(0);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-factoryCommand
   .command('stories-draft <prdId>')
   .description('Save structured draft stories from JSON')
   .requiredOption('-f, --file <path>', 'JSON file containing an array of stories')
-  .option('--source <source>', 'Story source: agent, markdown_extract, or manual', 'agent')
+  .option('--source <source>', 'Story source: agent or manual', 'agent')
   .option('--json', 'Output PRD as JSON')
   .action(async (prdId: string, options) => {
     try {
       const source = String(options.source);
-      if (source !== 'agent' && source !== 'markdown_extract' && source !== 'manual') {
+      if (source !== 'agent' && source !== 'manual') {
         throw new Error(`Invalid story source: ${source}`);
       }
       const parsed = JSON.parse(readFileSync(options.file, 'utf-8')) as unknown;
