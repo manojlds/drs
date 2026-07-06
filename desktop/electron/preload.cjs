@@ -11,8 +11,6 @@ const { contextBridge, ipcRenderer } = require('electron');
  * @typedef {import('../src/shared/ipc-types').RunWorkflowResponse} RunWorkflowResponse
  * @typedef {import('../src/shared/ipc-types').SaveProjectConfigRequest} SaveProjectConfigRequest
  * @typedef {import('../src/shared/ipc-types').SaveProjectConfigResponse} SaveProjectConfigResponse
- * @typedef {import('../src/shared/ipc-types').AskReviewChatRequest} AskReviewChatRequest
- * @typedef {import('../src/shared/ipc-types').AskReviewChatResponse} AskReviewChatResponse
  * @typedef {import('../src/shared/ipc-types').StartReviewChatRequest} StartReviewChatRequest
  * @typedef {import('../src/shared/ipc-types').StartReviewChatResponse} StartReviewChatResponse
  * @typedef {import('../src/shared/ipc-types').SendReviewChatMessageRequest} SendReviewChatMessageRequest
@@ -64,7 +62,6 @@ const drs = {
   getGlobalSettings: () => ipcRenderer.invoke('drs:getGlobalSettings'),
   saveGlobalSettings: (settings) => ipcRenderer.invoke('drs:saveGlobalSettings', settings),
   testCodingAgent: (agentId) => ipcRenderer.invoke('drs:testCodingAgent', agentId),
-  askReviewChat: (req) => ipcRenderer.invoke('drs:askReviewChat', req),
   startReviewChat: (req) => ipcRenderer.invoke('drs:startReviewChat', req),
   startFactoryChat: (req) => ipcRenderer.invoke('drs:startFactoryChat', req),
   sendReviewChatMessage: (req) => ipcRenderer.invoke('drs:sendReviewChatMessage', req),

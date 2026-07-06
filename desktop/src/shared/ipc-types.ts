@@ -338,18 +338,11 @@ export interface WorkflowLogEvent {
   text: string;
 }
 
-export interface AskReviewChatRequest {
-  workingDir: string;
-  prompt: string;
-}
-
-export interface AskReviewChatResponse {
-  conversationId: string;
-  response: string;
-}
-
 export interface StartReviewChatRequest {
   workingDir: string;
+  codingAgentId?: string;
+  thinkingLevel?: CodingAgentThinkingLevel;
+  resumeSessionId?: string;
 }
 
 export interface StartFactoryChatRequest {
@@ -527,7 +520,6 @@ export interface DrsApi {
   getGlobalSettings(): Promise<GlobalSettings>;
   saveGlobalSettings(settings: GlobalSettings): Promise<GlobalSettings>;
   testCodingAgent(agentId: string): Promise<TestCodingAgentResponse>;
-  askReviewChat(req: AskReviewChatRequest): Promise<AskReviewChatResponse>;
   startReviewChat(req: StartReviewChatRequest): Promise<StartReviewChatResponse>;
   startFactoryChat(req: StartFactoryChatRequest): Promise<StartReviewChatResponse>;
   sendReviewChatMessage(req: SendReviewChatMessageRequest): Promise<void>;

@@ -1947,6 +1947,7 @@ button {
   gap: 6px;
   flex-wrap: wrap;
   flex-shrink: 0;
+  margin: 8px 8px 0;
 }
 .review-chat-messages {
   min-height: 0;
@@ -1956,6 +1957,12 @@ button {
   flex-direction: column;
   gap: 8px;
   padding: 2px 2px 4px;
+}
+.review-chat-panel > .review-chat-messages {
+  margin: 8px;
+}
+.review-chat-panel > form {
+  margin: 0 8px 8px;
 }
 .ai-message {
   display: grid;

@@ -4,7 +4,6 @@
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const fs = require('node:fs/promises');
 const { join, dirname, relative } = require('node:path');
-const { pathToFileURL } = require('node:url');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { Writable, Readable } = require('node:stream');
@@ -52,11 +51,6 @@ const configValidator = new Ajv2020({ allErrors: true, strict: false }).compile(
 
 /** @type {Map<string, import('child_process').ChildProcess>} */
 const runningProcesses = new Map();
-
-/** @type {Map<string, { service: any; workingDir: string }>} */
-const reviewChatSessions = new Map();
-/** @type {Set<string>} */
-const activeReviewChatTurns = new Set();
 
 /** @type {Map<string, any>} */
 const acpChatSessions = new Map();
@@ -378,11 +372,11 @@ const requireClientToolPermission = async (conversationId, webContents, toolCall
   if (!permissionAllows(response)) throw new Error(`Rejected ${toolCall.title || 'tool call'}.`);
 };
 
-const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinkingLevel, resumeSessionId }, webContents) => {
+const startAcpChatSession = async ({ mode, workingDir, prdId, codingAgentId, thinkingLevel, resumeSessionId }, webContents) => {
   const settings = readGlobalSettings();
   const selectedId = codingAgentId || settings.defaultCodingAgentId || settings.codingAgents[0]?.id;
   const agent = settings.codingAgents.find((candidate) => candidate.id === selectedId);
-  if (!agent) throw new Error('Configure a global ACP coding agent in Settings before using Factory agent chat.');
+  if (!agent) throw new Error(`Configure a global ACP coding agent in Settings before using ${mode} chat.`);
 
   await runDrsJsonAllowNonZero(workingDir, ['sync']);
 
@@ -527,27 +521,12 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
-  let factoryStage = null;
-  if (prdId) {
-    try {
-      const workflow = await runDrsJson(workingDir, ['factory', 'workflow-status', prdId]);
-      factoryStage = workflow.status?.stage ?? null;
-    } catch {
-      factoryStage = null;
-    }
-  }
-  const skillInstruction = factoryStage && String(factoryStage).startsWith('stories')
-    ? 'Use the Factory stories skill to convert approved PRDs into structured implementation stories.'
-    : 'Use the Factory planning skill for PRD clarification, drafting, and approval.';
-
-  acpChatSessions.get(sessionId).systemPrompt = [
-    'You are running inside DRS Desktop Factory.',
-    `Working directory: ${workingDir}`,
-    prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
-    factoryStage ? `Current Factory workflow stage: ${factoryStage}.` : null,
-    selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
-    skillInstruction,
-  ].filter(Boolean).join('\n\n');
+  acpChatSessions.get(sessionId).systemPrompt = await buildAcpChatSystemPrompt({
+    mode,
+    workingDir,
+    prdId,
+    selectedThinkingLevel,
+  });
 
   connectionPromise.catch((error) => {
     webContents.send('drs:reviewChatEvent', {
@@ -560,10 +539,10 @@ const startAcpFactorySession = async ({ workingDir, prdId, codingAgentId, thinki
   return { conversationId: sessionId, agentSessionId };
 };
 
-const sendAcpFactoryMessage = async ({ conversationId, prompt }, webContents) => {
+const sendAcpChatMessage = async ({ conversationId, prompt }, webContents) => {
   const record = acpChatSessions.get(conversationId);
-  if (!record) throw new Error(`ACP Factory chat session not found: ${conversationId}`);
-  if (record.active) throw new Error('An ACP Factory chat turn is already running.');
+  if (!record) throw new Error(`ACP chat session not found: ${conversationId}`);
+  if (record.active) throw new Error('An ACP chat turn is already running.');
   record.active = true;
   try {
     record.session.prompt(`${record.systemPrompt}\n\nUser message:\n${prompt}`);
@@ -602,6 +581,56 @@ const sendAcpFactoryMessage = async ({ conversationId, prompt }, webContents) =>
   } finally {
     record.active = false;
   }
+};
+
+const buildAcpChatSystemPrompt = async ({ mode, workingDir, prdId, selectedThinkingLevel }) => {
+  if (mode === 'factory') {
+    let factoryStage = null;
+    if (prdId) {
+      try {
+        const workflow = await runDrsJson(workingDir, ['factory', 'workflow-status', prdId]);
+        factoryStage = workflow.status?.stage ?? null;
+      } catch {
+        factoryStage = null;
+      }
+    }
+    const skillInstruction = factoryStage && String(factoryStage).startsWith('stories')
+      ? 'Use the Factory stories skill to convert approved PRDs into structured implementation stories.'
+      : 'Use the Factory planning skill for PRD clarification, drafting, and approval.';
+
+    return [
+      'You are running inside DRS Desktop Factory.',
+      `Working directory: ${workingDir}`,
+      prdId ? `Selected PRD id: ${prdId}` : 'No PRD is selected yet.',
+      factoryStage ? `Current Factory workflow stage: ${factoryStage}.` : null,
+      selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
+      skillInstruction,
+    ].filter(Boolean).join('\n\n');
+  }
+
+  let reviewContext = 'No review artifact is currently loaded. Ask the user to run or load a review if needed.';
+  try {
+    const review = await readLatestReviewArtifact(workingDir);
+    if (review) {
+      reviewContext = [
+        `Latest review artifact: ${review.artifact.path}`,
+        `Reviewed at: ${review.timestamp}`,
+        `Issues found: ${review.summary.issuesFound}`,
+        `Severity counts: ${JSON.stringify(review.summary.bySeverity || {})}`,
+      ].join('\n');
+    }
+  } catch {
+    reviewContext = 'Could not load the latest review artifact. Inspect .drs artifacts or ask the user to rerun review.';
+  }
+
+  return [
+    'You are running inside DRS Desktop Review chat.',
+    `Working directory: ${workingDir}`,
+    selectedThinkingLevel ? `Requested reasoning/thinking level for this session: ${selectedThinkingLevel}.` : null,
+    reviewContext,
+    'Help explain findings, assess validity, identify smallest safe fix scope, and inspect repository context when useful.',
+    'Do not modify files or run implementation commands unless the user explicitly asks for fixes.',
+  ].filter(Boolean).join('\n\n');
 };
 
 /** @param {string} workingDir @param {string} relPath */
@@ -744,26 +773,6 @@ const readLatestReviewArtifact = async (workingDir) => {
     },
   };
 };
-
-async function loadDrsConversationRuntime() {
-  if (!repoRoot) {
-    throw new Error(
-      'Live review chat requires a bundled DRS runtime. Use DRS_CLI one-shot chat fallback in packaged builds for now.'
-    );
-  }
-  const conversationPath = join(repoRoot, 'dist', 'lib', 'conversation.js');
-  const configPath = join(repoRoot, 'dist', 'lib', 'config.js');
-  if (!existsSync(conversationPath) || !existsSync(configPath)) {
-    throw new Error(
-      'Live review chat requires a built DRS runtime. Run `npm --prefix ../ run build` or `npm run setup:drs` from desktop/.'
-    );
-  }
-  const [{ ConversationService }, { loadConfig }] = await Promise.all([
-    import(pathToFileURL(conversationPath).href),
-    import(pathToFileURL(configPath).href),
-  ]);
-  return { ConversationService, loadConfig };
-}
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -1019,64 +1028,20 @@ app.whenReady().then(() => {
     return { result, reviewOutput };
   });
 
-  ipcMain.handle('drs:askReviewChat', async (_event, req) => {
-    const { workingDir, prompt } = req || {};
-    if (!workingDir || typeof workingDir !== 'string') {
-      throw new Error('A working directory is required for review chat.');
-    }
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-      throw new Error('A prompt is required for review chat.');
-    }
-
-    const { stdout, stderr } = await runDrs({
-      repoRoot,
-      workingDir,
-      args: ['chat', '--prompt', prompt, '--json'],
-      timeoutMs: WORKFLOW_RUN_TIMEOUT_MS,
-    });
-    const parsed = parseJsonSafe(stdout);
-    if (!parsed || typeof parsed !== 'object') {
-      const detail = (stderr || stdout).trim();
-      throw new Error(`Could not parse review chat JSON.${detail ? `\n${detail}` : ''}`);
-    }
-    return {
-      conversationId: parsed.conversation?.id || parsed.conversationId || '',
-      response: typeof parsed.response === 'string' ? parsed.response : '',
-    };
-  });
-
   ipcMain.handle('drs:startReviewChat', async (_event, req) => {
-    const { workingDir } = req || {};
+    const { workingDir, codingAgentId, thinkingLevel, resumeSessionId } = req || {};
     if (!workingDir || typeof workingDir !== 'string') {
       throw new Error('A working directory is required for review chat.');
     }
-    const { ConversationService, loadConfig } = await loadDrsConversationRuntime();
-    const config = loadConfig(workingDir);
-    const service = new ConversationService({ config, workingDir });
-    const conversation = await service.startConversation();
-    reviewChatSessions.set(conversation.id, { service, workingDir });
-    return { conversationId: conversation.id };
+    return startAcpChatSession({ mode: 'review', workingDir, codingAgentId, thinkingLevel, resumeSessionId }, _event.sender);
   });
 
   ipcMain.handle('drs:startFactoryChat', async (_event, req) => {
-    const { workingDir, prdId, agent, codingAgentId, thinkingLevel, resumeSessionId } = req || {};
+    const { workingDir, prdId, codingAgentId, thinkingLevel, resumeSessionId } = req || {};
     if (!workingDir || typeof workingDir !== 'string') {
       throw new Error('A working directory is required for factory chat.');
     }
-    const globalSettings = readGlobalSettings();
-    const selectedCodingAgentId = codingAgentId || globalSettings.defaultCodingAgentId;
-    if (selectedCodingAgentId) {
-      return startAcpFactorySession({ workingDir, prdId, codingAgentId: selectedCodingAgentId, thinkingLevel, resumeSessionId }, _event.sender);
-    }
-    const { ConversationService, loadConfig } = await loadDrsConversationRuntime();
-    const config = loadConfig(workingDir);
-    const service = new ConversationService({ config, workingDir });
-    const conversation = await service.startConversation({
-      agent,
-      subject: { kind: 'factory', prdId },
-    });
-    reviewChatSessions.set(conversation.id, { service, workingDir });
-    return { conversationId: conversation.id };
+    return startAcpChatSession({ mode: 'factory', workingDir, prdId, codingAgentId, thinkingLevel, resumeSessionId }, _event.sender);
   });
 
   ipcMain.handle('drs:sendReviewChatMessage', async (event, req) => {
@@ -1087,44 +1052,7 @@ app.whenReady().then(() => {
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       throw new Error('A prompt is required for review chat.');
     }
-    const record = reviewChatSessions.get(conversationId);
-    if (!record && acpChatSessions.has(conversationId)) {
-      return sendAcpFactoryMessage({ conversationId, prompt }, event.sender);
-    }
-    if (!record) {
-      throw new Error(`Review chat conversation not found: ${conversationId}`);
-    }
-    if (activeReviewChatTurns.has(conversationId)) {
-      throw new Error('A review chat turn is already running for this conversation.');
-    }
-
-    activeReviewChatTurns.add(conversationId);
-    try {
-      for await (const chatEvent of record.service.streamMessage({
-        conversationId,
-        message: prompt,
-      })) {
-        if (chatEvent.type === 'response_delta') {
-          event.sender.send('drs:reviewChatEvent', {
-            type: 'message_delta',
-            conversationId,
-            messageId: chatEvent.messageId,
-            text: chatEvent.text,
-          });
-        } else if (chatEvent.type === 'turn_done') {
-          event.sender.send('drs:reviewChatEvent', { type: 'turn_done', conversationId });
-        }
-      }
-    } catch (error) {
-      event.sender.send('drs:reviewChatEvent', {
-        type: 'error',
-        conversationId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    } finally {
-      activeReviewChatTurns.delete(conversationId);
-    }
+    return sendAcpChatMessage({ conversationId, prompt }, event.sender);
   });
 
   ipcMain.handle('drs:respondChatPermission', async (_event, req) => {
@@ -1181,12 +1109,6 @@ app.whenReady().then(() => {
       acpRecord.child?.kill('SIGTERM');
       acpChatSessions.delete(conversationId);
       return null;
-    }
-    const record = reviewChatSessions.get(conversationId);
-    if (record) {
-      await record.service.closeConversation(conversationId);
-      reviewChatSessions.delete(conversationId);
-      activeReviewChatTurns.delete(conversationId);
     }
     return null;
   });
