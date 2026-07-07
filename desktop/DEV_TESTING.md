@@ -58,6 +58,39 @@ cd desktop
 npm run electron:dev
 ```
 
+## One Command (Recommended)
+
+To avoid juggling two terminals, use the combined dev command. It builds the DRS
+CLI, starts the Vite dev server, waits for it to come up, then launches Electron —
+all in one process (Ctrl-C stops everything):
+
+```bash
+cd desktop
+npm run dev:app
+```
+
+For a fresh clone, from the repository root:
+
+```bash
+npm run desktop:bootstrap   # installs root + desktop dependencies
+npm run desktop:dev         # equivalent to `npm --prefix desktop run dev:app`
+```
+
+### Using mise (optional)
+
+The repo ships a `mise.toml` that pins Node to the version required by
+`package.json` (`engines.node`), which avoids the `EBADENGINE` warnings you get on
+older Node. If you use [mise](https://mise.jdx.dev):
+
+```bash
+mise trust      # first time only, approves this repo's config
+mise install    # installs the pinned Node
+mise run bootstrap
+mise run dev
+```
+
+Other tasks: `mise run build`, `mise run check`. Run `mise tasks` to list them.
+
 ## Smoke Test Checklist
 
 1. Launch the app.

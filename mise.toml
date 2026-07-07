@@ -1,0 +1,20 @@
+[tools]
+# Matches the engines floor in package.json ("node": ">=22.19.0").
+# Bump this when you raise the engines requirement.
+node = "22.19.0"
+
+[tasks.bootstrap]
+description = "Install root + desktop dependencies"
+run = "npm install && npm --prefix desktop install"
+
+[tasks.dev]
+description = "Run the desktop app (Vite + Electron) in one command"
+run = "npm --prefix desktop run dev:app"
+
+[tasks.build]
+description = "Build the DRS CLI"
+run = "npm run build"
+
+[tasks.check]
+description = "Run the full quality gate (format + lint + build + test)"
+run = "npm run check:all"

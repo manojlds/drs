@@ -6,7 +6,10 @@
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
+    "predev:app": "npm run setup:drs",
+    "dev:app": "concurrently -k -n vite,electron -c cyan,magenta \"npm:dev\" \"npm:electron:wait\"",
     "dev": "vite",
+    "electron:wait": "wait-on tcp:127.0.0.1:5173 && npm run electron:dev",
     "build": "vite build",
     "preview": "vite build && electron .",
     "start": "vite build && electron .",
@@ -50,11 +53,13 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.5.2",
+    "concurrently": "^10.0.3",
     "electron": "^43.0.0",
     "postcss": "^8.5.16",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.2",
-    "vite": "^8.1.2"
+    "vite": "^8.1.2",
+    "wait-on": "^9.0.10"
   }
 }
