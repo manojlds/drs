@@ -1,4 +1,4 @@
-import { AcpChatPanel } from './AcpChatPanel';
+import { AcpChatPanel, type AcpChatSuggestion } from './AcpChatPanel';
 
 interface FactoryChatPanelProps {
   workingDir: string;
@@ -15,6 +15,7 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
   const skillPrompt = workflowStage?.startsWith('stories')
     ? 'Use the Factory stories skill now.'
     : 'Use the Factory planning skill now.';
+  const isStoriesStage = workflowStage?.startsWith('stories') ?? false;
   const autoStartPrompt = prdId
     ? [
         skillPrompt,
@@ -25,6 +26,31 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
       ].filter(Boolean).join('\n\n')
     : null;
 
+  const suggestions: AcpChatSuggestion[] = !prdId
+    ? []
+    : isStoriesStage
+      ? [
+          { label: 'Draft stories from PRD', prompt: autoStartPrompt ?? 'Draft stories from the approved PRD.' },
+          {
+            label: 'Refine story slices',
+            prompt:
+              'Review the current story set and propose tighter, independently shippable slices with clear acceptance criteria.',
+          },
+        ]
+      : [
+          { label: 'Start planning session', prompt: autoStartPrompt ?? 'Begin planning this PRD.' },
+          {
+            label: 'Interview me',
+            prompt:
+              'Interview me with focused questions to remove ambiguity from this PRD, one topic at a time.',
+          },
+          {
+            label: 'Critique & tighten scope',
+            prompt:
+              'Critique this PRD: flag vague requirements, missing constraints, and scope risks, then propose concrete edits.',
+          },
+        ];
+
   return (
     <AcpChatPanel
       mode="factory"
@@ -34,8 +60,13 @@ export function FactoryChatPanel({ workingDir, prdId, prdTitle, prdDescription, 
       title="Factory Planner"
       kicker="Planning Chat"
       subtitle="ACP-backed planning agent"
-      emptyMessage="Start by describing what is unclear, or create a PRD to let the planning agent interview you."
+      emptyMessage={
+        prdId
+          ? 'Pick a starter below, or type a message to begin planning this PRD.'
+          : 'Create a PRD to let the planning agent interview you, or describe what is unclear.'
+      }
       placeholder="Plan, clarify, critique, or slice the selected PRD..."
+      suggestions={suggestions}
       startPayload={{ prdId: prdId ?? undefined }}
       autoStart={autoStart}
       autoStartPrompt={autoStartPrompt}

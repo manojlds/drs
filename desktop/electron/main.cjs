@@ -80,6 +80,19 @@ const buildCodingAgentLaunch = (agent, overrides = {}) => {
       args.push('--model', modelValue);
     }
   }
+  // Claude Code speaks ACP through the Zed adapter (@zed-industries/claude-code-acp),
+  // which selects the model via the ANTHROPIC_MODEL env var. Thinking level flows
+  // through the generic effort/thought_level config option negotiated per session.
+  if (agent.kind === 'claude-code') {
+    if (model && !env.ANTHROPIC_MODEL) {
+      env.ANTHROPIC_MODEL = model;
+    }
+    // The adapter refuses to start when it detects it is already running inside a
+    // Claude Code session (CLAUDECODE set), e.g. when the desktop is launched from
+    // a Claude Code terminal. The desktop spawns its own dedicated agent, so clear
+    // the guard to avoid a false "nested session" failure.
+    delete env.CLAUDECODE;
+  }
   return {
     command: agent.command,
     args,
@@ -387,7 +400,10 @@ const startAcpChatSession = async ({ mode, workingDir, prdId, codingAgentId, thi
     env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  let recentStderr = '';
   child.stderr?.on('data', (chunk) => {
+    // Retain a bounded tail of stderr so startup failures can be reported.
+    recentStderr = `${recentStderr}${chunk.toString()}`.slice(-2000);
     // Keep stderr visible without treating agent diagnostics as turn failures.
     webContents.send('drs:reviewChatEvent', {
       type: 'tool_call_update',
@@ -515,9 +531,46 @@ const startAcpChatSession = async ({ mode, workingDir, prdId, codingAgentId, thi
     }).finally(() => builtSession.dispose());
   });
 
+  // `npx`-launched agents (e.g. Claude Code) may download packages on first run,
+  // so allow a generous startup window and surface the real failure cause rather
+  // than a generic timeout. Override with DRS_ACP_START_TIMEOUT_MS if needed.
+  const startTimeoutMs = Number(process.env.DRS_ACP_START_TIMEOUT_MS) || 60000;
+  let startupError = null;
+  let exitInfo = null;
+  connectionPromise.catch((error) => {
+    startupError = error instanceof Error ? error : new Error(String(error));
+  });
+  child.once('error', (error) => {
+    startupError = error instanceof Error ? error : new Error(String(error));
+  });
+  child.once('exit', (code, signal) => {
+    exitInfo = { code, signal };
+  });
+
   const start = Date.now();
   while (!acpChatSessions.has(sessionId)) {
-    if (Date.now() - start > 5000) throw new Error('Timed out starting ACP agent session.');
+    const detail = recentStderr.trim() ? `\n${recentStderr.trim()}` : '';
+    if (startupError) {
+      throw new Error(`Failed to start ACP agent "${agent.name}": ${startupError.message}${detail}`);
+    }
+    if (exitInfo) {
+      const how = exitInfo.signal ? `signal ${exitInfo.signal}` : `code ${exitInfo.code ?? 'null'}`;
+      throw new Error(
+        `ACP agent "${agent.name}" exited before the session started (${how}). ` +
+          `Command: ${launch.command} ${launch.args.join(' ')}${detail}`,
+      );
+    }
+    if (Date.now() - start > startTimeoutMs) {
+      try {
+        child.kill();
+      } catch {
+        // ignore
+      }
+      throw new Error(
+        `Timed out after ${startTimeoutMs}ms starting ACP agent "${agent.name}". ` +
+          `Command: ${launch.command} ${launch.args.join(' ')}${detail}`,
+      );
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 

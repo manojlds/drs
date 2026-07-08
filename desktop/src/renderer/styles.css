@@ -430,10 +430,29 @@ button {
 }
 .factory-chat-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 10px;
   flex-shrink: 0;
   margin-bottom: 10px;
+}
+.factory-chat-header > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.factory-chat-header strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.factory-chat-header > div > span {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.factory-chat-reset {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .factory-chat-agent-select,
 .settings-field-row {
@@ -480,6 +499,10 @@ button {
 }
 .factory-workspace-document {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
 }
 .factory-chat-sidebar {
   min-width: 0;
@@ -504,7 +527,6 @@ button {
   border-radius: 12px;
   background: var(--bg-elevated);
   color: var(--text-muted);
-  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -609,7 +631,261 @@ button {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.6fr);
   gap: 12px;
   min-height: 0;
+}
+
+/* ---- Redesigned PRD workspace ---- */
+.factory-workspace-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.factory-workspace-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.factory-workspace-breadcrumb h1 {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46ch;
+}
+.factory-crumb-link {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.factory-crumb-link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.factory-crumb-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.factory-workspace-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Slim stepper strip + coordinator popover */
+.factory-stepper-bar {
+  position: relative;
+  flex-shrink: 0;
+}
+.factory-stepper-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.factory-stepper-strip:hover,
+.factory-stepper-strip.open {
+  border-color: var(--border);
+  background: var(--bg-hover);
+}
+.factory-stepper-node-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.factory-stepper-rail {
+  width: 18px;
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.factory-stepper-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.factory-stepper-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.factory-stepper-label {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.factory-stepper-node.complete {
+  color: var(--add-text);
+}
+.factory-stepper-node.complete .factory-stepper-marker {
+  background: var(--add-bg);
+  border-color: transparent;
+  color: var(--add-text);
+}
+.factory-stepper-node.current {
+  color: var(--text);
+}
+.factory-stepper-node.current .factory-stepper-marker {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.factory-stepper-toggle {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  flex-shrink: 0;
+  padding-left: 10px;
+}
+.factory-coordinator-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.factory-coordinator-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+.factory-coordinator-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.factory-coordinator-top strong {
+  font-size: 15px;
+}
+.factory-coordinator-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.factory-coordinator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.factory-coordinator-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Collapsible stories & versions */
+.factory-workspace-details {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.factory-details-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.factory-details-toggle:hover {
+  background: var(--bg-hover);
+}
+.factory-details-chevron {
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+}
+.factory-details-chevron.open {
+  transform: rotate(90deg);
+}
+.factory-workspace-details .factory-workspace-secondary {
+  max-height: 320px;
   overflow: auto;
+}
+
+/* Milkdown (Crepe) PRD editor */
+.factory-prd-milkdown {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+/*
+ * The Crepe frame theme hardcodes its palette on `.milkdown` (e.g.
+ * --crepe-color-on-background: #000000), so overrides must live at this
+ * higher-specificity selector to map onto the app palette (light + dark).
+ */
+.factory-prd-milkdown .milkdown {
+  height: 100%;
+  overflow: auto;
+  background: transparent;
+  --crepe-color-background: var(--bg-elevated);
+  --crepe-color-on-background: var(--text);
+  --crepe-color-surface: var(--bg-elevated);
+  --crepe-color-surface-low: var(--bg);
+  --crepe-color-on-surface: var(--text);
+  --crepe-color-on-surface-variant: var(--text-dim);
+  --crepe-color-outline: var(--border);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: var(--bg-hover);
+  --crepe-color-on-secondary: var(--text);
+  --crepe-color-inverse: var(--text);
+  --crepe-color-on-inverse: var(--bg-elevated);
+  --crepe-color-inline-code: var(--accent);
+  --crepe-color-error: var(--del-text);
+  --crepe-color-hover: var(--bg-hover);
+  --crepe-color-selected: var(--bg-hover);
+  --crepe-color-inline-area: var(--bg-surface);
+  --crepe-font-title: inherit;
+  --crepe-font-default: inherit;
+  --crepe-font-code: var(--mono);
+}
+.factory-prd-milkdown .milkdown .ProseMirror {
+  padding: 20px 28px;
+  min-height: 100%;
+  color: var(--text);
 }
 .factory-prd-table-card {
   padding-bottom: 10px;

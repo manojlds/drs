@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
-import { Bot, Send, User } from 'lucide-react';
+import { Bot, RotateCcw, Send, User } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
 import { Message, MessageAvatar, MessageContent } from './ai/message';
@@ -234,6 +234,25 @@ export function AcpChatPanel({
     return result.conversationId;
   };
 
+  const resetConversation = async () => {
+    const previous = conversationIdRef.current;
+    conversationIdRef.current = null;
+    currentAssistantMessageIdRef.current = null;
+    skipNextMessagePersistRef.current = true;
+    clearStoredConversationId(storagePrefix, scope);
+    clearStoredAgentSessionId(storagePrefix, scope);
+    clearStoredMessages(storagePrefix, scope);
+    setMessages([]);
+    setSending(false);
+    if (previous) {
+      try {
+        await window.drs.closeReviewChat(previous);
+      } catch {
+        // Best-effort teardown of the previous backend session.
+      }
+    }
+  };
+
   const respondPermission = async (permissionId: string, optionId?: string, cancelled = false) => {
     const conversationId = conversationIdRef.current;
     if (!conversationId) return;
@@ -329,6 +348,16 @@ export function AcpChatPanel({
           <strong>{title}</strong>
           <span>{subtitle}</span>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="factory-chat-reset"
+          onClick={() => void resetConversation()}
+          disabled={sending || !workingDir}
+          title="Discard this session and start a fresh chat"
+        >
+          <RotateCcw size={13} /> New chat
+        </Button>
       </div>
       {suggestions.length > 0 && (
         <div className="review-chat-suggestions">
@@ -446,6 +475,14 @@ function writeStoredConversationId(prefix: string, scope: string, conversationId
 
 function clearStoredConversationId(prefix: string, scope: string): void {
   window.localStorage.removeItem(storageKey(prefix, scope, 'conversationId'));
+}
+
+function clearStoredAgentSessionId(prefix: string, scope: string): void {
+  window.localStorage.removeItem(storageKey(prefix, scope, 'agentSessionId'));
+}
+
+function clearStoredMessages(prefix: string, scope: string): void {
+  window.localStorage.removeItem(storageKey(prefix, scope, 'messages'));
 }
 
 function readStoredAgentSessionId(prefix: string, scope: string): string | null {

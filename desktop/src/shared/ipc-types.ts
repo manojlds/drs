@@ -430,7 +430,7 @@ export interface TestCodingAgentResponse {
   message: string;
 }
 
-export type CodingAgentKind = 'generic' | 'opencode';
+export type CodingAgentKind = 'generic' | 'opencode' | 'claude-code';
 export type CodingAgentThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
 
 export interface CodingAgentConfig {

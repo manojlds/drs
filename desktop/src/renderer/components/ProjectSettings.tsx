@@ -359,28 +359,37 @@ export function ProjectSettings({ workingDir, scope }: ProjectSettingsProps) {
                     <select
                       value={agent.kind ?? 'generic'}
                       onChange={(event) => {
-                        const kind = event.target.value === 'opencode' ? 'opencode' : 'generic';
-                        updateCodingAgent(agent.id, (current) => ({
-                          ...current,
-                          kind,
-                          command: kind === 'opencode' && !current.command.trim() ? 'opencode' : current.command,
-                          args: kind === 'opencode' && current.args.length === 0 ? ['acp'] : current.args,
-                        }));
+                        const value = event.target.value;
+                        const kind = value === 'opencode' || value === 'claude-code' ? value : 'generic';
+                        updateCodingAgent(agent.id, (current) => {
+                          const next: CodingAgentConfig = { ...current, kind };
+                          if (kind === 'opencode') {
+                            if (!current.command.trim()) next.command = 'opencode';
+                            if (current.args.length === 0) next.args = ['acp'];
+                          } else if (kind === 'claude-code') {
+                            if (!current.command.trim()) next.command = 'npx';
+                            if (current.args.length === 0) next.args = ['-y', '@zed-industries/claude-code-acp'];
+                          }
+                          return next;
+                        });
                       }}
                     >
                       <option value="generic">Generic ACP</option>
                       <option value="opencode">OpenCode</option>
+                      <option value="claude-code">Claude Code</option>
                     </select>
                   </label>
                   {agent.kind === 'opencode' && (
+                    <label className="settings-field-row">
+                      <span>Provider</span>
+                      <input value={agent.provider ?? ''} placeholder="openai" onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, provider: event.target.value }))} />
+                    </label>
+                  )}
+                  {(agent.kind === 'opencode' || agent.kind === 'claude-code') && (
                     <>
                       <label className="settings-field-row">
-                        <span>Provider</span>
-                        <input value={agent.provider ?? ''} placeholder="openai" onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, provider: event.target.value }))} />
-                      </label>
-                      <label className="settings-field-row">
                         <span>Model</span>
-                        <input value={agent.model ?? ''} placeholder="gpt-5.1 or openai/gpt-5.1" onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, model: event.target.value }))} />
+                        <input value={agent.model ?? ''} placeholder={agent.kind === 'claude-code' ? 'claude-opus-4-8 (defaults to Claude Code setting)' : 'gpt-5.1 or openai/gpt-5.1'} onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, model: event.target.value }))} />
                       </label>
                       <label className="settings-field-row">
                         <span>Default thinking</span>
@@ -393,11 +402,11 @@ export function ProjectSettings({ workingDir, scope }: ProjectSettingsProps) {
                   )}
                   <label className="settings-field-row settings-field-wide">
                     <span>Command</span>
-                    <input value={agent.command} placeholder={agent.kind === 'opencode' ? 'opencode' : 'codex-acp'} onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, command: event.target.value }))} />
+                    <input value={agent.command} placeholder={agent.kind === 'opencode' ? 'opencode' : agent.kind === 'claude-code' ? 'npx' : 'codex-acp'} onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, command: event.target.value }))} />
                   </label>
                   <label className="settings-field-row settings-field-wide">
                     <span>Args</span>
-                    <input value={agent.args.join(' ')} placeholder={agent.kind === 'opencode' ? 'acp' : '--some-flag value'} onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, args: event.target.value.split(' ').filter(Boolean) }))} />
+                    <input value={agent.args.join(' ')} placeholder={agent.kind === 'opencode' ? 'acp' : agent.kind === 'claude-code' ? '-y @zed-industries/claude-code-acp' : '--some-flag value'} onChange={(event) => updateCodingAgent(agent.id, (current) => ({ ...current, args: event.target.value.split(' ').filter(Boolean) }))} />
                   </label>
                   <label className="settings-field-row settings-field-wide">
                     <span>Environment JSON</span>

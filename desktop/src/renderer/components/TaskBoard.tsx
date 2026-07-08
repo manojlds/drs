@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, PanelRightClose, PanelRightOpen, Trash2 } from 'lucide-react';
+import {
+  Check,
+  ChevronRight,
+  MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
+  Trash2,
+} from 'lucide-react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Card } from '@/renderer/components/ui/card';
@@ -12,6 +19,7 @@ import type {
   FactoryWorkflowStatus,
 } from '@/shared/ipc-types';
 import { FactoryChatPanel } from './FactoryChatPanel';
+import { PrdEditor } from './PrdEditor';
 
 interface TaskBoardProps {
   workingDir: string;
@@ -35,6 +43,11 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const [autoStartPrdId, setAutoStartPrdId] = useState<string | null>(null);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [coordinatorOpen, setCoordinatorOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Bumped when the editor content is replaced out-of-band (e.g. version revert)
+  // so the uncontrolled Milkdown editor re-seeds from the new markdown.
+  const [editorEpoch, setEditorEpoch] = useState(0);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -241,6 +254,7 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
         const status = await window.drs.getFactoryWorkflowStatus(workingDir, selectedPrdId);
         setPrdDetail(detail);
         setMarkdownDraft(detail.markdown);
+        setEditorEpoch((epoch) => epoch + 1);
         setVersions(versionList);
         setWorkflowStatus(status);
       } catch (err) {
@@ -284,160 +298,211 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
   const canImportStories = !!prdDetail && hasAction('import-stories') && approvedStoryCount > 0;
   const workflowSteps = workflowStatus ? getFactoryWorkflowSteps(workflowStatus.stage) : [];
   const nextActionHint = workflowStatus ? getFactoryNextActionHint(workflowStatus) : '';
+  const primaryAction: {
+    label: string;
+    onClick: () => void;
+    variant?: 'default' | 'outline';
+    disabled?: boolean;
+  } | null = hasAction('approve-prd')
+    ? { label: 'Approve PRD', onClick: () => void handleCoordinatorAction('approve-prd') }
+    : hasAction('request-prd-review')
+      ? {
+          label: 'Request review',
+          variant: 'outline',
+          onClick: () => void handleCoordinatorAction('request-prd-review'),
+        }
+      : hasAction('approve-stories')
+        ? { label: 'Approve stories', onClick: () => void handleCoordinatorAction('approve-stories') }
+        : hasAction('request-stories-review')
+          ? {
+              label: 'Request story review',
+              variant: 'outline',
+              onClick: () => void handleCoordinatorAction('request-stories-review'),
+            }
+          : canImportStories
+            ? { label: 'Import stories', onClick: () => void handleImportStories() }
+            : null;
 
   if (view === 'workspace' && prdDetail) {
     return (
       <div className="task-board-shell factory-workspace-shell">
-        <div className="task-board-header">
-          <div>
-            <div className="review-kicker">Factory</div>
-            <h1>{prdDetail.prd.title}</h1>
-            <p>
-              {prdDetail.prd.description ||
-                'Plan with the agent while the PRD evolves on the right.'}
-            </p>
-          </div>
-          <div className="factory-prd-actions">
-            <Button variant="outline" onClick={handleBackToIndex}>
+        <header className="factory-workspace-topbar">
+          <div className="factory-workspace-breadcrumb">
+            <button type="button" className="factory-crumb-link" onClick={handleBackToIndex}>
               All PRDs
+            </button>
+            <ChevronRight size={14} className="factory-crumb-sep" aria-hidden />
+            <h1 title={prdDetail.prd.title}>{prdDetail.prd.title}</h1>
+            <Badge variant="outline">{prdDetail.prd.status.replace(/_/g, ' ')}</Badge>
+          </div>
+          <div className="factory-workspace-topbar-actions">
+            <Button variant="outline" size="sm" onClick={handleSavePrd}>
+              Save
             </Button>
-            <Button variant="outline" onClick={loadTasks} disabled={loading}>
-              {loading ? 'Refreshing...' : 'Refresh'}
+            {primaryAction && (
+              <Button
+                size="sm"
+                variant={primaryAction.variant ?? 'default'}
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+              >
+                {primaryAction.label}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={loadTasks} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="factory-danger-action"
+              onClick={() => setDeleteConfirmOpen(true)}
+              title="Delete PRD"
+              aria-label="Delete PRD"
+            >
+              <Trash2 size={14} />
             </Button>
           </div>
-        </div>
+        </header>
+
+        {workflowStatus && (
+          <div className="factory-stepper-bar">
+            <button
+              type="button"
+              className={`factory-stepper-strip${coordinatorOpen ? ' open' : ''}`}
+              onClick={() => setCoordinatorOpen((current) => !current)}
+              aria-expanded={coordinatorOpen}
+              aria-label="Factory workflow coordinator"
+            >
+              {workflowSteps.map((step, index) => (
+                <span key={step.key} className="factory-stepper-node-wrap">
+                  {index > 0 && <span className="factory-stepper-rail" aria-hidden />}
+                  <span className={`factory-stepper-node ${step.state}`}>
+                    <span className="factory-stepper-marker">
+                      {step.state === 'complete' ? <Check size={12} /> : step.index}
+                    </span>
+                    <span className="factory-stepper-label">{step.label}</span>
+                  </span>
+                </span>
+              ))}
+              <span className="factory-stepper-toggle">
+                {coordinatorOpen ? 'Hide' : 'Coordinator'}
+              </span>
+            </button>
+
+            {coordinatorOpen && (
+              <>
+                <div
+                  className="factory-coordinator-scrim"
+                  role="presentation"
+                  onClick={() => setCoordinatorOpen(false)}
+                />
+                <Card className="factory-coordinator-popover">
+                  <div className="factory-coordinator-top">
+                    <div>
+                      <div className="review-kicker">Coordinator</div>
+                      <strong>{formatFactoryStage(workflowStatus.stage)}</strong>
+                    </div>
+                    <div className="factory-workflow-badges">
+                      <Badge variant="outline">
+                        PRD {workflowStatus.prdStatus.replace(/_/g, ' ')}
+                      </Badge>
+                      <Badge variant="outline">
+                        Stories {workflowStatus.storySetStatus.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="factory-coordinator-hint">{nextActionHint}</p>
+                  {workflowStatus.blockedReason && (
+                    <div className="factory-workflow-blocked">{workflowStatus.blockedReason}</div>
+                  )}
+                  <div className="factory-coordinator-actions">
+                    {hasAction('request-prd-review') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleCoordinatorAction('request-prd-review')}
+                      >
+                        Request PRD review
+                      </Button>
+                    )}
+                    {hasAction('approve-prd') && (
+                      <Button size="sm" onClick={() => void handleCoordinatorAction('approve-prd')}>
+                        Approve PRD
+                      </Button>
+                    )}
+                    {hasAction('request-prd-changes') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleCoordinatorAction('request-prd-changes')}
+                      >
+                        Request PRD changes
+                      </Button>
+                    )}
+                    {hasAction('request-stories-review') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleCoordinatorAction('request-stories-review')}
+                      >
+                        Request story review
+                      </Button>
+                    )}
+                    {hasAction('approve-stories') && (
+                      <Button
+                        size="sm"
+                        onClick={() => void handleCoordinatorAction('approve-stories')}
+                      >
+                        Approve stories
+                      </Button>
+                    )}
+                    {showApprovedWorkflow && (
+                      <Button size="sm" onClick={handleImportStories} disabled={!canImportStories}>
+                        Import approved stories
+                      </Button>
+                    )}
+                    {hasAction('draft-stories') && (
+                      <span className="factory-coordinator-note">
+                        Ask Factory chat to draft stories from the approved PRD.
+                      </span>
+                    )}
+                  </div>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
 
         {error && <div className="task-board-error">{error}</div>}
 
         <div className={`factory-workspace-layout${chatCollapsed ? ' chat-collapsed' : ''}`}>
-          <section className="factory-prd-detail factory-workspace-document">
-            <div className="factory-prd-detail-header">
-              <div>
-                <div className="review-kicker">Current PRD</div>
-                <h2>{prdDetail.prd.title}</h2>
-                <Badge variant="outline">{prdDetail.prd.status.replace(/_/g, ' ')}</Badge>
-              </div>
-              <div className="factory-prd-actions">
-                <Button variant="outline" onClick={handleSavePrd}>
-                  Save PRD
-                </Button>
-                <Button
-                  variant="outline"
-                  className="factory-danger-action"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                >
-                  <Trash2 size={14} /> Delete
-                </Button>
-              </div>
-            </div>
-            {workflowStatus && (
-              <Card className="factory-workflow-panel">
-                <div className="factory-workflow-panel-top">
-                  <div>
-                    <div className="review-kicker">Coordinator</div>
-                    <strong>{formatFactoryStage(workflowStatus.stage)}</strong>
-                    <p>{nextActionHint}</p>
-                  </div>
-                  <div className="factory-workflow-badges">
-                    <Badge variant="outline">
-                      PRD {workflowStatus.prdStatus.replace(/_/g, ' ')}
-                    </Badge>
-                    <Badge variant="outline">
-                      Stories {workflowStatus.storySetStatus.replace(/_/g, ' ')}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="factory-workflow-stepper" aria-label="Factory workflow progress">
-                  {workflowSteps.map((step) => (
-                    <div key={step.key} className={`factory-workflow-step ${step.state}`}>
-                      <span>{step.index}</span>
-                      <strong>{step.label}</strong>
-                    </div>
-                  ))}
-                </div>
-                {workflowStatus.blockedReason && (
-                  <div className="factory-workflow-blocked">{workflowStatus.blockedReason}</div>
-                )}
-                <div className="factory-workflow-actions-grid">
-                  <div className="factory-workflow-action-card">
-                    <strong>PRD review</strong>
-                    <p>
-                      Lock the problem, scope, constraints, and acceptance bar before story work
-                      starts.
-                    </p>
-                    <div className="factory-prd-actions factory-prd-actions-left">
-                      {hasAction('request-prd-review') && (
-                        <Button
-                          variant="outline"
-                          onClick={() => void handleCoordinatorAction('request-prd-review')}
-                        >
-                          Request review
-                        </Button>
-                      )}
-                      {hasAction('approve-prd') && (
-                        <Button onClick={() => void handleCoordinatorAction('approve-prd')}>
-                          Approve PRD
-                        </Button>
-                      )}
-                      {hasAction('request-prd-changes') && (
-                        <Button
-                          variant="outline"
-                          onClick={() => void handleCoordinatorAction('request-prd-changes')}
-                        >
-                          Request changes
-                        </Button>
-                      )}
-                      {!hasAction('request-prd-review') &&
-                        !hasAction('approve-prd') &&
-                        !hasAction('request-prd-changes') && (
-                          <span>PRD gate is not waiting for action.</span>
-                        )}
-                    </div>
-                  </div>
-                  <div className="factory-workflow-action-card">
-                    <strong>Story handoff</strong>
-                    <p>
-                      Use Factory chat and the story skill to create structured story drafts.
-                    </p>
-                    <div className="factory-prd-actions factory-prd-actions-left">
-                      {hasAction('draft-stories') && (
-                        <span>Ask Factory chat to draft stories from the approved PRD.</span>
-                      )}
-                      {hasAction('request-stories-review') && (
-                        <Button
-                          variant="outline"
-                          onClick={() => void handleCoordinatorAction('request-stories-review')}
-                        >
-                          Request story review
-                        </Button>
-                      )}
-                      {hasAction('approve-stories') && (
-                        <Button onClick={() => void handleCoordinatorAction('approve-stories')}>
-                          Approve stories
-                        </Button>
-                      )}
-                      {showApprovedWorkflow && (
-                        <Button onClick={handleImportStories} disabled={!canImportStories}>
-                          Import approved stories
-                        </Button>
-                      )}
-                      {!hasAction('draft-stories') &&
-                        !hasAction('request-stories-review') &&
-                        !hasAction('approve-stories') &&
-                        !canImportStories && <span>Story gate is not waiting for action.</span>}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
-            <textarea
-              className="factory-prd-editor factory-prd-editor-full"
-              value={markdownDraft}
-              onChange={(event) => setMarkdownDraft(event.target.value)}
+          <section className="factory-workspace-document">
+            <PrdEditor
+              className="factory-prd-milkdown"
+              docKey={`${selectedPrdId ?? 'none'}:${editorEpoch}`}
+              initialValue={prdDetail.markdown}
+              onChange={setMarkdownDraft}
             />
 
             {showApprovedWorkflow && (
-              <div className="factory-workspace-secondary">
+              <div className="factory-workspace-details">
+                <button
+                  type="button"
+                  className="factory-details-toggle"
+                  onClick={() => setDetailsOpen((current) => !current)}
+                  aria-expanded={detailsOpen}
+                >
+                  <ChevronRight
+                    size={14}
+                    className={`factory-details-chevron${detailsOpen ? ' open' : ''}`}
+                    aria-hidden
+                  />
+                  <span>Stories &amp; versions</span>
+                  <Badge variant="outline">{prdDetail.stories.length}</Badge>
+                </button>
+                {detailsOpen && (
+                  <div className="factory-workspace-secondary">
                 <Card className="factory-story-preview">
                   <div className="task-column-header">
                     <div>
@@ -510,6 +575,8 @@ export function TaskBoard({ workingDir }: TaskBoardProps) {
                       </div>
                     ))}
                   </Card>
+                )}
+                  </div>
                 )}
               </div>
             )}
