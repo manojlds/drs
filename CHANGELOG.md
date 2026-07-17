@@ -2,6 +2,43 @@
 
 All notable changes to DRS are documented in this file.
 
+## 4.1.0 - 2026-07-17
+
+### Added
+
+- Add experimental Temporal execution backend. Run workflows through Temporal with `drs workflow run <name> --executor temporal`, start workers with `drs temporal worker`, and configure the backend in `.drs/drs.config.yaml`.
+- Add `CompiledWorkflowPlan` abstraction and executor selection so `drs workflow run` can dispatch through a local or Temporal backend without changing workflow definitions.
+- Add `drs workflow graph <name>` to print workflow dependency and control-flow graphs as text, JSON, or Mermaid.
+- Add workflow `metadata` (kind, tags, review source/diff/issues) to packaged review, fix, and visual-explain workflows.
+- Add `temporal-control-smoke` workflow for safe local Temporal control-flow testing.
+- Add bundled `task/review-assistant` agent for conversational questions about review and workflow artifacts.
+- Add skill management commands: `drs skills list`, `drs skills status`, `drs skills install`, and `drs skills sync`; install bundled skills under `.agents/skills` with a content lock file.
+- Add `drs doctor` and `drs sync` commands for project setup checks and safe asset updates.
+- Add `drs init --yes` and `--force` for non-interactive project initialization.
+- Add `mise.toml` with Node 22.19.0 and common tasks.
+
+### Changed
+
+- Persist canonical review artifacts by default from the `review` action; expose them as `artifacts.<nodeId>Artifact` (e.g. `reviewArtifact`) instead of requiring an explicit `artifact` output name.
+- Update packaged review, fix, and visual-explain workflows to use the canonical `reviewArtifact` name and declare workflow metadata.
+- Prefer canonical review artifacts when parsing review output; remove legacy `.drs/review-output.json` file support and the `review_output` `write_json_output` type.
+- Refactor workflow runtime behind a `WorkflowExecutor` interface with a `LocalWorkflowExecutor` and a `NodeExecutor` boundary to enable alternate backends.
+- Move `AgentRunResult` to `src/lib/agent-result.ts` for shared use across CLI and workflow modules.
+- Update skill search paths to include `.agents/skills` before `.drs/skills` and `.pi/skills`.
+- Improve review agent failure messages to include per-agent error details.
+
+### Fixed
+
+- Fix review action to save the artifact envelope even when no explicit `artifact` output name is configured.
+- Fix `post-comment` fallback marker to use the Temporal idempotency key when no explicit marker is configured.
+- Fix review artifact payload validation to require a summary object.
+- Fix `verify-fix` and internal fix loops to reference the canonical review artifact correctly.
+
+### Documentation
+
+- Add `docs/TEMPORAL.md` and `TEMPORAL_EXECUTION_PLAN.md` documenting the experimental Temporal executor, worker deployment, queries, troubleshooting, and rollout plan.
+- Update `README.md` and `docs/WORKFLOWS.md` for Temporal mode, canonical review artifacts, and workflow metadata.
+
 ## 4.0.1 - 2026-06-28
 
 ### Added
