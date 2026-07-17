@@ -95,16 +95,6 @@ export function installBundledSkill(
   return getSkillStatus(workingDir, name);
 }
 
-export function installFactorySkills(
-  workingDir: string,
-  options: { force?: boolean } = {}
-): SkillStatus[] {
-  return [
-    installBundledSkill(workingDir, 'drs-factory-planning', options),
-    installBundledSkill(workingDir, 'drs-factory-stories', options),
-  ];
-}
-
 export function syncBundledSkills(workingDir: string): SkillStatus[] {
   const lock = readSkillLock(workingDir);
   const synced: SkillStatus[] = [];

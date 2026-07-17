@@ -42,7 +42,7 @@ agents:
       model: opencode-go/kimi-k2.7-code
 
 workflow:
-  default: local-changelog-review
+  default: local-review
 
 review:
   agents:

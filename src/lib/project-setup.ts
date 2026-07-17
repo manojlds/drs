@@ -1,11 +1,6 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import {
-  getSkillStatuses,
-  installFactorySkills,
-  syncBundledSkills,
-  type SkillStatus,
-} from './skills.js';
+import { getSkillStatuses, syncBundledSkills, type SkillStatus } from './skills.js';
 
 export interface ProjectSetupStatus {
   initialized: boolean;
@@ -29,10 +24,6 @@ export function getProjectSetupStatus(workingDir: string): ProjectSetupStatus {
 }
 
 export function syncProjectSetup(workingDir: string): ProjectSetupStatus {
-  const factorySkill = getSkillStatuses(workingDir).find(
-    (skill) => skill.name === 'drs-factory-planning'
-  );
-  if (!factorySkill?.installed) installFactorySkills(workingDir);
   syncBundledSkills(workingDir);
   return getProjectSetupStatus(workingDir);
 }

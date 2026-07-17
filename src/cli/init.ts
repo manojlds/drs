@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import * as readline from 'readline';
 import chalk from 'chalk';
-import { installFactorySkills } from '../lib/skills.js';
 
 /**
  * Interactive prompt helper using readline
@@ -470,13 +469,6 @@ export async function initProject(
       console.log(chalk.green('✓'), 'Created', chalk.cyan('.drs/agents/README.md'));
     }
 
-    const installedSkills = installFactorySkills(projectPath);
-    console.log(
-      chalk.green('✓'),
-      'Installed Factory skills in',
-      chalk.cyan(installedSkills.map((skill) => skill.installedPath).join(', ') || '.agents/skills')
-    );
-
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Summary
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -488,7 +480,6 @@ export async function initProject(
     );
     console.log(`  Default Model: ${initConfig.defaultModel}`);
     console.log(`  Agents: ${initConfig.agents.join(', ')}`);
-    console.log('  Skills: drs-factory-planning, drs-factory-stories');
 
     if (Object.keys(initConfig.agentModels).length > 0) {
       console.log('  Model Overrides:');

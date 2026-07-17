@@ -4,12 +4,8 @@
 node = "22.19.0"
 
 [tasks.bootstrap]
-description = "Install root + desktop dependencies"
-run = "npm install && npm --prefix desktop install"
-
-[tasks.dev]
-description = "Run the desktop app (Vite + Electron) in one command"
-run = "npm --prefix desktop run dev:app"
+description = "Install dependencies"
+run = "npm install"
 
 [tasks.build]
 description = "Build the DRS CLI"
