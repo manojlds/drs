@@ -35,6 +35,8 @@ export const SUPPORTED_WORKFLOW_ACTIONS = [
   'review-context',
   'describe',
   'code-quality-report',
+  'sync-okf-indexes',
+  'validate-okf-wiki',
   'post-comment',
   'post-review-comments',
   'post-fix-status',

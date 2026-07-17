@@ -1,0 +1,49 @@
+name: repository-wiki-sync
+description: Generate or update one OKF v0.1 repository wiki bundle
+metadata:
+  kind: maintenance
+  tags:
+    - documentation
+    - wiki
+    - okf
+inputs:
+  root:
+    type: string
+    default: wiki
+    description: Repository-relative OKF bundle root
+  instructions:
+    type: string
+    default: ''
+    description: Additional repository-specific wiki guidance
+output: wikiValidation
+nodes:
+  maintain-wiki:
+    agent: task/okf-wiki-maintainer
+    input: |
+      Generate or update the repository wiki as one OKF v0.1 bundle.
+
+      Bundle root: {{inputs.root}}
+
+      Additional guidance:
+      {{inputs.instructions}}
+
+      Inspect the repository and existing bundle, edit concept files in place, and return a concise summary. Do not edit index.md files; DRS synchronizes them in the next step. Do not commit or push.
+    output: wikiSummary
+
+  sync-indexes:
+    action: sync-okf-indexes
+    needs:
+      - maintain-wiki
+    with:
+      root: '{{inputs.root}}'
+      version: '0.1'
+    output: wikiIndexes
+
+  validate-wiki:
+    action: validate-okf-wiki
+    needs:
+      - sync-indexes
+    with:
+      root: '{{inputs.root}}'
+      version: '0.1'
+    output: wikiValidation

@@ -274,6 +274,33 @@ describe('Config', () => {
           },
         },
       });
+      expect(config.workflows?.['repository-wiki-sync']).toMatchObject({
+        description: 'Generate or update one OKF v0.1 repository wiki bundle',
+        metadata: {
+          kind: 'maintenance',
+          tags: ['documentation', 'wiki', 'okf'],
+        },
+        inputs: {
+          root: { type: 'string', default: 'wiki' },
+          instructions: { type: 'string', default: '' },
+        },
+        output: 'wikiValidation',
+        nodes: {
+          'maintain-wiki': {
+            agent: 'task/okf-wiki-maintainer',
+            output: 'wikiSummary',
+          },
+          'sync-indexes': {
+            action: 'sync-okf-indexes',
+            needs: ['maintain-wiki'],
+          },
+          'validate-wiki': {
+            action: 'validate-okf-wiki',
+            needs: ['sync-indexes'],
+            output: 'wikiValidation',
+          },
+        },
+      });
       expect(config.workflows?.['tag-changelog-update']).toMatchObject({
         description: 'Update CHANGELOG.md from changes between two git refs or tags',
         inputs: {

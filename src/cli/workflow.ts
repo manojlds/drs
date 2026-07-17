@@ -51,6 +51,11 @@ import {
 } from '../lib/html-artifact.js';
 import { getCanonicalDiffCommand, resolveBaseBranch } from '../lib/repository-validator.js';
 import { formatCodeQualityReport, generateCodeQualityReport } from '../lib/code-quality-report.js';
+import {
+  formatOkfValidationErrors,
+  synchronizeOkfIndexes,
+  validateOkfBundle,
+} from '../lib/okf-wiki.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -695,6 +700,12 @@ async function runActionWorkflowNode(
   }
   if (node.action === 'code-quality-report') {
     return runCodeQualityReportWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'sync-okf-indexes') {
+    return runSyncOkfIndexesWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'validate-okf-wiki') {
+    return runValidateOkfWikiWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'post-comment') {
     return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context, executionContext);
@@ -2366,6 +2377,49 @@ async function runCodeQualityReportWorkflowNode(
       issues: report.length,
     },
     writes: reportPath,
+  };
+}
+
+async function runSyncOkfIndexesWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const version = getStringActionOption(node, 'version', context)?.trim() ?? '0.1';
+  const result = await synchronizeOkfIndexes(workingDir, root, version);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `synchronized ${result.indexes} OKF indexes under ${result.root} (${result.updated} updated)`,
+    output: result,
+  };
+}
+
+async function runValidateOkfWikiWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const version = getStringActionOption(node, 'version', context)?.trim() ?? '0.1';
+  const result = await validateOkfBundle(workingDir, root, version);
+  if (!result.valid) {
+    throw new Error(
+      `Workflow validate-okf-wiki node "${nodeId}" found ${result.errors.length} error(s):\n${formatOkfValidationErrors(result)}`
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `validated ${result.concepts} OKF concepts under ${result.root} with ${result.warnings.length} warning(s)`,
+    output: result,
   };
 }
 

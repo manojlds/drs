@@ -10,6 +10,7 @@ describe('getTemporalNodeRetryMode', () => {
   it('marks side-effecting actions as no-retry', () => {
     const sideEffectingActions: WorkflowAction[] = [
       'write',
+      'sync-okf-indexes',
       'git-add',
       'git-branch',
       'git-commit',
@@ -44,6 +45,7 @@ describe('getTemporalNodeRetryMode', () => {
       'review-context',
       'describe',
       'code-quality-report',
+      'validate-okf-wiki',
       'verify-fix',
     ];
 

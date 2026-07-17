@@ -3176,6 +3176,95 @@ describe('workflow runner', () => {
     });
   });
 
+  it('runs the packaged repository wiki workflow and validates its OKF bundle', async () => {
+    const projectRoot = createTempDir('drs-workflow-okf-wiki-');
+    mocks.runAgent.mockImplementation(
+      async (
+        _config: unknown,
+        agent: string,
+        options: { prompt?: string; workingDir?: string }
+      ) => {
+        expect(agent).toBe('task/okf-wiki-maintainer');
+        expect(options.prompt).toContain('Bundle root: knowledge');
+        expect(options.prompt).toContain('Focus on workflow behavior.');
+        const wikiRoot = join(options.workingDir ?? projectRoot, 'knowledge');
+        mkdirSync(wikiRoot, { recursive: true });
+        writeFileSync(
+          join(wikiRoot, 'quickstart.md'),
+          [
+            '---',
+            'type: Quickstart',
+            'title: Repository quickstart',
+            'description: Entry point for repository knowledge.',
+            '---',
+            '',
+            'This bundle documents the repository.',
+            '',
+          ].join('\n')
+        );
+        return {
+          timestamp: '2026-07-17T00:00:00.000Z',
+          agent,
+          response: 'Created the repository wiki.',
+          usage: {
+            agent,
+            success: true,
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 2,
+            cost: 0,
+            messages: 1,
+          },
+        };
+      }
+    );
+    const config = loadConfig(projectRoot);
+
+    const result = await runWorkflow(config, 'repository-wiki-sync', {
+      workingDir: projectRoot,
+      inputs: {
+        root: 'knowledge',
+        instructions: 'Focus on workflow behavior.',
+      },
+    });
+
+    expect(result.output).toMatchObject({
+      valid: true,
+      version: '0.1',
+      root: 'knowledge',
+      concepts: 1,
+      indexes: 1,
+    });
+    expect(readFileSync(join(projectRoot, 'knowledge', 'index.md'), 'utf-8')).toContain(
+      '* [Repository quickstart](quickstart.md) - Entry point for repository knowledge.'
+    );
+  });
+
+  it('fails validate-okf-wiki workflow actions for invalid bundles', async () => {
+    const projectRoot = createTempDir('drs-workflow-invalid-okf-wiki-');
+    mkdirSync(join(projectRoot, 'wiki'));
+    writeFileSync(join(projectRoot, 'wiki', 'quickstart.md'), '# Missing frontmatter\n');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        invalidWiki: {
+          nodes: {
+            validate: {
+              action: 'validate-okf-wiki',
+              with: { root: 'wiki', version: '0.1' },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'invalidWiki', { workingDir: projectRoot })).rejects.toThrow(
+      'found 1 error(s)'
+    );
+  });
+
   it('loads a GitLab MR change source and reviews it', async () => {
     const config = {
       ...baseConfig,

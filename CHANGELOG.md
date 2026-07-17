@@ -2,6 +2,13 @@
 
 All notable changes to DRS are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Add the packaged `repository-wiki-sync` workflow and `task/okf-wiki-maintainer` agent for generating and maintaining one repository wiki as an official OKF v0.1 bundle.
+- Add `sync-okf-indexes` and `validate-okf-wiki` workflow actions for deterministic progressive-disclosure indexes and bundle conformance validation.
+
 ## 4.1.0 - 2026-07-17
 
 ### Added

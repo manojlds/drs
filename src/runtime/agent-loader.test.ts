@@ -133,6 +133,16 @@ describe('agent-loader path resolution', () => {
     expect(visualAgent?.tools?.git_diff).toBe(true);
   });
 
+  it('loads packaged OKF wiki maintainer agent', () => {
+    const agents = loadAgents(process.cwd());
+    const wikiAgent = agents.find((agent) => agent.id === 'task/okf-wiki-maintainer');
+
+    expect(wikiAgent?.prompt).toContain('Open Knowledge Format (OKF) v0.1 bundle');
+    expect(wikiAgent?.prompt).toContain('Write only below the bundle root');
+    expect(wikiAgent?.tools?.Edit).toBe(true);
+    expect(wikiAgent?.tools?.Write).toBe(true);
+  });
+
   it('throws actionable error when configured agent path is invalid', () => {
     const projectRoot = createTempDir('drs-agent-loader-invalid-');
 

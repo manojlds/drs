@@ -14,6 +14,7 @@ DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review i
 - 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` and `task/*` agents
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Maintenance workflows**: update changelogs, fix review issues, refresh AGENTS.md-style guidance, and generate PR/MR descriptions
+- 📚 **Repository wikis**: generate and maintain a portable OKF v0.1 knowledge bundle under `wiki/`
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
 - 🎯 **Smart context compression**: dynamic budget sizing with `contextCompression.thresholdPercent`
 
@@ -89,6 +90,9 @@ drs workflow run local-fix-review-issues
 # Refresh AGENTS.md or equivalent repository guidance
 drs workflow run local-update-agents-md
 
+# Generate or update one OKF v0.1 repository wiki bundle under wiki/
+drs workflow run repository-wiki-sync
+
 # To use project-specific agents, configure review.agents in .drs/drs.config.yaml
 # then run the same workflow.
 ```
@@ -103,6 +107,7 @@ drs workflow run local-update-agents-md
 | Update changelog from tag range | `drs workflow run tag-changelog-update` |
 | Fix issues from latest saved local review artifact | `drs workflow run local-fix-review-issues` |
 | Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
+| Generate or update repository wiki | `drs workflow run repository-wiki-sync` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |

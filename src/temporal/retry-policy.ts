@@ -5,6 +5,7 @@ export type TemporalNodeRetryMode = 'retryable' | 'no-retry';
 
 export const TEMPORAL_NO_RETRY_ACTIONS = new Set<NonNullable<WorkflowNodeConfig['action']>>([
   'write',
+  'sync-okf-indexes',
   'git-add',
   'git-branch',
   'git-commit',

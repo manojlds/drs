@@ -19,6 +19,8 @@ drs workflow run local-changelog-update
 drs workflow run tag-changelog-update
 drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md
+drs workflow run repository-wiki-sync
+drs workflow run repository-wiki-sync --input root=docs/wiki --input instructions="Focus on public APIs"
 
 # DRS project-local changelog workflow
 drs workflow run local-changelog-review
@@ -55,6 +57,20 @@ drs workflow validate github-pr-review --json
 `list` shows every available workflow, whether it comes from the packaged set or from `.drs/workflows/*.yaml`, and whether a project workflow overrides a packaged one. `validate` checks workflow schema, dependencies, action options, control targets, and execution waves without running nodes.
 
 Use `drs workflow show <name>` or `drs workflow get <name>` to inspect one workflow's description, inputs, output artifact, and nodes before running it.
+
+## Repository Wiki
+
+The packaged `repository-wiki-sync` workflow generates or updates one repository wiki as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle. The default bundle root is `wiki/`; override it with `--input root=docs/wiki` when a repository keeps documentation under `docs/`.
+
+The workflow performs three steps:
+
+1. `task/okf-wiki-maintainer` creates or surgically updates concept documents.
+2. `sync-okf-indexes` generates stable progressive-disclosure `index.md` files.
+3. `validate-okf-wiki` checks official OKF v0.1 conformance.
+
+Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are reserved. The validator requires parseable YAML frontmatter with a non-empty `type` on every concept, permits producer-defined fields, accepts optional `timestamp`, and reports broken internal links as warnings as required by OKF's permissive consumption model.
+
+Run this workflow with the local executor. Its agent edits multiple files directly and does not yet declare those side effects to the experimental Temporal retry policy. DRS does not commit or push wiki changes; review the resulting working-tree diff normally.
 
 ## Workflow Files
 
@@ -319,6 +335,34 @@ nodes:
     with:
       review: review
       path: "{{inputs.codeQualityReport}}"
+```
+
+### `sync-okf-indexes`
+
+Generates an official OKF v0.1 `index.md` in every non-empty directory of a bundle. The bundle-root index declares `okf_version: "0.1"`; nested indexes contain no frontmatter. Existing indexes are rewritten only when generated content changes.
+
+```yaml
+nodes:
+  sync-indexes:
+    action: sync-okf-indexes
+    with:
+      root: wiki
+      version: "0.1"
+    output: wikiIndexes
+```
+
+### `validate-okf-wiki`
+
+Validates an OKF bundle without modifying it. Invalid concept frontmatter, reserved-file structure, unsafe roots, and symbolic links fail the node. Broken internal links remain warnings because OKF consumers must tolerate them.
+
+```yaml
+nodes:
+  validate-wiki:
+    action: validate-okf-wiki
+    with:
+      root: wiki
+      version: "0.1"
+    output: wikiValidation
 ```
 
 ### `describe`
