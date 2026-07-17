@@ -250,7 +250,7 @@ async function collectBundleEntries(
   const entries = await readdir(absoluteDirectory, { withFileTypes: true });
   const collected: BundleEntry[] = [];
 
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const entry of entries.sort((left, right) => compareStrings(left.name, right.name))) {
     const absolutePath = resolve(absoluteDirectory, entry.name);
     const relativePath = toPosixPath(relative(absoluteRoot, absolutePath));
     if (entry.isSymbolicLink()) {
@@ -484,7 +484,7 @@ function renderIndex(concepts: IndexLink[], directories: IndexLink[], version?: 
 function renderIndexSection(heading: string, links: IndexLink[]): string {
   if (links.length === 0) return '';
   const items = [...links]
-    .sort((left, right) => left.href.localeCompare(right.href))
+    .sort((left, right) => compareStrings(left.href, right.href))
     .map(({ description, href, label }) => {
       const link = `* [${escapeMarkdownLabel(label)}](${href})`;
       return description ? `${link} - ${description}` : link;
@@ -543,6 +543,10 @@ function stripBom(value: string): string {
 
 function toPosixPath(value: string): string {
   return sep === '/' ? value : value.split(sep).join('/');
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function issue(code: string, message: string, issuePath?: string): OkfValidationIssue {

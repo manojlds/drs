@@ -75,6 +75,7 @@ The full list of actions is in `src/lib/config.ts` (`SUPPORTED_WORKFLOW_ACTIONS`
 - **Change sources**: `change-source` with types `local`, `git-range`, `github-pr`, `gitlab-mr`, and `fix-verification`.
 - **Review**: `review`, `review-context`, `review-threshold`, `verify-fix`, `create-review-artifact`, `review-artifact-status`, `review-artifact-add-finding`, `review-artifact-update-findings`, `review-artifact-promote-finding`, `review-artifact-resolve-finding`.
 - **Describe / post**: `describe`, `post-comment`, `post-review-comments`, `post-fix-status`, `code-quality-report`.
+- **Wiki / OKF**: `plan-wiki-update`, `sync-okf-indexes`, `validate-okf-wiki`, `record-wiki-state`, `check-wiki-state`, `check-wiki-clean`.
 - **Git**: `git-diff`, `git-add`, `git-branch`, `git-commit`, `git-push`, `has-diff`, `change-source`, `stack-guard`.
 - **Artifacts**: `save-artifact`, `load-artifact`, `artifact-exists`.
 - **Change requests**: `create-change-request`, `create-pr`, `create-mr`.
@@ -102,5 +103,6 @@ The `WorkflowExecutor` interface in `src/lib/workflow/executor.ts` has a single 
 - [Architecture](architecture.md) for the system context.
 - [Review workflows](review-workflows.md) for review-specific actions.
 - [Maintenance workflows](maintenance-workflows.md) for changelog and fix flows.
+- [Repository wiki](repository-wiki.md) for OKF wiki generation and validation.
 - [Temporal execution](temporal-execution.md) for the durable backend.
 - [Configuration](configuration.md) for workflow defaults and overrides.

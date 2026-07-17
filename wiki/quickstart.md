@@ -16,6 +16,7 @@ DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub
 - [Workflow engine](workflow-engine.md) — how YAML workflows are compiled, scheduled, and executed locally or through Temporal.
 - [Review workflows](review-workflows.md) — how DRS reviews code, persists findings, and posts results to platforms.
 - [Maintenance workflows](maintenance-workflows.md) — changelog updates, agent guidance refresh, and fix workflows.
+- [Repository wiki](repository-wiki.md) — generate and maintain an OKF v0.1 wiki bundle with deterministic delta checks.
 - [Configuration](configuration.md) — `.drs/drs.config.yaml`, environment variables, models, compression, and runtime timeouts.
 - [Integrations](integrations.md) — GitHub/GitLab clients and CI/CD wrappers.
 - [Temporal execution](temporal-execution.md) — durable workflow execution with a Temporal worker.
@@ -42,6 +43,12 @@ npm run dev:cli -- workflow run gitlab-mr-review --input project=<group>/<repo> 
 # Update CHANGELOG.md from local changes
 npm run dev:cli -- workflow run local-changelog-update
 
+# Generate or update the repository wiki
+npm run dev:cli -- workflow run repository-wiki-sync
+
+# Check the repository wiki is current (model-free)
+npm run dev:cli -- workflow run repository-wiki-check
+
 # Run a single agent
 npm run dev:cli -- run-agent review/unified-reviewer --prompt "Review src/lib/config.ts"
 ```
@@ -57,3 +64,4 @@ npm run check:all
 - To understand the execution pipeline, start with [Architecture](architecture.md) and [Workflow engine](workflow-engine.md).
 - To customize agents, models, or skills, read [Pi runtime](pi-runtime.md) and [Configuration](configuration.md).
 - To add DRS to a CI/CD pipeline, read [Integrations](integrations.md).
+- To generate or maintain the repository wiki, read [Repository wiki](repository-wiki.md).

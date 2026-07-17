@@ -47,6 +47,9 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/runtime/*.test.ts` — agent loading and path config.
 - `src/github/*.test.ts` and `src/gitlab/*.test.ts` — platform clients and adapters.
 - `src/temporal/*.test.ts` — Temporal planning, retry policies, workflow ids, and activities.
+- `src/lib/okf-wiki.test.ts` — OKF v0.1 index synchronization and bundle validation.
+- `src/lib/wiki-delta.test.ts` — deterministic delta planning, source/wiki fingerprints, state recording, and clean checks.
+- `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
 
 ## Live tests
 
@@ -82,3 +85,4 @@ When changing behavior, add or update the corresponding `*.test.ts` file. Tests 
 - `vitest.config.ts` for test configuration.
 - `TEMPORAL_EXECUTION_PLAN.md` for the Temporal rollout plan.
 - `.drs/skills/cli-testing/SKILL.md` for CLI contract review guidance.
+- [Repository wiki](repository-wiki.md) for wiki behavior and CI integration.

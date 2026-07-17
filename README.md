@@ -93,6 +93,9 @@ drs workflow run local-update-agents-md
 # Generate or update one OKF v0.1 repository wiki bundle under wiki/
 drs workflow run repository-wiki-sync
 
+# Verify the committed wiki delta state and OKF bundle without a model call
+drs workflow run repository-wiki-check
+
 # To use project-specific agents, configure review.agents in .drs/drs.config.yaml
 # then run the same workflow.
 ```
@@ -108,6 +111,7 @@ drs workflow run repository-wiki-sync
 | Fix issues from latest saved local review artifact | `drs workflow run local-fix-review-issues` |
 | Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
 | Generate or update repository wiki | `drs workflow run repository-wiki-sync` |
+| Check repository wiki without a model | `drs workflow run repository-wiki-check` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |

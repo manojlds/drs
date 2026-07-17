@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -3178,6 +3179,12 @@ describe('workflow runner', () => {
 
   it('runs the packaged repository wiki workflow and validates its OKF bundle', async () => {
     const projectRoot = createTempDir('drs-workflow-okf-wiki-');
+    execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.email', 'tests@example.com'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'DRS Tests'], { cwd: projectRoot });
+    writeFileSync(join(projectRoot, 'README.md'), '# Test repository\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '-m', 'initial source'], { cwd: projectRoot });
     mocks.runAgent.mockImplementation(
       async (
         _config: unknown,
@@ -3187,6 +3194,7 @@ describe('workflow runner', () => {
         expect(agent).toBe('task/okf-wiki-maintainer');
         expect(options.prompt).toContain('Bundle root: knowledge');
         expect(options.prompt).toContain('Focus on workflow behavior.');
+        expect(options.prompt).toContain('"mode": "generate"');
         const wikiRoot = join(options.workingDir ?? projectRoot, 'knowledge');
         mkdirSync(wikiRoot, { recursive: true });
         writeFileSync(
@@ -3240,6 +3248,48 @@ describe('workflow runner', () => {
     expect(readFileSync(join(projectRoot, 'knowledge', 'index.md'), 'utf-8')).toContain(
       '* [Repository quickstart](quickstart.md) - Entry point for repository knowledge.'
     );
+    expect(
+      JSON.parse(readFileSync(join(projectRoot, '.drs', 'wiki-state.json'), 'utf-8'))
+    ).toMatchObject({
+      version: 1,
+      okfVersion: '0.1',
+      root: 'knowledge',
+    });
+
+    mocks.runAgent.mockClear();
+    const checkResult = await runWorkflow(config, 'repository-wiki-check', {
+      workingDir: projectRoot,
+      inputs: {
+        root: 'knowledge',
+      },
+    });
+    expect(checkResult.output).toMatchObject({ valid: true, root: 'knowledge' });
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+
+    const noOpResult = await runWorkflow(config, 'repository-wiki-sync', {
+      workingDir: projectRoot,
+      inputs: {
+        root: 'knowledge',
+        instructions: 'Focus on workflow behavior.',
+      },
+    });
+
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(noOpResult.nodes['plan-update'].output).toMatchObject({
+      mode: 'noop',
+      shouldRun: false,
+    });
+    expect(noOpResult.nodes['maintain-wiki']).toMatchObject({ status: 'skipped' });
+    expect(noOpResult.nodes['validate-current-wiki']).toMatchObject({ type: 'action' });
+    expect(noOpResult.output).toMatchObject({ valid: true, root: 'knowledge' });
+
+    writeFileSync(join(projectRoot, 'README.md'), '# Changed repository\n');
+    await expect(
+      runWorkflow(config, 'repository-wiki-check', {
+        workingDir: projectRoot,
+        inputs: { root: 'knowledge' },
+      })
+    ).rejects.toThrow('found a stale wiki (update)');
   });
 
   it('fails validate-okf-wiki workflow actions for invalid bundles', async () => {

@@ -11,6 +11,7 @@ describe('getTemporalNodeRetryMode', () => {
     const sideEffectingActions: WorkflowAction[] = [
       'write',
       'sync-okf-indexes',
+      'record-wiki-state',
       'git-add',
       'git-branch',
       'git-commit',
@@ -45,7 +46,10 @@ describe('getTemporalNodeRetryMode', () => {
       'review-context',
       'describe',
       'code-quality-report',
+      'plan-wiki-update',
       'validate-okf-wiki',
+      'check-wiki-clean',
+      'check-wiki-state',
       'verify-fix',
     ];
 

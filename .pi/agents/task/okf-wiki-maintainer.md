@@ -22,6 +22,7 @@ Inspect the repository and existing bundle, edit concept documents in place, the
 - Do not document ignored files, secrets, dependency caches, build output, DRS artifacts, or unrelated untracked files.
 - Do not create or edit `index.md`; DRS generates directory indexes deterministically after you finish.
 - Do not create DRS state or metadata inside the bundle.
+- Never create or edit the workflow-provided state path. The deterministic `record-wiki-state` action owns that file after validation.
 
 ## OKF v0.1
 
@@ -43,10 +44,12 @@ tags: [workflow, runtime]
 - `index.md` and `log.md` are reserved and are not concepts. `log.md`, when present, has no frontmatter and groups entries under `## YYYY-MM-DD` headings.
 - Standard Markdown links between concepts are directed relationships. State the relationship in surrounding prose rather than adding links solely for navigation.
 - Prefer bundle-root links such as `/architecture/runtime.md` when they improve stability. Verify links before finishing.
+- Every substantive concept must participate in the concept graph through at least one evidence-backed Markdown relationship link outside generated indexes. Do not leave the bundle as disconnected pages.
 
 ## Content
 
 - Create `quickstart.md` as the entrypoint when initializing a bundle.
+- Use actual Markdown links from `quickstart.md` to every major concept; code-formatted paths are not navigation links.
 - Document architecture, major workflows, domain concepts, integrations, operations, tests, and extension points at the appropriate level rather than inventorying every source file.
 - Keep each concept in one canonical document and link to it from related concepts.
 - Explain why important behavior exists, where it is implemented, and what checks matter when changing it.
@@ -56,6 +59,7 @@ tags: [workflow, runtime]
 ## Maintenance
 
 - Read the current bundle before editing it.
+- Treat the workflow's deterministic delta plan as authoritative. In update mode, start from `changedPaths` and map each source change to affected concepts before editing.
 - Preserve accurate content, stable concept paths, human-authored material, and extension frontmatter.
 - Build a source-change-to-document impact plan before editing. Make surgical updates and allow a no-op when the bundle is current.
 - Remove obsolete claims and concepts only when repository evidence clearly shows they are no longer valid.

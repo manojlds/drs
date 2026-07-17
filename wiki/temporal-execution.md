@@ -95,9 +95,11 @@ temporal workflow query --workflow-id <id> --type drsWorkflowStatus
 ## Safety and retries
 
 - Read-only actions are retryable.
-- Unsafe side effects (git pushes, comments, change-request creation) are scheduled with `maximumAttempts: 1`.
+- Unsafe side effects (git pushes, comments, change-request creation, wiki index writes, and wiki state writes) are scheduled with `maximumAttempts: 1`.
 - Large values are offloaded to the artifact store under `.drs/artifacts/temporal/`.
 - Cancellation is honored: the workflow queries expose `cancelled` and running node ids.
+
+`src/temporal/retry-policy.ts` classifies every workflow action. Writing actions (`write`, `git-add`, `git-branch`, `git-commit`, `git-push`, `save-artifact`, `sync-okf-indexes`, `record-wiki-state`, posting, and change-request creation) are no-retry. Agent nodes are no-retry only when they declare a fixed `writes` path. The wiki maintainer edits a dynamic tree without `writes`, so `repository-wiki-sync` remains local-executor-only; wiki planning, validation, and model-free checks are retryable.
 
 ## Smoke testing
 
@@ -121,3 +123,4 @@ Keep this as a separate CI job because contributors do not need Temporal for reg
 - [Workflow engine](workflow-engine.md) for the compiled plan and executor interface.
 - [Architecture](architecture.md) for the overall system.
 - [Configuration](configuration.md) for Temporal settings.
+- [Repository wiki](repository-wiki.md) for wiki actions and Temporal retry classification.

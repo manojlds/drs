@@ -18,6 +18,8 @@ DRS ships packaged maintenance workflows alongside review workflows. They use th
 | `release-changelog-finalize` | Finalize `CHANGELOG.md` for a release before tagging. |
 | `local-fix-review-issues` | Fix actionable findings from the latest saved review artifact, then re-run review. |
 | `local-update-agents-md` | Update `AGENTS.md` or equivalent guidance using `task/agents-md-updater`. |
+| `repository-wiki-sync` | Generate, reconcile, or update an OKF v0.1 repository wiki bundle. |
+| `repository-wiki-check` | Verify wiki delta state and OKF v0.1 conformance without a model call. |
 
 These workflows are defined in `.pi/workflows/*.yaml`. They are intentionally local-only and do not commit changes. Projects can compose them with `git-add`, `git-commit`, and platform posting actions to build stronger automation.
 
@@ -56,9 +58,18 @@ This repository defines a project-local workflow at `.drs/workflows/local-change
 
 It is selected as the default workflow in `.drs/drs.config.yaml` (`workflow.default: local-changelog-review`), so `npm run dev:cli -- workflow run` runs it without a name.
 
+## Repository wiki
+
+The `repository-wiki-sync` workflow creates or updates an OKF v0.1 wiki bundle. It uses a deterministic delta planner to decide whether the wiki needs to be regenerated, reconciled, updated, or left unchanged. The `task/okf-wiki-maintainer` agent runs only when the delta plan says work is needed. After the agent edits concepts, the workflow synchronizes directory indexes, validates the bundle, and records state in `.drs/wiki-state.json`.
+
+The `repository-wiki-check` workflow is a model-free CI gate. It checks the recorded delta state and validates the bundle without invoking an agent. `.github/workflows/ci.yml` runs this check on every pull request.
+
+See [Repository wiki](repository-wiki.md) for the full delta fingerprinting, state, and validation details.
+
 ## See also
 
 - [Workflow engine](workflow-engine.md) for the DSL and scheduling.
 - [Review workflows](review-workflows.md) for the review artifact and fix verification.
 - [Integrations](integrations.md) for the GitHub Actions wrappers that use these workflows.
+- [Repository wiki](repository-wiki.md) for OKF wiki maintenance and CI checks.
 - [Configuration](configuration.md) for `fix.checks` and workflow defaults.

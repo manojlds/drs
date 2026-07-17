@@ -21,6 +21,7 @@ drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md
 drs workflow run repository-wiki-sync
 drs workflow run repository-wiki-sync --input root=docs/wiki --input instructions="Focus on public APIs"
+drs workflow run repository-wiki-check
 
 # DRS project-local changelog workflow
 drs workflow run local-changelog-review
@@ -62,11 +63,16 @@ Use `drs workflow show <name>` or `drs workflow get <name>` to inspect one workf
 
 The packaged `repository-wiki-sync` workflow generates or updates one repository wiki as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle. The default bundle root is `wiki/`; override it with `--input root=docs/wiki` when a repository keeps documentation under `docs/`.
 
-The workflow performs three steps:
+The workflow first computes deterministic source and wiki fingerprints, then chooses one of two branches:
 
-1. `task/okf-wiki-maintainer` creates or surgically updates concept documents.
-2. `sync-okf-indexes` generates stable progressive-disclosure `index.md` files.
-3. `validate-okf-wiki` checks official OKF v0.1 conformance.
+1. Generate/reconcile/update: run `task/okf-wiki-maintainer`, synchronize indexes, validate the bundle, and atomically record `.drs/wiki-state.json`.
+2. No-op: skip the model and validate the existing bundle when both fingerprints match the recorded state.
+
+The source fingerprint covers tracked and non-ignored untracked files outside the bundle and state path. The state retains a per-path fingerprint manifest, which keeps delta detection stable when dirty source, wiki, and state are committed together and gives later updates an exact `changedPaths` set. Older state without a manifest falls back to the recorded Git head plus current working-tree changes.
+
+Clean Git submodules use the checked-out commit as their canonical fingerprint, including when the submodule is not initialized in CI. Dirty submodules are detected during planning but must be committed before DRS records wiki state.
+
+The packaged `repository-wiki-check` workflow recomputes the fingerprints and validates OKF without invoking a model. DRS runs it in pull-request CI after building the package. Run `repository-wiki-sync --input check=true` locally when you want generation followed by a failure if the workflow produced uncommitted wiki or state changes.
 
 Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are reserved. The validator requires parseable YAML frontmatter with a non-empty `type` on every concept, permits producer-defined fields, accepts optional `timestamp`, and reports broken internal links as warnings as required by OKF's permissive consumption model.
 
@@ -350,6 +356,22 @@ nodes:
       version: "0.1"
     output: wikiIndexes
 ```
+
+### `plan-wiki-update`
+
+Computes source and bundle fingerprints and returns `generate`, `reconcile`, `update`, or `noop`. It accepts `root` and `statePath`; update results include the exact changed source paths, capped at 500 entries.
+
+### `record-wiki-state`
+
+Atomically writes `.drs/wiki-state.json` after successful index synchronization and validation. The state records the OKF version, bundle root, Git head, aggregate source hash, per-path source fingerprints, wiki hash, and update time.
+
+### `check-wiki-state`
+
+Runs the same delta planner without a model and fails unless it returns `noop`. The packaged `repository-wiki-check` workflow uses this action in CI.
+
+### `check-wiki-clean`
+
+Fails when the bundle or state path has tracked, untracked, or ignored working-tree changes. `repository-wiki-sync` uses it when `check=true`.
 
 ### `validate-okf-wiki`
 

@@ -15,19 +15,42 @@ inputs:
     type: string
     default: ''
     description: Additional repository-specific wiki guidance
+  statePath:
+    type: string
+    default: .drs/wiki-state.json
+    description: Repository-relative delta state path outside the OKF bundle
+  check:
+    type: boolean
+    default: false
+    description: Fail when the workflow produces uncommitted wiki or state changes
 output: wikiValidation
 nodes:
+  plan-update:
+    action: plan-wiki-update
+    with:
+      root: '{{inputs.root}}'
+      statePath: '{{inputs.statePath}}'
+    output: wikiDelta
+
   maintain-wiki:
     agent: task/okf-wiki-maintainer
+    needs:
+      - plan-update
+    if: artifacts.wikiDelta.shouldRun == true
     input: |
-      Generate or update the repository wiki as one OKF v0.1 bundle.
+      Generate, reconcile, or update the repository wiki as one OKF v0.1 bundle.
 
       Bundle root: {{inputs.root}}
+
+      Deterministic delta plan:
+      {{artifacts.wikiDelta}}
 
       Additional guidance:
       {{inputs.instructions}}
 
-      Inspect the repository and existing bundle, edit concept files in place, and return a concise summary. Do not edit index.md files; DRS synchronizes them in the next step. Do not commit or push.
+      For generate mode, inspect the full repository and create the initial bundle. For update mode, use changedPaths as the primary scope and edit only directly affected concepts. For reconcile mode, preserve accurate existing content while repairing state or bundle drift.
+
+      Edit concept files in place and return a concise summary. Do not edit index.md files; DRS synchronizes them in the next step. Do not commit or push.
     output: wikiSummary
 
   sync-indexes:
@@ -39,7 +62,7 @@ nodes:
       version: '0.1'
     output: wikiIndexes
 
-  validate-wiki:
+  validate-updated-wiki:
     action: validate-okf-wiki
     needs:
       - sync-indexes
@@ -47,3 +70,40 @@ nodes:
       root: '{{inputs.root}}'
       version: '0.1'
     output: wikiValidation
+
+  record-state:
+    action: record-wiki-state
+    needs:
+      - validate-updated-wiki
+    with:
+      root: '{{inputs.root}}'
+      statePath: '{{inputs.statePath}}'
+    output: wikiState
+
+  check-updated-wiki:
+    action: check-wiki-clean
+    needs:
+      - record-state
+    if: inputs.check == true
+    with:
+      root: '{{inputs.root}}'
+      statePath: '{{inputs.statePath}}'
+
+  validate-current-wiki:
+    action: validate-okf-wiki
+    needs:
+      - plan-update
+    if: artifacts.wikiDelta.shouldRun == false
+    with:
+      root: '{{inputs.root}}'
+      version: '0.1'
+    output: wikiValidation
+
+  check-current-wiki:
+    action: check-wiki-clean
+    needs:
+      - validate-current-wiki
+    if: inputs.check == true
+    with:
+      root: '{{inputs.root}}'
+      statePath: '{{inputs.statePath}}'
