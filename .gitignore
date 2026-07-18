@@ -150,3 +150,7 @@ vite.config.ts.timestamp-*
 !.drs/context.md
 !.drs/drs.config.yaml
 !.drs/wiki-state.json
+
+# Repository wiki site build output
+/.wiki-site/.vitepress/cache/
+/.wiki-site/dist/
