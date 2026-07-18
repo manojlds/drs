@@ -2,6 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@diff-review-system/drs)](https://www.npmjs.com/package/@diff-review-system/drs)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Knowledge Map](https://img.shields.io/badge/knowledge-map-4056c7.svg)](https://manojlds.github.io/drs/)
 
 **Workflow-first AI code maintenance for reviews, changelogs, docs, and repository upkeep.**
 
@@ -14,12 +15,14 @@ DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review i
 - 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` and `task/*` agents
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Maintenance workflows**: update changelogs, fix review issues, refresh AGENTS.md-style guidance, and generate PR/MR descriptions
-- 📚 **Repository wikis**: generate and maintain a portable OKF v0.1 knowledge bundle under `wiki/`
+- 📚 **Repository wikis**: generate and maintain a portable OKF v0.1 bundle, [knowledge site](https://manojlds.github.io/drs/), and [concept graph](https://manojlds.github.io/drs/graph.html)
 - 🧾 **Portable outputs**: inline comments, JSON artifacts, and GitLab code quality reports
 - 🎯 **Smart context compression**: dynamic budget sizing with `contextCompression.thresholdPercent`
 
 ## Quick Links
 
+- [Repository Knowledge Map](https://manojlds.github.io/drs/)
+- [Interactive Concept Graph](https://manojlds.github.io/drs/graph.html)
 - [Quick Start](#quick-start)
 - [Deployment Modes](#deployment-modes)
 - [Customization](#customization)
@@ -96,8 +99,12 @@ drs workflow run repository-wiki-sync
 # Verify the committed wiki delta state and OKF bundle without a model call
 drs workflow run repository-wiki-check
 
-# Build the human-readable repository wiki website
-npm run wiki:site:build
+# Build or locally serve the human-readable repository wiki website
+drs wiki build --source wiki --output .drs/wiki-site
+drs wiki serve --source wiki
+
+# Verify a deployed wiki site, graph, search, raw bundle, and linked assets
+drs wiki check-site https://example.github.io/project/
 
 # To use project-specific agents, configure review.agents in .drs/drs.config.yaml
 # then run the same workflow.
@@ -115,7 +122,9 @@ npm run wiki:site:build
 | Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
 | Generate or update repository wiki | `drs workflow run repository-wiki-sync` |
 | Check repository wiki without a model | `drs workflow run repository-wiki-check` |
-| Build repository wiki website | `npm run wiki:site:build` |
+| Build repository wiki website | `drs wiki build` |
+| Serve repository wiki website | `drs wiki serve` |
+| Verify deployed wiki website | `drs wiki check-site <url>` |
 | Update changelog and review local changes | `drs workflow run local-changelog-review` |
 | Review GitHub PR via workflow | `drs workflow run github-pr-review --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Review GitLab MR via workflow | `drs workflow run gitlab-mr-review --input project=<group/repo> --input mr=<number>` |

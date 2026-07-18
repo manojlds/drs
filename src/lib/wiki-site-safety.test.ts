@@ -3,6 +3,7 @@ import {
   isSafeWikiSiteRemoteUrl,
   neutralizeWikiSiteMarkdown,
   normalizeWikiSiteBase,
+  readWikiSiteOkfVersion,
   sanitizeWikiSiteFrontmatter,
 } from './wiki-site-safety.js';
 
@@ -55,5 +56,11 @@ describe('wiki site publishing safety', () => {
     expect(normalizeWikiSiteBase('/drs/')).toBe('/drs/');
     expect(() => normalizeWikiSiteBase('drs/')).toThrow(/start and end with a slash/);
     expect(() => normalizeWikiSiteBase('/drs')).toThrow(/start and end with a slash/);
+  });
+
+  it('reads equivalent YAML forms of the OKF version', () => {
+    expect(readWikiSiteOkfVersion("---\nokf_version: '0.1'\n---\n")).toBe('0.1');
+    expect(readWikiSiteOkfVersion('---\nokf_version: 0.1\n---\n')).toBeUndefined();
+    expect(readWikiSiteOkfVersion('not frontmatter')).toBeUndefined();
   });
 });

@@ -80,15 +80,17 @@ Run this workflow with the local executor. Its agent edits multiple files direct
 
 ### Repository wiki website
 
-This repository renders the canonical `wiki/` bundle with VitePress. Consumer configuration and theme files live under `.wiki-site/`, outside the portable OKF bundle. The build derives sidebar groups from concept `type` frontmatter and publishes concept metadata, local search, a sitemap, `llms.txt`, and an unchanged raw bundle under `/okf/`. Raw HTML, executable page frontmatter, file include/snippet directives, unsafe resource schemes, and local image imports are disabled at the publishing boundary.
+DRS renders a canonical OKF bundle with its packaged VitePress adapter. The build derives sidebar groups from concept `type` frontmatter, uses `quickstart.md` as the start page when present and otherwise falls back to the first concept, and publishes concept metadata, local search, an internal-link relationship graph, a sitemap, `llms.txt`, and an unchanged raw bundle under `/okf/`. A `log.md` page is optional.
+
+Build and serve commands validate the OKF source before rendering and reject source or output paths that escape through symbolic links. Raw HTML, executable page frontmatter, file include/snippet directives, unsafe resource schemes, and local image imports are disabled at the publishing boundary. In-process build and serve operations are isolated and cannot overlap because VitePress configuration is scoped through temporary process environment values.
 
 ```bash
-npm run wiki:site:dev
-npm run wiki:site:build
-npm run wiki:site:preview
+drs wiki build --source wiki --output .drs/wiki-site
+drs wiki serve --source wiki
+drs wiki check-site https://example.github.io/project/
 ```
 
-Pull-request CI runs `wiki:site:build` after the model-free wiki check. `.github/workflows/wiki-pages.yml` repeats validation and deploys `.wiki-site/dist` to GitHub Pages on relevant pushes to `main`.
+Use `--base`, `--site-url`, `--repository owner/name`, and `--title` to configure hosted output. Pull-request CI builds the DRS wiki after the model-free wiki check. `.github/workflows/wiki-pages.yml` repeats validation, derives the canonical URL and base path from GitHub Pages, deploys `.wiki-site/dist` on relevant pushes to `main`, and then uses `drs wiki check-site` to crawl deployed pages and same-origin assets and verify search, structured graph data and concept links, `llms.txt`, sitemap, and raw OKF outputs.
 
 ## Workflow Files
 

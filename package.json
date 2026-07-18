@@ -16,8 +16,8 @@
     "test": "vitest run",
     "test:temporal:smoke": "DRS_TEMPORAL_SMOKE=1 vitest run src/temporal/smoke.test.ts",
     "test:e2e": "DRS_E2E_LIVE=1 vitest run src/cli/review-local.live.e2e.test.ts",
-    "wiki:site:dev": "vitepress dev .wiki-site",
-    "wiki:site:build": "vitepress build .wiki-site",
+    "wiki:site:dev": "npm run build --silent && vitepress dev .wiki-site",
+    "wiki:site:build": "npm run build --silent && vitepress build .wiki-site",
     "wiki:site:preview": "vitepress preview .wiki-site",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
@@ -35,7 +35,9 @@
     "!dist/**/*.test.*",
     "README.md",
     "LICENSE",
-    ".pi"
+    ".pi",
+    ".wiki-site",
+    "!.wiki-site/dist"
   ],
   "repository": {
     "type": "git",
@@ -44,7 +46,7 @@
   "bugs": {
     "url": "https://github.com/manojlds/drs/issues"
   },
-  "homepage": "https://github.com/manojlds/drs#readme",
+  "homepage": "https://manojlds.github.io/drs/",
   "keywords": [
     "gitlab",
     "github",
@@ -72,6 +74,7 @@
     "commander": "^12.0.0",
     "dotenv": "^16.0.0",
     "simple-git": "^3.36.0",
+    "vitepress": "^1.6.4",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
@@ -84,7 +87,6 @@
     "prettier": "^3.8.4",
     "tsx": "^4.22.4",
     "typescript": "^5.3.0",
-    "vitepress": "^1.6.4",
     "vitest": "^4.1.9"
   },
   "engines": {

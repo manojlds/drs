@@ -128,25 +128,28 @@ This ensures the wiki is up to date and OKF-conformant on every pull request.
 
 ## Human-readable website
 
-The canonical `wiki/` bundle is also the source for a VitePress website. Site configuration and the custom theme live under `.wiki-site/`, outside the bundle, so publishing concerns do not alter portable OKF content.
+The canonical `wiki/` bundle is also the source for a VitePress website. DRS packages the adapter and theme under `.wiki-site/`, outside the bundle, so publishing concerns do not alter portable OKF content and other repositories can use the same renderer.
 
 ```bash
-npm run wiki:site:dev
-npm run wiki:site:build
-npm run wiki:site:preview
+drs wiki build --source wiki --output .drs/wiki-site
+drs wiki serve --source wiki
+drs wiki check-site https://example.github.io/project/
 ```
 
-The adapter scans concept frontmatter to generate type-grouped navigation and displays `type`, `description`, tags, resources, and timestamps as concept metadata. It escapes DRS workflow template expressions such as `{{artifacts.change}}` during rendering without modifying their source Markdown.
+`drs wiki build` accepts `--base`, `--site-url`, `--repository owner/name`, and `--title` for hosted output. `drs wiki serve` starts the same packaged adapter as a local development server. `drs wiki check-site` retries while a deployment propagates, then crawls sitemap pages and same-origin assets and verifies the graph, local search marker, raw OKF index, and `llms.txt`.
 
-The publishing boundary treats bundle content as untrusted. It disables raw HTML, executable page frontmatter, file include/snippet directives, non-HTTP resource links, and local image imports so wiki content cannot read runner files or inject executable markup into the published origin.
+The adapter scans concept frontmatter to generate type-grouped navigation and displays `type`, `description`, tags, resources, and timestamps as concept metadata. It uses `quickstart.md` as the start concept when present, falls back to the first concept otherwise, and treats `log.md` as optional. It escapes DRS workflow template expressions such as `{{artifacts.change}}` during rendering without modifying their source Markdown.
+
+The publishing boundary treats bundle content as untrusted. Build and serve commands validate the source bundle and reject symbolic-link source/output escapes. Rendering disables raw HTML, executable page frontmatter, file include/snippet directives, non-HTTP resource links, and local image imports so wiki content cannot read runner files or inject executable markup into the published origin. Overlapping in-process builds and servers are rejected to keep their temporary VitePress configuration isolated.
 
 Every build also emits:
 
 - A local full-text search index and `sitemap.xml` for human discovery.
+- An interactive `graph.html` generated from internal Markdown links between concepts.
 - `llms.txt` with concept summaries and public URLs.
 - An unchanged copy of the canonical bundle under `/okf/` for agents and downloads.
 
-Pull-request CI builds the site without deploying it. `.github/workflows/wiki-pages.yml` validates the wiki, builds with the repository-specific base path, and publishes `.wiki-site/dist` to GitHub Pages after relevant changes merge to `main`.
+Pull-request CI builds the site without deploying it. `.github/workflows/wiki-pages.yml` validates the wiki, derives its canonical URL and base path from GitHub Pages, publishes `.wiki-site/dist` after relevant changes merge to `main`, and runs the deployed-site smoke check. Generated `.wiki-site/dist` content is excluded from the reusable npm package.
 
 ## Agent and skills
 
@@ -160,6 +163,7 @@ Wiki behavior is covered by:
 
 - `src/lib/okf-wiki.test.ts` — index synchronization and validation.
 - `src/lib/wiki-delta.test.ts` — delta planning, fingerprinting, state recording, and clean checks.
+- `src/lib/wiki-site*.test.ts` — graph extraction, publishing safety, reusable build/serve setup, and deployed-site smoke checks.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
 - `src/temporal/retry-policy.test.ts` — Temporal retry classification for wiki actions (`sync-okf-indexes` and `record-wiki-state` are no-retry; `plan-wiki-update`, `validate-okf-wiki`, `check-wiki-state`, and `check-wiki-clean` are retryable).
 

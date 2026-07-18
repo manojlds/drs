@@ -10,6 +10,11 @@ All notable changes to DRS are documented in this file.
 - Add `sync-okf-indexes` and `validate-okf-wiki` workflow actions for deterministic progressive-disclosure indexes and bundle conformance validation.
 - Add source/wiki fingerprints, persisted delta state, model-free no-op and PR checks, and changed-path-scoped wiki maintenance.
 - Add an OKF-aware VitePress website with local search, concept metadata, raw bundle and `llms.txt` outputs, PR build validation, and GitHub Pages deployment.
+- Add an interactive internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and post-deployment Pages smoke checks.
+
+### Fixed
+
+- Harden reusable wiki rendering against symbolic-link escapes and overlapping in-process operations, support valid bundles without DRS-specific quickstart/log pages, and exclude generated site output from the npm package.
 
 ## 4.1.0 - 2026-07-17
 

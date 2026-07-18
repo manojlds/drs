@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useData, withBase } from 'vitepress';
+import { type DefaultTheme, useData, withBase } from 'vitepress';
 
-const { page, frontmatter } = useData();
+interface WikiThemeConfig extends DefaultTheme.Config {
+  startConcept?: { link: string; text: string };
+}
+
+const { page, frontmatter, site, theme } = useData<WikiThemeConfig>();
 const isIndex = computed(() => page.value.relativePath === 'index.md');
+const startConcept = computed(() => theme.value.startConcept);
 const type = computed(() => stringValue(frontmatter.value.type));
 const description = computed(() => stringValue(frontmatter.value.description));
 const resource = computed(() => stringValue(frontmatter.value.resource));
@@ -32,14 +37,15 @@ function safeRemoteUrl(value: string): string {
 <template>
   <section v-if="isIndex" class="bundle-lead">
     <p class="bundle-lead__eyebrow">OPEN KNOWLEDGE FORMAT · 0.1</p>
-    <h1>DRS Knowledge Map</h1>
+    <h1>{{ site.title }}</h1>
     <p>
-      The maintained field guide to DRS architecture, review pipelines, workflow execution, and
-      repository operations. Every page below is both human-readable documentation and an
+      {{ site.description }} Every page below is both human-readable documentation and an
       agent-readable OKF concept.
     </p>
     <div class="bundle-lead__actions">
-      <a class="bundle-lead__primary" :href="withBase('/quickstart')">Start with the quickstart</a>
+      <a v-if="startConcept" class="bundle-lead__primary" :href="withBase(startConcept.link)"
+        >Start with {{ startConcept.text }}</a
+      >
       <a :href="withBase('/okf/index.md')">Read the raw bundle</a>
     </div>
   </section>

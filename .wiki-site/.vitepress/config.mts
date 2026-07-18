@@ -1,6 +1,7 @@
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
+import { cp, lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'fs/promises';
 import { lstatSync } from 'fs';
-import { dirname, extname, join, relative, resolve, sep } from 'path';
+import { createRequire } from 'module';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig, type DefaultTheme } from 'vitepress';
 import { parse as parseYaml } from 'yaml';
@@ -8,36 +9,64 @@ import {
   isSafeWikiSiteRemoteUrl,
   neutralizeWikiSiteMarkdown,
   normalizeWikiSiteBase,
+  readWikiSiteOkfVersion,
   sanitizeWikiSiteFrontmatter,
-} from '../../src/lib/wiki-site-safety.ts';
+} from '../../dist/lib/wiki-site-safety.js';
+import {
+  createWikiSiteGraphHtml,
+  encodeWikiSiteConceptId,
+  extractWikiSiteConceptLinks,
+} from '../../dist/lib/wiki-site-graph.js';
 
 interface OkfConcept {
   description: string;
   id: string;
+  links: string[];
   title: string;
   type: string;
 }
 
+interface WikiThemeConfig extends DefaultTheme.Config {
+  startConcept?: { link: string; text: string };
+}
+
 const configDirectory = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(configDirectory, '../..');
-const wikiRoot = join(repositoryRoot, 'wiki');
-const repositoryName = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'drs';
+const require = createRequire(import.meta.url);
+const bundledRepositoryRoot = resolve(configDirectory, '../..');
+const siteRoot = resolve(configDirectory, '..');
+const projectRoot = resolve(process.env.DRS_WIKI_SITE_PROJECT_ROOT ?? bundledRepositoryRoot);
+const wikiRoot = resolve(projectRoot, process.env.DRS_WIKI_SITE_SOURCE ?? 'wiki');
+const outputRoot = resolve(process.env.DRS_WIKI_SITE_OUTPUT ?? join(siteRoot, 'dist'));
+const repository =
+  process.env.DRS_WIKI_SITE_REPOSITORY !== undefined
+    ? process.env.DRS_WIKI_SITE_REPOSITORY
+    : process.env.GITHUB_REPOSITORY || 'manojlds/drs';
+const [repositoryOwner = 'localhost', configuredRepositoryName] = repository.split('/');
+const repositoryName = configuredRepositoryName || basename(projectRoot);
 const base = normalizeWikiSiteBase(
   process.env.WIKI_SITE_BASE ??
     (process.env.GITHUB_ACTIONS === 'true' ? `/${repositoryName}/` : '/')
 );
-const siteUrl = process.env.WIKI_SITE_URL ?? 'https://manojlds.github.io/drs';
-const concepts = await loadConcepts(wikiRoot);
+const siteUrl = (
+  process.env.WIKI_SITE_URL ?? `https://${repositoryOwner}.github.io/${repositoryName}`
+).replace(/\/+$/, '');
+const siteTitle = process.env.DRS_WIKI_SITE_TITLE ?? `${repositoryName} Knowledge Map`;
+const siteDescription = `Open Knowledge Format concepts and relationships for ${repositoryName}.`;
+const sourcePath = relative(projectRoot, wikiRoot).split(sep).join('/');
+const markdownFiles = await listMarkdownFiles(wikiRoot);
+const concepts = await loadConcepts(wikiRoot, markdownFiles);
+const startConcept = concepts.find((concept) => concept.id === 'quickstart') ?? concepts[0];
+const hasLog = markdownFiles.includes('log.md');
 
 export default defineConfig({
-  title: 'DRS Knowledge Map',
-  titleTemplate: ':title · DRS Knowledge Map',
-  description: 'Architecture, workflows, operations, and maintenance knowledge for DRS.',
+  title: siteTitle,
+  titleTemplate: `:title · ${siteTitle}`,
+  description: siteDescription,
   lang: 'en-US',
   base,
-  srcDir: '../wiki',
-  outDir: './dist',
-  cacheDir: './.vitepress/cache',
+  srcDir: relative(siteRoot, wikiRoot).split(sep).join('/'),
+  outDir: outputRoot,
+  cacheDir: resolve(projectRoot, '.drs/wiki-site-cache'),
   cleanUrls: false,
   lastUpdated: true,
   sitemap: {
@@ -48,6 +77,16 @@ export default defineConfig({
     ['meta', { name: 'color-scheme', content: 'light dark' }],
   ],
   vite: {
+    logLevel: process.env.DRS_WIKI_SITE_QUIET === 'true' ? 'silent' : 'info',
+    resolve: {
+      alias: [
+        { find: /^vue$/, replacement: require.resolve('vue/dist/vue.runtime.esm-bundler.js') },
+        {
+          find: /^vue\/server-renderer$/,
+          replacement: require.resolve('@vue/server-renderer/dist/server-renderer.esm-bundler.js'),
+        },
+      ],
+    },
     plugins: [
       {
         name: 'okf-safe-markdown-source',
@@ -55,6 +94,71 @@ export default defineConfig({
         transform(source, id) {
           if (!id.endsWith('.md')) return null;
           return neutralizeWikiSiteMarkdown(source);
+        },
+      },
+      {
+        name: 'okf-development-artifacts',
+        configureServer(server) {
+          server.middlewares.use(async (request, response, next) => {
+            try {
+              const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+              if (base !== '/' && !requestUrl.pathname.startsWith(base)) {
+                next();
+                return;
+              }
+              const sitePath =
+                base !== '/' && requestUrl.pathname.startsWith(base)
+                  ? `/${requestUrl.pathname.slice(base.length)}`
+                  : requestUrl.pathname;
+              if (sitePath === '/graph.html') {
+                const currentConcepts = await loadConcepts(wikiRoot);
+                sendDevelopmentArtifact(
+                  response,
+                  createWikiSiteGraphHtml(currentConcepts, { base, siteTitle }),
+                  'text/html; charset=utf-8'
+                );
+                return;
+              }
+              if (sitePath === '/llms.txt') {
+                const currentConcepts = await loadConcepts(wikiRoot);
+                sendDevelopmentArtifact(
+                  response,
+                  createLlmsText(currentConcepts),
+                  'text/plain; charset=utf-8'
+                );
+                return;
+              }
+              if (sitePath.startsWith('/okf/')) {
+                const rawPath = resolve(
+                  wikiRoot,
+                  decodeURIComponent(sitePath.slice('/okf/'.length))
+                );
+                const relativePath = relative(wikiRoot, rawPath);
+                if (
+                  extname(rawPath) !== '.md' ||
+                  isAbsolute(relativePath) ||
+                  relativePath === '..' ||
+                  relativePath.startsWith(`..${sep}`)
+                ) {
+                  next();
+                  return;
+                }
+                if (!(await isSafeRawWikiPath(rawPath, relativePath))) {
+                  next();
+                  return;
+                }
+                sendDevelopmentArtifact(
+                  response,
+                  await readFile(rawPath, 'utf-8'),
+                  'text/markdown; charset=utf-8'
+                );
+                return;
+              }
+              next();
+            } catch (error) {
+              next(error);
+            }
+          });
         },
       },
     ],
@@ -83,15 +187,26 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: 'Start here', link: '/quickstart' },
+      ...(startConcept
+        ? [{ text: 'Start here', link: `/${encodeWikiSiteConceptId(startConcept.id)}` }]
+        : []),
       { text: 'Concepts', link: '/' },
+      { text: 'Graph', link: '/graph.html' },
       { text: 'Raw OKF', link: `${siteUrl}/okf/index.md` },
       {
         text: 'OKF v0.1',
         link: 'https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md',
       },
     ],
-    sidebar: createSidebar(concepts),
+    sidebar: createSidebar(concepts, hasLog),
+    ...(startConcept
+      ? {
+          startConcept: {
+            link: `/${encodeWikiSiteConceptId(startConcept.id)}`,
+            text: startConcept.title,
+          },
+        }
+      : {}),
     search: {
       provider: 'local',
     },
@@ -99,10 +214,12 @@ export default defineConfig({
       level: 'deep',
       label: 'On this concept',
     },
-    editLink: {
-      pattern: 'https://github.com/manojlds/drs/edit/main/wiki/:path',
-      text: 'Edit this concept on GitHub',
-    },
+    editLink: repository
+      ? {
+          pattern: `https://github.com/${repository}/edit/main/${sourcePath}/:path`,
+          text: 'Edit this concept on GitHub',
+        }
+      : undefined,
     lastUpdated: {
       text: 'Last source update',
       formatOptions: {
@@ -110,12 +227,12 @@ export default defineConfig({
         timeStyle: 'short',
       },
     },
-    socialLinks: [{ icon: 'github', link: 'https://github.com/manojlds/drs' }],
+    socialLinks: repository ? [{ icon: 'github', link: `https://github.com/${repository}` }] : [],
     docFooter: {
       prev: 'Previous concept',
       next: 'Next concept',
     },
-  },
+  } satisfies WikiThemeConfig,
   async buildEnd(siteConfig) {
     const rawBundleOutput = join(siteConfig.outDir, 'okf');
     await rm(rawBundleOutput, { recursive: true, force: true });
@@ -126,34 +243,60 @@ export default defineConfig({
     await mkdir(siteConfig.outDir, { recursive: true });
     await Promise.all([
       writeFile(join(siteConfig.outDir, 'llms.txt'), createLlmsText(concepts), 'utf-8'),
+      writeFile(
+        join(siteConfig.outDir, 'graph.html'),
+        createWikiSiteGraphHtml(concepts, { base, siteTitle }),
+        'utf-8'
+      ),
       writeFile(join(siteConfig.outDir, '.nojekyll'), '', 'utf-8'),
     ]);
     await assertSiteOutput(siteConfig.outDir);
   },
 });
 
+function sendDevelopmentArtifact(
+  response: { end(content: string): void; setHeader(name: string, value: string): void },
+  content: string,
+  contentType: string
+): void {
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('Content-Type', contentType);
+  response.end(content);
+}
+
 async function assertSiteOutput(outputDirectory: string): Promise<void> {
-  const [indexHtml, rawIndex, llmsText] = await Promise.all([
+  const [indexHtml, graphHtml, rawIndex, llmsText] = await Promise.all([
     readFile(join(outputDirectory, 'index.html'), 'utf-8'),
+    readFile(join(outputDirectory, 'graph.html'), 'utf-8'),
     readFile(join(outputDirectory, 'okf', 'index.md'), 'utf-8'),
     readFile(join(outputDirectory, 'llms.txt'), 'utf-8'),
   ]);
-  const expectedLinks = [`href="${base}assets/`, `href="${base}quickstart.html`];
+  const expectedLinks = [
+    `href="${base}assets/`,
+    `href="${base}graph.html`,
+    ...(startConcept ? [`href="${base}${encodeWikiSiteConceptId(startConcept.id)}.html`] : []),
+  ];
   const missingLink = expectedLinks.find((link) => !indexHtml.includes(link));
   if (missingLink) {
     throw new Error(`Generated wiki site is missing expected base-path link ${missingLink}`);
   }
-  if (!rawIndex.includes('okf_version: "0.1"')) {
+  if (readWikiSiteOkfVersion(rawIndex) !== '0.1') {
     throw new Error('Generated wiki site is missing the unchanged OKF bundle index');
   }
-  if (!llmsText.includes(`${siteUrl}/quickstart.html`)) {
+  if (
+    startConcept &&
+    !llmsText.includes(`${siteUrl}/${encodeWikiSiteConceptId(startConcept.id)}.html`)
+  ) {
     throw new Error('Generated wiki site is missing public concept URLs in llms.txt');
+  }
+  if (!graphHtml.includes(`href="${base}"`) || !graphHtml.includes('id="graph-data"')) {
+    throw new Error('Generated wiki site is missing the base-aware concept graph');
   }
 }
 
-async function loadConcepts(directory: string): Promise<OkfConcept[]> {
-  const concepts: OkfConcept[] = [];
-  for (const filePath of await listMarkdownFiles(directory)) {
+async function loadConcepts(directory: string, markdownFiles?: string[]): Promise<OkfConcept[]> {
+  const concepts: Array<Omit<OkfConcept, 'links'> & { content: string }> = [];
+  for (const filePath of markdownFiles ?? (await listMarkdownFiles(directory))) {
     const name = filePath.split('/').at(-1);
     if (name === 'index.md' || name === 'log.md') continue;
     const content = await readFile(join(directory, ...filePath.split('/')), 'utf-8');
@@ -165,9 +308,16 @@ async function loadConcepts(directory: string): Promise<OkfConcept[]> {
       type: String(frontmatter.type),
       title: String(frontmatter.title ?? titleFromId(id)),
       description: String(frontmatter.description ?? ''),
+      content,
     });
   }
-  return concepts.sort((left, right) => compareStrings(left.id, right.id));
+  const conceptIds = new Set(concepts.map((concept) => concept.id));
+  return concepts
+    .map(({ content, ...concept }) => ({
+      ...concept,
+      links: extractWikiSiteConceptLinks(content, concept.id, conceptIds),
+    }))
+    .sort((left, right) => compareStrings(left.id, right.id));
 }
 
 async function listMarkdownFiles(directory: string, current = ''): Promise<string[]> {
@@ -195,7 +345,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
     : null;
 }
 
-function createSidebar(concepts: OkfConcept[]): DefaultTheme.SidebarItem[] {
+function createSidebar(concepts: OkfConcept[], hasLog: boolean): DefaultTheme.SidebarItem[] {
   const typeOrder = [
     'Quickstart',
     'Architecture',
@@ -224,7 +374,7 @@ function createSidebar(concepts: OkfConcept[]): DefaultTheme.SidebarItem[] {
       text: 'Bundle',
       items: [
         { text: 'Concept index', link: '/' },
-        { text: 'Update log', link: '/log' },
+        ...(hasLog ? [{ text: 'Update log', link: '/log' }] : []),
       ],
     },
     ...orderedTypes.map((type) => ({
@@ -232,7 +382,7 @@ function createSidebar(concepts: OkfConcept[]): DefaultTheme.SidebarItem[] {
       collapsed: false,
       items: (groups.get(type) ?? []).map((concept) => ({
         text: concept.title,
-        link: `/${concept.id}`,
+        link: `/${encodeWikiSiteConceptId(concept.id)}`,
       })),
     })),
   ];
@@ -240,19 +390,50 @@ function createSidebar(concepts: OkfConcept[]): DefaultTheme.SidebarItem[] {
 
 function createLlmsText(items: OkfConcept[]): string {
   const lines = [
-    '# DRS Repository Wiki',
+    `# ${inlineMarkdownText(siteTitle)}`,
     '',
-    '> Architecture, workflows, operations, and maintenance knowledge for DRS.',
+    `> ${siteDescription}`,
     '',
     '## Concepts',
     '',
   ];
   for (const concept of items) {
-    const suffix = concept.description ? `: ${concept.description}` : '';
-    lines.push(`- [${concept.title}](${siteUrl}/${concept.id}.html)${suffix}`);
+    const suffix = concept.description ? `: ${inlineMarkdownText(concept.description)}` : '';
+    lines.push(
+      `- [${markdownLinkText(concept.title)}](${siteUrl}/${encodeWikiSiteConceptId(concept.id)}.html)${suffix}`
+    );
   }
-  lines.push('', '## Raw OKF bundle', '', `- [Bundle index](${siteUrl}/okf/index.md)`, '');
+  lines.push(
+    '',
+    '## Explore',
+    '',
+    `- [Concept graph](${siteUrl}/graph.html): Interactive view of relationships between concepts.`,
+    '',
+    '## Raw OKF bundle',
+    '',
+    `- [Bundle index](${siteUrl}/okf/index.md)`,
+    ''
+  );
   return lines.join('\n');
+}
+
+function inlineMarkdownText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function markdownLinkText(value: string): string {
+  return inlineMarkdownText(value).replace(/[\\\[\]]/g, '\\$&');
+}
+
+async function isSafeRawWikiPath(filePath: string, relativePath: string): Promise<boolean> {
+  try {
+    const status = await lstat(filePath);
+    if (!status.isFile()) return false;
+    const [realRoot, realFile] = await Promise.all([realpath(wikiRoot), realpath(filePath)]);
+    return realFile === resolve(realRoot, relativePath);
+  } catch {
+    return false;
+  }
 }
 
 function titleFromId(id: string): string {

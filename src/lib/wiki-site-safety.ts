@@ -1,3 +1,5 @@
+import { parse as parseYaml } from 'yaml';
+
 export function normalizeWikiSiteBase(value: string): string {
   if (!value.startsWith('/') || !value.endsWith('/')) {
     throw new Error(`WIKI_SITE_BASE must start and end with a slash, received ${value}`);
@@ -35,6 +37,21 @@ export function isSafeWikiSiteRemoteUrl(value: string): boolean {
     return url.protocol === 'https:' || url.protocol === 'http:';
   } catch {
     return false;
+  }
+}
+
+export function readWikiSiteOkfVersion(source: string): string | undefined {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+  if (!match?.[1]) return undefined;
+  try {
+    const frontmatter = parseYaml(match[1]);
+    if (frontmatter === null || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) {
+      return undefined;
+    }
+    const version = (frontmatter as Record<string, unknown>).okf_version;
+    return typeof version === 'string' ? version : undefined;
+  } catch {
+    return undefined;
   }
 }
 
