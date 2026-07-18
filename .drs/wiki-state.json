@@ -2,8 +2,8 @@
   "version": 1,
   "okfVersion": "0.1",
   "root": "wiki",
-  "gitHead": "f6f7d4af2472d4b61cee06bf7eab749d374e7885",
-  "sourceHash": "80bcd6341acdc1ea75f2d67c4b3d4794cccd39e1846fae5ae8bce65e4a4c2635",
+  "gitHead": "9758c333aeae042989e1890153f7e981c182641a",
+  "sourceHash": "0cb388038af40e276a7001e21a1cd046abd2e4cb7a576adf7a69e93ad42c72d8",
   "sourceFiles": {
     ".drs/agents/review/quality/context.md": "009e512eb2a7edbbc621818ea8fb6cf58bdb3c52d69f7cbb55d55d01442ba3fe",
     ".drs/agents/review/style/context.md": "37d5284a6143d3f969d601298d7704ac24a6c85f256491b4aec33812bd298637",
@@ -14,7 +14,7 @@
     ".drs/workflows/local-changelog-review.yaml": "a0057dccdd68edb02e7f80c1a62b2f5b661c61990d1767373f45967e54f7e6c2",
     ".env.example": "f2c26d1707fc93804d846a53d390f71f7b9d8c2ee28dcd7a4f4b026a7416a281",
     ".eslintrc.json": "108594051e01651cf5182c797559ce2f252d4479019767c187a252a24c668b9d",
-    ".github/workflows/ci.yml": "da27d5a4dae58458a94dc0ad70789dd3f4f07a251489c36d7c6faed4442d56b4",
+    ".github/workflows/ci.yml": "ff5c9d8cf980682c8a0eac033f9748a1f5e4d288788aa71597a6b7d0cadd8dff",
     ".github/workflows/drs-fix-stacked.yml": "3d70abe574557c62291a38255ed1629503ffacaa2e97f70aa217a53653f72a92",
     ".github/workflows/drs-guidance-stacked.yml": "891f2cb664da7c3c97ecdd6430edb787c92e4b85a911a3e5da5094f9d75bcdbd",
     ".github/workflows/pr-review.yml": "fbe7d0bbf21815677a13a24037d8d12c4560fc4579680a803b66d9397b6a5d11",
@@ -186,7 +186,7 @@
     "src/lib/wiki-site-safety.ts": "91797abf69fc232bb2f88e908d1bf3d77f33d8d1af1f8b8a0460d8d915958341",
     "src/lib/wiki-site-smoke.test.ts": "e379b29cb4f8a192eaea66bbd8e2581f0052420e1c378543c7d91f835f6bf2b6",
     "src/lib/wiki-site-smoke.ts": "b286f55e0f6c45baf95c50e1b1eb321afbd07483dc40d40a941b98356221f077",
-    "src/lib/wiki-site.integration.test.ts": "cf6b96bb4f7fd41ed23099213529fd2a17c58eaa0d8730ca21d61a94211a3db7",
+    "src/lib/wiki-site.integration.test.ts": "85060ceb64ead8a98b89c7d7b6bec06107a1fc30a38c6e50ad4aea19d83b5547",
     "src/lib/wiki-site.test.ts": "6f9d8f8f618193cacdf4a4a8d323c121a77d5c61ed8a3b1f644d47bdf9aeb6b4",
     "src/lib/wiki-site.ts": "82307428425361ee9fe4576f439ce35166c3f23e19dcdf31ae96b03c19369c32",
     "src/lib/workflow-artifacts.test.ts": "a8b74bfc9bd4c2dd53a0af77729fee683329388286771da368af1448afd4203b",
@@ -232,5 +232,5 @@
     "vitest.config.ts": "2dc230b842df634ca28f62f97356e804f35d2475979e64fc0a3dbf672879e748"
   },
   "wikiHash": "9c7bbdb9f5649caddffdedf0dcc3bbae6a5b9dc2395feab845315f327affdb75",
-  "updatedAt": "2026-07-18T16:47:30.469Z"
+  "updatedAt": "2026-07-18T16:58:43.342Z"
 }
