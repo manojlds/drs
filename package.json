@@ -16,10 +16,13 @@
     "test": "vitest run",
     "test:temporal:smoke": "DRS_TEMPORAL_SMOKE=1 vitest run src/temporal/smoke.test.ts",
     "test:e2e": "DRS_E2E_LIVE=1 vitest run src/cli/review-local.live.e2e.test.ts",
+    "wiki:site:dev": "vitepress dev .wiki-site",
+    "wiki:site:build": "vitepress build .wiki-site",
+    "wiki:site:preview": "vitepress preview .wiki-site",
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
-    "format": "prettier --write 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}'",
-    "format:check": "prettier --check 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}'",
+    "format": "prettier --write 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}' '.wiki-site/**/*.{ts,mts,vue,css}'",
+    "format:check": "prettier --check 'src/**/*.{ts,json}' 'package.json' '.pi/**/*.{yaml,yml}' '.wiki-site/**/*.{ts,mts,vue,css}'",
     "check:all": "npm run format && npm run lint:fix && npm run build && npm test && npm run format:check && npm run lint",
     "type-check": "tsc --noEmit",
     "prek:install": "prek install",
@@ -81,6 +84,7 @@
     "prettier": "^3.8.4",
     "tsx": "^4.22.4",
     "typescript": "^5.3.0",
+    "vitepress": "^1.6.4",
     "vitest": "^4.1.9"
   },
   "engines": {

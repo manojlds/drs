@@ -126,6 +126,28 @@ The `repository-wiki-check` workflow combines `check-wiki-state` with `validate-
 
 This ensures the wiki is up to date and OKF-conformant on every pull request.
 
+## Human-readable website
+
+The canonical `wiki/` bundle is also the source for a VitePress website. Site configuration and the custom theme live under `.wiki-site/`, outside the bundle, so publishing concerns do not alter portable OKF content.
+
+```bash
+npm run wiki:site:dev
+npm run wiki:site:build
+npm run wiki:site:preview
+```
+
+The adapter scans concept frontmatter to generate type-grouped navigation and displays `type`, `description`, tags, resources, and timestamps as concept metadata. It escapes DRS workflow template expressions such as `{{artifacts.change}}` during rendering without modifying their source Markdown.
+
+The publishing boundary treats bundle content as untrusted. It disables raw HTML, executable page frontmatter, file include/snippet directives, non-HTTP resource links, and local image imports so wiki content cannot read runner files or inject executable markup into the published origin.
+
+Every build also emits:
+
+- A local full-text search index and `sitemap.xml` for human discovery.
+- `llms.txt` with concept summaries and public URLs.
+- An unchanged copy of the canonical bundle under `/okf/` for agents and downloads.
+
+Pull-request CI builds the site without deploying it. `.github/workflows/wiki-pages.yml` validates the wiki, builds with the repository-specific base path, and publishes `.wiki-site/dist` to GitHub Pages after relevant changes merge to `main`.
+
 ## Agent and skills
 
 The bundled agent `task/okf-wiki-maintainer` (`.pi/agents/task/okf-wiki-maintainer.md`) edits concept pages in place based on the deterministic delta plan. It is invoked only when the planner returns `shouldRun: true`.

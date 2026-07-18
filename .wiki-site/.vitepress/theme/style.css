@@ -1,0 +1,212 @@
+:root {
+  --vp-c-brand-1: #4056c7;
+  --vp-c-brand-2: #3144aa;
+  --vp-c-brand-3: #243384;
+  --vp-c-brand-soft: rgba(64, 86, 199, 0.12);
+  --vp-c-bg: #f7f7f3;
+  --vp-c-bg-alt: #eeefe9;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-divider: rgba(22, 33, 61, 0.14);
+  --vp-c-text-1: #16213d;
+  --vp-c-text-2: #4d5870;
+  --vp-font-family-base:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --vp-font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+.dark {
+  --vp-c-brand-1: #9eaeff;
+  --vp-c-brand-2: #8396f5;
+  --vp-c-brand-3: #687ce0;
+  --vp-c-brand-soft: rgba(158, 174, 255, 0.14);
+  --vp-c-bg: #101522;
+  --vp-c-bg-alt: #171d2b;
+  --vp-c-bg-elv: #1d2434;
+  --vp-c-divider: rgba(226, 231, 255, 0.13);
+  --vp-c-text-1: #eef1ff;
+  --vp-c-text-2: #b1bad1;
+}
+
+body {
+  background-image: radial-gradient(circle at 15% 0%, rgba(64, 86, 199, 0.08), transparent 30rem);
+}
+
+.VPNavBarTitle .title {
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  letter-spacing: -0.025em;
+}
+
+.vp-doc h1 {
+  font-size: clamp(2.15rem, 5vw, 3.2rem);
+  line-height: 1.02;
+}
+
+.bundle-lead {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 3rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px 28px 4px 4px;
+  background: linear-gradient(135deg, rgba(64, 86, 199, 0.15), transparent 55%), var(--vp-c-bg-elv);
+  box-shadow: 0 22px 70px rgba(22, 33, 61, 0.09);
+}
+
+.bundle-lead::after {
+  position: absolute;
+  top: -3rem;
+  right: -2rem;
+  width: 12rem;
+  height: 12rem;
+  border: 1.5rem solid rgba(235, 101, 71, 0.2);
+  border-radius: 50%;
+  content: '';
+}
+
+.bundle-lead__eyebrow,
+.concept-meta__label {
+  color: #d24f32;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.bundle-lead h1 {
+  position: relative;
+  z-index: 1;
+  max-width: 12ch;
+  margin: 0.5rem 0 1rem;
+  border: 0;
+  font-size: clamp(2.6rem, 8vw, 5rem);
+  line-height: 0.94;
+}
+
+.bundle-lead > p:not(.bundle-lead__eyebrow) {
+  position: relative;
+  z-index: 1;
+  max-width: 48rem;
+  color: var(--vp-c-text-2);
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+.bundle-lead__actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.bundle-lead__actions a {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bundle-lead__actions .bundle-lead__primary {
+  padding: 0.65rem 1rem;
+  border-radius: 3px;
+  color: #fff;
+  background: var(--vp-c-brand-1);
+}
+
+.concept-meta {
+  margin: 0 0 2.3rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--vp-c-divider);
+  border-left: 4px solid var(--vp-c-brand-1);
+  border-radius: 3px 14px 3px 3px;
+  background: linear-gradient(100deg, var(--vp-c-brand-soft), transparent 60%);
+}
+
+.concept-meta__topline,
+.concept-meta__details,
+.concept-meta__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.concept-meta__topline {
+  justify-content: space-between;
+}
+
+.concept-meta__type {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.concept-meta__description {
+  margin: 0.7rem 0 0;
+  color: var(--vp-c-text-2);
+  line-height: 1.6;
+}
+
+.concept-meta__details {
+  margin-top: 0.8rem;
+  color: var(--vp-c-text-2);
+  font-size: 0.78rem;
+}
+
+.concept-meta__tags span {
+  padding: 0.15rem 0.45rem;
+  border-radius: 2px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-alt);
+  font-family: var(--vp-font-family-mono);
+}
+
+.concept-meta__resource {
+  margin-left: auto;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.concept-meta__resource-text {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+
+.okf-image-placeholder {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1px dashed var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8em;
+}
+
+@media (max-width: 640px) {
+  .bundle-lead {
+    border-radius: 3px 18px 3px 3px;
+  }
+
+  .bundle-lead::after {
+    opacity: 0.55;
+  }
+
+  .concept-meta__topline {
+    align-items: flex-start;
+  }
+
+  .concept-meta__resource,
+  .concept-meta__resource-text {
+    width: 100%;
+    margin-left: 0;
+  }
+}

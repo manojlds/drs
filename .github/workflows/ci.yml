@@ -47,5 +47,8 @@ jobs:
       - name: Check repository wiki delta
         run: node dist/cli/index.js workflow run repository-wiki-check --executor local --json
 
+      - name: Build repository wiki site
+        run: npm run wiki:site:build
+
       - name: Check package can be packed
         run: npm pack --dry-run

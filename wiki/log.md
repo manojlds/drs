@@ -27,3 +27,4 @@ Hardening updates:
 - Updated [maintenance-workflows.md](maintenance-workflows.md) to include the repository wiki workflows and link to the detailed concept.
 - Updated [testing.md](testing.md) to cover `src/lib/okf-wiki.test.ts`, `src/lib/wiki-delta.test.ts`, and the wiki workflow tests in `src/cli/workflow.test.ts`.
 - Updated [temporal-execution.md](temporal-execution.md) to note that `sync-okf-indexes` and `record-wiki-state` are no-retry side effects and that `repository-wiki-sync` remains local-executor-only.
+- Added the human-readable VitePress publishing layer, including OKF-derived navigation and metadata, local search, raw bundle and `llms.txt` outputs, pull-request build validation, and GitHub Pages deployment.

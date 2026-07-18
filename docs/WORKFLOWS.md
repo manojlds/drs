@@ -78,6 +78,18 @@ Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are 
 
 Run this workflow with the local executor. Its agent edits multiple files directly and does not yet declare those side effects to the experimental Temporal retry policy. DRS does not commit or push wiki changes; review the resulting working-tree diff normally.
 
+### Repository wiki website
+
+This repository renders the canonical `wiki/` bundle with VitePress. Consumer configuration and theme files live under `.wiki-site/`, outside the portable OKF bundle. The build derives sidebar groups from concept `type` frontmatter and publishes concept metadata, local search, a sitemap, `llms.txt`, and an unchanged raw bundle under `/okf/`. Raw HTML, executable page frontmatter, file include/snippet directives, unsafe resource schemes, and local image imports are disabled at the publishing boundary.
+
+```bash
+npm run wiki:site:dev
+npm run wiki:site:build
+npm run wiki:site:preview
+```
+
+Pull-request CI runs `wiki:site:build` after the model-free wiki check. `.github/workflows/wiki-pages.yml` repeats validation and deploys `.wiki-site/dist` to GitHub Pages on relevant pushes to `main`.
+
 ## Workflow Files
 
 Workflows are YAML files. Project workflow files live in `.drs/workflows/*.yaml`:
