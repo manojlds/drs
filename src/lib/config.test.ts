@@ -274,6 +274,73 @@ describe('Config', () => {
           },
         },
       });
+      expect(config.workflows?.['repository-wiki-sync']).toMatchObject({
+        description: 'Generate or update one OKF v0.1 repository wiki bundle',
+        metadata: {
+          kind: 'maintenance',
+          tags: ['documentation', 'wiki', 'okf'],
+        },
+        inputs: {
+          root: { type: 'string', default: 'wiki' },
+          instructions: { type: 'string', default: '' },
+          statePath: { type: 'string', default: '.drs/wiki-state.json' },
+          check: { type: 'boolean', default: false },
+        },
+        output: 'wikiValidation',
+        nodes: {
+          'plan-update': {
+            action: 'plan-wiki-update',
+            output: 'wikiDelta',
+          },
+          'maintain-wiki': {
+            agent: 'task/okf-wiki-maintainer',
+            needs: ['plan-update'],
+            output: 'wikiSummary',
+          },
+          'sync-indexes': {
+            action: 'sync-okf-indexes',
+            needs: ['maintain-wiki'],
+          },
+          'validate-updated-wiki': {
+            action: 'validate-okf-wiki',
+            needs: ['sync-indexes'],
+            output: 'wikiValidation',
+          },
+          'record-state': {
+            action: 'record-wiki-state',
+            needs: ['validate-updated-wiki'],
+          },
+          'validate-current-wiki': {
+            action: 'validate-okf-wiki',
+            needs: ['plan-update'],
+            output: 'wikiValidation',
+          },
+        },
+      });
+      expect(config.workflows?.['repository-wiki-check']).toMatchObject({
+        description:
+          'Verify repository wiki delta state and OKF v0.1 conformance without a model call',
+        metadata: {
+          kind: 'validation',
+          tags: ['documentation', 'wiki', 'okf', 'ci'],
+        },
+        inputs: {
+          root: { type: 'string', default: 'wiki' },
+          statePath: { type: 'string', default: '.drs/wiki-state.json' },
+        },
+        output: 'wikiValidation',
+        nodes: {
+          'check-state': {
+            action: 'check-wiki-state',
+            output: 'wikiDelta',
+          },
+          'validate-wiki': {
+            action: 'validate-okf-wiki',
+            needs: ['check-state'],
+            output: 'wikiValidation',
+          },
+        },
+      });
       expect(config.workflows?.['tag-changelog-update']).toMatchObject({
         description: 'Update CHANGELOG.md from changes between two git refs or tags',
         inputs: {

@@ -149,3 +149,4 @@ vite.config.ts.timestamp-*
 !.drs/workflows/
 !.drs/context.md
 !.drs/drs.config.yaml
+!.drs/wiki-state.json

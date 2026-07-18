@@ -1,6 +1,6 @@
 {
   "name": "@diff-review-system/drs",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Workflow-first AI code maintenance for reviews, changelogs, docs, and repository upkeep.",
   "type": "module",
   "main": "dist/index.js",

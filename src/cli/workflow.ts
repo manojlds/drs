@@ -51,6 +51,12 @@ import {
 } from '../lib/html-artifact.js';
 import { getCanonicalDiffCommand, resolveBaseBranch } from '../lib/repository-validator.js';
 import { formatCodeQualityReport, generateCodeQualityReport } from '../lib/code-quality-report.js';
+import {
+  formatOkfValidationErrors,
+  synchronizeOkfIndexes,
+  validateOkfBundle,
+} from '../lib/okf-wiki.js';
+import { checkWikiClean, planWikiUpdate, recordWikiState } from '../lib/wiki-delta.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -695,6 +701,24 @@ async function runActionWorkflowNode(
   }
   if (node.action === 'code-quality-report') {
     return runCodeQualityReportWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'plan-wiki-update') {
+    return runPlanWikiUpdateWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'sync-okf-indexes') {
+    return runSyncOkfIndexesWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'validate-okf-wiki') {
+    return runValidateOkfWikiWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'record-wiki-state') {
+    return runRecordWikiStateWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'check-wiki-state') {
+    return runCheckWikiStateWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'check-wiki-clean') {
+    return runCheckWikiCleanWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'post-comment') {
     return runPostCommentWorkflowNode(nodeId, node, options, workingDir, context, executionContext);
@@ -2366,6 +2390,141 @@ async function runCodeQualityReportWorkflowNode(
       issues: report.length,
     },
     writes: reportPath,
+  };
+}
+
+async function runSyncOkfIndexesWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const version = getStringActionOption(node, 'version', context)?.trim() ?? '0.1';
+  const result = await synchronizeOkfIndexes(workingDir, root, version);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `synchronized ${result.indexes} OKF indexes under ${result.root} (${result.updated} updated)`,
+    output: result,
+  };
+}
+
+async function runPlanWikiUpdateWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const statePath =
+    getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
+  const result = await planWikiUpdate(workingDir, root, statePath);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `${result.mode}: ${result.reason}`,
+    output: result,
+  };
+}
+
+async function runValidateOkfWikiWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const version = getStringActionOption(node, 'version', context)?.trim() ?? '0.1';
+  const result = await validateOkfBundle(workingDir, root, version);
+  if (!result.valid) {
+    throw new Error(
+      `Workflow validate-okf-wiki node "${nodeId}" found ${result.errors.length} error(s):\n${formatOkfValidationErrors(result)}`
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `validated ${result.concepts} OKF concepts under ${result.root} with ${result.warnings.length} warning(s)`,
+    output: result,
+  };
+}
+
+async function runRecordWikiStateWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const statePath =
+    getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
+  const result = await recordWikiState(workingDir, root, statePath);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `recorded wiki state for ${result.root} at ${result.gitHead}`,
+    output: result,
+    writes: statePath,
+  };
+}
+
+async function runCheckWikiCleanWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const statePath =
+    getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
+  const result = await checkWikiClean(workingDir, root, statePath);
+  if (!result.clean) {
+    throw new Error(
+      `Workflow check-wiki-clean node "${nodeId}" found stale wiki output:\n${result.changedPaths.map((filePath) => `- ${filePath}`).join('\n')}`
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: `wiki bundle ${result.root} and state ${result.statePath} are current`,
+    output: result,
+  };
+}
+
+async function runCheckWikiStateWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
+  const statePath =
+    getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
+  const result = await planWikiUpdate(workingDir, root, statePath);
+  if (result.shouldRun) {
+    const paths = result.changedPaths.map((filePath) => `- ${filePath}`).join('\n');
+    throw new Error(
+      `Workflow check-wiki-state node "${nodeId}" found a stale wiki (${result.mode}): ${result.reason}${paths ? `\n${paths}` : ''}`
+    );
+  }
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: result.reason,
+    output: result,
   };
 }
 

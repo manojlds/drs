@@ -1,0 +1,35 @@
+name: repository-wiki-check
+description: Verify repository wiki delta state and OKF v0.1 conformance without a model call
+metadata:
+  kind: validation
+  tags:
+    - documentation
+    - wiki
+    - okf
+    - ci
+inputs:
+  root:
+    type: string
+    default: wiki
+    description: Repository-relative OKF bundle root
+  statePath:
+    type: string
+    default: .drs/wiki-state.json
+    description: Repository-relative delta state path outside the OKF bundle
+output: wikiValidation
+nodes:
+  check-state:
+    action: check-wiki-state
+    with:
+      root: '{{inputs.root}}'
+      statePath: '{{inputs.statePath}}'
+    output: wikiDelta
+
+  validate-wiki:
+    action: validate-okf-wiki
+    needs:
+      - check-state
+    with:
+      root: '{{inputs.root}}'
+      version: '0.1'
+    output: wikiValidation

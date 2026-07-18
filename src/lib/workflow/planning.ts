@@ -273,6 +273,12 @@ export const ACTION_OPTION_FIELDS: Partial<
   'review-context': new Set(['source', 'file', 'baseBranch']),
   describe: new Set(['source', 'post', 'postDescription']),
   'code-quality-report': new Set(['review', 'path']),
+  'plan-wiki-update': new Set(['root', 'statePath']),
+  'sync-okf-indexes': new Set(['root', 'version']),
+  'validate-okf-wiki': new Set(['root', 'version']),
+  'record-wiki-state': new Set(['root', 'statePath']),
+  'check-wiki-state': new Set(['root', 'statePath']),
+  'check-wiki-clean': new Set(['root', 'statePath']),
   'post-comment': new Set([
     'source',
     'platform',
