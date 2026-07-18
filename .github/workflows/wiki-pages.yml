@@ -10,8 +10,10 @@ on:
       - '.wiki-site/**'
       - 'package-lock.json'
       - 'package.json'
+      - 'src/cli/wiki.ts'
       - 'src/lib/okf-wiki.ts'
       - 'src/lib/wiki-delta.ts'
+      - 'src/lib/wiki-site*.ts'
       - 'wiki/**'
   workflow_dispatch:
 
@@ -49,14 +51,20 @@ jobs:
       - name: Check repository wiki delta
         run: node dist/cli/index.js workflow run repository-wiki-check --executor local --json
 
-      - name: Build repository wiki site
-        env:
-          WIKI_SITE_BASE: /${{ github.event.repository.name }}/
-          WIKI_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-        run: npm run wiki:site:build
-
       - name: Configure GitHub Pages
+        id: pages
         uses: actions/configure-pages@v6
+
+      - name: Build repository wiki site
+        run: >-
+          node dist/cli/index.js wiki build
+          --source wiki
+          --output .wiki-site/dist
+          --base "${{ steps.pages.outputs.base_path }}/"
+          --site-url "${{ steps.pages.outputs.base_url }}"
+          --repository "${{ github.repository }}"
+          --title "DRS Knowledge Map"
+          --json
 
       - name: Upload repository wiki site
         uses: actions/upload-pages-artifact@v5
@@ -69,8 +77,33 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Deploy repository wiki site
         id: deployment
         uses: actions/deploy-pages@v5
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build DRS
+        run: npm run build
+
+      - name: Verify deployed repository wiki
+        run: node dist/cli/index.js wiki check-site "${{ needs.deploy.outputs.page_url }}" --json

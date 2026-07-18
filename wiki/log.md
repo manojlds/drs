@@ -28,3 +28,5 @@ Hardening updates:
 - Updated [testing.md](testing.md) to cover `src/lib/okf-wiki.test.ts`, `src/lib/wiki-delta.test.ts`, and the wiki workflow tests in `src/cli/workflow.test.ts`.
 - Updated [temporal-execution.md](temporal-execution.md) to note that `sync-okf-indexes` and `record-wiki-state` are no-retry side effects and that `repository-wiki-sync` remains local-executor-only.
 - Added the human-readable VitePress publishing layer, including OKF-derived navigation and metadata, local search, raw bundle and `llms.txt` outputs, pull-request build validation, and GitHub Pages deployment.
+- Dogfooded a 13-path deterministic delta to add the internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and a post-deployment Pages smoke check.
+- Hardened the reusable renderer with OKF preflight validation, symbolic-link and concurrent-operation guards, generic start/log handling, canonical Pages metadata, structured graph smoke validation, and npm-package output exclusions.

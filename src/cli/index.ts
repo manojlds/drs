@@ -21,6 +21,7 @@ import {
   type SkillStatus,
 } from '../lib/skills.js';
 import { getProjectSetupStatus, syncProjectSetup } from '../lib/project-setup.js';
+import { createWikiCommand } from './wiki.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -380,6 +381,7 @@ skillsCommand
   });
 
 program.addCommand(skillsCommand);
+program.addCommand(createWikiCommand());
 
 program
   .command('list-agents')
