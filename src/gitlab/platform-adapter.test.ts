@@ -2,6 +2,73 @@ import { describe, it, expect, vi } from 'vitest';
 import { GitLabPlatformAdapter } from './platform-adapter.js';
 
 describe('GitLabPlatformAdapter', () => {
+  it('maps merge request creator identity with a GitLab no-reply fallback', async () => {
+    const client = {
+      getCommitEmailDomain: vi.fn().mockReturnValue('users.noreply.gitlab.com'),
+      getMergeRequest: vi.fn().mockResolvedValue({
+        iid: 8,
+        title: 'Improve review flow',
+        author: { id: 42, name: 'Ada Lovelace', username: 'ada', public_email: '' },
+        source_branch: 'feature',
+        target_branch: 'main',
+        sha: 'abc123',
+      }),
+    };
+
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getPullRequest('group/repo', 8)).resolves.toMatchObject({
+      author: 'Ada Lovelace',
+      authorEmail: '42-ada@users.noreply.gitlab.com',
+    });
+  });
+
+  it('preserves a public merge request creator email', async () => {
+    const client = {
+      getCommitEmailDomain: vi.fn().mockReturnValue('users.noreply.gitlab.com'),
+      getMergeRequest: vi.fn().mockResolvedValue({
+        iid: 8,
+        title: 'Improve review flow',
+        author: {
+          id: 42,
+          name: 'Ada Lovelace',
+          username: 'ada',
+          public_email: 'ada@example.com',
+        },
+        source_branch: 'feature',
+        target_branch: 'main',
+        sha: 'abc123',
+      }),
+    };
+
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getPullRequest('group/repo', 8)).resolves.toMatchObject({
+      author: 'Ada Lovelace',
+      authorEmail: 'ada@example.com',
+    });
+  });
+
+  it('uses the configured self-managed GitLab no-reply domain', async () => {
+    const client = {
+      getCommitEmailDomain: vi.fn().mockReturnValue('users.noreply.gitlab.example.com'),
+      getMergeRequest: vi.fn().mockResolvedValue({
+        iid: 8,
+        title: 'Improve review flow',
+        author: { id: 42, name: 'Ada Lovelace', username: 'ada', public_email: '' },
+        source_branch: 'feature',
+        target_branch: 'main',
+        sha: 'abc123',
+      }),
+    };
+
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getPullRequest('group/repo', 8)).resolves.toMatchObject({
+      authorEmail: '42-ada@users.noreply.gitlab.example.com',
+    });
+  });
+
   it('falls back to general comment when inline comment fails', async () => {
     const client = {
       createMRDiscussionThread: vi.fn().mockRejectedValue(new Error('boom')),

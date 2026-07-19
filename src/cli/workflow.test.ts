@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => {
       diff: vi.fn(async () => 'diff --git a/src/app.ts b/src/app.ts'),
       raw: vi.fn(async (_args?: string[]) => ''),
       branch: vi.fn(async () => ({ current: 'feature' })),
+      env: vi.fn(),
       add: vi.fn(async () => ''),
       commit: vi.fn(async () => ({
         commit: 'abc1234',
@@ -234,6 +235,7 @@ describe('workflow runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.simpleGit.mockReturnValue(mocks.git);
+    mocks.git.env.mockReturnValue(mocks.git);
     mocks.git.checkIsRepo.mockResolvedValue(true);
     mocks.git.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts');
     mocks.git.raw.mockResolvedValue('');
@@ -290,6 +292,7 @@ describe('workflow runner', () => {
       number: 7,
       title: 'GitHub PR',
       author: 'octocat',
+      authorEmail: '1+octocat@users.noreply.github.com',
       sourceBranch: 'feature',
       targetBranch: 'main',
       headSha: 'abc123',
@@ -330,6 +333,7 @@ describe('workflow runner', () => {
       number: 8,
       title: 'GitLab MR',
       author: 'gitlab-user',
+      authorEmail: '2-gitlab-user@users.noreply.gitlab.com',
       sourceBranch: 'feature',
       targetBranch: 'main',
       headSha: 'def456',
@@ -884,11 +888,79 @@ describe('workflow runner', () => {
 
     expect(mocks.git.add).toHaveBeenCalledWith(['CHANGELOG.md']);
     expect(mocks.git.commit).toHaveBeenCalledWith('docs: update changelog', ['CHANGELOG.md']);
+    expect(mocks.git.env).not.toHaveBeenCalled();
     expect(result.artifacts.commitResult).toMatchObject({
       commit: 'abc1234',
       message: 'docs: update changelog',
       paths: ['CHANGELOG.md'],
     });
+  });
+
+  it('uses the change request creator as git author and committer when configured', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-commit-author-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        commitChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'github-pr', owner: 'octocat', repo: 'hello-world', pr: 7 },
+              output: 'change',
+            },
+            commit: {
+              action: 'git-commit',
+              needs: ['change'],
+              with: {
+                message: 'fix: update pull request',
+                paths: 'src',
+                useChangeRequestAuthor: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'commitChange', { workingDir: projectRoot });
+
+    expect(mocks.git.env).toHaveBeenCalledWith(
+      expect.objectContaining({
+        GIT_AUTHOR_NAME: 'octocat',
+        GIT_AUTHOR_EMAIL: '1+octocat@users.noreply.github.com',
+        GIT_COMMITTER_NAME: 'octocat',
+        GIT_COMMITTER_EMAIL: '1+octocat@users.noreply.github.com',
+      })
+    );
+    expect(mocks.git.add).toHaveBeenCalledWith(['src']);
+    expect(mocks.git.commit).toHaveBeenCalledWith('fix: update pull request', ['src']);
+  });
+
+  it('rejects change request commit attribution without creator context before staging', async () => {
+    const projectRoot = createTempDir('drs-workflow-git-commit-author-missing-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        commitChange: {
+          nodes: {
+            commit: {
+              action: 'git-commit',
+              with: {
+                message: 'fix: update pull request',
+                paths: 'src',
+                useChangeRequestAuthor: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'commitChange', { workingDir: projectRoot })).rejects.toThrow(
+      'with.useChangeRequestAuthor requires source artifact "change" to contain a GitHub PR or GitLab MR creator identity'
+    );
+    expect(mocks.git.add).not.toHaveBeenCalled();
+    expect(mocks.git.commit).not.toHaveBeenCalled();
   });
 
   it('branches, detects a diff, pushes, and creates a change request', async () => {

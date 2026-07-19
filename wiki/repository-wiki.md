@@ -126,7 +126,7 @@ The `repository-wiki-check` workflow combines `check-wiki-state` with `validate-
 
 This ensures the wiki is up to date and OKF-conformant on every pull request.
 
-`.github/workflows/pr-review.yml` also synchronizes the wiki for trusted contributors: after a successful review, it runs `repository-wiki-sync` and commits only `wiki/` and `.drs/wiki-state.json` changes back to the PR branch. The patch is guarded so non-wiki changes are rejected, and the push uses `force-with-lease` against the reviewed head to avoid overwriting concurrent updates.
+The GitHub PR review wrapper also runs `repository-wiki-sync --executor local` after successful trusted reviews from branches in the same repository. It permits generated changes only under `wiki/` and `.drs/wiki-state.json`, transfers them as a binary patch to a fresh job, validates the patch again, and commits it back to the PR branch using the PR creator identity. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` Actions secret with repository Contents read/write access so that the push triggers fresh PR checks. The token is only available in the fresh job's final commit/push step; external and fork PRs continue to use only the model-free check.
 
 ## Human-readable website
 

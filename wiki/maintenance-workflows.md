@@ -40,11 +40,13 @@ These workflows are defined in `.pi/workflows/*.yaml`. They are intentionally lo
 - `fixMode=internal` stages and commits fixes to the source branch.
 - `fixMode=stacked` creates a stacked PR/MR with a branch prefix (default `drs-fix/pr-`).
 
-The `stack-guard` action prevents the workflow from running recursively on DRS-managed branches. The `review-threshold` action checks whether enough findings at or above `fixSeverity` exist before any fix work begins.
+Both modes set `useChangeRequestAuthor: true` on their `git-commit` nodes, so fix commits are attributed to the original PR/MR creator. The `stack-guard` action prevents the workflow from running recursively on DRS-managed branches. The `review-threshold` action checks whether enough findings at or above `fixSeverity` exist before any fix work begins.
 
 ## Agent guidance refresh
 
 `local-update-agents-md` runs `task/agents-md-updater` to refresh repository guidance such as `AGENTS.md`. The default output path is `AGENTS.md`, but it can be overridden with the `path` input.
+
+The stacked platform variants (`github-pr-update-agents-md-stacked` and `gitlab-mr-update-agents-md-stacked`) commit the updated guidance with `useChangeRequestAuthor: true`, attributing the commit to the PR/MR creator.
 
 ## Project-local composed workflows
 

@@ -83,7 +83,7 @@ The flow in `.pi/workflows/github-pr-review.yaml` is:
 7. Loop back if actionable findings remain, up to `fixMaxIterations`.
 8. Post fix status (`post-fix-status`) and push the verified fix to the source branch.
 
-A stacked-fix mode (`fixMode=stacked`) creates a separate change request instead of pushing to the source branch. The `stack-guard` action prevents recursive reviews on DRS-managed branches.
+A stacked-fix mode (`fixMode=stacked`) creates a separate change request instead of pushing to the source branch. The `git-commit` nodes in `github-pr-review` and `gitlab-mr-review` set `useChangeRequestAuthor: true`, so both internal and stacked fix commits are attributed to the original PR/MR creator. The `stack-guard` action prevents recursive reviews on DRS-managed branches.
 
 ## Posting results
 

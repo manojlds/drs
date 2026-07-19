@@ -37,3 +37,9 @@ Updated [integrations.md](integrations.md) and [repository-wiki.md](repository-w
 
 - Trusted contributor reviews now synchronize the repository wiki, stage only `wiki/` and `.drs/wiki-state.json` changes, and push them back to the PR branch with a guarded patch and `force-with-lease` against the reviewed head.
 - External contributor reviews require both the `safe-to-review` label and approval of the `external-pr-review` environment.
+- Documented `git-commit` `useChangeRequestAuthor` in [workflow-engine.md](workflow-engine.md), including public email fallback, platform no-reply synthesis, `source` override, and pre-staging validation.
+- Updated [integrations.md](integrations.md) with the `authorEmail` field on `PullRequest` and adapter email normalization.
+- Noted creator attribution in review fix flows and stacked agent-guidance workflows in [review-workflows.md](review-workflows.md) and [maintenance-workflows.md](maintenance-workflows.md).
+- Confirmed trusted same-repository PR wiki synchronization details in [repository-wiki.md](repository-wiki.md) and [integrations.md](integrations.md), including `--executor local` and the `DRS_PROVIDER_API_KEY` / `OPENCODE_API_KEY` fallback resolution.
+- Updated [testing.md](testing.md) to cover the new platform adapter and `git-commit` tests.
+- Updated [integrations.md](integrations.md) for the latest `pr-review.yml` workflow structure: job-level split (`verify-contributor`, `review-trusted`, `sync-wiki-trusted`, `commit-wiki-trusted`, `review-external`, `notify-external`), different review flags for trusted vs external PRs, and the dual-gate external approval (`safe-to-review` label plus `external-pr-review` environment).

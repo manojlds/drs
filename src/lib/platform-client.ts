@@ -35,6 +35,8 @@ export interface PullRequest {
   description?: string;
   /** Author username or name */
   author: string;
+  /** Author email suitable for commit attribution */
+  authorEmail?: string;
   /** Source branch */
   sourceBranch: string;
   /** Target branch */

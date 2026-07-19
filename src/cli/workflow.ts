@@ -974,6 +974,51 @@ async function runGitCommitWorkflowNode(
 ): Promise<WorkflowNodeResult> {
   const git = await requireWorkflowGitRepo(nodeId, workingDir, executionContext);
   const message = requireStringActionOption(nodeId, node, 'message', context);
+  const useChangeRequestAuthor = getBooleanActionOption(node, 'useChangeRequestAuthor', context);
+  let commitGit = git;
+
+  if (useChangeRequestAuthor) {
+    const configuredSource = getStringActionOption(node, 'source', context)?.trim();
+    const sourceArtifact = configuredSource ?? 'change';
+    const source = context.artifacts[sourceArtifact];
+    const platform =
+      isReviewSource(source) && typeof source.context.platform === 'string'
+        ? source.context.platform
+        : undefined;
+    const pullRequest =
+      isReviewSource(source) && isPullRequest(source.context.pullRequest)
+        ? source.context.pullRequest
+        : undefined;
+    const name = pullRequest?.author.trim();
+    const email = pullRequest?.authorEmail?.trim();
+
+    if (
+      !isWorkflowPlatform(platform) ||
+      !name ||
+      name === 'Unknown' ||
+      /[\0\r\n]/.test(name) ||
+      !email ||
+      /[\0\r\n]/.test(email) ||
+      !/^[^\s<>@]+@[^\s<>@]+$/.test(email)
+    ) {
+      throw new Error(
+        `Workflow git-commit node "${nodeId}" with.useChangeRequestAuthor requires source artifact "${sourceArtifact}" to contain a GitHub PR or GitLab MR creator identity.`
+      );
+    }
+
+    const environment = Object.fromEntries(
+      Object.entries(process.env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined
+      )
+    );
+    commitGit = simpleGit({ baseDir: workingDir }).env({
+      ...environment,
+      GIT_AUTHOR_NAME: name,
+      GIT_AUTHOR_EMAIL: email,
+      GIT_COMMITTER_NAME: name,
+      GIT_COMMITTER_EMAIL: email,
+    });
+  }
   const paths =
     hasActionOption(node, 'paths') || hasActionOption(node, 'path')
       ? getPathActionOption(nodeId, node, context, workingDir)
@@ -983,7 +1028,7 @@ async function runGitCommitWorkflowNode(
     await git.add(paths);
   }
 
-  const commit = paths ? await git.commit(message, paths) : await git.commit(message);
+  const commit = paths ? await commitGit.commit(message, paths) : await commitGit.commit(message);
   const output = {
     commit: commit.commit,
     message,

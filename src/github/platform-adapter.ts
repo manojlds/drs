@@ -15,6 +15,14 @@ import type {
 } from '../lib/platform-client.js';
 import { GitHubPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
+function nonEmptyIdentityValue(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized;
+}
+
 /**
  * Adapter that wraps GitHubClient to implement PlatformClient interface
  */
@@ -26,12 +34,23 @@ export class GitHubPlatformAdapter implements PlatformClient {
   async getPullRequest(projectId: string, prNumber: number): Promise<PullRequest> {
     const [owner, repo] = this.parseProjectId(projectId);
     const pr = await this.client.getPullRequest(owner, repo, prNumber);
+    const creator = pr.user as
+      | { id?: number; login?: string; email?: string | null }
+      | null
+      | undefined;
+    const login = nonEmptyIdentityValue(creator?.login);
+    const author = login ?? 'Unknown';
+    const publicEmail = nonEmptyIdentityValue(creator?.email);
+    const authorEmail =
+      publicEmail ??
+      (creator?.id && login ? `${creator.id}+${login}@users.noreply.github.com` : undefined);
 
     return {
       number: pr.number,
       title: pr.title,
       description: pr.body ?? undefined,
-      author: pr.user?.login || 'Unknown',
+      author,
+      authorEmail,
       sourceBranch: pr.head.ref,
       targetBranch: pr.base.ref,
       headSha: pr.head.sha,

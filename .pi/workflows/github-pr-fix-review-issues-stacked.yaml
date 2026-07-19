@@ -100,6 +100,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
+      useChangeRequestAuthor: true
     output: commit
 
   push:

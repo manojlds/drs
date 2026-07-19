@@ -68,6 +68,7 @@ nodes:
     with:
       message: 'docs: update agent guidance for MR !{{inputs.mr}}'
       paths: '{{inputs.paths}}'
+      useChangeRequestAuthor: true
     output: commit
 
   push:

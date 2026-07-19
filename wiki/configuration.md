@@ -211,6 +211,7 @@ Allows `drs workflow run` without a name.
 
 - `GITLAB_TOKEN` / `GITHUB_TOKEN` — platform tokens.
 - `GITLAB_URL` — GitLab URL (defaults to `https://gitlab.com`).
+- `GITLAB_COMMIT_EMAIL_DOMAIN` — optional private commit email domain for self-managed GitLab creator attribution; defaults to `users.noreply.<instance-host>`.
 - `DRS_DEFAULT_MODEL` / `REVIEW_DEFAULT_MODEL` — default model.
 - `DRS_AGENT_<NAMESPACE>_<NAME>_MODEL` / `REVIEW_AGENT_*` — per-agent model.
 - `REVIEW_UNIFIED_MODEL` — unified reviewer model.
