@@ -8,6 +8,9 @@ on:
     branches:
       - '**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -44,7 +47,11 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Check repository wiki delta
+      - name: Check scheduled repository wiki freshness
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.head_ref == 'drs/wiki-update' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         run: node dist/cli/index.js workflow run repository-wiki-check --executor local --json
 
       - name: Build repository wiki site

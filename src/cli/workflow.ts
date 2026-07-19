@@ -2496,7 +2496,12 @@ async function runValidateOkfWikiWorkflowNode(
     id: nodeId,
     type: 'action',
     action: node.action,
-    response: `validated ${result.concepts} OKF concepts under ${result.root} with ${result.warnings.length} warning(s)`,
+    response:
+      `validated ${result.concepts} OKF concepts under ${result.root} with ` +
+      `${result.warnings.length} warning(s); graph: ${result.graph.nodeCount} nodes, ` +
+      `${result.graph.directedEdgeCount} directed edges, ` +
+      `${result.graph.orphanConceptCount} orphans, ` +
+      `${result.graph.weaklyConnectedConceptCount} weakly connected`,
     output: result,
   };
 }

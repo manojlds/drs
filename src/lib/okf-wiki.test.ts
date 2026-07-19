@@ -84,6 +84,12 @@ describe('OKF wiki bundles', () => {
       indexes: 2,
       logs: 1,
       errors: [],
+      graph: {
+        directedEdgeCount: 2,
+        nodeCount: 2,
+        orphanConceptCount: 0,
+        weaklyConnectedConceptCount: 2,
+      },
       warnings: [],
     });
   });
@@ -130,6 +136,31 @@ describe('OKF wiki bundles', () => {
     expect(validation.warnings).toContainEqual(
       expect.objectContaining({ code: 'broken_link', path: 'quickstart.md' })
     );
+    expect(validation.warnings).toContainEqual(
+      expect.objectContaining({ code: 'orphan_concept', path: 'quickstart.md' })
+    );
+  });
+
+  it('reports true concept orphans without counting generated navigation', async () => {
+    const projectRoot = createTempDir();
+    const wikiRoot = join(projectRoot, 'wiki');
+    mkdirSync(wikiRoot);
+    writeConcept(wikiRoot, 'one.md', '---\ntype: Guide\n---\n\nOne.\n');
+    writeConcept(wikiRoot, 'two.md', '---\ntype: Guide\n---\n\nTwo.\n');
+    await synchronizeOkfIndexes(projectRoot);
+
+    const validation = await validateOkfBundle(projectRoot);
+
+    expect(validation.graph).toEqual({
+      directedEdgeCount: 0,
+      nodeCount: 2,
+      orphanConceptCount: 2,
+      weaklyConnectedConceptCount: 0,
+    });
+    expect(validation.warnings.filter((warning) => warning.code === 'orphan_concept')).toEqual([
+      expect.objectContaining({ path: 'one.md' }),
+      expect.objectContaining({ path: 'two.md' }),
+    ]);
   });
 
   it('rejects unsafe bundle roots and symbolic links', async () => {

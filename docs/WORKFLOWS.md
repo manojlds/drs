@@ -72,7 +72,7 @@ The source fingerprint covers tracked and non-ignored untracked files outside th
 
 Clean Git submodules use the checked-out commit as their canonical fingerprint, including when the submodule is not initialized in CI. Dirty submodules are detected during planning but must be committed before DRS records wiki state.
 
-The packaged `repository-wiki-check` workflow recomputes the fingerprints and validates OKF without invoking a model. DRS runs it in pull-request CI after building the package. Run `repository-wiki-sync --input check=true` locally when you want generation followed by a failure if the workflow produced uncommitted wiki or state changes.
+The packaged `repository-wiki-check` workflow recomputes the fingerprints and validates OKF without invoking a model. This repository runs it for the scheduled `drs/wiki-update` pull request, while ordinary feature pull requests validate the bundle through the wiki site build without requiring branch-local state freshness. Run `repository-wiki-sync --input check=true` locally when you want generation followed by a failure if the workflow produced uncommitted wiki or state changes.
 
 Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are reserved. The validator requires parseable YAML frontmatter with a non-empty `type` on every concept, permits producer-defined fields, accepts optional `timestamp`, and reports broken internal links as warnings as required by OKF's permissive consumption model.
 
@@ -101,7 +101,7 @@ drs wiki serve --source wiki
 drs wiki check-site https://example.github.io/project/
 ```
 
-Use `--base`, `--site-url`, `--repository owner/name`, and `--title` to configure hosted output. Pull-request CI builds the DRS wiki after the model-free wiki check. `.github/workflows/wiki-pages.yml` repeats validation, derives the canonical URL and base path from GitHub Pages, deploys `.wiki-site/dist` on relevant pushes to `main`, and then uses `drs wiki check-site` to crawl deployed pages and same-origin assets and verify search, structured graph data and concept links, `llms.txt`, sitemap, and raw OKF outputs.
+Use `--base`, `--site-url`, `--repository owner/name`, and `--title` to configure hosted output. Pull-request CI always builds the DRS wiki; the dedicated `drs/wiki-update` pull request first runs the strict model-free freshness check. `.github/workflows/wiki-pages.yml` repeats validation, derives the canonical URL and base path from GitHub Pages, deploys `.wiki-site/dist` on relevant pushes to `main`, and then uses `drs wiki check-site` to crawl deployed pages and same-origin assets and verify search, structured graph data and concept links, `llms.txt`, sitemap, and raw OKF outputs.
 
 ## Workflow Files
 

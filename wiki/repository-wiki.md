@@ -112,21 +112,27 @@ The `validate-okf-wiki` action checks conformance without modifying the bundle:
 - Valid date headings in `log.md`.
 - Unsafe bundle roots and symbolic links are rejected.
 - Internal links are validated and broken links are reported as warnings.
+- Semantic links between concepts are analyzed as directed edges. Validation reports deterministic node, directed-edge, orphan, and weak-connection counts and warns for every orphan concept.
+
+Generated indexes, `log.md`, links in frontmatter, and links inside code do not participate in semantic graph metrics. An orphan has no incoming or outgoing concept link. A weakly connected concept has exactly one distinct neighbor after edge direction is ignored.
 
 The `repository-wiki-check` workflow combines `check-wiki-state` with `validate-okf-wiki`. It throws if the wiki is stale, so it can be used as a CI gate without requiring a model provider.
 
 ## CI integration
 
-`.github/workflows/ci.yml` runs the model-free check after tests and build:
+`.github/workflows/ci.yml` runs the strict model-free check for the dedicated scheduled wiki branch:
 
 ```yaml
-- name: Check repository wiki delta
+- name: Check scheduled repository wiki freshness
+  if: github.event_name == 'pull_request' && github.head_ref == 'drs/wiki-update'
   run: node dist/cli/index.js workflow run repository-wiki-check --executor local --json
 ```
 
-This ensures the wiki is up to date and OKF-conformant on every pull request.
+Ordinary feature pull requests do not update `.drs/wiki-state.json`. Their wiki site build still validates OKF conformance, publishing safety, and rendering, but allows the canonical wiki to remain temporarily stale until scheduled maintenance runs. This avoids deterministic-state conflicts between parallel source branches.
 
-The GitHub PR review wrapper also runs `repository-wiki-sync --executor local` after successful trusted reviews from branches in the same repository. It permits generated changes only under `wiki/` and `.drs/wiki-state.json`, transfers them as a binary patch to a fresh job, validates the patch again, and commits it back to the PR branch using the PR creator identity. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` Actions secret with repository Contents read/write access so that the push triggers fresh PR checks. The token is only available in the fresh job's final commit/push step; external and fork PRs continue to use only the model-free check.
+`.github/workflows/wiki-update.yml` runs daily at 04:00 UTC and on manual dispatch. It checks out the latest default branch, runs `repository-wiki-sync --executor local`, rejects changes outside `wiki/` and `.drs/wiki-state.json`, and creates or updates one `drs/wiki-update` pull request. Reusing one branch serializes generated wiki maintenance instead of producing one state file per feature branch. If the default branch moves before merge, rerun the workflow to regenerate the wiki and state from the new combined source tree.
+
+Configure `DRS_PROVIDER_API_KEY` (or the legacy `OPENCODE_API_KEY` fallback) for generation. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` with repository Contents and pull requests read/write access for the final bot-PR step. Model execution and path guards run in a token-free job that exports a binary patch. A fresh checkout reapplies and verifies that patch before the write token is supplied only to the pinned `peter-evans/create-pull-request` action. The bot PR runs the strict freshness check, and GitHub Pages repeats it before deployment.
 
 ## Model-free search
 
@@ -158,7 +164,7 @@ The publishing boundary treats bundle content as untrusted. Build and serve comm
 Every build also emits:
 
 - A local full-text search index and `sitemap.xml` for human discovery.
-- An interactive `graph.html` generated from internal Markdown links between concepts.
+- An interactive directed `graph.html` generated from semantic Markdown links between concepts. Arrowheads preserve link direction, and selecting a concept separates its outgoing links from incoming references.
 - `llms.txt` with concept summaries and public URLs.
 - An unchanged copy of the canonical bundle under `/okf/` for agents and downloads.
 
@@ -168,16 +174,16 @@ Pull-request CI builds the site without deploying it. `.github/workflows/wiki-pa
 
 The bundled agent `task/okf-wiki-maintainer` (`.pi/agents/task/okf-wiki-maintainer.md`) edits concept pages in place based on the deterministic delta plan. It is invoked only when the planner returns `shouldRun: true`.
 
-Run the writing workflow with the local executor. The maintainer edits a dynamic file tree directly, so its agent node does not declare a fixed `writes` path and is not yet protected from Temporal activity retries. The model-free `repository-wiki-check` workflow is safe for normal PR CI.
+Run the writing workflow with the local executor. The maintainer edits a dynamic file tree directly, so its agent node does not declare a fixed `writes` path and is not yet protected from Temporal activity retries. The model-free `repository-wiki-check` workflow is used for the scheduled bot PR and remains available for local verification.
 
 ## Tests
 
 Wiki behavior is covered by:
 
-- `src/lib/okf-wiki.test.ts` — index synchronization and validation.
+- `src/lib/okf-wiki.test.ts` — index synchronization, validation, and graph-quality warnings.
 - `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — deterministic concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — delta planning, fingerprinting, state recording, and clean checks.
-- `src/lib/wiki-site*.test.ts` — graph extraction, publishing safety, reusable build/serve setup, and deployed-site smoke checks.
+- `src/lib/wiki-site*.test.ts` — directed graph extraction and metrics, publishing safety, reusable build/serve setup, and deployed-site smoke checks.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
 - `src/temporal/retry-policy.test.ts` — Temporal retry classification for wiki actions (`sync-okf-indexes` and `record-wiki-state` are no-retry; `plan-wiki-update`, `validate-okf-wiki`, `check-wiki-state`, and `check-wiki-clean` are retryable).
 
