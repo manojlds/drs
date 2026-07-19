@@ -99,6 +99,9 @@ drs workflow run repository-wiki-sync
 # Verify the committed wiki delta state and OKF bundle without a model call
 drs workflow run repository-wiki-check
 
+# Search the canonical wiki without a model or site build
+drs wiki search "temporal retry policy" --limit 5
+
 # Build or locally serve the human-readable repository wiki website
 drs wiki build --source wiki --output .drs/wiki-site
 drs wiki serve --source wiki
@@ -122,6 +125,7 @@ drs wiki check-site https://example.github.io/project/
 | Update AGENTS.md-style guidance | `drs workflow run local-update-agents-md` |
 | Generate or update repository wiki | `drs workflow run repository-wiki-sync` |
 | Check repository wiki without a model | `drs workflow run repository-wiki-check` |
+| Search repository wiki without a model | `drs wiki search <query...>` |
 | Build repository wiki website | `drs wiki build` |
 | Serve repository wiki website | `drs wiki serve` |
 | Verify deployed wiki website | `drs wiki check-site <url>` |

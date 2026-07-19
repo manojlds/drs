@@ -32,12 +32,17 @@ DRS is a Node.js TypeScript CLI that turns YAML workflows into a coordinated seq
 
 ## CLI layer
 
-`src/cli/index.ts` is the `commander` entry point. It defines four top-level command groups:
+`src/cli/index.ts` is the `commander` entry point. It defines five top-level command groups:
 
 - `run-agent` / `run` — run a single agent by fully qualified id (`src/cli/run-agent.ts`).
 - `workflow` — list, show, validate, and run workflows (`src/cli/workflow.ts`).
 - `temporal` — start a Temporal worker (`src/temporal/worker.ts`).
+- `wiki` — search, build, serve, and verify the OKF repository wiki (`src/cli/wiki.ts`).
 - `skills` / `init` / `doctor` / `sync` — project setup, bundled skills, and setup checks.
+
+The `wiki` command has subcommands `search`, `build`, `serve`, and `check-site`. `search` performs a deterministic, model-free lookup over the canonical OKF bundle using `src/lib/wiki-search.ts`; `build` and `serve` render the bundle as a VitePress site via `src/lib/wiki-site.ts`; and `check-site` verifies a deployed site.
+
+See [Repository wiki](repository-wiki.md) for OKF bundle generation, the `wiki` subcommands, and CI validation.
 
 The CLI loads `.env` from the working directory (`loadDotenv()`), then loads config via `src/lib/config.ts`.
 

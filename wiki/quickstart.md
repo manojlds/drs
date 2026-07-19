@@ -49,6 +49,9 @@ npm run dev:cli -- workflow run repository-wiki-sync
 # Check the repository wiki is current (model-free)
 npm run dev:cli -- workflow run repository-wiki-check
 
+# Search the repository wiki (model-free)
+npm run dev:cli -- wiki search "temporal retry policy" --limit 5
+
 # Run a single agent
 npm run dev:cli -- run-agent review/unified-reviewer --prompt "Review src/lib/config.ts"
 ```

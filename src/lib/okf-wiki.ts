@@ -30,6 +30,20 @@ export interface OkfIndexSyncResult {
   updated: number;
 }
 
+export interface OkfConceptDocument {
+  body: string;
+  description?: string;
+  path: string;
+  tags: string[];
+  title?: string;
+  type: string;
+}
+
+export interface OkfConceptBundle {
+  concepts: OkfConceptDocument[];
+  root: string;
+}
+
 interface BundleEntry {
   absolutePath: string;
   relativePath: string;
@@ -176,6 +190,64 @@ export function formatOkfValidationErrors(result: OkfBundleValidationResult): st
       issuePath ? `- ${issuePath}: [${code}] ${message}` : `- [${code}] ${message}`
     )
     .join('\n');
+}
+
+/** Load validated concept documents from an OKF bundle in stable path order. */
+export async function loadOkfConcepts(
+  workingDir: string,
+  root = 'wiki',
+  version: string = SUPPORTED_OKF_VERSION
+): Promise<OkfConceptBundle> {
+  const validation = await validateOkfBundle(workingDir, root, version);
+  if (!validation.valid) {
+    throw new Error(`Cannot load invalid OKF bundle:\n${formatOkfValidationErrors(validation)}`);
+  }
+
+  const bundle = await resolveBundleRoot(workingDir, root);
+  const traversalErrors: OkfValidationIssue[] = [];
+  const entries = await collectBundleEntries(bundle.absolutePath, traversalErrors);
+  if (traversalErrors.length > 0) {
+    throw new Error(
+      `Cannot load invalid OKF bundle:\n${traversalErrors
+        .map(({ code, message, path: issuePath }) =>
+          issuePath ? `- ${issuePath}: [${code}] ${message}` : `- [${code}] ${message}`
+        )
+        .join('\n')}`
+    );
+  }
+
+  const concepts: OkfConceptDocument[] = [];
+  for (const entry of entries) {
+    const filename = path.posix.basename(entry.relativePath);
+    if (!isConceptFilename(filename)) continue;
+
+    const parsed = parseFrontmatter(await readFile(entry.absolutePath, 'utf-8'));
+    if (typeof parsed === 'string') {
+      throw new Error(`Cannot load invalid OKF concept ${entry.relativePath}: ${parsed}`);
+    }
+    const type = normalizeDisplayText(parsed.fields.type);
+    if (!type) {
+      throw new Error(`Cannot load invalid OKF concept ${entry.relativePath}: missing type`);
+    }
+    const title = normalizeDisplayText(parsed.fields.title);
+    const description = normalizeDisplayText(parsed.fields.description);
+    const tags = Array.isArray(parsed.fields.tags)
+      ? parsed.fields.tags.flatMap((tag) => {
+          const normalized = normalizeDisplayText(tag);
+          return normalized ? [normalized] : [];
+        })
+      : [];
+    concepts.push({
+      body: parsed.body,
+      path: entry.relativePath,
+      tags,
+      type,
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+    });
+  }
+
+  return { concepts, root: bundle.relativePath };
 }
 
 async function resolveBundleRoot(workingDir: string, root: string): Promise<BundleEntry> {

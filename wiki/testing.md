@@ -49,6 +49,7 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/gitlab/client.test.ts` — GitLab private commit email domain derivation and `GITLAB_COMMIT_EMAIL_DOMAIN` override.
 - `src/temporal/*.test.ts` — Temporal planning, retry policies, workflow ids, and activities.
 - `src/lib/okf-wiki.test.ts` — OKF v0.1 index synchronization and bundle validation.
+- `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — model-free concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — deterministic delta planning, source/wiki fingerprints, state recording, and clean checks.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs, plus `git-commit` creator attribution.
 

@@ -78,6 +78,17 @@ Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are 
 
 Run this workflow with the local executor. Its agent edits multiple files directly and does not yet declare those side effects to the experimental Temporal retry policy. DRS does not commit or push wiki changes; review the resulting working-tree diff normally.
 
+### Repository wiki search
+
+Search the canonical bundle directly without invoking a model or building the website:
+
+```bash
+drs wiki search "temporal retry policy" --limit 5
+drs wiki search workflow runtime --json
+```
+
+Search validates the OKF bundle first, rejects unsafe roots and symbolic links, and excludes reserved `index.md` and `log.md` files. Ranking deterministically weights title, tags, description, headings, path, type, and body text. Results include repository-relative concept paths, scores, metadata, and matching snippets. Use `--source <path>` for a non-default bundle root.
+
 ### Repository wiki website
 
 DRS renders a canonical OKF bundle with its packaged VitePress adapter. The build derives sidebar groups from concept `type` frontmatter, uses `quickstart.md` as the start page when present and otherwise falls back to the first concept, and publishes concept metadata, local search, an internal-link relationship graph, a sitemap, `llms.txt`, and an unchanged raw bundle under `/okf/`. A `log.md` page is optional.
