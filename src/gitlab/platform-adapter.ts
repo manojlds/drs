@@ -15,6 +15,14 @@ import type {
 } from '../lib/platform-client.js';
 import { GitLabPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
 
+function nonEmptyIdentityValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized;
+}
+
 /**
  * Extended GitLab MergeRequest type with optional diff_refs
  * GitLab API may return diff_refs depending on the endpoint and API version
@@ -24,8 +32,11 @@ interface GitLabMergeRequest {
   title: string;
   description?: string;
   author?: {
+    id?: number;
     name?: string;
     username?: string;
+    public_email?: string;
+    email?: string;
   };
   source_branch: string;
   target_branch: string;
@@ -45,12 +56,22 @@ export class GitLabPlatformAdapter implements PlatformClient {
 
   async getPullRequest(projectId: string, prNumber: number): Promise<PullRequest> {
     const mr = (await this.client.getMergeRequest(projectId, prNumber)) as GitLabMergeRequest;
+    const author = mr.author?.name ?? mr.author?.username ?? 'Unknown';
+    const publicEmail = nonEmptyIdentityValue(mr.author?.public_email);
+    const legacyEmail = nonEmptyIdentityValue(mr.author?.email);
+    const availableEmail = publicEmail ?? legacyEmail;
+    const authorEmail =
+      availableEmail ??
+      (mr.author?.id && mr.author.username
+        ? `${mr.author.id}-${mr.author.username}@${this.client.getCommitEmailDomain()}`
+        : undefined);
 
     return {
       number: mr.iid,
       title: mr.title,
       description: mr.description ?? undefined,
-      author: mr.author?.name ?? mr.author?.username ?? 'Unknown',
+      author,
+      authorEmail,
       sourceBranch: mr.source_branch,
       targetBranch: mr.target_branch,
       headSha: mr.diff_refs?.head_sha ?? mr.sha ?? '',

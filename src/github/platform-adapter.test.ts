@@ -2,6 +2,46 @@ import { describe, it, expect, vi } from 'vitest';
 import { GitHubPlatformAdapter } from './platform-adapter.js';
 
 describe('GitHubPlatformAdapter', () => {
+  it('maps pull request creator identity with a GitHub no-reply fallback', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        number: 7,
+        title: 'Improve review flow',
+        body: null,
+        user: { id: 42, login: 'octocat', email: null },
+        head: { ref: 'feature', sha: 'abc123' },
+        base: { ref: 'main' },
+      }),
+    };
+
+    const adapter = new GitHubPlatformAdapter(client as any);
+
+    await expect(adapter.getPullRequest('octocat/hello', 7)).resolves.toMatchObject({
+      author: 'octocat',
+      authorEmail: '42+octocat@users.noreply.github.com',
+    });
+  });
+
+  it('preserves a public pull request creator email', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        number: 7,
+        title: 'Improve review flow',
+        body: null,
+        user: { id: 42, login: 'octocat', email: 'octocat@example.com' },
+        head: { ref: 'feature', sha: 'abc123' },
+        base: { ref: 'main' },
+      }),
+    };
+
+    const adapter = new GitHubPlatformAdapter(client as any);
+
+    await expect(adapter.getPullRequest('octocat/hello', 7)).resolves.toMatchObject({
+      author: 'octocat',
+      authorEmail: 'octocat@example.com',
+    });
+  });
+
   it('throws for invalid project IDs', async () => {
     const client = {
       getPullRequest: vi.fn(),

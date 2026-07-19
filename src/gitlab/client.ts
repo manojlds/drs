@@ -3,6 +3,7 @@ import { Gitlab } from '@gitbeaker/node';
 export interface GitLabConfig {
   url: string;
   token: string;
+  commitEmailDomain?: string;
 }
 
 export interface MRChange {
@@ -14,14 +15,28 @@ export interface MRChange {
   diff: string;
 }
 
+export function resolveGitLabCommitEmailDomain(url: string, configuredDomain?: string): string {
+  const configured = configuredDomain?.trim();
+  if (configured) {
+    return configured;
+  }
+  return `users.noreply.${new URL(url).hostname}`;
+}
+
 export class GitLabClient {
   private client: InstanceType<typeof Gitlab>;
+  private readonly commitEmailDomain: string;
 
   constructor(config: GitLabConfig) {
     this.client = new Gitlab({
       host: config.url,
       token: config.token,
     });
+    this.commitEmailDomain = resolveGitLabCommitEmailDomain(config.url, config.commitEmailDomain);
+  }
+
+  getCommitEmailDomain(): string {
+    return this.commitEmailDomain;
   }
 
   /**
@@ -187,5 +202,9 @@ export function createGitLabClient(): GitLabClient {
     throw new Error('GITLAB_TOKEN environment variable is required');
   }
 
-  return new GitLabClient({ url, token });
+  return new GitLabClient({
+    url,
+    token,
+    commitEmailDomain: process.env.GITLAB_COMMIT_EMAIL_DOMAIN,
+  });
 }

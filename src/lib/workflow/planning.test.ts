@@ -55,6 +55,35 @@ describe('workflow planning', () => {
         /node "a" needs unknown node "missing"/
       );
     });
+
+    it('accepts change request creator attribution for git commits', () => {
+      const nodes: Record<string, WorkflowNodeConfig> = {
+        commit: node({
+          action: 'git-commit',
+          with: {
+            message: 'fix: update change request',
+            source: 'change',
+            useChangeRequestAuthor: true,
+          },
+        }),
+      };
+
+      expect(getWorkflowExecutionOrder(nodes)).toEqual(['commit']);
+    });
+
+    it('rejects unknown git commit attribution options', () => {
+      const nodes: Record<string, WorkflowNodeConfig> = {
+        commit: node({
+          action: 'git-commit',
+          with: {
+            message: 'fix: update change request',
+            useChangeRequestCreator: true,
+          },
+        }),
+      };
+
+      expect(() => getWorkflowExecutionOrder(nodes)).toThrow(/useChangeRequestCreator/);
+    });
   });
 
   describe('validateWorkflowControlRouteDirection', () => {

@@ -45,11 +45,12 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/lib/review-artifact-store.test.ts` and `src/lib/review-artifact.test.ts` — artifact persistence and finding state.
 - `src/lib/comment-*.test.ts` — comment formatting, posting, and fingerprinting.
 - `src/runtime/*.test.ts` — agent loading and path config.
-- `src/github/*.test.ts` and `src/gitlab/*.test.ts` — platform clients and adapters.
+- `src/github/*.test.ts` and `src/gitlab/*.test.ts` — platform clients and adapters, including creator identity mapping with public email and platform no-reply fallback.
+- `src/gitlab/client.test.ts` — GitLab private commit email domain derivation and `GITLAB_COMMIT_EMAIL_DOMAIN` override.
 - `src/temporal/*.test.ts` — Temporal planning, retry policies, workflow ids, and activities.
 - `src/lib/okf-wiki.test.ts` — OKF v0.1 index synchronization and bundle validation.
 - `src/lib/wiki-delta.test.ts` — deterministic delta planning, source/wiki fingerprints, state recording, and clean checks.
-- `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
+- `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs, plus `git-commit` creator attribution.
 
 ## Live tests
 

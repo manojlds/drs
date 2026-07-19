@@ -140,7 +140,7 @@ export const ACTION_OPTION_FIELDS: Partial<
   'git-diff': new Set(['staged']),
   'git-add': new Set(['path', 'paths']),
   'git-branch': new Set(['name', 'from', 'force']),
-  'git-commit': new Set(['message', 'path', 'paths']),
+  'git-commit': new Set(['message', 'path', 'paths', 'source', 'useChangeRequestAuthor']),
   'git-push': new Set(['remote', 'branch', 'remoteBranch', 'setUpstream', 'force']),
   'has-diff': new Set(['path', 'paths']),
   'stack-guard': new Set(['source', 'allowStackedSource', 'reservedPrefixes']),

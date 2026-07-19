@@ -81,6 +81,8 @@ The full list of actions is in `src/lib/config.ts` (`SUPPORTED_WORKFLOW_ACTIONS`
 - **Change requests**: `create-change-request`, `create-pr`, `create-mr`.
 - **Write**: `write`.
 
+`git-commit` creates a commit from staged changes or from `path`/`paths` that it stages itself. Set `useChangeRequestAuthor: true` to attribute the commit to the creator of a GitHub PR or GitLab MR loaded by a `change-source` action. The source artifact defaults to `change`; override it with `source`. DRS preserves a public creator email when available and otherwise synthesizes a platform no-reply address. Self-managed GitLab instances can override their derived private commit email domain with `GITLAB_COMMIT_EMAIL_DOMAIN`. The action validates the identity and fails before staging if the source has no platform creator context. Repository Git configuration is not modified, and the authenticated token remains the pusher. Disable creator committer attribution when repository push rules require the committer email to belong to the token owner.
+
 ## Executors
 
 The `WorkflowExecutor` interface in `src/lib/workflow/executor.ts` has a single `run` method. Two implementations exist:

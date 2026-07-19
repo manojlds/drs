@@ -503,7 +503,7 @@ nodes:
 
 ### `git-commit`
 
-Creates a git commit. When `with.path` or `with.paths` is provided, DRS stages and commits only those paths. Without paths, it commits the current index.
+Creates a git commit. When `with.path` or `with.paths` is provided, DRS stages and commits only those paths. Without paths, it commits the current index. Set `with.useChangeRequestAuthor: true` to use the creator from a GitHub PR or GitLab MR `change-source` artifact as both the Git author and committer. The source artifact defaults to `change`; override it with `with.source`. DRS uses a public creator email when available and otherwise uses the platform's no-reply address. Self-managed GitLab instances can set `GITLAB_COMMIT_EMAIL_DOMAIN` when their private commit email domain differs from `users.noreply.<instance-host>`. The option fails before staging when the source has no platform creator identity. The authenticated token remains the pusher; disable this option in repositories whose push rules require the committer email to belong to that token owner.
 
 ```yaml
 nodes:
@@ -512,6 +512,7 @@ nodes:
     with:
       paths: CHANGELOG.md
       message: "docs: update changelog"
+      useChangeRequestAuthor: true
 ```
 
 ### `write`

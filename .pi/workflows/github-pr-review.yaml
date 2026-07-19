@@ -273,6 +273,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
+      useChangeRequestAuthor: true
     output: internalFixCommit
 
   push-internal-fix:
@@ -300,6 +301,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
+      useChangeRequestAuthor: true
     output: fixCommit
 
   fix-push:

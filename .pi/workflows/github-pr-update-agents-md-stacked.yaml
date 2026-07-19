@@ -70,6 +70,7 @@ nodes:
     with:
       message: 'docs: update agent guidance for PR #{{inputs.pr}}'
       paths: '{{inputs.paths}}'
+      useChangeRequestAuthor: true
     output: commit
 
   push:
