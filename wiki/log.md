@@ -45,3 +45,21 @@ Updated [integrations.md](integrations.md) and [repository-wiki.md](repository-w
 - Updated [integrations.md](integrations.md) for the latest `pr-review.yml` workflow structure: job-level split (`verify-contributor`, `review-trusted`, `sync-wiki-trusted`, `commit-wiki-trusted`, `review-external`, `notify-external`), different review flags for trusted vs external PRs, and the dual-gate external approval (`safe-to-review` label plus `external-pr-review` environment).
 
 Follow-up delta: applied `useChangeRequestAuthor: true` to every `git-commit` node in the packaged fix and guidance workflows (`github-pr-review`, `gitlab-mr-review`, `github-pr-fix-review-issues-stacked`, `gitlab-mr-fix-review-issues-stacked`, `github-pr-update-agents-md-stacked`, `gitlab-mr-update-agents-md-stacked`). Added `src/gitlab/client.test.ts` to cover `resolveGitLabCommitEmailDomain`. Updated [review-workflows.md](review-workflows.md) to note the standalone stacked fix workflows.
+
+Added model-free repository wiki retrieval through `drs wiki search`. Updated [quickstart.md](quickstart.md), [repository-wiki.md](repository-wiki.md), and [testing.md](testing.md) for deterministic metadata/body ranking, safe OKF loading, repository-relative citations, snippets, result limits, and JSON output. Cited the search implementation paths (`src/cli/wiki.ts`, `src/lib/wiki-search.ts`, `src/lib/okf-wiki.ts`) in [repository-wiki.md](repository-wiki.md).
+
+Updated [architecture.md](architecture.md) to include the `wiki` top-level command group alongside `workflow`, `temporal`, `run-agent`, and the project-setup commands, and described its `search`, `build`, `serve`, and `check-site` subcommands.
+
+Hardened `drs wiki search` and its tests in `src/lib/wiki-search.ts` and `src/lib/wiki-search.test.ts`:
+
+- Confirmed ranking weights metadata (title, tags, description, headings) above body text and boosts complete phrase matches and exact title hits.
+- Verified that heading extraction ignores fenced code blocks (both ` ``` ` and `~~~`), so shell comments and code examples are not treated as document structure.
+- Added rejection of empty/whitespace-only queries and non-positive-integer limits with clear error messages.
+- Confirmed symlink rejection and unsafe-root validation are exercised by the search path through `loadOkfConcepts`.
+- Updated [repository-wiki.md](repository-wiki.md) to describe the ranking, snippet selection, and validation behavior in more detail.
+
+Follow-up search hardening in `src/lib/wiki-search.ts` and `src/lib/wiki-search.test.ts`:
+
+- Documented Unicode NFKC normalization and code-point-safe snippet excerpting in [repository-wiki.md](repository-wiki.md).
+- Documented invalid backtick-fence handling (info strings containing embedded backticks) so headings inside them remain searchable.
+- Updated [testing.md](testing.md) to list the new Unicode snippet and invalid-fence test cases.

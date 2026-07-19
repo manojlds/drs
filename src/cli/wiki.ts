@@ -2,11 +2,32 @@ import chalk from 'chalk';
 import { Command, InvalidArgumentError } from 'commander';
 import { buildWikiSite, serveWikiSite, type WikiSiteOptions } from '../lib/wiki-site.js';
 import { waitForWikiSite } from '../lib/wiki-site-smoke.js';
+import { searchWiki, type WikiSearchResult } from '../lib/wiki-search.js';
 
 export function createWikiCommand(): Command {
   const command = new Command('wiki').description(
-    'Build, serve, and verify a human-readable OKF repository wiki'
+    'Search, build, serve, and verify an OKF repository wiki'
   );
+
+  command
+    .command('search <query...>')
+    .description('Search OKF concepts without a model or generated site index')
+    .option('--source <path>', 'Repository-relative OKF bundle root', 'wiki')
+    .option('--limit <count>', 'Maximum results to return', parsePositiveInteger, 10)
+    .option('--json', 'Output the search result as JSON')
+    .action(async (query: string[], options) => {
+      try {
+        const result = await searchWiki(process.cwd(), query.join(' '), {
+          source: stringOption(options.source),
+          limit: options.limit,
+        });
+        if (options.json) console.log(JSON.stringify(result, null, 2));
+        else console.log(formatSearchResult(result));
+      } catch (error) {
+        printError(error);
+        process.exitCode = 1;
+      }
+    });
 
   command
     .command('build')
@@ -123,6 +144,29 @@ function parseNonNegativeInteger(value: string): number {
     throw new InvalidArgumentError('Expected a non-negative integer.');
   }
   return parsed;
+}
+
+function formatSearchResult(result: WikiSearchResult): string {
+  if (result.results.length === 0) {
+    return `No wiki concepts matched "${terminalText(result.query)}" in ${terminalText(result.source)}.`;
+  }
+  const summary =
+    result.total === result.results.length
+      ? `Found ${result.total} wiki concept(s) for "${terminalText(result.query)}" in ${terminalText(result.source)}.`
+      : `Found ${result.total} wiki concept(s) for "${terminalText(result.query)}" in ${terminalText(result.source)}; showing ${result.results.length}.`;
+  const matches = result.results.map((match, index) => {
+    const metadata = match.tags.length > 0 ? ` | ${match.tags.join(', ')}` : '';
+    return [
+      `${index + 1}. ${match.title} [${match.type}] (score ${match.score}${metadata})`,
+      `   ${terminalText(match.path)}`,
+      `   ${match.snippet}`,
+    ].join('\n');
+  });
+  return [summary, '', ...matches].join('\n');
+}
+
+function terminalText(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
 }
 
 async function waitForShutdown(close: () => Promise<void>): Promise<void> {

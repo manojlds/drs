@@ -128,6 +128,17 @@ This ensures the wiki is up to date and OKF-conformant on every pull request.
 
 The GitHub PR review wrapper also runs `repository-wiki-sync --executor local` after successful trusted reviews from branches in the same repository. It permits generated changes only under `wiki/` and `.drs/wiki-state.json`, transfers them as a binary patch to a fresh job, validates the patch again, and commits it back to the PR branch using the PR creator identity. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` Actions secret with repository Contents read/write access so that the push triggers fresh PR checks. The token is only available in the fresh job's final commit/push step; external and fork PRs continue to use only the model-free check.
 
+## Model-free search
+
+`drs wiki search` retrieves concepts directly from the canonical OKF bundle without a model, database, vector index, or website build:
+
+```bash
+drs wiki search "temporal retry policy" --limit 5
+drs wiki search workflow runtime --json
+```
+
+The command is implemented in `src/cli/wiki.ts` and uses the `searchWiki` ranking in `src/lib/wiki-search.ts`, which loads the validated bundle through `loadOkfConcepts` in `src/lib/okf-wiki.ts`. It validates the bundle before reading it, rejects unsafe roots and symbolic links, and excludes reserved `index.md` and `log.md` documents. Ranking deterministically weights title, tags, description, headings, path, type, and body matches, with extra weight for complete phrase matches and exact title hits. Headings are extracted from normal Markdown only, so fenced code blocks are not treated as document structure; backtick fences whose info string contains an embedded backtick are also skipped so malformed fences do not hide headings. Snippets are selected from the best-matching source (description, body, headings, tags, or metadata) and excerpted around the matched terms. Search text is normalized with NFKC before tokenizing, and long snippets are cut at Unicode code-point boundaries so mixed-script or emoji runs cannot produce isolated surrogate pairs. Empty queries and invalid limits are rejected before ranking. `--source <path>` selects a non-default bundle root.
+
 ## Human-readable website
 
 The canonical `wiki/` bundle is also the source for a VitePress website. DRS packages the adapter and theme under `.wiki-site/`, outside the bundle, so publishing concerns do not alter portable OKF content and other repositories can use the same renderer.
@@ -164,6 +175,7 @@ Run the writing workflow with the local executor. The maintainer edits a dynamic
 Wiki behavior is covered by:
 
 - `src/lib/okf-wiki.test.ts` — index synchronization and validation.
+- `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — deterministic concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — delta planning, fingerprinting, state recording, and clean checks.
 - `src/lib/wiki-site*.test.ts` — graph extraction, publishing safety, reusable build/serve setup, and deployed-site smoke checks.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
