@@ -2,8 +2,8 @@
   "version": 1,
   "okfVersion": "0.1",
   "root": "wiki",
-  "gitHead": "9758c333aeae042989e1890153f7e981c182641a",
-  "sourceHash": "0cb388038af40e276a7001e21a1cd046abd2e4cb7a576adf7a69e93ad42c72d8",
+  "gitHead": "696ce8ef99f862e1fd7af592dd6c4a87c65dca72",
+  "sourceHash": "43001d684ead832b9f6093ad358f8c9247c7e2221ccbd1b4332e44c9ea86ee70",
   "sourceFiles": {
     ".drs/agents/review/quality/context.md": "009e512eb2a7edbbc621818ea8fb6cf58bdb3c52d69f7cbb55d55d01442ba3fe",
     ".drs/agents/review/style/context.md": "37d5284a6143d3f969d601298d7704ac24a6c85f256491b4aec33812bd298637",
@@ -17,7 +17,7 @@
     ".github/workflows/ci.yml": "ff5c9d8cf980682c8a0eac033f9748a1f5e4d288788aa71597a6b7d0cadd8dff",
     ".github/workflows/drs-fix-stacked.yml": "3d70abe574557c62291a38255ed1629503ffacaa2e97f70aa217a53653f72a92",
     ".github/workflows/drs-guidance-stacked.yml": "891f2cb664da7c3c97ecdd6430edb787c92e4b85a911a3e5da5094f9d75bcdbd",
-    ".github/workflows/pr-review.yml": "fbe7d0bbf21815677a13a24037d8d12c4560fc4579680a803b66d9397b6a5d11",
+    ".github/workflows/pr-review.yml": "9739d95986bafe49ef04f03d380a8a2875900cc17dae8763e1def1c0ee7d1953",
     ".github/workflows/publish.yml": "0c77d6fc9f8c930867840315fda939e0f67ecc64c244af1ad82dea68ae93621d",
     ".github/workflows/release-changelog.yml": "3c9c1fe8f6c173b2676357817e94a8ad6568b9576c930d35ae1ff0e237fda6a1",
     ".github/workflows/tag-changelog.yml": "f0ce1f625ee792bdb521741af2f6d7f2b2dd458fefd17d3dd2515d5f0154a91a",
@@ -231,6 +231,6 @@
     "tsconfig.json": "017a6d1c52d39a1a81fc3b561a3144c360f9dc630ff878043aef3212d1994d7e",
     "vitest.config.ts": "2dc230b842df634ca28f62f97356e804f35d2475979e64fc0a3dbf672879e748"
   },
-  "wikiHash": "9c7bbdb9f5649caddffdedf0dcc3bbae6a5b9dc2395feab845315f327affdb75",
-  "updatedAt": "2026-07-18T16:58:43.342Z"
+  "wikiHash": "f81a1083e8c98789b96198f1ceb142a1d4d3695f48866bc68c0b23b4a5210887",
+  "updatedAt": "2026-07-19T00:25:28.876Z"
 }

@@ -126,6 +126,8 @@ The `repository-wiki-check` workflow combines `check-wiki-state` with `validate-
 
 This ensures the wiki is up to date and OKF-conformant on every pull request.
 
+`.github/workflows/pr-review.yml` also synchronizes the wiki for trusted contributors: after a successful review, it runs `repository-wiki-sync` and commits only `wiki/` and `.drs/wiki-state.json` changes back to the PR branch. The patch is guarded so non-wiki changes are rejected, and the push uses `force-with-lease` against the reviewed head to avoid overwriting concurrent updates.
+
 ## Human-readable website
 
 The canonical `wiki/` bundle is also the source for a VitePress website. DRS packages the adapter and theme under `.wiki-site/`, outside the bundle, so publishing concerns do not alter portable OKF content and other repositories can use the same renderer.

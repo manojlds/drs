@@ -30,3 +30,10 @@ Hardening updates:
 - Added the human-readable VitePress publishing layer, including OKF-derived navigation and metadata, local search, raw bundle and `llms.txt` outputs, pull-request build validation, and GitHub Pages deployment.
 - Dogfooded a 13-path deterministic delta to add the internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and a post-deployment Pages smoke check.
 - Hardened the reusable renderer with OKF preflight validation, symbolic-link and concurrent-operation guards, generic start/log handling, canonical Pages metadata, structured graph smoke validation, and npm-package output exclusions.
+
+## 2026-07-19
+
+Updated [integrations.md](integrations.md) and [repository-wiki.md](repository-wiki.md) to reflect changes in `.github/workflows/pr-review.yml`:
+
+- Trusted contributor reviews now synchronize the repository wiki, stage only `wiki/` and `.drs/wiki-state.json` changes, and push them back to the PR branch with a guarded patch and `force-with-lease` against the reviewed head.
+- External contributor reviews require both the `safe-to-review` label and approval of the `external-pr-review` environment.

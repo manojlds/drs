@@ -35,11 +35,12 @@ The `github-pr-post-comment` workflow posts or updates a single marked comment.
 
 `.github/workflows/pr-review.yml` is the production PR automation wrapper. It uses `pull_request_target` and:
 
-1. Verifies whether the author is a repository collaborator.
+1. Verifies whether the author is a repository collaborator and whether the PR has the `safe-to-review` label.
 2. Auto-reviews trusted contributors with `fix=true`, `fixMode=internal`, and `describe=false`.
-3. Reviews external contributors only when the `safe-to-review` label is present or the `external-pr-review` environment is approved.
-4. Runs `node dist/cli/index.js workflow run github-pr-review --post=true --trace`.
-5. Uploads the visual explainer, workflow artifacts, and trace viewer as artifacts.
+3. Synchronizes the [repository wiki](repository-wiki.md) for trusted contributors, then commits and pushes wiki-only changes back to the PR branch.
+4. Reviews external contributors only when the PR has the `safe-to-review` label and the `external-pr-review` environment is approved.
+5. Runs `node dist/cli/index.js workflow run github-pr-review --post=true --trace`.
+6. Uploads the visual explainer, workflow artifacts, and trace viewer as artifacts.
 
 Additional manual wrappers exist for stacked guidance updates (`.github/workflows/drs-guidance-stacked.yml`) and stacked fixes (`.github/workflows/drs-fix-stacked.yml`).
 
@@ -67,7 +68,7 @@ Local workflows use `simple-git` through `src/cli/workflow.ts` to read `git diff
 ## Security notes
 
 - The GitHub Actions workflow uses `pull_request_target`, which runs workflow YAML from the target branch, not the PR branch. This prevents external PRs from modifying the review automation.
-- External contributors require an explicit `safe-to-review` label or environment approval to prevent API-cost abuse.
+- External contributors require the `safe-to-review` label and approval of the `external-pr-review` environment to prevent API-cost abuse.
 - The `stack-guard` action refuses to run fix flows on branches with reserved prefixes (`drs-fix/`, `drs-guidance/`, `drs-stack/`).
 
 ## See also
