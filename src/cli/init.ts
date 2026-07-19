@@ -103,9 +103,6 @@ pi:
   }
 
   yaml += `agents:
-  paths:
-    skills: .agents/skills
-
   # Default model and skills for all agents
   default:
     model: ${config.defaultModel}

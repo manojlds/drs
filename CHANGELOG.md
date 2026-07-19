@@ -22,6 +22,10 @@ All notable changes to DRS are documented in this file.
 
 - Harden reusable wiki rendering against symbolic-link escapes and overlapping in-process operations, support valid bundles without DRS-specific quickstart/log pages, and exclude generated site output from the npm package.
 
+### Removed
+
+- Remove bundled skill installation and synchronization commands, content lock tracking, and the obsolete top-level `drs sync` command now that DRS no longer packages skills. Project-authored agent skills remain supported.
+
 ## 4.1.0 - 2026-07-17
 
 ### Added

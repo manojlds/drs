@@ -4,10 +4,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { initProject } from './init.js';
-import { getProjectSetupStatus, syncProjectSetup } from '../lib/project-setup.js';
+import { getProjectSetupStatus } from '../lib/project-setup.js';
 
 describe('DRS project onboarding smoke', () => {
-  it('initializes and syncs a new git repository', async () => {
+  it('initializes a new git repository', async () => {
     const repo = mkdtempSync(join(tmpdir(), 'drs-init-smoke-'));
     try {
       execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
@@ -19,10 +19,6 @@ describe('DRS project onboarding smoke', () => {
       const initialized = getProjectSetupStatus(repo);
       expect(initialized.initialized).toBe(true);
       expect(initialized.issues).toEqual([]);
-
-      const synced = syncProjectSetup(repo);
-      expect(synced.initialized).toBe(true);
-      expect(synced.issues).toEqual([]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
