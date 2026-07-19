@@ -85,6 +85,8 @@ The flow in `.pi/workflows/github-pr-review.yaml` is:
 
 A stacked-fix mode (`fixMode=stacked`) creates a separate change request instead of pushing to the source branch. The `git-commit` nodes in `github-pr-review` and `gitlab-mr-review` set `useChangeRequestAuthor: true`, so both internal and stacked fix commits are attributed to the original PR/MR creator. The `stack-guard` action prevents recursive reviews on DRS-managed branches.
 
+Standalone stacked fix workflows `github-pr-fix-review-issues-stacked` and `gitlab-mr-fix-review-issues-stacked` provide the same fix-and-stack behavior without the main review flow; their `git-commit` nodes also set `useChangeRequestAuthor: true`.
+
 ## Posting results
 
 The `post-review-comments` action uses `src/lib/comment-poster.ts` to:
