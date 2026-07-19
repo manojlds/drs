@@ -337,7 +337,7 @@ async function listMarkdownFiles(directory: string, current = ''): Promise<strin
 }
 
 function parseFrontmatter(content: string): Record<string, unknown> | null {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content.replace(/^\uFEFF/u, ''));
   if (!match?.[1]) return null;
   const parsed = parseYaml(match[1]);
   return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)

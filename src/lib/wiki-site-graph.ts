@@ -1,3 +1,4 @@
+import MarkdownIt from 'markdown-it';
 import { posix } from 'path';
 
 export interface WikiSiteGraphConcept {
@@ -11,6 +12,25 @@ export interface WikiSiteGraphConcept {
 export interface WikiSiteGraphOptions {
   base: string;
   siteTitle: string;
+}
+
+export interface WikiConceptGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface WikiConceptGraphMetrics {
+  directedEdgeCount: number;
+  nodeCount: number;
+  orphanConceptCount: number;
+  weaklyConnectedConceptCount: number;
+}
+
+export interface WikiConceptGraphAnalysis {
+  edges: WikiConceptGraphEdge[];
+  metrics: WikiConceptGraphMetrics;
+  orphanIds: string[];
+  weaklyConnectedIds: string[];
 }
 
 interface GraphNode extends WikiSiteGraphConcept {
@@ -28,38 +48,83 @@ const TYPE_COLORS = [
   '#df7da8',
   '#93bd68',
 ];
+const markdownParser = new MarkdownIt({ html: false });
 
 export function extractWikiSiteConceptLinks(
   content: string,
   currentId: string,
   conceptIds: ReadonlySet<string>
 ): string[] {
-  const withoutCode = content
-    .replace(/^(?:```|~~~)[^\n]*\n[\s\S]*?^(?:```|~~~)\s*$/gm, '')
-    .replace(/`[^`\n]*`/g, '');
+  const body = content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u, '');
   const links = new Set<string>();
-  const markdownLink = /(?<!!)\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^)]*["'])?\s*\)/g;
-  for (const match of withoutCode.matchAll(markdownLink)) {
-    const rawTarget = match[1];
-    if (!rawTarget || rawTarget.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(rawTarget)) {
-      continue;
+  for (const token of markdownParser.parse(body, {})) {
+    for (const child of token.children ?? []) {
+      if (child.type !== 'link_open') continue;
+      const rawTarget = child.attrGet('href');
+      if (!rawTarget || rawTarget.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(rawTarget)) {
+        continue;
+      }
+      let target = rawTarget.split(/[?#]/, 1)[0] ?? '';
+      try {
+        target = decodeURIComponent(target);
+      } catch {
+        continue;
+      }
+      if (!target.endsWith('.md')) continue;
+      const sourceDirectory = posix.dirname(`${currentId}.md`);
+      const normalized = posix.normalize(
+        target.startsWith('/') ? target.slice(1) : posix.join(sourceDirectory, target)
+      );
+      if (normalized.startsWith('../')) continue;
+      const targetId = normalized.replace(/\.md$/, '');
+      if (targetId !== currentId && conceptIds.has(targetId)) links.add(targetId);
     }
-    let target = rawTarget.split(/[?#]/, 1)[0] ?? '';
-    try {
-      target = decodeURIComponent(target);
-    } catch {
-      continue;
-    }
-    if (!target.endsWith('.md')) continue;
-    const sourceDirectory = posix.dirname(`${currentId}.md`);
-    const normalized = posix.normalize(
-      target.startsWith('/') ? target.slice(1) : posix.join(sourceDirectory, target)
-    );
-    if (normalized.startsWith('../')) continue;
-    const targetId = normalized.replace(/\.md$/, '');
-    if (targetId !== currentId && conceptIds.has(targetId)) links.add(targetId);
   }
   return [...links].sort(compareStrings);
+}
+
+/** Analyze semantic concept links as directed edges and deterministic quality metrics. */
+export function analyzeWikiConceptGraph(
+  concepts: ReadonlyArray<Pick<WikiSiteGraphConcept, 'id' | 'links'>>
+): WikiConceptGraphAnalysis {
+  const nodeIds = new Set(concepts.map((concept) => concept.id));
+  const edgeKeys = new Set<string>();
+  const edges: WikiConceptGraphEdge[] = [];
+  for (const concept of concepts) {
+    for (const target of concept.links) {
+      if (target === concept.id || !nodeIds.has(target)) continue;
+      const key = `${concept.id}\0${target}`;
+      if (edgeKeys.has(key)) continue;
+      edgeKeys.add(key);
+      edges.push({ source: concept.id, target });
+    }
+  }
+  edges.sort(
+    (left, right) =>
+      compareStrings(left.source, right.source) || compareStrings(left.target, right.target)
+  );
+
+  const neighbors = new Map([...nodeIds].map((id) => [id, new Set<string>()]));
+  for (const edge of edges) {
+    neighbors.get(edge.source)?.add(edge.target);
+    neighbors.get(edge.target)?.add(edge.source);
+  }
+  const orphanIds = [...nodeIds].filter((id) => neighbors.get(id)?.size === 0).sort(compareStrings);
+  const weaklyConnectedIds = [...nodeIds]
+    .filter((id) => neighbors.get(id)?.size === 1)
+    .sort(compareStrings);
+
+  return {
+    edges,
+    metrics: {
+      directedEdgeCount: edges.length,
+      nodeCount: nodeIds.size,
+      orphanConceptCount: orphanIds.length,
+      weaklyConnectedConceptCount: weaklyConnectedIds.length,
+    },
+    orphanIds,
+    weaklyConnectedIds,
+  };
 }
 
 export function createWikiSiteGraphHtml(
@@ -75,20 +140,9 @@ export function createWikiSiteGraphHtml(
     color: colors.get(concept.type) ?? TYPE_COLORS[0],
     href: `${options.base}${encodeWikiSiteConceptId(concept.id)}.html`,
   }));
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const edgeKeys = new Set<string>();
-  const edges: Array<{ source: string; target: string }> = [];
-  for (const node of nodes) {
-    for (const target of node.links) {
-      if (!nodeIds.has(target)) continue;
-      const pair = [node.id, target].sort(compareStrings);
-      const key = pair.join('\0');
-      if (edgeKeys.has(key)) continue;
-      edgeKeys.add(key);
-      edges.push({ source: pair[0] ?? node.id, target: pair[1] ?? target });
-    }
-  }
-  const graphJson = JSON.stringify({ nodes, edges, types })
+  const analysis = analyzeWikiConceptGraph(nodes);
+  const edges = analysis.edges;
+  const graphJson = JSON.stringify({ nodes, edges, types, metrics: analysis.metrics })
     .replaceAll('<', '\\u003c')
     .replaceAll('\u2028', '\\u2028')
     .replaceAll('\u2029', '\\u2029');
@@ -126,12 +180,13 @@ export function createWikiSiteGraphHtml(
     .filters { display: flex; flex-wrap: wrap; gap: .4rem; }
     .filter { padding: .3rem .5rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: transparent; cursor: pointer; font: 700 .72rem/1.2 ui-monospace, monospace; }
     .filter[aria-pressed="true"] { border-color: var(--filter-color); color: #0d1321; background: var(--filter-color); }
-    .stats { display: flex; gap: .75rem; margin: 1rem 0; padding: .7rem 0; border-block: 1px solid var(--line); color: var(--muted); font: .75rem ui-monospace, monospace; }
+    .stats { margin: 1rem 0; padding: .7rem 0; border-block: 1px solid var(--line); color: var(--muted); font: .75rem/1.5 ui-monospace, monospace; }
     .detail { min-height: 10rem; }
     .detail h2 { margin: 0 0 .35rem; font-size: 1.05rem; }
     .detail p { margin: .35rem 0; color: var(--muted); font-size: .82rem; }
     .detail .type { display: inline-block; padding: .15rem .4rem; border: 1px solid currentcolor; border-radius: 999px; font: 700 .68rem ui-monospace, monospace; }
     .detail a { display: inline-block; margin-top: .6rem; color: var(--brand); font-weight: 800; text-decoration: none; }
+    .neighbor-group h3 { margin: .8rem 0 0; color: var(--muted); font: 800 .68rem/1.2 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
     .neighbors { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
     .neighbors button { padding: .2rem .4rem; border: 1px solid var(--line); color: var(--muted); background: transparent; cursor: pointer; font-size: .7rem; }
     .stage { position: relative; min-width: 0; overflow: hidden; background: radial-gradient(circle at 50% 45%, #182441 0, #0d1321 58%); }
@@ -181,11 +236,12 @@ export function createWikiSiteGraphHtml(
     <section class="stage" aria-label="Interactive concept relationship graph">
       <svg id="graph" viewBox="0 0 1000 700" role="img" aria-labelledby="graph-title graph-description">
         <title id="graph-title">${escapeHtml(options.siteTitle)} concept relationship graph</title>
-        <desc id="graph-description">Concept nodes connected by internal Markdown links. Select a node for details.</desc>
+        <desc id="graph-description">Concept nodes connected by directed internal Markdown links. Arrowheads point from the linking concept to its target. Select a node for incoming and outgoing details.</desc>
+        <defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path></marker></defs>
         <g id="edges"></g>
         <g id="nodes"></g>
       </svg>
-      <p class="hint">Drag to rearrange / Enter to open</p>
+      <p class="hint">Drag to rearrange / Space to inspect / Enter to open</p>
     </section>
   </main>
   <noscript><h1>Concepts</h1><ul>${fallbackLinks}</ul></noscript>
@@ -208,6 +264,12 @@ export function createWikiSiteGraphHtml(
       const activeTypes = new Set(data.types);
       const edgeElements = [];
       const nodeElements = new Map();
+      const outgoingById = new Map(data.nodes.map((node) => [node.id, new Set()]));
+      const incomingById = new Map(data.nodes.map((node) => [node.id, new Set()]));
+      for (const edge of data.edges) {
+        outgoingById.get(edge.source).add(edge.target);
+        incomingById.get(edge.target).add(edge.source);
+      }
       let selectedId = '';
       let dragged = null;
       let ticks = 0;
@@ -221,13 +283,15 @@ export function createWikiSiteGraphHtml(
       }
 
       for (const edge of data.edges) {
-        const line = svgElement('line', { class: 'edge' });
+        const line = svgElement('line', { class: 'edge', 'marker-end': 'url(#arrowhead)' });
         edgesLayer.append(line);
         edgeElements.push({ edge, line });
       }
 
       for (const [index, node] of data.nodes.entries()) {
-        const group = svgElement('g', { class: 'node', tabindex: '0', role: 'link', 'aria-label': node.title + ', ' + node.type });
+        const outgoingCount = outgoingById.get(node.id).size;
+        const incomingCount = incomingById.get(node.id).size;
+        const group = svgElement('g', { class: 'node', tabindex: '0', role: 'link', 'aria-label': node.title + ', ' + node.type + ', ' + outgoingCount + ' outgoing links, ' + incomingCount + ' incoming links' });
         const circle = svgElement('circle', { r: 10, fill: node.color });
         const text = svgElement('text', { x: 15, y: index % 2 ? 17 : -10 });
         text.textContent = node.title;
@@ -288,7 +352,7 @@ export function createWikiSiteGraphHtml(
           if (show) visibleNodes += 1;
         }
         const visibleEdges = data.edges.filter((edge) => visible(nodeById.get(edge.source)) && visible(nodeById.get(edge.target))).length;
-        stats.textContent = visibleNodes + ' concepts / ' + visibleEdges + ' links';
+        stats.textContent = visibleNodes + ' matching concepts / ' + visibleEdges + ' matching directed links / ' + data.metrics.orphanConceptCount + ' true orphans / ' + data.metrics.weaklyConnectedConceptCount + ' weak overall';
       }
 
       function selectNode(id) {
@@ -309,15 +373,19 @@ export function createWikiSiteGraphHtml(
         open.href = node.href;
         open.textContent = 'Open concept ->';
         detail.append(title, type, description, open);
-        const relatedIds = new Set();
-        for (const edge of data.edges) {
-          if (edge.source === id) relatedIds.add(edge.target);
-          if (edge.target === id) relatedIds.add(edge.source);
-        }
-        if (relatedIds.size) {
+        appendNeighborGroup('Links to', outgoingById.get(id));
+        appendNeighborGroup('Linked from', incomingById.get(id));
+
+        function appendNeighborGroup(label, neighborIds) {
+          if (!neighborIds.size) return;
+          const group = document.createElement('section');
+          group.className = 'neighbor-group';
+          const heading = document.createElement('h3');
+          heading.textContent = label;
           const related = document.createElement('div');
           related.className = 'neighbors';
-          for (const relatedId of relatedIds) {
+          const sortedIds = [...neighborIds].sort((left, right) => nodeById.get(left).title.localeCompare(nodeById.get(right).title));
+          for (const relatedId of sortedIds) {
             const neighbor = nodeById.get(relatedId);
             const button = document.createElement('button');
             button.type = 'button';
@@ -325,7 +393,8 @@ export function createWikiSiteGraphHtml(
             button.addEventListener('click', () => selectNode(relatedId));
             related.append(button);
           }
-          detail.append(related);
+          group.append(heading, related);
+          detail.append(group);
         }
       }
 
@@ -380,10 +449,15 @@ export function createWikiSiteGraphHtml(
         for (const item of edgeElements) {
           const source = nodeById.get(item.edge.source);
           const target = nodeById.get(item.edge.target);
-          item.line.setAttribute('x1', source.x);
-          item.line.setAttribute('y1', source.y);
-          item.line.setAttribute('x2', target.x);
-          item.line.setAttribute('y2', target.y);
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const distance = Math.max(Math.hypot(dx, dy), 1);
+          const unitX = dx / distance;
+          const unitY = dy / distance;
+          item.line.setAttribute('x1', source.x + unitX * 12);
+          item.line.setAttribute('y1', source.y + unitY * 12);
+          item.line.setAttribute('x2', target.x - unitX * 16);
+          item.line.setAttribute('y2', target.y - unitY * 16);
         }
         for (const node of data.nodes) {
           const element = nodeElements.get(node.id);

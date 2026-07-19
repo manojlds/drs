@@ -68,6 +68,41 @@ describe('wiki site smoke check', () => {
     );
   });
 
+  it('rejects graph metrics that disagree with directed edges', async () => {
+    const responses = validResponses();
+    responses[`${baseUrl}graph.html`] = html(
+      '<script id="graph-data" type="application/json">{"nodes":[{"id":"quickstart","title":"Start","type":"Guide","description":"Start here","color":"#fff","href":"/docs/quickstart.html"}],"edges":[],"types":["Guide"],"metrics":{"directedEdgeCount":1,"nodeCount":1,"orphanConceptCount":1,"weaklyConnectedConceptCount":0}}</script>'
+    );
+
+    await expect(checkWikiSite(baseUrl, { fetch: createFetchMock(responses) })).rejects.toThrow(
+      /invalid concept graph metrics/
+    );
+  });
+
+  it('accepts distinct reciprocal directed edges and their metrics', async () => {
+    const responses = validResponses();
+    responses[`${baseUrl}graph.html`] = directedGraphHtml();
+    responses[`${baseUrl}llms.txt`] = text(
+      `# Wiki\n\n- [Start](${baseUrl}quickstart.html)\n- [Architecture](${baseUrl}architecture.html)\n- [Graph](${baseUrl}graph.html)\n- [Raw](${baseUrl}okf/index.md)`
+    );
+    responses[`${baseUrl}architecture.html`] = html('<a href="/docs/">Home</a>');
+
+    await expect(
+      checkWikiSite(baseUrl, { fetch: createFetchMock(responses) })
+    ).resolves.toMatchObject({ baseUrl });
+  });
+
+  it('rejects duplicate edges in the same direction', async () => {
+    const responses = validResponses();
+    responses[`${baseUrl}graph.html`] = html(
+      '<script id="graph-data" type="application/json">{"nodes":[{"id":"quickstart","title":"Start","type":"Guide","description":"Start here","color":"#fff","href":"/docs/quickstart.html"},{"id":"architecture","title":"Architecture","type":"Guide","description":"System design","color":"#fff","href":"/docs/architecture.html"}],"edges":[{"source":"quickstart","target":"architecture"},{"source":"quickstart","target":"architecture"}],"types":["Guide"],"metrics":{"directedEdgeCount":2,"nodeCount":2,"orphanConceptCount":0,"weaklyConnectedConceptCount":2}}</script>'
+    );
+
+    await expect(checkWikiSite(baseUrl, { fetch: createFetchMock(responses) })).rejects.toThrow(
+      /invalid concept graph data/
+    );
+  });
+
   it('rejects redirects outside the configured base', async () => {
     const responses = validResponses();
     Object.defineProperty(responses[baseUrl], 'url', {
@@ -107,7 +142,13 @@ function validResponses(): Record<string, Response> {
 
 function graphHtml(): Response {
   return html(
-    '<script id="graph-data" type="application/json">{"nodes":[{"id":"quickstart","title":"Start","type":"Guide","description":"Start here","color":"#fff","href":"/docs/quickstart.html"}],"edges":[],"types":["Guide"]}</script>'
+    '<script id="graph-data" type="application/json">{"nodes":[{"id":"quickstart","title":"Start","type":"Guide","description":"Start here","color":"#fff","href":"/docs/quickstart.html"}],"edges":[],"types":["Guide"],"metrics":{"directedEdgeCount":0,"nodeCount":1,"orphanConceptCount":1,"weaklyConnectedConceptCount":0}}</script>'
+  );
+}
+
+function directedGraphHtml(): Response {
+  return html(
+    '<script id="graph-data" type="application/json">{"nodes":[{"id":"quickstart","title":"Start","type":"Guide","description":"Start here","color":"#fff","href":"/docs/quickstart.html"},{"id":"architecture","title":"Architecture","type":"Guide","description":"System design","color":"#fff","href":"/docs/architecture.html"}],"edges":[{"source":"architecture","target":"quickstart"},{"source":"quickstart","target":"architecture"}],"types":["Guide"],"metrics":{"directedEdgeCount":2,"nodeCount":2,"orphanConceptCount":0,"weaklyConnectedConceptCount":2}}</script>'
   );
 }
 

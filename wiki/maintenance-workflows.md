@@ -64,7 +64,7 @@ It is selected as the default workflow in `.drs/drs.config.yaml` (`workflow.defa
 
 The `repository-wiki-sync` workflow creates or updates an OKF v0.1 wiki bundle. It uses a deterministic delta planner to decide whether the wiki needs to be regenerated, reconciled, updated, or left unchanged. The `task/okf-wiki-maintainer` agent runs only when the delta plan says work is needed. After the agent edits concepts, the workflow synchronizes directory indexes, validates the bundle, and records state in `.drs/wiki-state.json`.
 
-The `repository-wiki-check` workflow is a model-free CI gate. It checks the recorded delta state and validates the bundle without invoking an agent. `.github/workflows/ci.yml` runs this check on every pull request.
+The `repository-wiki-check` workflow is a model-free CI gate. It checks the recorded delta state and validates the bundle without invoking an agent. `.github/workflows/ci.yml` runs the strict check for the scheduled `drs/wiki-update` pull request; ordinary feature pull requests build the wiki site to validate bundle structure and rendering without requiring branch-local freshness.
 
 See [Repository wiki](repository-wiki.md) for the full delta fingerprinting, state, and validation details.
 

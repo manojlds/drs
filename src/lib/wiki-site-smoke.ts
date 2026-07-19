@@ -110,12 +110,18 @@ function extractGraphConceptUrls(content: string, graphUrl: URL, baseUrl: URL): 
   if (graph === null || typeof graph !== 'object') {
     throw new Error(`Wiki site ${graphUrl.href} contains invalid concept graph data.`);
   }
-  const { nodes, edges } = graph as { edges?: unknown; nodes?: unknown };
+  const { nodes, edges, metrics } = graph as {
+    edges?: unknown;
+    metrics?: unknown;
+    nodes?: unknown;
+  };
   const types = (graph as { types?: unknown }).types;
   if (
     !Array.isArray(nodes) ||
     nodes.length === 0 ||
     !Array.isArray(edges) ||
+    metrics === null ||
+    typeof metrics !== 'object' ||
     !Array.isArray(types) ||
     !types.every((type) => typeof type === 'string')
   ) {
@@ -145,6 +151,8 @@ function extractGraphConceptUrls(content: string, graphUrl: URL, baseUrl: URL): 
     assertWithinBase(url, baseUrl);
     return url;
   });
+  const edgeKeys = new Set<string>();
+  const neighbors = new Map([...nodeIds].map((id) => [id, new Set<string>()]));
   for (const edge of edges) {
     if (edge === null || typeof edge !== 'object') {
       throw new Error(`Wiki site ${graphUrl.href} contains invalid concept graph data.`);
@@ -154,9 +162,29 @@ function extractGraphConceptUrls(content: string, graphUrl: URL, baseUrl: URL): 
       typeof source !== 'string' ||
       typeof target !== 'string' ||
       !nodeIds.has(source) ||
-      !nodeIds.has(target)
+      !nodeIds.has(target) ||
+      source === target
     ) {
       throw new Error(`Wiki site ${graphUrl.href} contains invalid concept graph data.`);
+    }
+    const key = `${source}\0${target}`;
+    if (edgeKeys.has(key)) {
+      throw new Error(`Wiki site ${graphUrl.href} contains invalid concept graph data.`);
+    }
+    edgeKeys.add(key);
+    neighbors.get(source)?.add(target);
+    neighbors.get(target)?.add(source);
+  }
+  const expectedMetrics = {
+    directedEdgeCount: edges.length,
+    nodeCount: nodes.length,
+    orphanConceptCount: [...neighbors.values()].filter((related) => related.size === 0).length,
+    weaklyConnectedConceptCount: [...neighbors.values()].filter((related) => related.size === 1)
+      .length,
+  };
+  for (const [name, value] of Object.entries(expectedMetrics)) {
+    if ((metrics as Record<string, unknown>)[name] !== value) {
+      throw new Error(`Wiki site ${graphUrl.href} contains invalid concept graph metrics.`);
     }
   }
   return urls;

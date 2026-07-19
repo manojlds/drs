@@ -24,7 +24,7 @@ describe('wiki site build integration', () => {
       );
       await writeFile(
         join(wikiRoot, 'overview.md'),
-        '---\ntype: Guide\ntitle: Product overview\ndescription: A small reusable bundle.\n---\n\n# Product overview\n'
+        '\uFEFF---\ntype: Guide\ntitle: Product overview\ndescription: A small reusable bundle.\n---\n\n# Product overview\n'
       );
 
       const result = await buildWikiSite({

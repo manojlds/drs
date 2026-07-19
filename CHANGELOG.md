@@ -11,8 +11,12 @@ All notable changes to DRS are documented in this file.
 - Add source/wiki fingerprints, persisted delta state, model-free no-op and PR checks, and changed-path-scoped wiki maintenance.
 - Add an OKF-aware VitePress website with local search, concept metadata, raw bundle and `llms.txt` outputs, PR build validation, and GitHub Pages deployment.
 - Add an interactive internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and post-deployment Pages smoke checks.
-- Add trusted same-repository PR wiki synchronization and opt-in PR/MR creator attribution for workflow-generated commits.
+- Add scheduled repository wiki synchronization through a dedicated bot pull request, plus opt-in PR/MR creator attribution for workflow-generated commits.
 - Add model-free `drs wiki search` with deterministic metadata/body ranking, repository-relative citations, snippets, limits, and JSON output.
+
+### Changed
+
+- Preserve directed concept links in repository wiki graphs, show incoming and outgoing relationships separately, and report deterministic orphan and weak-connection quality metrics during validation.
 
 ### Fixed
 

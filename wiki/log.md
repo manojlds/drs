@@ -63,3 +63,5 @@ Follow-up search hardening in `src/lib/wiki-search.ts` and `src/lib/wiki-search.
 - Documented Unicode NFKC normalization and code-point-safe snippet excerpting in [repository-wiki.md](repository-wiki.md).
 - Documented invalid backtick-fence handling (info strings containing embedded backticks) so headings inside them remain searchable.
 - Updated [testing.md](testing.md) to list the new Unicode snippet and invalid-fence test cases.
+
+Replaced per-feature-PR repository wiki synchronization with a scheduled GitHub workflow that maintains one `drs/wiki-update` pull request from the latest default branch. Ordinary feature PRs now validate the OKF bundle through the site build without committing branch-specific wiki state; the bot PR retains the strict model-free freshness check. Updated [repository-wiki.md](repository-wiki.md), [integrations.md](integrations.md), and [maintenance-workflows.md](maintenance-workflows.md) with the scheduling, token isolation, and merge-consistency behavior.

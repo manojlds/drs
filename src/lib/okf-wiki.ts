@@ -3,6 +3,11 @@ import { isAbsolute, relative, resolve, sep } from 'path';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import { resolveWithinWorkingDir } from './path-utils.js';
+import {
+  analyzeWikiConceptGraph,
+  extractWikiSiteConceptLinks,
+  type WikiConceptGraphMetrics,
+} from './wiki-site-graph.js';
 
 export const SUPPORTED_OKF_VERSION = '0.1' as const;
 
@@ -20,6 +25,7 @@ export interface OkfBundleValidationResult {
   indexes: number;
   logs: number;
   errors: OkfValidationIssue[];
+  graph: WikiConceptGraphMetrics;
   warnings: OkfValidationIssue[];
 }
 
@@ -139,12 +145,19 @@ export async function validateOkfBundle(
       indexes: 0,
       logs: 0,
       errors: [issue('invalid_bundle_root', errorMessage(error))],
+      graph: emptyGraphMetrics(),
       warnings,
     };
   }
 
   const entries = await collectBundleEntries(bundle.absolutePath, errors);
   const files = new Set(entries.map((entry) => entry.relativePath));
+  const conceptIds = new Set(
+    entries
+      .filter((entry) => isConceptFilename(path.posix.basename(entry.relativePath)))
+      .map((entry) => entry.relativePath.replace(/\.md$/u, ''))
+  );
+  const graphConcepts: Array<{ id: string; links: string[] }> = [];
   let concepts = 0;
   let indexes = 0;
   let logs = 0;
@@ -163,6 +176,11 @@ export async function validateOkfBundle(
     } else {
       concepts += 1;
       validateConcept(content, entry.relativePath, errors, warnings);
+      const id = entry.relativePath.replace(/\.md$/u, '');
+      graphConcepts.push({
+        id,
+        links: extractWikiSiteConceptLinks(content, id, conceptIds),
+      });
     }
 
     validateInternalLinks(content, entry.relativePath, files, warnings);
@@ -170,6 +188,16 @@ export async function validateOkfBundle(
 
   if (concepts === 0) {
     errors.push(issue('empty_bundle', 'The bundle must contain at least one concept document.'));
+  }
+  const graph = analyzeWikiConceptGraph(graphConcepts);
+  for (const id of graph.orphanIds) {
+    warnings.push(
+      issue(
+        'orphan_concept',
+        'Concept has no incoming or outgoing semantic links to another concept.',
+        `${id}.md`
+      )
+    );
   }
 
   return {
@@ -180,6 +208,7 @@ export async function validateOkfBundle(
     indexes,
     logs,
     errors,
+    graph: graph.metrics,
     warnings,
   };
 }
@@ -619,6 +648,15 @@ function toPosixPath(value: string): string {
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function emptyGraphMetrics(): WikiConceptGraphMetrics {
+  return {
+    directedEdgeCount: 0,
+    nodeCount: 0,
+    orphanConceptCount: 0,
+    weaklyConnectedConceptCount: 0,
+  };
 }
 
 function issue(code: string, message: string, issuePath?: string): OkfValidationIssue {
