@@ -49,7 +49,7 @@ For the unified reviewer, `review.unified.model` and `REVIEW_UNIFIED_MODEL` take
 
 ## Skills
 
-Skills are Markdown files in `SKILL.md` format. DRS searches for them in `agents.paths.skills` if configured, otherwise in `.drs/skills`, `.agents/skills`, and `.pi/skills` (in that order). The same skill name in an earlier path wins.
+Skills are Markdown files in `SKILL.md` format. DRS searches for them in `agents.paths.skills` if configured, otherwise in `.drs/skills`, `.agents/skills`, and `.pi/skills` (in that order) when those directories exist. The same skill name in an earlier path wins. DRS no longer ships bundled skill installation or synchronization commands; projects provide skill files directly or manage them outside the CLI.
 
 Agents declare skills in their frontmatter or in the config under `agents.default.skills`, `agents.namespaces.<namespace>.skills`, or `agents.overrides.<id>.skills`. The Pi runtime loads the skill content via the `read` tool and injects it into the agent context.
 
@@ -65,7 +65,9 @@ Agents declare skills in their frontmatter or in the config under `agents.defaul
 
 These tools are how the review agent emits structured output and how the fix agent reads and verifies review artifacts.
 
-When an agent workflow node declares filesystem permissions, `src/pi/sdk.ts` supplies same-name policy-aware definitions for Pi's built-in `read`, `write`, and `edit` tools plus a scoped `delete_file` tool. Pi natively limits tools by name but does not expose path allowlists, so DRS uses Pi's pluggable tool operations to enforce paths inside tool execution. DRS custom tools use the same authorizer, and unrestricted shell/check tools are removed from scoped sessions. Restricted reads also remove aggregate `grep`, `find`, `ls`, and `git_diff` tools rather than risk traversing or exposing a denied descendant.
+When an agent workflow node declares filesystem permissions, `src/pi/sdk.ts` supplies same-name policy-aware definitions for Pi's built-in `read`, `write`, and `edit` tools plus a scoped `delete_file` tool. Pi natively limits tools by name but does not expose path allowlists, so DRS uses Pi's pluggable tool operations to enforce paths inside tool execution. DRS custom tools (`write_json_output`, `write_artifact_output`, `read_artifact`, and `git_diff`) use the same authorizer when permissions are present. Unrestricted `bash` and `drs_check` tools are removed from scoped sessions, and the resource loader disables Pi extensions (`noExtensions`) so an agent cannot load resources outside the policy boundary. Restricted reads also remove aggregate `grep`, `find`, `ls`, and `git_diff` tools rather than risk traversing or exposing a denied descendant; omit the `read` rule when the agent needs unrestricted repository evidence.
+
+The authorizer in `src/lib/agent-permissions.ts` resolves each requested path against the allowed roots, checks `allow` and `deny` patterns with `minimatch`, and rejects symbolic links and multiply-linked write targets. `~` and `file://` prefixes are normalized before authorization, and paths containing Unicode whitespace are sanitized. Proposed writes are validated by configured `afterMutation` validators before the file is committed; after a successful write, edit, or deletion the validator returns full bundle-level feedback that the agent can use to repair issues in the same run.
 
 ## Session lifecycle
 

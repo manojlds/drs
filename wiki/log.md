@@ -70,4 +70,26 @@ Removed the obsolete bundled skill installation and synchronization commands fro
 
 ## 2026-07-20
 
-Added generic workflow-agent filesystem permissions and applied them to repository wiki maintenance. Updated [workflow-engine.md](workflow-engine.md) and [pi-runtime.md](pi-runtime.md) for literal write roots, allow/deny patterns, shell isolation, Pi tool enforcement, post-run mutation checks, and in-run OKF validation feedback.
+Added generic workflow-agent filesystem permissions and applied them to repository wiki maintenance.
+
+Core changes:
+
+- Workflow nodes can now declare `permissions` and `validation` fields. `permissions` supports `read`, `write`, and `delete` rules with literal repository-relative `roots`, root-relative `allow`/`deny` glob patterns, and mandatory `shell: false`. `validation.afterMutation` currently supports the `okf-document` validator, which checks proposed OKF documents before writes and returns full bundle validation feedback after mutations. `src/lib/config.ts` and `src/lib/workflow/planning.ts` validate these fields and reject forbidden combinations such as `permissions` with `writes`, `agentsFrom` write/delete permissions, or validators without write/delete access.
+- `src/lib/agent-permissions.ts` implements the filesystem authorizer, workspace snapshot capture, and post-run mutation guard. It rejects traversal, symbolic links, and multiply-linked write targets; fingerprints tracked and non-ignored untracked files before and after the run; and reports residual changes outside the allowed policy.
+- `src/pi/sdk.ts` installs policy-aware versions of Pi's `read`, `write`, `edit`, and `delete_file` tools, applies the authorizer to DRS custom tools, removes unrestricted `bash`/`drs_check` from scoped sessions, and disables Pi resource-loader extensions when permissions are active.
+- `src/cli/run-agent.ts` captures a workspace snapshot before a restricted agent runs and asserts that only allowed paths changed afterwards.
+- `src/cli/workflow.ts` and `src/temporal/workflows.ts` serialize nodes that are potential workspace mutations (`isPotentialWorkspaceMutation`) so concurrent filesystem edits cannot collide. `src/temporal/retry-policy.ts` classifies agent nodes with `write`/`delete` permissions as no-retry, alongside fixed `writes` paths.
+- The `repository-wiki-sync` workflow (`src/pi/workflows/repository-wiki-sync.yaml`) now applies scoped permissions and `okf-document` validation to the `task/okf-wiki-maintainer` agent. The agent frontmatter (`src/pi/agents/task/okf-wiki-maintainer.md`) disables shell, enables `delete_file`, and keeps `git_diff` for source evidence.
+- `src/lib/okf-wiki.ts` gained `validateOkfDocument` for pre-mutation checks, atomic index writes via temporary-file rename, removal of stale empty-directory indexes, and directed concept-graph metrics (node count, directed edges, orphans, weakly connected concepts) returned from `validateOkfBundle`.
+- `.wiki-site/.vitepress/config.mts` now links `graph.html` with the absolute site URL and strips a leading BOM when parsing frontmatter.
+- `src/lib/skills.ts` and the bundled skill installation/sync commands (`drs skills`, `drs sync`) were removed; project-authored skill directories under `.drs/skills`, `.agents/skills`, and `.pi/skills` are still discovered by the runtime if present.
+- Added `markdown-it` and `minimatch` dependencies.
+
+Updated concepts:
+
+- [workflow-engine.md](workflow-engine.md) — added agent permission example, node-field restrictions, and workspace-mutation serialization.
+- [pi-runtime.md](pi-runtime.md) — described policy-aware tool enforcement, `noExtensions`, custom-tool authorization, and validator feedback.
+- [temporal-execution.md](temporal-execution.md) — noted wave serialization for workspace mutations and permission-based no-retry classification.
+- [repository-wiki.md](repository-wiki.md) — documented atomic index writes, empty-index cleanup, and the maintainer's permission boundary.
+- [maintenance-workflows.md](maintenance-workflows.md) — noted the scoped permissions and in-run validation on `repository-wiki-sync`.
+- [testing.md](testing.md) — listed the new planning, permission, and wiki-site integration tests.

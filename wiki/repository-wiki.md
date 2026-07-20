@@ -101,7 +101,7 @@ Internal links between concepts use standard Markdown links. Broken links are re
 
 ## Index synchronization
 
-The `sync-okf-indexes` action in `src/lib/okf-wiki.ts` generates stable progressive-disclosure indexes for every non-empty bundle directory. It writes an `index.md` only when the generated content differs from the existing file, so repeated runs are idempotent.
+The `sync-okf-indexes` action in `src/lib/okf-wiki.ts` generates stable progressive-disclosure indexes for every non-empty bundle directory. It writes an `index.md` only when the generated content differs from the existing file, so repeated runs are idempotent. Writes use a temporary file and atomic rename to avoid partial indexes on failure, and empty directories have any stale `index.md` removed.
 
 ## Validation
 
