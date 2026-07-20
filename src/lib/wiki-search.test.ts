@@ -29,6 +29,31 @@ afterEach(() => {
 });
 
 describe('wiki search', () => {
+  it('exposes concept provenance in search results', async () => {
+    const projectRoot = createTempDir();
+    writeWikiFile(
+      projectRoot,
+      'runtime.md',
+      concept(
+        [
+          'type: Architecture',
+          'title: Workflow runtime',
+          'drs_sources:',
+          '  - path: src/runtime/client.ts',
+          '    symbols: [runAgent]',
+        ],
+        '# Runtime\n\nExecutes repository workflows.'
+      )
+    );
+
+    const result = await searchWiki(projectRoot, 'workflow runtime');
+
+    expect(result.results[0]).toMatchObject({
+      path: 'wiki/runtime.md',
+      sources: [{ path: 'src/runtime/client.ts', symbols: ['runAgent'] }],
+    });
+  });
+
   it('ranks metadata before body matches and excludes reserved documents', async () => {
     const projectRoot = createTempDir();
     writeWikiFile(

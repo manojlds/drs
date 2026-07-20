@@ -447,4 +447,69 @@ describe('wiki delta state', () => {
       reason: 'Wiki state is missing or invalid.',
     });
   });
+
+  it('records provenance and maps changed sources to candidate concepts', async () => {
+    const root = createRepository();
+    write(
+      root,
+      'wiki/quickstart.md',
+      '---\ntype: Quickstart\ntitle: Quickstart\ndrs_sources:\n  - path: src/app.ts\n    symbols: [value]\n---\n\nRepository overview.\n'
+    );
+    write(
+      root,
+      'wiki/index.md',
+      '---\nokf_version: "0.1"\n---\n\n# Concepts\n\n* [Quickstart](quickstart.md)\n'
+    );
+    const state = await recordWikiState(root);
+    expect(state.sourceConcepts).toEqual({ 'src/app.ts': ['quickstart.md'] });
+    git(root, 'add', 'wiki', '.drs/wiki-state.json');
+    git(root, 'commit', '-m', 'add wiki with provenance');
+
+    write(root, 'src/app.ts', 'export const value = 2;\n');
+    const mapped = await planWikiUpdate(root);
+    expect(mapped).toMatchObject({
+      mode: 'update',
+      changedPaths: ['src/app.ts'],
+      candidateConcepts: ['quickstart.md'],
+    });
+
+    write(root, 'src/other.ts', 'export const other = true;\n');
+    const mixed = await planWikiUpdate(root);
+    expect(mixed).toMatchObject({
+      mode: 'update',
+      changedPaths: ['src/app.ts', 'src/other.ts'],
+      candidateConcepts: ['quickstart.md'],
+    });
+  });
+
+  it('omits the provenance map when concepts declare no sources', async () => {
+    const root = createRepository();
+    createWiki(root);
+    const state = await recordWikiState(root);
+    expect(state.sourceConcepts).toBeUndefined();
+    git(root, 'add', 'wiki', '.drs/wiki-state.json');
+    git(root, 'commit', '-m', 'add wiki');
+
+    write(root, 'src/app.ts', 'export const value = 2;\n');
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({
+      mode: 'update',
+      changedPaths: ['src/app.ts'],
+      candidateConcepts: [],
+    });
+  });
+
+  it('treats a malformed provenance map in state as invalid data', async () => {
+    const root = createRepository();
+    createWiki(root);
+    await recordWikiState(root);
+    const statePath = join(root, '.drs/wiki-state.json');
+    const state = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    state.sourceConcepts = { 'src/app.ts': 'not-an-array' };
+    writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8');
+
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({
+      mode: 'reconcile',
+      reason: 'Wiki state is missing or invalid.',
+    });
+  });
 });

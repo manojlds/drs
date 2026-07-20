@@ -28,6 +28,7 @@ interface OkfConcept {
 
 interface WikiThemeConfig extends DefaultTheme.Config {
   startConcept?: { link: string; text: string };
+  sourceRepository?: string;
 }
 
 const configDirectory = dirname(fileURLToPath(import.meta.url));
@@ -207,6 +208,7 @@ export default defineConfig({
           },
         }
       : {}),
+    ...(repository ? { sourceRepository: repository } : {}),
     search: {
       provider: 'local',
     },

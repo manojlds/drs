@@ -44,6 +44,24 @@ describe('wiki site publishing safety', () => {
     });
   });
 
+  it('passes sanitized drs_sources through to the theme', () => {
+    expect(
+      sanitizeWikiSiteFrontmatter({
+        type: 'Guide',
+        drs_sources: [
+          { path: 'src/app.ts', symbols: ['value', 42] },
+          { path: '' },
+          'junk',
+          { path: 'src/wiki.ts', symbols: 'not-a-list' },
+        ],
+      })
+    ).toEqual({
+      type: 'Guide',
+      drs_sources: [{ path: 'src/app.ts', symbols: ['value', '42'] }, { path: 'src/wiki.ts' }],
+    });
+    expect(sanitizeWikiSiteFrontmatter({ drs_sources: 'junk' })).toEqual({});
+  });
+
   it('allows only HTTP resources and images', () => {
     expect(isSafeWikiSiteRemoteUrl('https://example.com/concept')).toBe(true);
     expect(isSafeWikiSiteRemoteUrl('http://example.com/image.png')).toBe(true);

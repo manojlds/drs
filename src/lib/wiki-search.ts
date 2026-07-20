@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { loadOkfConcepts, type OkfConceptDocument } from './okf-wiki.js';
+import { loadOkfConcepts, type OkfConceptDocument, type OkfConceptSource } from './okf-wiki.js';
 
 export interface WikiSearchOptions {
   limit?: number;
@@ -11,6 +11,7 @@ export interface WikiSearchMatch {
   path: string;
   score: number;
   snippet: string;
+  sources?: OkfConceptSource[];
   tags: string[];
   title: string;
   type: string;
@@ -103,6 +104,7 @@ function scoreConcept(
     path: path.posix.join(root, concept.path),
     score,
     snippet: createSnippet(concept, phrase, terms),
+    ...(concept.sources?.length ? { sources: concept.sources } : {}),
     tags,
     title,
     type: cleanDisplayText(concept.type),

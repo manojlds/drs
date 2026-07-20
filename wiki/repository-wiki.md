@@ -43,6 +43,24 @@ Repository-specific scope, priorities, exclusions, terminology, and audience can
 
 The brief is excluded from source fingerprints. Instead, `record-wiki-state` stores its hash as `instructionsHash` in the state file, so editing the brief invalidates freshness and the planner returns `reconcile` on the next run. One-run `instructions` inputs are never recorded and never invalidate freshness. The planner output exposes the effective instructions, their source (`file`, `input`, `combined`, or `none`), and the effective hash in workflow JSON output.
 
+## Source provenance
+
+Concepts declare the repository evidence behind them with the producer-defined `drs_sources` frontmatter field — repository-relative paths with optional `symbols`:
+
+```yaml
+---
+type: Architecture
+title: Wiki delta planner
+drs_sources:
+  - path: src/lib/wiki-delta.ts
+    symbols: [planWikiUpdate]
+---
+```
+
+Malformed declarations (non-list values, missing paths, absolute or escaping paths) are validation errors; cited paths that no longer exist and concepts without provenance are warnings, so coverage grows incrementally without blocking maintenance. Index synchronization rewrites only generated `index.md` files, so provenance survives untouched.
+
+`record-wiki-state` inverts the citations into a `sourceConcepts` reverse map (source path to concept paths) in the state file. In update mode the planner intersects `changedPaths` with that map and returns `candidateConcepts` — the concepts whose cited sources changed — as the primary scope for the maintainer. Changed paths without provenance still reach the agent through `changedPaths` for judgment calls. Provenance also renders as a Sources panel on each concept page of the wiki site and appears in `drs wiki search --json` results.
+
 Run the model-free check:
 
 ```bash
@@ -88,11 +106,14 @@ The state file `.drs/wiki-state.json` is kept outside the bundle so it does not 
   },
   "wikiHash": "<sha256>",
   "instructionsHash": "<sha256>",
+  "sourceConcepts": {
+    "src/example.ts": ["example-concept.md"]
+  },
   "updatedAt": "<ISO 8601>"
 }
 ```
 
-`instructionsHash` is present only when a persistent wiki brief exists; state files recorded before the brief was introduced continue to load, and adding a brief later reconciles once.
+`instructionsHash` is present only when a persistent wiki brief exists; state files recorded before the brief was introduced continue to load, and adding a brief later reconciles once. `sourceConcepts` is present only when concepts declare `drs_sources`; it is rebuilt from the bundle at record time, so hand-edited citations are absorbed on the next sync.
 
 The `record-wiki-state` action writes this atomically after a successful sync. Missing tracked paths are omitted from the manifest, so deletions and renames remain stable after they are committed. Clean Git submodules use their checked-out commit as a canonical fingerprint that also works in CI when submodules are not initialized. Planning detects dirty submodules, but they must be committed before state can be recorded. Symbolic links in bundle or state ancestors are rejected. The `.gitignore` keeps most of `.drs/` ignored but explicitly tracks `.drs/wiki-state.json`, so the state is committed with the source it describes. The wiki bundle itself is committed alongside the source unless the project chooses to ignore it.
 

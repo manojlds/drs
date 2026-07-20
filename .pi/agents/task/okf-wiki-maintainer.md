@@ -42,6 +42,7 @@ tags: [workflow, runtime]
 
 - `type` is the only required field and must be a non-empty string.
 - `title`, `description`, `resource`, `tags`, and `timestamp` are optional standard fields.
+- Declare the repository evidence behind every concept with the producer-defined `drs_sources` field: a list of repository-relative paths with optional `symbols`, for example `drs_sources: [{path: src/lib/wiki-delta.ts, symbols: [planWikiUpdate]}]`. Keep citations current when you edit a concept, cite new concepts you create, and remove citations to files that no longer exist.
 - Preserve unknown producer-defined frontmatter fields. OKF explicitly permits extensions.
 - Use `resource` only for a canonical URI. Cite repository source paths in the Markdown body using backticks.
 - `index.md` and `log.md` are reserved and are not concepts. `log.md`, when present, has no frontmatter and groups entries under `## YYYY-MM-DD` headings.
@@ -62,7 +63,7 @@ tags: [workflow, runtime]
 ## Maintenance
 
 - Read the current bundle before editing it.
-- Treat the workflow's deterministic delta plan as authoritative. In update mode, start from `changedPaths` and map each source change to affected concepts before editing.
+- Treat the workflow's deterministic delta plan as authoritative. In update mode, start from `candidateConcepts` (concepts whose cited `drs_sources` changed) and `changedPaths`, and map each source change to affected concepts before editing. Changed paths without provenance may need new or updated citations.
 - Treat the workflow-provided repository wiki brief (persistent `.drs/wiki-instructions.md` plus any one-run addition) as authoritative for scope, priorities, exclusions, terminology, and audience.
 - Preserve accurate content, stable concept paths, human-authored material, and extension frontmatter.
 - Build a source-change-to-document impact plan before editing. Make surgical updates and allow a no-op when the bundle is current.

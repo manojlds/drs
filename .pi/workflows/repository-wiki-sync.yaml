@@ -80,7 +80,7 @@ nodes:
       Repository wiki brief (persistent brief plus any one-run addition):
       {{artifacts.wikiDelta.instructions}}
 
-      For generate mode, inspect the full repository and create the initial bundle. For update mode, use changedPaths as the primary scope and edit only directly affected concepts. For reconcile mode, preserve accurate existing content while repairing state or bundle drift and re-apply the repository wiki brief.
+      For generate mode, inspect the full repository and create the initial bundle. For update mode, prioritize candidateConcepts (concepts whose cited drs_sources changed) and use changedPaths as the primary scope, editing only directly affected concepts. For reconcile mode, preserve accurate existing content while repairing state or bundle drift and re-apply the repository wiki brief. Declare and maintain drs_sources citations in every concept you create or edit.
 
       Edit concept files in place and return a concise summary. Do not edit index.md files; DRS synchronizes them in the next step. Do not commit or push.
     output: wikiSummary

@@ -96,6 +96,8 @@ Persist repository-specific scope, priorities, exclusions, terminology, and audi
 
 ## Priority 3: Structured source provenance
 
+Status: implemented. Concepts declare `drs_sources` (repository-relative paths, optional `symbols`); malformed declarations are validation errors while missing cited paths and missing provenance are warnings. `record-wiki-state` persists a `source path -> concept paths` reverse map in `.drs/wiki-state.json`, `plan-wiki-update` returns `candidateConcepts` for update mode, the wiki site renders a Sources panel per concept, and `drs wiki search --json` includes citations.
+
 ### Goal
 
 Record which repository evidence supports each concept, render those citations, and use the reverse map to improve incremental updates.
@@ -248,5 +250,5 @@ Each priority should be a separate PR unless implementation proves very small. C
 ## Suggested prompt for the next session
 
 ```text
-Read WIKI_NEXT_FEATURES.md and implement Priority 3: Structured source provenance. Start from current main, inspect OKF extension handling in src/lib/okf-wiki.ts and the delta planner in src/lib/wiki-delta.ts before editing, keep the change minimal, add provenance and unsafe-path tests, update and synchronize the canonical wiki, run npm run check:all, and open a PR.
+Read WIKI_NEXT_FEATURES.md and implement Priority 4 leftovers (arrowhead rendering, incoming/outgoing neighbor separation, relationship explanations) or Priority 5: Read-only `drs wiki ask`. Start from current main, inspect the graph analysis in src/lib/wiki-site-graph.ts and model-free retrieval in src/lib/wiki-search.ts before editing, keep the change minimal, add security-focused tests, update and synchronize the canonical wiki, run npm run check:all, and open a PR.
 ```

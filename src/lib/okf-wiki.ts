@@ -44,10 +44,16 @@ export interface OkfIndexSyncResult {
   updated: number;
 }
 
+export interface OkfConceptSource {
+  path: string;
+  symbols?: string[];
+}
+
 export interface OkfConceptDocument {
   body: string;
   description?: string;
   path: string;
+  sources?: OkfConceptSource[];
   tags: string[];
   title?: string;
   type: string;
@@ -188,6 +194,7 @@ export async function validateOkfBundle(
       .map((entry) => entry.relativePath.replace(/\.md$/u, ''))
   );
   const graphConcepts: Array<{ id: string; links: string[] }> = [];
+  const citedSources: Array<{ concept: string; source: string }> = [];
   let concepts = 0;
   let indexes = 0;
   let logs = 0;
@@ -205,7 +212,10 @@ export async function validateOkfBundle(
       validateLog(content, entry.relativePath, errors);
     } else {
       concepts += 1;
-      validateConcept(content, entry.relativePath, errors, warnings);
+      const sources = validateConcept(content, entry.relativePath, errors, warnings);
+      for (const source of sources) {
+        citedSources.push({ concept: entry.relativePath, source: source.path });
+      }
       const id = entry.relativePath.replace(/\.md$/u, '');
       graphConcepts.push({
         id,
@@ -215,6 +225,8 @@ export async function validateOkfBundle(
 
     validateInternalLinks(content, entry.relativePath, files, warnings);
   }
+
+  await warnOnMissingCitedSources(workingDir, citedSources, warnings);
 
   if (concepts === 0) {
     errors.push(issue('empty_bundle', 'The bundle must contain at least one concept document.'));
@@ -287,6 +299,112 @@ export function validateOkfDocument(
   };
 }
 
+/**
+ * Parse the producer-defined `drs_sources` provenance extension. Returns the parsed sources, or a
+ * validation message when the field is malformed. Cited paths must be repository-relative and stay
+ * inside the repository.
+ */
+export function parseOkfConceptSources(
+  fields: Record<string, unknown>
+): OkfConceptSource[] | string {
+  if (!('drs_sources' in fields)) return [];
+  const value = fields.drs_sources;
+  if (!Array.isArray(value)) {
+    return 'Optional field `drs_sources` should be a list of source references.';
+  }
+
+  const wholeFileCitations = new Set<string>();
+  const symbolCitations = new Map<string, Set<string>>();
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.path !== 'string') {
+      return '`drs_sources` entries should define a non-empty string `path`.';
+    }
+    const sourcePath = normalizeSourcePath(entry.path);
+    if (!sourcePath) {
+      return `\`drs_sources\` paths must be repository-relative and stay inside the repository: ${entry.path}`;
+    }
+    if ('symbols' in entry) {
+      if (
+        !Array.isArray(entry.symbols) ||
+        entry.symbols.some((symbol) => typeof symbol !== 'string' || !symbol.trim())
+      ) {
+        return `\`drs_sources\` entry \`symbols\` should be a list of non-empty strings: ${sourcePath}`;
+      }
+      if (wholeFileCitations.has(sourcePath)) continue;
+      const symbols = symbolCitations.get(sourcePath) ?? new Set<string>();
+      for (const symbol of entry.symbols as string[]) symbols.add(symbol.trim());
+      symbolCitations.set(sourcePath, symbols);
+    } else {
+      // A whole-file citation covers every symbol and wins regardless of entry order.
+      wholeFileCitations.add(sourcePath);
+      symbolCitations.delete(sourcePath);
+    }
+  }
+
+  return [...wholeFileCitations, ...symbolCitations.keys()]
+    .sort(compareStrings)
+    .map((sourcePath) => {
+      const symbols = symbolCitations.get(sourcePath);
+      return symbols?.size
+        ? { path: sourcePath, symbols: [...symbols].sort(compareStrings) }
+        : { path: sourcePath };
+    });
+}
+
+function normalizeSourcePath(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || isAbsolute(trimmed) || trimmed.startsWith('~')) return undefined;
+  const normalized = path.posix.normalize(trimmed.replaceAll('\\', '/'));
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../') ||
+    path.posix.isAbsolute(normalized)
+  ) {
+    return undefined;
+  }
+  return normalized;
+}
+
+/** Load the `drs_sources` reverse map (repository source path -> bundle concept paths). */
+export async function loadOkfProvenanceMap(
+  workingDir: string,
+  root = 'wiki'
+): Promise<Record<string, string[]>> {
+  const bundle = await resolveBundleRoot(workingDir, root);
+  const traversalErrors: OkfValidationIssue[] = [];
+  const entries = await collectBundleEntries(bundle.absolutePath, traversalErrors);
+  if (traversalErrors.length > 0) {
+    throw new Error(
+      `Cannot load OKF provenance:\n${traversalErrors
+        .map(({ code, message, path: issuePath }) =>
+          issuePath ? `- ${issuePath}: [${code}] ${message}` : `- [${code}] ${message}`
+        )
+        .join('\n')}`
+    );
+  }
+
+  const provenance = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    if (!isConceptFilename(path.posix.basename(entry.relativePath))) continue;
+    const parsed = parseFrontmatter(await readFile(entry.absolutePath, 'utf-8'));
+    if (typeof parsed === 'string') continue;
+    const sources = parseOkfConceptSources(parsed.fields);
+    if (typeof sources === 'string') continue;
+    for (const source of sources) {
+      const concepts = provenance.get(source.path) ?? new Set<string>();
+      concepts.add(entry.relativePath);
+      provenance.set(source.path, concepts);
+    }
+  }
+
+  const reverseMap: Record<string, string[]> = Object.create(null);
+  for (const sourcePath of [...provenance.keys()].sort(compareStrings)) {
+    reverseMap[sourcePath] = [...(provenance.get(sourcePath) ?? [])].sort(compareStrings);
+  }
+  return reverseMap;
+}
+
 /** Load validated concept documents from an OKF bundle in stable path order. */
 export async function loadOkfConcepts(
   workingDir: string,
@@ -332,9 +450,14 @@ export async function loadOkfConcepts(
           return normalized ? [normalized] : [];
         })
       : [];
+    const sources = parseOkfConceptSources(parsed.fields);
+    if (typeof sources === 'string') {
+      throw new Error(`Cannot load invalid OKF concept ${entry.relativePath}: ${sources}`);
+    }
     concepts.push({
       body: parsed.body,
       path: entry.relativePath,
+      ...(sources.length ? { sources } : {}),
       tags,
       type,
       ...(title ? { title } : {}),
@@ -443,11 +566,11 @@ function validateConcept(
   relativePath: string,
   errors: OkfValidationIssue[],
   warnings: OkfValidationIssue[]
-): void {
+): OkfConceptSource[] {
   const parsed = parseFrontmatter(content);
   if (typeof parsed === 'string') {
     errors.push(issue('invalid_frontmatter', parsed, relativePath));
-    return;
+    return [];
   }
 
   const { fields } = parsed;
@@ -492,6 +615,55 @@ function validateConcept(
         relativePath
       )
     );
+  }
+
+  return validateConceptProvenance(fields, relativePath, errors, warnings);
+}
+
+function validateConceptProvenance(
+  fields: Record<string, unknown>,
+  relativePath: string,
+  errors: OkfValidationIssue[],
+  warnings: OkfValidationIssue[]
+): OkfConceptSource[] {
+  const sources = parseOkfConceptSources(fields);
+  if (typeof sources === 'string') {
+    errors.push(issue('invalid_drs_sources', sources, relativePath));
+    return [];
+  }
+  if (sources.length === 0) {
+    warnings.push(
+      issue(
+        'missing_provenance',
+        'Concept declares no `drs_sources` provenance for its repository evidence.',
+        relativePath
+      )
+    );
+  }
+  return sources;
+}
+
+async function warnOnMissingCitedSources(
+  workingDir: string,
+  citations: Array<{ concept: string; source: string }>,
+  warnings: OkfValidationIssue[]
+): Promise<void> {
+  const existence = new Map<string, boolean>();
+  await Promise.all(
+    [...new Set(citations.map((citation) => citation.source))].map(async (source) => {
+      let exists = false;
+      try {
+        const stats = await lstat(resolveWithinWorkingDir(workingDir, source, 'read'));
+        exists = stats.isFile() || stats.isDirectory();
+      } catch {
+        exists = false;
+      }
+      existence.set(source, exists);
+    })
+  );
+  for (const { concept, source } of citations) {
+    if (existence.get(source)) continue;
+    warnings.push(issue('missing_source', `Cited source path does not exist: ${source}`, concept));
   }
 }
 

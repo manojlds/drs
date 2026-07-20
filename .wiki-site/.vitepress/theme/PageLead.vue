@@ -4,6 +4,13 @@ import { type DefaultTheme, useData, withBase } from 'vitepress';
 
 interface WikiThemeConfig extends DefaultTheme.Config {
   startConcept?: { link: string; text: string };
+  sourceRepository?: string;
+}
+
+interface WikiSourceEntry {
+  path: string;
+  symbols: string[];
+  url?: string;
 }
 
 const { page, frontmatter, site, theme } = useData<WikiThemeConfig>();
@@ -18,6 +25,27 @@ const tags = computed(() => {
   const value = frontmatter.value.tags;
   if (Array.isArray(value)) return value.map(String);
   return value ? [String(value)] : [];
+});
+const sources = computed<WikiSourceEntry[]>(() => {
+  const value = frontmatter.value.drs_sources;
+  if (!Array.isArray(value)) return [];
+  const repository = theme.value.sourceRepository;
+  return value.flatMap((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    const sourcePath = stringValue(record.path);
+    if (!sourcePath) return [];
+    const symbols = Array.isArray(record.symbols)
+      ? record.symbols.map(stringValue).filter(Boolean)
+      : [];
+    const url = repository
+      ? `https://github.com/${repository}/blob/main/${sourcePath
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/')}`
+      : undefined;
+    return [{ path: sourcePath, symbols, ...(url ? { url } : {}) }];
+  });
 });
 
 function stringValue(value: unknown): string {
@@ -70,6 +98,25 @@ function safeRemoteUrl(value: string): string {
       >
       <code v-else-if="resource" class="concept-meta__resource-text">{{ resource }}</code>
       <time v-if="timestamp" :datetime="timestamp">Updated {{ timestamp }}</time>
+    </div>
+    <div v-if="sources.length" class="concept-meta__sources">
+      <span class="concept-meta__sources-label">Sources</span>
+      <ul>
+        <li v-for="source in sources" :key="source.path">
+          <a
+            v-if="source.url"
+            :href="source.url"
+            rel="noreferrer"
+            target="_blank"
+            class="concept-meta__source-link"
+            ><code>{{ source.path }}</code></a
+          >
+          <code v-else>{{ source.path }}</code>
+          <span v-if="source.symbols.length" class="concept-meta__symbols">
+            <code v-for="symbol in source.symbols" :key="symbol">{{ symbol }}</code>
+          </span>
+        </li>
+      </ul>
     </div>
   </aside>
 </template>

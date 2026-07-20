@@ -11,7 +11,14 @@ import {
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { synchronizeOkfIndexes, validateOkfBundle, validateOkfDocument } from './okf-wiki.js';
+import {
+  loadOkfConcepts,
+  loadOkfProvenanceMap,
+  parseOkfConceptSources,
+  synchronizeOkfIndexes,
+  validateOkfBundle,
+  validateOkfDocument,
+} from './okf-wiki.js';
 
 const tempDirectories: string[] = [];
 
@@ -51,6 +58,7 @@ describe('OKF wiki bundles', () => {
 
   it('synchronizes official OKF indexes and validates a bundle', async () => {
     const projectRoot = createTempDir();
+    writeConcept(projectRoot, 'src/runtime.ts', 'export const runtime = true;\n');
     const wikiRoot = join(projectRoot, 'wiki');
     mkdirSync(wikiRoot);
     writeConcept(
@@ -63,6 +71,8 @@ describe('OKF wiki bundles', () => {
         'description: Start here to understand the repository.',
         'timestamp: 2026-07-17T12:00:00Z',
         'owner: maintainers',
+        'drs_sources:',
+        '  - path: src/runtime.ts',
         '---',
         '',
         'The runtime [depends on the workflow engine](/architecture/runtime.md).',
@@ -78,6 +88,9 @@ describe('OKF wiki bundles', () => {
         'title: Workflow runtime',
         'description: Executes repository maintenance workflows.',
         'tags: [runtime, workflow]',
+        'drs_sources:',
+        '  - path: src/runtime.ts',
+        '    symbols: [runtime]',
         '---',
         '',
         'The runtime is introduced by the [quickstart](/quickstart.md).',
@@ -259,5 +272,140 @@ describe('OKF wiki bundles', () => {
     await expect(validateOkfBundle(projectRoot, 'wiki', '1.0')).rejects.toThrow(
       'Unsupported OKF version "1.0"'
     );
+  });
+
+  it('parses drs_sources with deterministic merging and normalization', () => {
+    expect(parseOkfConceptSources({})).toEqual([]);
+    expect(parseOkfConceptSources({ drs_sources: [] })).toEqual([]);
+    expect(
+      parseOkfConceptSources({
+        drs_sources: [
+          { path: 'src/app.ts', symbols: ['beta', 'alpha'] },
+          { path: 'src\\app.ts', symbols: ['gamma'] },
+          { path: './src/wiki.ts' },
+          { path: 'src/wiki.ts', symbols: ['ignored'] },
+        ],
+      })
+    ).toEqual([
+      { path: 'src/app.ts', symbols: ['alpha', 'beta', 'gamma'] },
+      { path: 'src/wiki.ts' },
+    ]);
+  });
+
+  it('rejects malformed drs_sources declarations', () => {
+    for (const drsSources of [
+      'not-a-list',
+      [{ symbols: ['value'] }],
+      [{ path: '/etc/passwd' }],
+      [{ path: '../outside.ts' }],
+      [{ path: '..\\outside.ts' }],
+      [{ path: 'src/app.ts', symbols: ['ok', ''] }],
+    ]) {
+      expect(parseOkfConceptSources({ drs_sources: drsSources })).toEqual(expect.any(String));
+    }
+
+    expect(
+      validateOkfDocument(
+        '---\ntype: Guide\ndrs_sources:\n  - path: ../outside.ts\n---\n\nBody\n',
+        'guide.md'
+      )
+    ).toMatchObject({
+      valid: false,
+      errors: [expect.objectContaining({ code: 'invalid_drs_sources', path: 'guide.md' })],
+    });
+  });
+
+  it('warns about missing cited sources and concepts without provenance', async () => {
+    const projectRoot = createTempDir();
+    writeConcept(projectRoot, 'src/app.ts', 'export const value = 1;\n');
+    const wikiRoot = join(projectRoot, 'wiki');
+    mkdirSync(wikiRoot);
+    writeConcept(
+      wikiRoot,
+      'quickstart.md',
+      [
+        '---',
+        'type: Quickstart',
+        'drs_sources:',
+        '  - path: src/app.ts',
+        '    symbols: [value]',
+        '  - path: src/missing.ts',
+        '---',
+        '',
+        'Overview [guide](guide.md).',
+        '',
+      ].join('\n')
+    );
+    writeConcept(
+      wikiRoot,
+      'guide.md',
+      '---\ntype: Guide\n---\n\nBack to [quickstart](quickstart.md).\n'
+    );
+
+    const validation = await validateOkfBundle(projectRoot);
+
+    expect(validation.valid).toBe(true);
+    expect(validation.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'missing_source',
+        path: 'quickstart.md',
+        message: 'Cited source path does not exist: src/missing.ts',
+      })
+    );
+    expect(validation.warnings).toContainEqual(
+      expect.objectContaining({ code: 'missing_provenance', path: 'guide.md' })
+    );
+    expect(
+      validation.warnings.filter((warning) => warning.code === 'missing_provenance')
+    ).toHaveLength(1);
+  });
+
+  it('loads concept provenance and builds the reverse source map', async () => {
+    const projectRoot = createTempDir();
+    writeConcept(projectRoot, 'src/app.ts', 'export const value = 1;\n');
+    const wikiRoot = join(projectRoot, 'wiki');
+    mkdirSync(wikiRoot);
+    writeConcept(
+      wikiRoot,
+      'quickstart.md',
+      '---\ntype: Quickstart\ndrs_sources:\n  - path: src/app.ts\n---\n\nSee [runtime](architecture/runtime.md).\n'
+    );
+    writeConcept(
+      wikiRoot,
+      'architecture/runtime.md',
+      '---\ntype: Architecture\ndrs_sources:\n  - path: src/app.ts\n    symbols: [value]\n---\n\nBack to [quickstart](../quickstart.md).\n'
+    );
+
+    const bundle = await loadOkfConcepts(projectRoot);
+    expect(bundle.concepts).toHaveLength(2);
+    expect(bundle.concepts[0]).toMatchObject({
+      path: 'architecture/runtime.md',
+      sources: [{ path: 'src/app.ts', symbols: ['value'] }],
+    });
+    expect(bundle.concepts[1]).toMatchObject({
+      path: 'quickstart.md',
+      sources: [{ path: 'src/app.ts' }],
+    });
+
+    await expect(loadOkfProvenanceMap(projectRoot)).resolves.toEqual({
+      'src/app.ts': ['architecture/runtime.md', 'quickstart.md'],
+    });
+  });
+
+  it('preserves provenance frontmatter through index synchronization', async () => {
+    const projectRoot = createTempDir();
+    const wikiRoot = join(projectRoot, 'wiki');
+    mkdirSync(wikiRoot);
+    writeConcept(
+      wikiRoot,
+      'quickstart.md',
+      '---\ntype: Quickstart\ndrs_sources:\n  - path: src/app.ts\n    symbols: [value]\n---\n\nOverview.\n'
+    );
+    const conceptPath = join(wikiRoot, 'quickstart.md');
+    const before = readFileSync(conceptPath, 'utf-8');
+
+    await synchronizeOkfIndexes(projectRoot);
+
+    expect(readFileSync(conceptPath, 'utf-8')).toBe(before);
   });
 });

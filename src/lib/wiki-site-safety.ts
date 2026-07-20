@@ -28,6 +28,22 @@ export function sanitizeWikiSiteFrontmatter(
       return value === undefined ? [] : [value];
     });
   }
+  if (Array.isArray(frontmatter.drs_sources)) {
+    const sources = frontmatter.drs_sources.flatMap((entry) => {
+      if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return [];
+      const record = entry as Record<string, unknown>;
+      const sourcePath = safeScalarString(record.path);
+      if (!sourcePath) return [];
+      const symbols = Array.isArray(record.symbols)
+        ? record.symbols.flatMap((symbol) => {
+            const value = safeScalarString(symbol);
+            return value === undefined ? [] : [value];
+          })
+        : undefined;
+      return [{ path: sourcePath, ...(symbols?.length ? { symbols } : {}) }];
+    });
+    if (sources.length > 0) sanitized.drs_sources = sources;
+  }
   return sanitized;
 }
 
