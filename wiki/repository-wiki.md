@@ -3,6 +3,25 @@ type: Workflow
 title: Repository wiki
 description: Generate and maintain an OKF v0.1 repository wiki bundle with deterministic delta fingerprints, model-free checks, and CI validation.
 tags: [wiki, okf, documentation, maintenance, ci]
+drs_sources:
+  - path: .pi/agents/task/okf-wiki-maintainer.md
+  - path: .pi/workflows/repository-wiki-check.yaml
+  - path: .pi/workflows/repository-wiki-sync.yaml
+  - path: .wiki-site/.vitepress/config.mts
+  - path: .wiki-site/.vitepress/theme/PageLead.vue
+  - path: src/cli/workflow.ts
+  - path: src/lib/okf-wiki.ts
+    symbols: [synchronizeOkfIndexes, validateOkfBundle, validateOkfDocument, loadOkfProvenanceMap, parseOkfConceptSources]
+  - path: src/lib/wiki-delta.ts
+    symbols: [planWikiUpdate, recordWikiState, checkWikiClean, resolveWikiInstructions]
+  - path: src/lib/wiki-search.ts
+    symbols: [searchWiki]
+  - path: src/lib/wiki-site-safety.ts
+    symbols: [neutralizeWikiSiteMarkdown, sanitizeWikiSiteFrontmatter, isSafeWikiSiteRemoteUrl, readWikiSiteOkfVersion]
+  - path: src/cli/workflow.test.ts
+  - path: src/lib/okf-wiki.test.ts
+  - path: src/lib/wiki-delta.test.ts
+  - path: src/lib/wiki-search.test.ts
 ---
 
 # Repository wiki
@@ -187,9 +206,9 @@ drs wiki check-site https://example.github.io/project/
 
 `drs wiki build` accepts `--base`, `--site-url`, `--repository owner/name`, and `--title` for hosted output. `drs wiki serve` starts the same packaged adapter as a local development server. `drs wiki check-site` retries while a deployment propagates, then crawls sitemap pages and same-origin assets and verifies the graph, local search marker, raw OKF index, and `llms.txt`.
 
-The adapter scans concept frontmatter to generate type-grouped navigation and displays `type`, `description`, tags, resources, and timestamps as concept metadata. It uses `quickstart.md` as the start concept when present, falls back to the first concept otherwise, and treats `log.md` as optional. It escapes DRS workflow template expressions such as `{{artifacts.change}}` during rendering without modifying their source Markdown.
+The site adapter in `.wiki-site/.vitepress/config.mts` scans concept frontmatter to generate type-grouped navigation and displays `type`, `description`, tags, resources, and timestamps as concept metadata. It uses `quickstart.md` as the start concept when present, falls back to the first concept otherwise, and treats `log.md` as optional. `.wiki-site/.vitepress/theme/PageLead.vue` renders the concept metadata and Sources panel, and the adapter escapes DRS workflow template expressions such as `{{artifacts.change}}` during rendering without modifying their source Markdown.
 
-The publishing boundary treats bundle content as untrusted. Build and serve commands validate the source bundle and reject symbolic-link source/output escapes. Rendering disables raw HTML, executable page frontmatter, file include/snippet directives, non-HTTP resource links, and local image imports so wiki content cannot read runner files or inject executable markup into the published origin. Overlapping in-process builds and servers are rejected to keep their temporary VitePress configuration isolated.
+The publishing boundary treats bundle content as untrusted. `src/lib/wiki-site-safety.ts` neutralizes file include directives, executable SFC blocks, unsafe frontmatter, and non-HTTP resource links before VitePress renders the page, so wiki content cannot read runner files or inject executable markup into the published origin. Build and serve commands validate the source bundle and reject symbolic-link source/output escapes, and overlapping in-process builds and servers are rejected to keep their temporary VitePress configuration isolated.
 
 Every build also emits:
 

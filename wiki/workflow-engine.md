@@ -3,6 +3,10 @@ type: Architecture
 title: Workflow engine
 description: How DRS compiles, validates, schedules, and executes YAML workflows, including built-in actions and control nodes.
 tags: [workflow, engine, planning, execution, temporal]
+drs_sources:
+  - path: src/cli/workflow.ts
+  - path: src/lib/workflow/planning.ts
+    symbols: [validateWorkflowNodeShape, isPotentialWorkspaceMutation]
 ---
 
 # Workflow engine

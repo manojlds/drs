@@ -3,6 +3,13 @@ type: Operations
 title: Testing and quality gate
 description: How DRS is tested, including the mandatory quality gate, unit tests, live tests, and Temporal smoke tests.
 tags: [testing, vitest, quality-gate, ci]
+drs_sources:
+  - path: src/cli/workflow.test.ts
+  - path: src/lib/okf-wiki.test.ts
+  - path: src/lib/wiki-delta.test.ts
+  - path: src/lib/wiki-search.test.ts
+  - path: src/lib/wiki-site-safety.test.ts
+  - path: src/lib/wiki-site.integration.test.ts
 ---
 
 # Testing and quality gate
