@@ -118,6 +118,49 @@ describe('drsWorkflow control-flow execution', () => {
     );
   });
 
+  it('serializes a wave containing workspace-mutating agents', async () => {
+    let active = 0;
+    let maxActive = 0;
+    temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
+      async ({ nodeId }: { nodeId: string }) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { id: nodeId, type: 'agent', status: 'success', agent: `task/${nodeId}` };
+      }
+    );
+    const permissions = {
+      filesystem: { write: { roots: ['docs'], allow: ['**/*.md'] } },
+      shell: false,
+    };
+    const input: TemporalWorkflowInput = {
+      workingDir: '/worker/repo',
+      inputs: {},
+      plan: {
+        schemaVersion: 1,
+        workflowName: 'scoped',
+        source: 'project',
+        overridesPackaged: false,
+        inputs: {},
+        nodes: {
+          one: { agent: 'task/one', input: 'one', permissions },
+          two: { agent: 'task/two', input: 'two', permissions },
+        },
+        executionOrder: ['one', 'two'],
+        waves: [['one', 'two']],
+        segments: [{ type: 'dag', nodeIds: ['one', 'two'] }],
+        hasControlNodes: false,
+        lastNodeId: 'two',
+      },
+    };
+
+    await drsWorkflow(input);
+
+    expect(maxActive).toBe(1);
+    expect(temporalMocks.runWorkflowNodeNoRetryActivity).toHaveBeenCalledTimes(2);
+  });
+
   it('routes switch branches and records inactive DAG nodes as skipped', async () => {
     temporalMocks.runWorkflowNodeNoRetryActivity.mockImplementation(
       async ({ nodeId }: { nodeId: string }) => {

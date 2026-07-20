@@ -655,4 +655,30 @@ describe('Config', () => {
       }
     });
   });
+
+  it('validates agent permission policies while loading workflows', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-permission-config-'));
+    try {
+      mkdirSync(join(projectRoot, '.drs', 'workflows'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'workflows', 'scoped.yaml'),
+        [
+          'nodes:',
+          '  maintain:',
+          '    agent: task/maintain',
+          '    input: Maintain',
+          '    permissions:',
+          '      filesystem:',
+          '        write:',
+          '          roots: [wiki]',
+          '          allow: ["**/*.md"]',
+          '',
+        ].join('\n')
+      );
+
+      expect(() => loadConfig(projectRoot)).toThrow('must explicitly set shell: false');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
 });

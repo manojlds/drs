@@ -402,6 +402,26 @@ describe('RuntimeClient', () => {
       await client.shutdown();
     });
 
+    it('passes agent permissions and validation to Pi runtime config', async () => {
+      const permissions = {
+        filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+        shell: false,
+      };
+      const validation = {
+        afterMutation: [{ name: 'okf-document' as const, root: 'wiki' }],
+      };
+      const client = await createRuntimeClientInstance({
+        directory: process.cwd(),
+        permissions,
+        validation,
+      });
+
+      expect(mocks.createPiInProcessServer).toHaveBeenCalledWith({
+        config: expect.objectContaining({ permissions, validation }),
+      });
+      await client.shutdown();
+    });
+
     it('passes provider and model headers through to Pi runtime config', async () => {
       const client = await createRuntimeClientInstance({
         directory: process.cwd(),

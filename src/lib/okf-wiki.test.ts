@@ -1,8 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import {
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { synchronizeOkfIndexes, validateOkfBundle } from './okf-wiki.js';
+import { synchronizeOkfIndexes, validateOkfBundle, validateOkfDocument } from './okf-wiki.js';
 
 const tempDirectories: string[] = [];
 
@@ -25,6 +34,21 @@ afterEach(() => {
 });
 
 describe('OKF wiki bundles', () => {
+  it('validates proposed concept, log, and generated index documents', () => {
+    expect(validateOkfDocument('---\ntype: Guide\n---\n\nBody\n', 'guide.md')).toMatchObject({
+      valid: true,
+      errors: [],
+    });
+    expect(validateOkfDocument('# Log\n\n## July 20\n', 'log.md')).toMatchObject({
+      valid: false,
+      errors: [expect.objectContaining({ code: 'invalid_log_date' })],
+    });
+    expect(validateOkfDocument('# Generated\n', 'index.md')).toMatchObject({
+      valid: false,
+      errors: [expect.objectContaining({ code: 'generated_index' })],
+    });
+  });
+
   it('synchronizes official OKF indexes and validates a bundle', async () => {
     const projectRoot = createTempDir();
     const wikiRoot = join(projectRoot, 'wiki');
@@ -92,6 +116,42 @@ describe('OKF wiki bundles', () => {
       },
       warnings: [],
     });
+  });
+
+  it('replaces generated index links without following their targets', async () => {
+    const projectRoot = createTempDir();
+    const wikiRoot = join(projectRoot, 'wiki');
+    const outsidePath = join(projectRoot, 'outside.md');
+    mkdirSync(wikiRoot);
+    writeConcept(wikiRoot, 'guide.md', '---\ntype: Guide\n---\n\nGuide.\n');
+    writeFileSync(outsidePath, 'outside\n');
+
+    symlinkSync(outsidePath, join(wikiRoot, 'index.md'));
+    await synchronizeOkfIndexes(projectRoot);
+    expect(readFileSync(outsidePath, 'utf-8')).toBe('outside\n');
+    expect(lstatSync(join(wikiRoot, 'index.md')).isFile()).toBe(true);
+
+    rmSync(join(wikiRoot, 'index.md'));
+    linkSync(outsidePath, join(wikiRoot, 'index.md'));
+    await synchronizeOkfIndexes(projectRoot);
+    expect(readFileSync(outsidePath, 'utf-8')).toBe('outside\n');
+    expect(readFileSync(join(wikiRoot, 'index.md'), 'utf-8')).toContain('guide.md');
+  });
+
+  it('removes empty generated indexes and their parent navigation links', async () => {
+    const projectRoot = createTempDir();
+    const wikiRoot = join(projectRoot, 'wiki');
+    const conceptPath = join(wikiRoot, 'architecture', 'runtime.md');
+    writeConcept(wikiRoot, 'guide.md', '---\ntype: Guide\n---\n\nGuide.\n');
+    writeConcept(wikiRoot, 'architecture/runtime.md', '---\ntype: Architecture\n---\n\nRuntime.\n');
+    await synchronizeOkfIndexes(projectRoot);
+
+    rmSync(conceptPath);
+    const sync = await synchronizeOkfIndexes(projectRoot);
+
+    expect(sync).toMatchObject({ indexes: 1, updated: 2 });
+    expect(() => readFileSync(join(wikiRoot, 'architecture', 'index.md'), 'utf-8')).toThrow();
+    expect(readFileSync(join(wikiRoot, 'index.md'), 'utf-8')).not.toContain('architecture/');
   });
 
   it('reports concept and reserved-file conformance errors', async () => {

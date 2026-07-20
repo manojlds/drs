@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -133,6 +134,84 @@ describe('run-agent', () => {
         },
       })
     );
+  });
+
+  it('passes agent permissions and validation to the runtime client', async () => {
+    const permissions = {
+      filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+      shell: false,
+    };
+    const validation = {
+      afterMutation: [{ name: 'okf-document' as const, root: 'wiki' }],
+    };
+    await runAgent(baseConfig, 'task/docs-updater', {
+      prompt: 'Maintain the wiki',
+      workingDir: process.cwd(),
+      permissions,
+      validation,
+    });
+
+    expect(mocks.createRuntimeClientInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ permissions, validation })
+    );
+  });
+
+  it('rejects residual changes outside agent filesystem permissions', async () => {
+    const projectRoot = createTempDir('drs-run-agent-permissions-');
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+    mkdirSync(join(projectRoot, 'wiki'));
+    writeFileSync(join(projectRoot, 'source.ts'), 'before\n');
+    writeFileSync(join(projectRoot, 'wiki', 'guide.md'), 'before\n');
+    execFileSync('git', ['add', '.'], { cwd: projectRoot, stdio: 'ignore' });
+    mocks.runtimeClient.streamMessages.mockImplementationOnce(async function* () {
+      writeFileSync(join(projectRoot, 'source.ts'), 'after\n');
+      yield {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Updated files',
+        timestamp: new Date(),
+        provider: 'provider',
+        model: 'default-model',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
+      };
+    });
+    mocks.runtimeClient.shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
+
+    await expect(
+      runAgent(baseConfig, 'task/docs-updater', {
+        prompt: 'Maintain the wiki',
+        workingDir: projectRoot,
+        permissions: {
+          filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+          shell: false,
+        },
+      })
+    ).rejects.toThrow('source.ts');
+  });
+
+  it('rejects an output path outside agent filesystem permissions before writing', async () => {
+    const projectRoot = createTempDir('drs-run-agent-output-permissions-');
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+    mkdirSync(join(projectRoot, 'wiki'));
+    await expect(
+      runAgent(baseConfig, 'task/docs-updater', {
+        prompt: 'Maintain the wiki',
+        workingDir: projectRoot,
+        outputPath: 'outside.md',
+        permissions: {
+          filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+          shell: false,
+        },
+      })
+    ).rejects.toThrow('outside the allowed roots');
+    expect(() => readFileSync(join(projectRoot, 'outside.md'), 'utf-8')).toThrow();
   });
 
   it('reads prompt from a file and writes JSON output', async () => {

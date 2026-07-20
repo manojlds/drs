@@ -138,7 +138,9 @@ describe('agent-loader path resolution', () => {
     const wikiAgent = agents.find((agent) => agent.id === 'task/okf-wiki-maintainer');
 
     expect(wikiAgent?.prompt).toContain('Open Knowledge Format (OKF) v0.1 bundle');
-    expect(wikiAgent?.prompt).toContain('Write only below the bundle root');
+    expect(wikiAgent?.prompt).toContain(
+      'Filesystem permissions enforce writes below the bundle root'
+    );
     expect(wikiAgent?.tools?.Edit).toBe(true);
     expect(wikiAgent?.tools?.Write).toBe(true);
   });

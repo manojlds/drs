@@ -18,6 +18,7 @@ import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
 import { createPiInProcessServer, type PiClient } from '../pi/sdk.js';
 import type { TraceCollector } from '../lib/trace-collector.js';
+import type { AgentPermissions, AgentValidation } from '../lib/agent-permissions.js';
 
 export interface RuntimeClientConfig {
   directory?: string;
@@ -30,6 +31,8 @@ export interface RuntimeClientConfig {
   streamTimeoutMs?: number;
   streamPollIntervalMs?: number;
   traceCollector?: TraceCollector;
+  permissions?: AgentPermissions;
+  validation?: AgentValidation;
   providerRetry?: {
     timeoutMs?: number;
     maxRetries?: number;
@@ -269,6 +272,9 @@ export class RuntimeClient {
         Edit: false,
       },
     };
+
+    if (this.config.permissions) runtimeConfig.permissions = this.config.permissions;
+    if (this.config.validation) runtimeConfig.validation = this.config.validation;
 
     const agentConfig: Record<string, Record<string, unknown>> = {};
     let runtimeAgents: AgentDefinition[] = [];

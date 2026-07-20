@@ -1,4 +1,5 @@
 import type { WorkflowConfig, WorkflowNodeConfig } from '../config.js';
+import { validateAgentPermissions, validateAgentValidation } from '../agent-permissions.js';
 import type { WorkflowNodeResult, WorkflowTemplateContext } from './types.js';
 
 export function getNodeNeeds(node: WorkflowNodeConfig): string[] {
@@ -102,6 +103,8 @@ export const WORKFLOW_NODE_FIELDS = new Set([
   'output',
   'writes',
   'json',
+  'permissions',
+  'validation',
 ]);
 
 export const EXECUTABLE_NODE_FIELDS = new Set([
@@ -115,6 +118,8 @@ export const EXECUTABLE_NODE_FIELDS = new Set([
   'output',
   'writes',
   'json',
+  'permissions',
+  'validation',
 ]);
 
 export const CONTROL_NODE_FIELDS: Record<string, Set<string>> = {
@@ -357,6 +362,37 @@ export function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConf
     EXECUTABLE_NODE_FIELDS,
     'node'
   );
+  if (node.permissions !== undefined || node.validation !== undefined) {
+    if (kind !== 'agent' && kind !== 'agents') {
+      throw new Error(
+        `Workflow node "${nodeId}" can only define permissions or validation for agents.`
+      );
+    }
+    if (node.permissions !== undefined) {
+      validateAgentPermissions(node.permissions, `Workflow node "${nodeId}" permissions`);
+      if (node.writes) {
+        throw new Error(
+          `Workflow node "${nodeId}" cannot combine agent permissions with writes; use a deterministic action node for output writes.`
+        );
+      }
+      if (
+        kind === 'agents' &&
+        (node.permissions.filesystem?.write || node.permissions.filesystem?.delete)
+      ) {
+        throw new Error(
+          `Workflow agentsFrom node "${nodeId}" cannot grant filesystem write permissions; use single-agent nodes with explicit dependencies.`
+        );
+      }
+    }
+    if (node.validation !== undefined) {
+      validateAgentValidation(node.validation, `Workflow node "${nodeId}" validation`);
+      if (!node.permissions?.filesystem?.write && !node.permissions?.filesystem?.delete) {
+        throw new Error(
+          `Workflow node "${nodeId}" validation requires filesystem write or delete permissions.`
+        );
+      }
+    }
+  }
   if (node.action && node.with) {
     const allowed = ACTION_OPTION_FIELDS[node.action];
     if (!allowed) {
@@ -375,6 +411,15 @@ export function validateWorkflowNodeKinds(nodes: Record<string, WorkflowNodeConf
 
 export function hasWorkflowControlNodes(nodes: Record<string, WorkflowNodeConfig>): boolean {
   return Object.values(nodes).some((node) => node.control !== undefined);
+}
+
+export function isPotentialWorkspaceMutation(node: WorkflowNodeConfig): boolean {
+  return (
+    node.action !== undefined ||
+    node.writes !== undefined ||
+    node.permissions?.filesystem?.write !== undefined ||
+    node.permissions?.filesystem?.delete !== undefined
+  );
 }
 
 export function getWorkflowExecutionOrder(nodes: Record<string, WorkflowNodeConfig>): string[] {

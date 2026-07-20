@@ -431,6 +431,59 @@ describe('workflow runner', () => {
     expect(result.output).toBe('Summary:\ntask/summarizer: Summarize Diff text');
   });
 
+  it('renders agent permissions and validation from workflow inputs', async () => {
+    const projectRoot = createTempDir('drs-workflow-permissions-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        maintain: {
+          inputs: { root: 'wiki' },
+          nodes: {
+            update: {
+              agent: 'task/summarizer',
+              input: 'Maintain {{inputs.root}}',
+              permissions: {
+                filesystem: {
+                  write: {
+                    roots: ['{{inputs.root}}'],
+                    allow: ['**/*.md'],
+                    deny: ['**/index.md'],
+                  },
+                },
+                shell: false,
+              },
+              validation: {
+                afterMutation: [{ name: 'okf-document', root: '{{inputs.root}}' }],
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'maintain', { workingDir: projectRoot });
+
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      config,
+      'task/summarizer',
+      expect.objectContaining({
+        permissions: {
+          filesystem: {
+            write: {
+              roots: ['wiki'],
+              allow: ['**/*.md'],
+              deny: ['**/index.md'],
+            },
+          },
+          shell: false,
+        },
+        validation: {
+          afterMutation: [{ name: 'okf-document', root: 'wiki' }],
+        },
+      })
+    );
+  });
+
   it('rejects writes paths that render to empty strings', async () => {
     const config = {
       ...baseConfig,
@@ -798,6 +851,39 @@ describe('workflow runner', () => {
     expect(readFileSync(join(projectRoot, 'joined.txt'), 'utf-8')).toBe(
       'task/one done\ntask/two done'
     );
+  });
+
+  it('serializes independent agents with filesystem write permissions', async () => {
+    let active = 0;
+    let maxActive = 0;
+    mocks.runAgent.mockImplementation(async (_config: unknown, agent: string) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return createMockAgentResult(agent, `${agent} done`);
+    });
+    const permissions = {
+      filesystem: { write: { roots: ['docs'], allow: ['**/*.md'] } },
+      shell: false,
+    };
+    const config = {
+      ...baseConfig,
+      workflows: {
+        scoped: {
+          nodes: {
+            one: { agent: 'task/one', input: 'one', permissions },
+            two: { agent: 'task/two', input: 'two', permissions },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'scoped', {
+      workingDir: createTempDir('drs-workflow-scoped-'),
+    });
+
+    expect(maxActive).toBe(1);
   });
 
   it('loads local git diff as an action artifact', async () => {
