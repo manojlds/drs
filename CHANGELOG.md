@@ -14,6 +14,7 @@ All notable changes to DRS are documented in this file.
 - Add scheduled repository wiki synchronization through a dedicated bot pull request, plus opt-in PR/MR creator attribution for workflow-generated commits.
 - Add model-free `drs wiki search` with deterministic metadata/body ranking, repository-relative citations, snippets, limits, and JSON output.
 - Add generic workflow-agent filesystem permissions with literal roots, allow/deny patterns, shell isolation, Pi-native tool enforcement, post-run mutation checks, and in-run content validators.
+- Add a persistent repository wiki brief at `.drs/wiki-instructions.md`: the `repository-wiki-sync` workflow loads it on every run, appends any one-run `instructions` input with explicit precedence, exposes the effective instructions source and hash in JSON output, and reconciles the wiki when the brief changes. One-run inputs are never recorded in wiki state and never invalidate freshness.
 
 ### Changed
 

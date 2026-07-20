@@ -63,6 +63,7 @@ tags: [workflow, runtime]
 
 - Read the current bundle before editing it.
 - Treat the workflow's deterministic delta plan as authoritative. In update mode, start from `changedPaths` and map each source change to affected concepts before editing.
+- Treat the workflow-provided repository wiki brief (persistent `.drs/wiki-instructions.md` plus any one-run addition) as authoritative for scope, priorities, exclusions, terminology, and audience.
 - Preserve accurate content, stable concept paths, human-authored material, and extension frontmatter.
 - Build a source-change-to-document impact plan before editing. Make surgical updates and allow a no-op when the bundle is current.
 - Remove obsolete claims and concepts only when repository evidence clearly shows they are no longer valid.

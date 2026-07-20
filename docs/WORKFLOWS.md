@@ -70,6 +70,8 @@ The workflow first computes deterministic source and wiki fingerprints, then cho
 
 The source fingerprint covers tracked and non-ignored untracked files outside the bundle and state path. The state retains a per-path fingerprint manifest, which keeps delta detection stable when dirty source, wiki, and state are committed together and gives later updates an exact `changedPaths` set. Older state without a manifest falls back to the recorded Git head plus current working-tree changes.
 
+Repository-specific wiki intent — scope, priorities, exclusions, terminology, and audience — can live in a persistent brief at `.drs/wiki-instructions.md` (override the location with `--input instructionsPath=<path>`). The brief is optional, must live outside the portable bundle, and is excluded from source fingerprints; instead its hash is recorded in wiki state, so editing the brief invalidates freshness and forces a reconcile on the next run. The `instructions` input remains a one-run addition: it is appended after the file content for the maintainer prompt, is never recorded in state, and never invalidates freshness. The effective brief content, source (`file`, `input`, `combined`, or `none`), and hash are visible in the `plan-update` node's JSON output.
+
 Clean Git submodules use the checked-out commit as their canonical fingerprint, including when the submodule is not initialized in CI. Dirty submodules are detected during planning but must be committed before DRS records wiki state.
 
 The packaged `repository-wiki-check` workflow recomputes the fingerprints and validates OKF without invoking a model. This repository runs it for the scheduled `drs/wiki-update` pull request, while ordinary feature pull requests validate the bundle through the wiki site build without requiring branch-local state freshness. Run `repository-wiki-sync --input check=true` locally when you want generation followed by a failure if the workflow produced uncommitted wiki or state changes.
@@ -421,15 +423,15 @@ nodes:
 
 ### `plan-wiki-update`
 
-Computes source and bundle fingerprints and returns `generate`, `reconcile`, `update`, or `noop`. It accepts `root` and `statePath`; update results include the exact changed source paths, capped at 500 entries.
+Computes source and bundle fingerprints and returns `generate`, `reconcile`, `update`, or `noop`. It accepts `root` and `statePath`; update results include the exact changed source paths, capped at 500 entries. It also accepts `instructionsPath` (default `.drs/wiki-instructions.md`) and a one-run `instructions` value: the persistent brief is excluded from source fingerprints, a changed brief hash returns `reconcile`, and the effective combined instructions, source, and hash are included in the node output.
 
 ### `record-wiki-state`
 
-Atomically writes `.drs/wiki-state.json` after successful index synchronization and validation. The state records the OKF version, bundle root, Git head, aggregate source hash, per-path source fingerprints, wiki hash, and update time.
+Atomically writes `.drs/wiki-state.json` after successful index synchronization and validation. The state records the OKF version, bundle root, Git head, aggregate source hash, per-path source fingerprints, wiki hash, persistent wiki brief hash (when a brief exists), and update time. Accepts the same `instructionsPath` and `instructions` options as `plan-wiki-update`; one-run instructions are never recorded.
 
 ### `check-wiki-state`
 
-Runs the same delta planner without a model and fails unless it returns `noop`. The packaged `repository-wiki-check` workflow uses this action in CI.
+Runs the same delta planner without a model and fails unless it returns `noop`, including when the persistent wiki brief changed since the recorded state. The packaged `repository-wiki-check` workflow uses this action in CI.
 
 ### `check-wiki-clean`
 

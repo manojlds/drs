@@ -14,7 +14,11 @@ inputs:
   instructions:
     type: string
     default: ''
-    description: Additional repository-specific wiki guidance
+    description: One-run addition to the persistent repository wiki brief
+  instructionsPath:
+    type: string
+    default: .drs/wiki-instructions.md
+    description: Repository-relative persistent wiki brief path outside the OKF bundle
   statePath:
     type: string
     default: .drs/wiki-state.json
@@ -30,6 +34,8 @@ nodes:
     with:
       root: '{{inputs.root}}'
       statePath: '{{inputs.statePath}}'
+      instructionsPath: '{{inputs.instructionsPath}}'
+      instructions: '{{inputs.instructions}}'
     output: wikiDelta
 
   maintain-wiki:
@@ -71,10 +77,10 @@ nodes:
       Deterministic delta plan:
       {{artifacts.wikiDelta}}
 
-      Additional guidance:
-      {{inputs.instructions}}
+      Repository wiki brief (persistent brief plus any one-run addition):
+      {{artifacts.wikiDelta.instructions}}
 
-      For generate mode, inspect the full repository and create the initial bundle. For update mode, use changedPaths as the primary scope and edit only directly affected concepts. For reconcile mode, preserve accurate existing content while repairing state or bundle drift.
+      For generate mode, inspect the full repository and create the initial bundle. For update mode, use changedPaths as the primary scope and edit only directly affected concepts. For reconcile mode, preserve accurate existing content while repairing state or bundle drift and re-apply the repository wiki brief.
 
       Edit concept files in place and return a concise summary. Do not edit index.md files; DRS synchronizes them in the next step. Do not commit or push.
     output: wikiSummary
@@ -104,6 +110,8 @@ nodes:
     with:
       root: '{{inputs.root}}'
       statePath: '{{inputs.statePath}}'
+      instructionsPath: '{{inputs.instructionsPath}}'
+      instructions: '{{inputs.instructions}}'
     output: wikiState
 
   check-updated-wiki:

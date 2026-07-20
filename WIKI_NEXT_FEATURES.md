@@ -64,6 +64,8 @@ Prevent the wiki maintainer from modifying repository files outside the approved
 
 ## Priority 2: Persistent repository wiki brief
 
+Status: implemented. `.drs/wiki-instructions.md` is loaded by `repository-wiki-sync` on every run, combined with the one-run `instructions` input (file content first, input appended), and surfaced in `plan-update` JSON output as `instructions`, `instructionsSource`, and `instructionsHash`. The brief is excluded from source fingerprints; `record-wiki-state` persists the brief-only hash, so editing the brief reconciles while one-run inputs never invalidate freshness. The optional `drs init` discovery block (outline item 5) remains unimplemented.
+
 ### Goal
 
 Persist repository-specific scope, priorities, exclusions, terminology, and audience so every synchronization uses the same intent.
@@ -246,5 +248,5 @@ Each priority should be a separate PR unless implementation proves very small. C
 ## Suggested prompt for the next session
 
 ```text
-Read WIKI_NEXT_FEATURES.md and implement Priority 1: Scoped wiki mutation and in-run validation. Start from current main, inspect the Pi tool construction and repository-wiki-sync execution path before editing, keep the change minimal, add security-focused tests, update and synchronize the canonical wiki, run npm run check:all, and open a PR.
+Read WIKI_NEXT_FEATURES.md and implement Priority 3: Structured source provenance. Start from current main, inspect OKF extension handling in src/lib/okf-wiki.ts and the delta planner in src/lib/wiki-delta.ts before editing, keep the change minimal, add provenance and unsafe-path tests, update and synchronize the canonical wiki, run npm run check:all, and open a PR.
 ```

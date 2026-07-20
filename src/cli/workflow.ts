@@ -56,7 +56,12 @@ import {
   synchronizeOkfIndexes,
   validateOkfBundle,
 } from '../lib/okf-wiki.js';
-import { checkWikiClean, planWikiUpdate, recordWikiState } from '../lib/wiki-delta.js';
+import {
+  checkWikiClean,
+  planWikiUpdate,
+  recordWikiState,
+  type WikiInstructionsOptions,
+} from '../lib/wiki-delta.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -2476,6 +2481,18 @@ async function runSyncOkfIndexesWorkflowNode(
   };
 }
 
+function getWikiInstructionsActionOptions(
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WikiInstructionsOptions {
+  const instructionsPath = getStringActionOption(node, 'instructionsPath', context)?.trim();
+  const instructions = getStringActionOption(node, 'instructions', context);
+  return {
+    ...(instructionsPath ? { instructionsPath } : {}),
+    ...(instructions !== undefined ? { instructions } : {}),
+  };
+}
+
 async function runPlanWikiUpdateWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -2485,7 +2502,12 @@ async function runPlanWikiUpdateWorkflowNode(
   const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
   const statePath =
     getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
-  const result = await planWikiUpdate(workingDir, root, statePath);
+  const result = await planWikiUpdate(
+    workingDir,
+    root,
+    statePath,
+    getWikiInstructionsActionOptions(node, context)
+  );
 
   return {
     id: nodeId,
@@ -2534,7 +2556,12 @@ async function runRecordWikiStateWorkflowNode(
   const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
   const statePath =
     getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
-  const result = await recordWikiState(workingDir, root, statePath);
+  const result = await recordWikiState(
+    workingDir,
+    root,
+    statePath,
+    getWikiInstructionsActionOptions(node, context)
+  );
 
   return {
     id: nodeId,
@@ -2580,7 +2607,12 @@ async function runCheckWikiStateWorkflowNode(
   const root = getStringActionOption(node, 'root', context)?.trim() ?? 'wiki';
   const statePath =
     getStringActionOption(node, 'statePath', context)?.trim() ?? '.drs/wiki-state.json';
-  const result = await planWikiUpdate(workingDir, root, statePath);
+  const result = await planWikiUpdate(
+    workingDir,
+    root,
+    statePath,
+    getWikiInstructionsActionOptions(node, context)
+  );
   if (result.shouldRun) {
     const paths = result.changedPaths.map((filePath) => `- ${filePath}`).join('\n');
     throw new Error(

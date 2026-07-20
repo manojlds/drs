@@ -3450,6 +3450,95 @@ describe('workflow runner', () => {
     ).rejects.toThrow('found a stale wiki (update)');
   });
 
+  it('feeds the persistent repository wiki brief through repository-wiki-sync', async () => {
+    const projectRoot = createTempDir('drs-workflow-wiki-brief-');
+    execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.email', 'tests@example.com'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'DRS Tests'], { cwd: projectRoot });
+    mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.drs', 'wiki-instructions.md'),
+      'Always document the workflow engine.\n'
+    );
+    writeFileSync(join(projectRoot, 'README.md'), '# Test repository\n');
+    execFileSync('git', ['add', '.'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '-m', 'initial source'], { cwd: projectRoot });
+    mocks.runAgent.mockImplementation(
+      async (
+        _config: unknown,
+        agent: string,
+        options: { prompt?: string; workingDir?: string }
+      ) => {
+        expect(agent).toBe('task/okf-wiki-maintainer');
+        expect(options.prompt).toContain('Always document the workflow engine.');
+        expect(options.prompt).toContain('Focus on review behavior.');
+        expect(options.prompt).toContain('"instructionsSource": "combined"');
+        const wikiRoot = join(options.workingDir ?? projectRoot, 'wiki');
+        mkdirSync(wikiRoot, { recursive: true });
+        writeFileSync(
+          join(wikiRoot, 'quickstart.md'),
+          [
+            '---',
+            'type: Quickstart',
+            'title: Repository quickstart',
+            'description: Entry point for repository knowledge.',
+            '---',
+            '',
+            'This bundle documents the repository.',
+            '',
+          ].join('\n')
+        );
+        return {
+          timestamp: '2026-07-17T00:00:00.000Z',
+          agent,
+          response: 'Created the repository wiki.',
+          usage: {
+            agent,
+            success: true,
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 2,
+            cost: 0,
+            messages: 1,
+          },
+        };
+      }
+    );
+    const config = loadConfig(projectRoot);
+
+    const result = await runWorkflow(config, 'repository-wiki-sync', {
+      workingDir: projectRoot,
+      inputs: { instructions: 'Focus on review behavior.' },
+    });
+
+    expect(result.nodes['plan-update'].output).toMatchObject({
+      mode: 'generate',
+      instructionsSource: 'combined',
+    });
+    const recordedState = JSON.parse(
+      readFileSync(join(projectRoot, '.drs', 'wiki-state.json'), 'utf-8')
+    ) as Record<string, unknown>;
+    expect(recordedState.instructionsHash).toBeTypeOf('string');
+
+    mocks.runAgent.mockClear();
+    const noOpResult = await runWorkflow(config, 'repository-wiki-sync', {
+      workingDir: projectRoot,
+      inputs: { instructions: 'Focus on review behavior.' },
+    });
+    expect(noOpResult.nodes['plan-update'].output).toMatchObject({
+      mode: 'noop',
+      instructionsSource: 'combined',
+    });
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+
+    writeFileSync(join(projectRoot, '.drs', 'wiki-instructions.md'), 'Always document the CLI.\n');
+    await expect(
+      runWorkflow(config, 'repository-wiki-check', { workingDir: projectRoot })
+    ).rejects.toThrow('found a stale wiki (reconcile)');
+  });
+
   it('fails validate-okf-wiki workflow actions for invalid bundles', async () => {
     const projectRoot = createTempDir('drs-workflow-invalid-okf-wiki-');
     mkdirSync(join(projectRoot, 'wiki'));

@@ -12,6 +12,10 @@ inputs:
     type: string
     default: wiki
     description: Repository-relative OKF bundle root
+  instructionsPath:
+    type: string
+    default: .drs/wiki-instructions.md
+    description: Repository-relative persistent wiki brief path outside the OKF bundle
   statePath:
     type: string
     default: .drs/wiki-state.json
@@ -23,6 +27,7 @@ nodes:
     with:
       root: '{{inputs.root}}'
       statePath: '{{inputs.statePath}}'
+      instructionsPath: '{{inputs.instructionsPath}}'
     output: wikiDelta
 
   validate-wiki:
