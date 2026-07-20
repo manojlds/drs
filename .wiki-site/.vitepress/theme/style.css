@@ -182,6 +182,64 @@ body {
   overflow-wrap: anywhere;
 }
 
+.concept-meta__sources {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 0.78rem;
+  color: var(--vp-c-text-2);
+}
+
+.concept-meta__sources-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
+
+.concept-meta__sources ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.concept-meta__sources li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  padding: 0.12rem 0;
+}
+
+.concept-meta__sources code {
+  overflow-wrap: anywhere;
+}
+
+.concept-meta__source-link {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.concept-meta__source-link:hover {
+  text-decoration: underline;
+}
+
+.concept-meta__symbols {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.concept-meta__symbols code {
+  padding: 0.1rem 0.4rem;
+  border-radius: 2px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-alt);
+  font-size: 0.72rem;
+}
+
 .okf-image-placeholder {
   display: inline-block;
   padding: 0.15rem 0.45rem;

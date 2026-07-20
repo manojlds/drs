@@ -24,7 +24,7 @@ describe('wiki site build integration', () => {
       );
       await writeFile(
         join(wikiRoot, 'overview.md'),
-        '\uFEFF---\ntype: Guide\ntitle: Product overview\ndescription: A small reusable bundle.\n---\n\n# Product overview\n'
+        '\uFEFF---\ntype: Guide\ntitle: Product overview\ndescription: A small reusable bundle.\ndrs_sources:\n  - path: src/app.ts\n    symbols: [createApp]\n---\n\n# Product overview\n'
       );
 
       const result = await buildWikiSite({
@@ -37,10 +37,11 @@ describe('wiki site build integration', () => {
         title: 'Product Knowledge',
         quiet: true,
       });
-      const [indexHtml, graphHtml, llmsText] = await Promise.all([
+      const [indexHtml, graphHtml, llmsText, overviewHtml] = await Promise.all([
         readFile(join(projectRoot, 'public', 'index.html'), 'utf-8'),
         readFile(join(projectRoot, 'public', 'graph.html'), 'utf-8'),
         readFile(join(projectRoot, 'public', 'llms.txt'), 'utf-8'),
+        readFile(join(projectRoot, 'public', 'overview.html'), 'utf-8'),
       ]);
 
       expect(result.base).toBe('/docs/');
@@ -54,6 +55,9 @@ describe('wiki site build integration', () => {
       expect(graphHtml).not.toContain('DRS OKF concept relationship graph');
       expect(llmsText).toContain('# Product Knowledge');
       expect(llmsText).toContain('https://docs.example.com/docs/overview.html');
+      expect(overviewHtml).toContain('Sources');
+      expect(overviewHtml).toContain('https://github.com/owner/product/blob/main/src/app.ts');
+      expect(overviewHtml).toContain('createApp');
     },
     30_000
   );

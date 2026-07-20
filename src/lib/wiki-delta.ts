@@ -13,6 +13,7 @@ import {
 } from 'fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'path';
 import { promisify } from 'util';
+import { loadOkfProvenanceMap } from './okf-wiki.js';
 import { resolveWithinWorkingDir } from './path-utils.js';
 
 const execFileAsync = promisify(execFile);
@@ -52,6 +53,8 @@ export interface WikiUpdatePlan {
   changedPaths: string[];
   changedPathCount: number;
   changedPathsTruncated: boolean;
+  /** Bundle concept paths whose cited sources changed; the primary scope for update mode. */
+  candidateConcepts: string[];
   instructions: string;
   instructionsSource: WikiInstructionsSource;
   instructionsHash?: string;
@@ -68,6 +71,8 @@ export interface WikiState {
   wikiHash: string;
   /** Hash of the persistent wiki brief file; one-run instruction inputs are never recorded. */
   instructionsHash?: string;
+  /** Reverse provenance map: repository source path -> bundle concept paths citing it. */
+  sourceConcepts?: Record<string, string[]>;
   updatedAt: string;
 }
 
@@ -163,7 +168,12 @@ export async function planWikiUpdate(
       gitHead,
       sourceHash,
       instructions,
-      { state, wikiHash, changedPaths }
+      {
+        state,
+        wikiHash,
+        changedPaths,
+        candidateConcepts: collectCandidateConcepts(state.sourceConcepts, changedPaths),
+      }
     );
   }
 
@@ -212,6 +222,7 @@ export async function recordWikiState(
     hashDirectory(paths.absoluteRoot),
   ]);
   const sourceSnapshot = await fingerprintSourceFiles(workingDir, sourceFiles, true);
+  const sourceConcepts = await loadOkfProvenanceMap(workingDir, paths.root);
   const state: WikiState = {
     version: WIKI_STATE_VERSION,
     okfVersion: '0.1',
@@ -221,6 +232,7 @@ export async function recordWikiState(
     sourceFiles: sourceSnapshot.files,
     wikiHash,
     ...(instructions.fileHash ? { instructionsHash: instructions.fileHash } : {}),
+    ...(Object.keys(sourceConcepts).length > 0 ? { sourceConcepts } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -359,6 +371,7 @@ interface PlanDetails {
   state?: WikiState;
   wikiHash?: string;
   changedPaths?: string[];
+  candidateConcepts?: string[];
 }
 
 interface SourceFileEntry {
@@ -396,6 +409,7 @@ function createPlan(
     changedPaths: changedPaths.slice(0, MAX_CHANGED_PATHS),
     changedPathCount: changedPaths.length,
     changedPathsTruncated: changedPaths.length > MAX_CHANGED_PATHS,
+    candidateConcepts: (details.candidateConcepts ?? []).slice(0, MAX_CHANGED_PATHS),
     instructions: instructions.content,
     instructionsSource: instructions.source,
     ...(instructions.hash ? { instructionsHash: instructions.hash } : {}),
@@ -631,6 +645,7 @@ async function readWikiState(absoluteStatePath: string): Promise<WikiState | nul
       (value.sourceFiles !== undefined && !isSourceFileManifest(value.sourceFiles)) ||
       typeof value.wikiHash !== 'string' ||
       (value.instructionsHash !== undefined && typeof value.instructionsHash !== 'string') ||
+      (value.sourceConcepts !== undefined && !isSourceConceptManifest(value.sourceConcepts)) ||
       typeof value.updatedAt !== 'string'
     ) {
       return null;
@@ -675,6 +690,22 @@ function compareSourceFiles(
   return [...new Set([...Object.keys(previous), ...Object.keys(current)])]
     .filter((filePath) => previous[filePath] !== current[filePath])
     .sort();
+}
+
+/** Map changed source paths to the concepts that cited them in the previously recorded state. */
+function collectCandidateConcepts(
+  sourceConcepts: Record<string, string[]> | undefined,
+  changedPaths: string[]
+): string[] {
+  if (!sourceConcepts) return [];
+  const candidates = new Set<string>();
+  for (const changedPath of changedPaths) {
+    if (!Object.prototype.hasOwnProperty.call(sourceConcepts, changedPath)) continue;
+    for (const concept of sourceConcepts[changedPath] ?? []) {
+      candidates.add(concept);
+    }
+  }
+  return [...candidates].sort(compareStrings);
 }
 
 async function listNullSeparatedGitOutput(
@@ -740,6 +771,18 @@ function isSourceFileManifest(value: unknown): value is Record<string, string> {
     isRecord(value) &&
     Object.entries(value).every(
       ([filePath, fingerprint]) => filePath.length > 0 && typeof fingerprint === 'string'
+    )
+  );
+}
+
+function isSourceConceptManifest(value: unknown): value is Record<string, string[]> {
+  return (
+    isRecord(value) &&
+    Object.entries(value).every(
+      ([filePath, concepts]) =>
+        filePath.length > 0 &&
+        Array.isArray(concepts) &&
+        concepts.every((concept) => typeof concept === 'string')
     )
   );
 }
