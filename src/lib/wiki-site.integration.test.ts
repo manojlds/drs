@@ -48,6 +48,8 @@ describe('wiki site build integration', () => {
       expect(indexHtml).toContain('href="/docs/overview.html"');
       expect(indexHtml).not.toContain('/quickstart');
       expect(indexHtml).not.toContain('href="/docs/log.html"');
+      expect(indexHtml).toContain('href="https://docs.example.com/docs/graph.html"');
+      expect(indexHtml).toContain('target="_self"');
       expect(graphHtml).toContain('Product Knowledge concept relationship graph');
       expect(graphHtml).not.toContain('DRS OKF concept relationship graph');
       expect(llmsText).toContain('# Product Knowledge');
