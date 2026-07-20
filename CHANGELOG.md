@@ -13,10 +13,12 @@ All notable changes to DRS are documented in this file.
 - Add an interactive internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and post-deployment Pages smoke checks.
 - Add scheduled repository wiki synchronization through a dedicated bot pull request, plus opt-in PR/MR creator attribution for workflow-generated commits.
 - Add model-free `drs wiki search` with deterministic metadata/body ranking, repository-relative citations, snippets, limits, and JSON output.
+- Add generic workflow-agent filesystem permissions with literal roots, allow/deny patterns, shell isolation, Pi-native tool enforcement, post-run mutation checks, and in-run content validators.
 
 ### Changed
 
 - Preserve directed concept links in repository wiki graphs, show incoming and outgoing relationships separately, and report deterministic orphan and weak-connection quality metrics during validation.
+- Run repository wiki maintenance with scoped Markdown writes, generated-index denial, no shell access, and immediate OKF validation feedback.
 
 ### Fixed
 

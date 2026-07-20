@@ -58,7 +58,12 @@ export function getTemporalNodeRetryMode(node: WorkflowNodeConfig): TemporalNode
     return 'no-retry';
   }
 
-  if ((node.agent || node.agentsFrom) && node.writes) {
+  if (
+    (node.agent || node.agentsFrom) &&
+    (node.writes ||
+      node.permissions?.filesystem?.write !== undefined ||
+      node.permissions?.filesystem?.delete !== undefined)
+  ) {
     return 'no-retry';
   }
 

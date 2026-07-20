@@ -172,15 +172,16 @@ Pull-request CI builds the site without deploying it. `.github/workflows/wiki-pa
 
 ## Agent and skills
 
-The bundled agent `task/okf-wiki-maintainer` (`.pi/agents/task/okf-wiki-maintainer.md`) edits concept pages in place based on the deterministic delta plan. It is invoked only when the planner returns `shouldRun: true`.
+The bundled agent `task/okf-wiki-maintainer` (`.pi/agents/task/okf-wiki-maintainer.md`) edits concept pages in place based on the deterministic delta plan. It is invoked only when the planner returns `shouldRun: true`. Generic workflow-agent permissions restrict its Pi `write`, `edit`, and `delete_file` tools to Markdown below the configured bundle root, deny generated indexes, reject symbolic links and traversal, and remove shell access. The scoped `git_diff` tool remains available for source evidence. Proposed documents receive immediate OKF validation before mutation, followed by bundle feedback that the agent can repair in the same run.
 
-Run the writing workflow with the local executor. The maintainer edits a dynamic file tree directly, so its agent node does not declare a fixed `writes` path and is not yet protected from Temporal activity retries. The model-free `repository-wiki-check` workflow is used for the scheduled bot PR and remains available for local verification.
+Run the writing workflow with the local executor. A before/after workspace fingerprint rejects residual changes outside the configured write policy as defense in depth. Deterministic downstream actions remain responsible for generated indexes and `.drs/wiki-state.json`. The model-free `repository-wiki-check` workflow is used for the scheduled bot PR and remains available for local verification.
 
 ## Tests
 
 Wiki behavior is covered by:
 
 - `src/lib/okf-wiki.test.ts` — index synchronization, validation, and graph-quality warnings.
+- `src/lib/agent-permissions.test.ts` and `src/pi/sdk.test.ts` — policy validation, path and symbolic-link denial, Pi tool enforcement, in-run validation feedback, and post-run mutation checks.
 - `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — deterministic concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — delta planning, fingerprinting, state recording, and clean checks.
 - `src/lib/wiki-site*.test.ts` — directed graph extraction and metrics, publishing safety, reusable build/serve setup, and deployed-site smoke checks.

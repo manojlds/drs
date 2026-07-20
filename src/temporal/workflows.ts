@@ -12,6 +12,7 @@ import {
   findWorkflowSegmentIndex,
   getNodeNeeds,
   getWorkflowNodeSkipReason,
+  isPotentialWorkspaceMutation,
   runControlWorkflowNode,
   type WorkflowSegment,
 } from '../lib/workflow/planning.js';
@@ -303,27 +304,35 @@ async function runTemporalDagNodes(
     }
 
     const evalContext = await resolveDagEvaluationContext(input, context, runnable);
-    const results = await Promise.all(
-      runnable.map(async (nodeId) => {
-        const node = plan.nodes[nodeId];
-        if (!node) {
-          throw new Error(`Workflow references unknown node "${nodeId}".`);
-        }
+    const runNode = async (nodeId: string) => {
+      const node = plan.nodes[nodeId];
+      if (!node) {
+        throw new Error(`Workflow references unknown node "${nodeId}".`);
+      }
 
-        const skipReason = getWorkflowNodeSkipReason(node, evalContext);
-        if (skipReason) {
-          return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
-        }
+      const skipReason = getWorkflowNodeSkipReason(node, evalContext);
+      if (skipReason) {
+        return { nodeId, node, result: createSkippedWorkflowNodeResult(nodeId) };
+      }
 
-        runningNodeIds.add(nodeId);
-        try {
-          const result = await runTemporalWorkflowNodeActivity(input, nodeId, node, context);
-          return { nodeId, node, result };
-        } finally {
-          runningNodeIds.delete(nodeId);
-        }
-      })
-    );
+      runningNodeIds.add(nodeId);
+      try {
+        const result = await runTemporalWorkflowNodeActivity(input, nodeId, node, context);
+        return { nodeId, node, result };
+      } finally {
+        runningNodeIds.delete(nodeId);
+      }
+    };
+    const serializeWave = runnable.some((nodeId) => {
+      const node = plan.nodes[nodeId];
+      return node ? isPotentialWorkspaceMutation(node) : false;
+    });
+    const results = [];
+    if (serializeWave) {
+      for (const nodeId of runnable) results.push(await runNode(nodeId));
+    } else {
+      results.push(...(await Promise.all(runnable.map(runNode))));
+    }
 
     for (const { nodeId, node, result } of results) {
       completed.add(nodeId);

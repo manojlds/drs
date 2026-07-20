@@ -1,10 +1,26 @@
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
-import { isAbsolute, join, resolve } from 'path';
+import { constants } from 'fs';
+import {
+  access,
+  mkdir,
+  readFile as readFsFile,
+  unlink,
+  writeFile as writeFsFile,
+} from 'fs/promises';
+import { homedir } from 'os';
+import { isAbsolute, join, relative, resolve, sep } from 'path';
+import { fileURLToPath } from 'url';
 import { Type } from '@sinclair/typebox';
 import {
   AuthStorage,
   createAgentSession,
+  createEditToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   DefaultResourceLoader,
   getAgentDir,
   ModelRegistry,
@@ -14,11 +30,24 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { writeJsonOutput } from '../lib/write-json-output.js';
-import { writeArtifactOutput } from '../lib/html-artifact.js';
+import { extractHtmlDocument, writeArtifactOutput } from '../lib/html-artifact.js';
 import type { FixCheckConfig } from '../lib/config.js';
 import { isReviewArtifactPayload } from '../lib/review-artifact.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
 import type { TraceCollector } from '../lib/trace-collector.js';
+import {
+  AgentFilesystemAuthorizer,
+  validateAgentPermissions,
+  validateAgentValidation,
+  type AgentPermissions,
+  type AgentValidation,
+} from '../lib/agent-permissions.js';
+import {
+  formatOkfValidationErrors,
+  validateOkfBundle,
+  validateOkfDocument,
+} from '../lib/okf-wiki.js';
+import { OUTPUT_PATHS } from '../lib/output-paths.js';
 
 const DEFAULT_GIT_DIFF_MAX_BYTES = 120_000;
 const HARD_GIT_DIFF_MAX_BYTES = 500_000;
@@ -88,6 +117,8 @@ interface PiRuntimeConfig {
   thinkingLevel?: string;
   fixChecks?: FixCheckConfig[];
   traceCollector?: TraceCollector;
+  permissions?: AgentPermissions;
+  validation?: AgentValidation;
   retry?: {
     provider?: {
       timeoutMs?: number;
@@ -105,10 +136,65 @@ interface SessionRecord {
   error?: unknown;
 }
 
+// Pi uses invariant generic parameters for arrays containing different built-in tool schemas.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyToolDefinition = ToolDefinition<any, any, any>;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function parseAgentPermissions(value: unknown): AgentPermissions | undefined {
+  if (value === undefined) return undefined;
+  validateAgentPermissions(value, 'Pi runtime permissions');
+  return value as AgentPermissions;
+}
+
+function parseAgentValidation(value: unknown): AgentValidation | undefined {
+  if (value === undefined) return undefined;
+  validateAgentValidation(value, 'Pi runtime validation');
+  return value as AgentValidation;
+}
+
+function toPosixPath(value: string): string {
+  return sep === '/' ? value : value.split(sep).join('/');
+}
+
+function resolvePiToolPath(workingDir: string, requestedPath: string): string {
+  let normalized = requestedPath.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/gu, ' ');
+  if (normalized.startsWith('@')) normalized = normalized.slice(1);
+  if (normalized === '~') normalized = homedir();
+  else if (
+    normalized.startsWith('~/') ||
+    (process.platform === 'win32' && normalized.startsWith('~\\'))
+  ) {
+    normalized = join(homedir(), normalized.slice(2));
+  }
+  if (/^file:\/\//u.test(normalized)) normalized = fileURLToPath(normalized);
+  return isAbsolute(normalized) ? resolve(normalized) : resolve(workingDir, normalized);
+}
+
+function allowsAggregateReadTools(
+  permissions: NonNullable<AgentPermissions['filesystem']>['read']
+): boolean {
+  return Boolean(
+    permissions &&
+    (permissions.deny?.length ?? 0) === 0 &&
+    permissions.allow.some(
+      (pattern) => pattern.replaceAll('\\', '/').replace(/^\.\//u, '') === '**'
+    )
+  );
+}
+
+function allowsFullRepositoryRead(
+  permissions: NonNullable<AgentPermissions['filesystem']>['read']
+): boolean {
+  return Boolean(
+    allowsAggregateReadTools(permissions) &&
+    permissions?.roots.some((root) => root.replaceAll('\\', '/').replace(/\/$/u, '') === '.')
+  );
 }
 
 function asString(value: unknown): string | undefined {
@@ -838,6 +924,11 @@ class PiSessionRuntime {
   readonly sessionApi: PiSessionApi;
 
   constructor(config: Record<string, unknown>) {
+    const permissions = parseAgentPermissions(config.permissions);
+    const validation = parseAgentValidation(config.validation);
+    if (validation && !permissions?.filesystem?.write && !permissions?.filesystem?.delete) {
+      throw new Error('Pi runtime validation requires filesystem write or delete permissions.');
+    }
     this.runtimeConfig = {
       tools: asRecord(config.tools),
       agent: asRecord(config.agent),
@@ -847,6 +938,8 @@ class PiSessionRuntime {
       thinkingLevel: asString(config.thinkingLevel),
       fixChecks: parseFixChecks(config.fixChecks),
       traceCollector: config.traceCollector as TraceCollector | undefined,
+      permissions,
+      validation,
       retry: asRecord(config.retry),
     };
 
@@ -1009,32 +1102,236 @@ class PiSessionRuntime {
 
   private resolveTools(_cwd: string, agentTools?: Record<string, boolean>): string[] {
     const tools: string[] = [];
+    const filesystemPermissions = this.runtimeConfig.permissions?.filesystem;
+    const aggregateReadsAllowed =
+      !filesystemPermissions?.read || allowsAggregateReadTools(filesystemPermissions.read);
 
     if (this.isToolEnabled('Read', true, agentTools)) {
       tools.push('read');
     }
-    if (this.isToolEnabled('Bash', true, agentTools)) {
+    if (
+      this.runtimeConfig.permissions?.shell !== false &&
+      this.isToolEnabled('Bash', true, agentTools)
+    ) {
       tools.push('bash');
     }
-    if (this.isToolEnabled('Edit', false, agentTools)) {
+    if (
+      (!filesystemPermissions || filesystemPermissions.write !== undefined) &&
+      this.isToolEnabled('Edit', false, agentTools)
+    ) {
       tools.push('edit');
     }
-    if (this.isToolEnabled('Write', false, agentTools)) {
+    if (
+      (!filesystemPermissions || filesystemPermissions.write !== undefined) &&
+      this.isToolEnabled('Write', false, agentTools)
+    ) {
       tools.push('write');
     }
-    if (this.isToolEnabled('Grep', true, agentTools)) {
+    if (aggregateReadsAllowed && this.isToolEnabled('Grep', true, agentTools)) {
       tools.push('grep');
     }
-    if (this.isToolEnabled('Glob', true, agentTools)) {
+    if (aggregateReadsAllowed && this.isToolEnabled('Glob', true, agentTools)) {
       tools.push('find');
       tools.push('ls');
     }
 
-    if (tools.length === 0) {
-      tools.push('read', 'bash');
+    return tools;
+  }
+
+  private resolvePermissionTools(
+    workingDir: string,
+    agentTools?: Record<string, boolean>
+  ): AnyToolDefinition[] {
+    const filesystemPermissions = this.runtimeConfig.permissions?.filesystem;
+    if (!filesystemPermissions) return [];
+    const authorizer = new AgentFilesystemAuthorizer(workingDir, filesystemPermissions);
+    const tools: AnyToolDefinition[] = [];
+
+    if (filesystemPermissions.read && this.isToolEnabled('Read', true, agentTools)) {
+      const readTool = createReadToolDefinition(workingDir, {
+        operations: {
+          access: async (filePath) => {
+            await authorizer.authorize('read', filePath);
+            await access(filePath, constants.R_OK);
+          },
+          readFile: async (filePath) => {
+            await authorizer.authorize('read', filePath);
+            return readFsFile(filePath);
+          },
+        },
+      });
+      const executeRead = readTool.execute.bind(readTool);
+      readTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+        await authorizer.authorize('read', resolvePiToolPath(workingDir, params.path));
+        return executeRead(toolCallId, params, signal, onUpdate, context);
+      };
+      tools.push(readTool);
+    }
+
+    if (filesystemPermissions.read && allowsAggregateReadTools(filesystemPermissions.read)) {
+      if (this.isToolEnabled('Grep', true, agentTools)) {
+        const grepTool = createGrepToolDefinition(workingDir);
+        const executeGrep = grepTool.execute.bind(grepTool);
+        grepTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+          await authorizer.authorize('read', resolvePiToolPath(workingDir, params.path ?? '.'));
+          return executeGrep(toolCallId, params, signal, onUpdate, context);
+        };
+        tools.push(grepTool);
+      }
+      if (this.isToolEnabled('Glob', true, agentTools)) {
+        const findTool = createFindToolDefinition(workingDir);
+        const executeFind = findTool.execute.bind(findTool);
+        findTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+          if (
+            isAbsolute(params.pattern) ||
+            params.pattern.replaceAll('\\', '/').split('/').includes('..')
+          ) {
+            throw new Error(
+              `Agent find pattern must stay within its search root: ${params.pattern}`
+            );
+          }
+          await authorizer.authorize('read', resolvePiToolPath(workingDir, params.path ?? '.'));
+          return executeFind(toolCallId, params, signal, onUpdate, context);
+        };
+        tools.push(findTool);
+
+        const lsTool = createLsToolDefinition(workingDir);
+        const executeLs = lsTool.execute.bind(lsTool);
+        lsTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+          await authorizer.authorize('read', resolvePiToolPath(workingDir, params.path ?? '.'));
+          return executeLs(toolCallId, params, signal, onUpdate, context);
+        };
+        tools.push(lsTool);
+      }
+    }
+
+    if (filesystemPermissions.write && this.isToolEnabled('Write', false, agentTools)) {
+      const writeTool = createWriteToolDefinition(workingDir, {
+        operations: {
+          mkdir: async (directory) => mkdir(directory, { recursive: true }).then(() => undefined),
+          writeFile: async (filePath, content) => {
+            await authorizer.authorize('write', filePath);
+            this.validateProposedWrite(workingDir, filePath, content);
+            await writeFsFile(filePath, content, 'utf-8');
+          },
+        },
+      });
+      const executeWrite = writeTool.execute.bind(writeTool);
+      writeTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+        const filePath = await authorizer.authorize(
+          'write',
+          resolvePiToolPath(workingDir, params.path)
+        );
+        this.validateProposedWrite(workingDir, filePath, params.content);
+        const result = await executeWrite(toolCallId, params, signal, onUpdate, context);
+        return this.appendAfterMutationValidation(workingDir, filePath, result);
+      };
+      tools.push(writeTool);
+    }
+
+    if (filesystemPermissions.write && this.isToolEnabled('Edit', false, agentTools)) {
+      const editTool = createEditToolDefinition(workingDir, {
+        operations: {
+          access: async (filePath) => {
+            if (filesystemPermissions.read) await authorizer.authorize('read', filePath);
+            await access(filePath, constants.R_OK | constants.W_OK);
+          },
+          readFile: async (filePath) => {
+            if (filesystemPermissions.read) await authorizer.authorize('read', filePath);
+            return readFsFile(filePath);
+          },
+          writeFile: async (filePath, content) => {
+            await authorizer.authorize('write', filePath);
+            this.validateProposedWrite(workingDir, filePath, content);
+            await writeFsFile(filePath, content, 'utf-8');
+          },
+        },
+      });
+      const executeEdit = editTool.execute.bind(editTool);
+      editTool.execute = async (toolCallId, params, signal, onUpdate, context) => {
+        const resolvedPath = resolvePiToolPath(workingDir, params.path);
+        const filePath = await authorizer.authorize('write', resolvedPath);
+        if (filesystemPermissions.read) await authorizer.authorize('read', resolvedPath);
+        const result = await executeEdit(toolCallId, params, signal, onUpdate, context);
+        return this.appendAfterMutationValidation(workingDir, filePath, result);
+      };
+      tools.push(editTool);
+    }
+
+    if (filesystemPermissions.delete && this.isToolEnabled('delete_file', false, agentTools)) {
+      tools.push({
+        name: 'delete_file',
+        label: 'delete_file',
+        description: 'Delete one file permitted by the current workflow policy.',
+        parameters: Type.Object({ path: Type.String({ minLength: 1 }) }),
+        execute: async (_toolCallId, params: { path: string }) => {
+          const filePath = await authorizer.authorize('delete', params.path);
+          await unlink(filePath);
+          const result = {
+            content: [{ type: 'text' as const, text: `Deleted ${params.path}` }],
+            details: { path: params.path },
+          };
+          return this.appendAfterMutationValidation(workingDir, filePath, result);
+        },
+      });
     }
 
     return tools;
+  }
+
+  private validateProposedWrite(workingDir: string, filePath: string, content: string): void {
+    for (const validator of this.runtimeConfig.validation?.afterMutation ?? []) {
+      const root = resolveWithinWorkingDir(workingDir, validator.root, 'access');
+      const relativePath = relative(root, filePath);
+      if (
+        relativePath === '' ||
+        relativePath === '..' ||
+        relativePath.startsWith(`..${sep}`) ||
+        isAbsolute(relativePath)
+      )
+        continue;
+      if (validator.name === 'okf-document') {
+        const validation = validateOkfDocument(content, toPosixPath(relativePath));
+        if (!validation.valid) {
+          const errors = validation.errors
+            .map((issue) => `- ${issue.path ?? relativePath}: [${issue.code}] ${issue.message}`)
+            .join('\n');
+          throw new Error(`Proposed write failed ${validator.name} validation:\n${errors}`);
+        }
+      }
+    }
+  }
+
+  private async appendAfterMutationValidation<T extends { content: unknown[] }>(
+    workingDir: string,
+    filePath: string,
+    result: T
+  ): Promise<T> {
+    const feedback: string[] = [];
+    for (const validator of this.runtimeConfig.validation?.afterMutation ?? []) {
+      const root = resolveWithinWorkingDir(workingDir, validator.root, 'access');
+      const relativePath = relative(root, filePath);
+      if (
+        relativePath === '' ||
+        relativePath === '..' ||
+        relativePath.startsWith(`..${sep}`) ||
+        isAbsolute(relativePath)
+      )
+        continue;
+      if (validator.name === 'okf-document') {
+        const validation = await validateOkfBundle(workingDir, validator.root);
+        feedback.push(
+          validation.valid
+            ? `OKF bundle validation passed with ${validation.warnings.length} warning(s).`
+            : `OKF bundle validation found ${validation.errors.length} error(s):\n${formatOkfValidationErrors(validation)}`
+        );
+      }
+    }
+    if (feedback.length === 0) return result;
+    return {
+      ...result,
+      content: [...result.content, { type: 'text', text: feedback.join('\n') }],
+    };
   }
 
   private resolveSkillSearchPaths(cwd: string): string[] {
@@ -1060,8 +1357,15 @@ class PiSessionRuntime {
     agentTools?: Record<string, boolean>
   ): ToolDefinition[] {
     const customTools: ToolDefinition[] = [];
+    const filesystemPermissions = this.runtimeConfig.permissions?.filesystem;
+    const authorizer = filesystemPermissions
+      ? new AgentFilesystemAuthorizer(workingDir, filesystemPermissions)
+      : undefined;
 
-    if (this.isToolEnabled('write_json_output', true, agentTools)) {
+    if (
+      (!filesystemPermissions || filesystemPermissions.write !== undefined) &&
+      this.isToolEnabled('write_json_output', true, agentTools)
+    ) {
       customTools.push({
         name: 'write_json_output',
         label: 'write_json_output',
@@ -1081,6 +1385,18 @@ class PiSessionRuntime {
             indent?: number;
           }
         ) => {
+          const outputPath = OUTPUT_PATHS[params.outputType];
+          const filePath = authorizer
+            ? await authorizer.authorize('write', outputPath)
+            : resolveWithinWorkingDir(workingDir, outputPath, 'write');
+          const jsonValue =
+            typeof params.payload === 'string' ? JSON.parse(params.payload) : params.payload;
+          const spacing = params.pretty === false ? undefined : (params.indent ?? 2);
+          this.validateProposedWrite(
+            workingDir,
+            filePath,
+            JSON.stringify(jsonValue, null, spacing)
+          );
           const pointer = await writeJsonOutput({
             outputType: params.outputType,
             payload: params.payload,
@@ -1089,15 +1405,19 @@ class PiSessionRuntime {
             workingDir,
           });
 
-          return {
-            content: [{ type: 'text', text: JSON.stringify(pointer) }],
+          const result = {
+            content: [{ type: 'text' as const, text: JSON.stringify(pointer) }],
             details: pointer,
           };
+          return this.appendAfterMutationValidation(workingDir, filePath, result);
         },
       });
     }
 
-    if (this.isToolEnabled('write_artifact_output', false, agentTools)) {
+    if (
+      (!filesystemPermissions || filesystemPermissions.write !== undefined) &&
+      this.isToolEnabled('write_artifact_output', false, agentTools)
+    ) {
       customTools.push({
         name: 'write_artifact_output',
         label: 'write_artifact_output',
@@ -1107,21 +1427,30 @@ class PiSessionRuntime {
           content: Type.String({ minLength: 1 }),
         }),
         execute: async (_toolCallId, params: { outputPath: string; content: string }) => {
+          const filePath = authorizer
+            ? await authorizer.authorize('write', params.outputPath)
+            : resolveWithinWorkingDir(workingDir, params.outputPath, 'write');
+          const html = extractHtmlDocument(params.content);
+          this.validateProposedWrite(workingDir, filePath, html);
           const pointer = await writeArtifactOutput({
             outputPath: params.outputPath,
             content: params.content,
             workingDir,
           });
 
-          return {
-            content: [{ type: 'text', text: JSON.stringify(pointer) }],
+          const result = {
+            content: [{ type: 'text' as const, text: JSON.stringify(pointer) }],
             details: pointer,
           };
+          return this.appendAfterMutationValidation(workingDir, filePath, result);
         },
       });
     }
 
-    if (this.isToolEnabled('git_diff', false, agentTools)) {
+    if (
+      (!filesystemPermissions?.read || allowsFullRepositoryRead(filesystemPermissions.read)) &&
+      this.isToolEnabled('git_diff', false, agentTools)
+    ) {
       customTools.push({
         name: 'git_diff',
         label: 'git_diff',
@@ -1203,6 +1532,7 @@ class PiSessionRuntime {
         execute: async (_toolCallId, params: { artifactPath: string; findingId?: string }) => {
           const { readFile } = await import('fs/promises');
           try {
+            await authorizer?.authorize('read', params.artifactPath);
             const fullPath = resolveWithinWorkingDir(workingDir, params.artifactPath, 'read');
             const raw = JSON.parse(await readFile(fullPath, 'utf-8')) as unknown;
 
@@ -1254,7 +1584,11 @@ class PiSessionRuntime {
       });
     }
 
-    if (this.isToolEnabled('drs_check', false, agentTools) && this.runtimeConfig.fixChecks) {
+    if (
+      this.runtimeConfig.permissions?.shell !== false &&
+      this.isToolEnabled('drs_check', false, agentTools) &&
+      this.runtimeConfig.fixChecks
+    ) {
       const configuredChecks = this.runtimeConfig.fixChecks;
       customTools.push({
         name: 'drs_check',
@@ -1336,6 +1670,7 @@ class PiSessionRuntime {
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir: getAgentDir(),
+      noExtensions: this.runtimeConfig.permissions !== undefined,
       noSkills: true,
       additionalSkillPaths: skillSearchPaths,
       skillsOverride:
@@ -1382,7 +1717,10 @@ class PiSessionRuntime {
           })
         : undefined;
 
-    const customTools = this.resolveCustomTools(cwd, settings.tools);
+    const customTools = [
+      ...this.resolveCustomTools(cwd, settings.tools),
+      ...this.resolvePermissionTools(cwd, settings.tools),
+    ];
     const tools = [
       ...this.resolveTools(cwd, settings.tools),
       ...customTools.map((tool) => tool.name),

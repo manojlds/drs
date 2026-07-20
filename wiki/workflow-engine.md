@@ -27,7 +27,15 @@ Every node must define exactly one execution type:
 - `action` — run a built-in action.
 - `control` — route execution with `loop`, `switch`, `passThrough`, or `end`.
 
-Common node fields include `needs`, `if`, `input`, `output`, `writes`, and `json`. Action nodes use `with` for action-specific options.
+Common node fields include `needs`, `if`, `input`, `output`, `writes`, and `json`. Agent nodes can also declare runtime-enforced `permissions` and mutation `validation`; action nodes use `with` for action-specific options.
+
+## Agent permissions
+
+Agent workflow nodes can constrain filesystem effects through generic permission rules. Each read or write rule uses literal repository-relative `roots`, root-relative `allow` patterns, and optional `deny` patterns. Denials take precedence, path traversal and symbolic links are rejected, and a filesystem policy requires `shell: false` so shell execution cannot bypass the boundary.
+
+`src/lib/agent-permissions.ts` validates and renders policies, authorizes tool paths, and fingerprints tracked and non-ignored untracked files before and after an agent run. [The Pi runtime](pi-runtime.md) installs policy-aware tools under Pi's original tool names, so enforcement occurs before filesystem access. The post-run comparison rejects residual changes outside the same write policy while tolerating source changes that existed before the agent started.
+
+Agent nodes may also configure an `afterMutation` validator. The `okf-document` validator checks proposed concept or log content before writes and returns full bundle validation feedback after a successful write, edit, or deletion. Deterministic workflow actions are outside the agent boundary, so they can safely generate derived files after the agent exits.
 
 ## Validation and compilation
 

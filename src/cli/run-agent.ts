@@ -15,6 +15,14 @@ import { getLogger } from '../lib/logger.js';
 import { getAgent } from '../runtime/agent-loader.js';
 import { createRuntimeClientInstance, type Session } from '../runtime/client.js';
 import type { TraceCollector } from '../lib/trace-collector.js';
+import {
+  AgentFilesystemAuthorizer,
+  assertAgentWorkspaceChangesAllowed,
+  captureAgentWorkspaceSnapshot,
+  type AgentPermissions,
+  type AgentValidation,
+  type AgentWorkspaceSnapshot,
+} from '../lib/agent-permissions.js';
 
 export interface RunAgentOptions {
   prompt?: string;
@@ -30,6 +38,8 @@ export interface RunAgentOptions {
   allowImplicitStdin?: boolean;
   ignoreConfiguredOutput?: boolean;
   traceCollector?: TraceCollector;
+  permissions?: AgentPermissions;
+  validation?: AgentValidation;
 }
 
 async function readStdin(): Promise<string> {
@@ -77,6 +87,10 @@ function formatAgentRunJson(result: AgentRunResult): string {
   return JSON.stringify(result, null, 2);
 }
 
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 export async function runAgent(
   config: DRSConfig,
   agentId: string,
@@ -110,6 +124,13 @@ export async function runAgent(
   }
 
   const runtimeConfig = getRuntimeConfig(config);
+  let workspaceSnapshot: AgentWorkspaceSnapshot | undefined;
+  if (
+    effectiveOptions.permissions?.filesystem?.write ||
+    effectiveOptions.permissions?.filesystem?.delete
+  ) {
+    workspaceSnapshot = await captureAgentWorkspaceSnapshot(workingDir);
+  }
   const runtimeClient = await createRuntimeClientInstance({
     directory: workingDir,
     provider: runtimeConfig.provider,
@@ -122,6 +143,8 @@ export async function runAgent(
     thinkingLevel: effectiveOptions.thinkingLevel,
     modelOverrides: options.model ? { [agentId]: options.model } : undefined,
     traceCollector: options.traceCollector,
+    permissions: effectiveOptions.permissions,
+    validation: effectiveOptions.validation,
   });
 
   if (options.traceCollector) {
@@ -131,6 +154,9 @@ export async function runAgent(
   let session: Session | undefined;
   let usage = createAgentUsageSummary(agentId);
   let response = '';
+  let result: AgentRunResult | undefined;
+  let operationError: Error | undefined;
+  let cleanupError: Error | undefined;
   const logger = getLogger();
 
   try {
@@ -160,7 +186,7 @@ export async function runAgent(
       success: true,
     };
 
-    const result: AgentRunResult = {
+    result = {
       timestamp: new Date().toISOString(),
       agent: agentId,
       response,
@@ -170,6 +196,15 @@ export async function runAgent(
     const output = effectiveOptions.jsonOutput ? formatAgentRunJson(result) : response;
 
     if (effectiveOptions.outputPath) {
+      if (effectiveOptions.permissions?.filesystem) {
+        if (!effectiveOptions.permissions.filesystem.write) {
+          throw new Error('Agent outputPath requires filesystem write permission.');
+        }
+        await new AgentFilesystemAuthorizer(
+          workingDir,
+          effectiveOptions.permissions.filesystem
+        ).authorize('write', effectiveOptions.outputPath);
+      }
       const outputPath = resolveWithinWorkingDir(workingDir, effectiveOptions.outputPath, 'write');
       await writeFile(outputPath, output, 'utf-8');
       if (!effectiveOptions.jsonOutput && !effectiveOptions.quiet) {
@@ -184,12 +219,38 @@ export async function runAgent(
     } else if (response.trim()) {
       console.log(response);
     }
-
-    return result;
+  } catch (error) {
+    operationError = asError(error);
   } finally {
-    if (session) {
-      await runtimeClient.closeSession(session.id);
+    try {
+      if (session) await runtimeClient.closeSession(session.id);
+    } catch (error) {
+      cleanupError = asError(error);
     }
-    await runtimeClient.shutdown();
+    try {
+      await runtimeClient.shutdown();
+    } catch (error) {
+      cleanupError ??= asError(error);
+    }
+    try {
+      if (
+        workspaceSnapshot &&
+        (effectiveOptions.permissions?.filesystem?.write ||
+          effectiveOptions.permissions?.filesystem?.delete)
+      ) {
+        await assertAgentWorkspaceChangesAllowed(
+          workingDir,
+          effectiveOptions.permissions.filesystem,
+          workspaceSnapshot
+        );
+      }
+    } catch (error) {
+      cleanupError = asError(error);
+    }
   }
+
+  if (operationError) throw operationError;
+  if (cleanupError) throw cleanupError;
+  if (!result) throw new Error(`Agent "${agentId}" completed without a result.`);
+  return result;
 }

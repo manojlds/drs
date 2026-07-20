@@ -37,6 +37,32 @@ nodes:
     needs:
       - plan-update
     if: artifacts.wikiDelta.shouldRun == true
+    permissions:
+      filesystem:
+        read:
+          roots:
+            - '.'
+          allow:
+            - '**'
+        write:
+          roots:
+            - '{{inputs.root}}'
+          allow:
+            - '**/*.md'
+          deny:
+            - '**/index.md'
+        delete:
+          roots:
+            - '{{inputs.root}}'
+          allow:
+            - '**/*.md'
+          deny:
+            - '**/index.md'
+      shell: false
+    validation:
+      afterMutation:
+        - name: okf-document
+          root: '{{inputs.root}}'
     input: |
       Generate, reconcile, or update the repository wiki as one OKF v0.1 bundle.
 

@@ -22,6 +22,7 @@ The runtime configuration is built from the DRS config and includes:
 - **Skills** (`src/runtime/client.ts`): per-agent skill lists resolved by `src/lib/config.ts` and attached to the runtime as `agentSkills`.
 - **Fix checks** (`src/pi/sdk.ts`): `fix.checks` become the `drs_check` tool, filtered by `matchPaths` against changed files.
 - **Trace collector** (`src/runtime/client.ts`): when `--trace` is enabled, traces are attached to sessions and persisted as workflow artifacts.
+- **Agent permissions** (`src/lib/agent-permissions.ts`): optional workflow-node policies become Pi tool definitions with runtime-enforced filesystem roots, allow/deny patterns, symbolic-link rejection, and shell isolation.
 
 ## Agent loading
 
@@ -63,6 +64,8 @@ Agents declare skills in their frontmatter or in the config under `agents.defaul
 - `drs_check` — enabled when `fix.checks` is configured; runs the matching validation commands.
 
 These tools are how the review agent emits structured output and how the fix agent reads and verifies review artifacts.
+
+When an agent workflow node declares filesystem permissions, `src/pi/sdk.ts` supplies same-name policy-aware definitions for Pi's built-in `read`, `write`, and `edit` tools plus a scoped `delete_file` tool. Pi natively limits tools by name but does not expose path allowlists, so DRS uses Pi's pluggable tool operations to enforce paths inside tool execution. DRS custom tools use the same authorizer, and unrestricted shell/check tools are removed from scoped sessions. Restricted reads also remove aggregate `grep`, `find`, `ls`, and `git_diff` tools rather than risk traversing or exposing a denied descendant.
 
 ## Session lifecycle
 

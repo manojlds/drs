@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'child_process';
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
@@ -32,7 +32,9 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@earendil-works/pi-coding-agent', () => {
+vi.mock('@earendil-works/pi-coding-agent', async () => {
+  const path = await import('path');
+  const fs = await import('fs/promises');
   class DefaultResourceLoader {
     options: Record<string, unknown>;
     reload = vi.fn(async () => undefined);
@@ -60,6 +62,82 @@ vi.mock('@earendil-works/pi-coding-agent', () => {
     }
   }
 
+  const resolveToolPath = (cwd: string, requestedPath: string) =>
+    path.isAbsolute(requestedPath) ? requestedPath : path.resolve(cwd, requestedPath);
+
+  const createReadToolDefinition = (cwd: string) => ({
+    name: 'read',
+    parameters: {},
+    execute: async (_id: string, params: { path: string }) => ({
+      content: [
+        { type: 'text', text: await fs.readFile(resolveToolPath(cwd, params.path), 'utf-8') },
+      ],
+      details: undefined,
+    }),
+  });
+
+  const createWriteToolDefinition = (
+    cwd: string,
+    options?: {
+      operations?: {
+        mkdir: (directory: string) => Promise<void>;
+        writeFile: (filePath: string, content: string) => Promise<void>;
+      };
+    }
+  ) => ({
+    name: 'write',
+    parameters: {},
+    execute: async (_id: string, params: { path: string; content: string }) => {
+      const filePath = resolveToolPath(cwd, params.path);
+      await (
+        options?.operations?.mkdir ?? ((directory) => fs.mkdir(directory, { recursive: true }))
+      )(path.dirname(filePath));
+      await (options?.operations?.writeFile ?? fs.writeFile)(filePath, params.content);
+      return {
+        content: [{ type: 'text', text: `Successfully wrote ${params.content.length} bytes` }],
+        details: undefined,
+      };
+    },
+  });
+
+  const createEditToolDefinition = (
+    cwd: string,
+    options?: {
+      operations?: {
+        readFile: (filePath: string) => Promise<Buffer>;
+        writeFile: (filePath: string, content: string) => Promise<void>;
+        access: (filePath: string) => Promise<void>;
+      };
+    }
+  ) => ({
+    name: 'edit',
+    parameters: {},
+    execute: async (
+      _id: string,
+      params: { path: string; edits: Array<{ oldText: string; newText: string }> }
+    ) => {
+      const filePath = resolveToolPath(cwd, params.path);
+      await (options?.operations?.access ?? fs.access)(filePath);
+      const buffer = await (options?.operations?.readFile ?? fs.readFile)(filePath);
+      let content = buffer.toString('utf-8');
+      for (const edit of params.edits) content = content.replace(edit.oldText, edit.newText);
+      await (options?.operations?.writeFile ?? fs.writeFile)(filePath, content);
+      return {
+        content: [{ type: 'text', text: `Successfully edited ${params.path}` }],
+        details: { diff: '', patch: '' },
+      };
+    },
+  });
+
+  const createSearchToolDefinition = (name: string) => (_cwd: string) => ({
+    name,
+    parameters: {},
+    execute: async () => ({
+      content: [{ type: 'text', text: `${name} result` }],
+      details: undefined,
+    }),
+  });
+
   return {
     AuthStorage: {
       create: vi.fn(() => ({})),
@@ -76,6 +154,12 @@ vi.mock('@earendil-works/pi-coding-agent', () => {
       })),
     },
     createAgentSession: mocks.createAgentSession,
+    createEditToolDefinition,
+    createFindToolDefinition: createSearchToolDefinition('find'),
+    createGrepToolDefinition: createSearchToolDefinition('grep'),
+    createLsToolDefinition: createSearchToolDefinition('ls'),
+    createReadToolDefinition,
+    createWriteToolDefinition,
     getAgentDir: vi.fn(() => '/tmp/.pi/agent'),
   };
 });
@@ -453,6 +537,336 @@ describe('pi/sdk', () => {
     expect(toolNames).not.toContain('grep');
 
     runtime.server.close();
+  });
+
+  it('enforces filesystem permissions inside Pi write and edit tools', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-permission-tools-'));
+    try {
+      await mkdir(join(workdir, 'wiki'));
+      const runtime = await createPiInProcessServer({
+        config: {
+          tools: {
+            Read: true,
+            Bash: true,
+            Edit: true,
+            Write: true,
+            Grep: true,
+            Glob: true,
+            delete_file: true,
+          },
+          permissions: {
+            filesystem: {
+              write: {
+                roots: ['wiki'],
+                allow: ['**/*.md'],
+                deny: ['**/index.md'],
+              },
+              delete: {
+                roots: ['wiki'],
+                allow: ['**/*.md'],
+                deny: ['**/index.md'],
+              },
+            },
+            shell: false,
+          },
+          validation: {
+            afterMutation: [{ name: 'okf-document', root: 'wiki' }],
+          },
+          agent: {
+            'task/wiki': { prompt: 'Maintain the wiki' },
+          },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: {
+          agent: 'task/wiki',
+          parts: [{ type: 'text', text: 'Update' }],
+        },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+        customTools: Array<{
+          name: string;
+          execute: (
+            id: string,
+            params: Record<string, unknown>
+          ) => Promise<{ content: Array<{ type: string; text: string }> }>;
+        }>;
+        tools: string[];
+      };
+      expect(createArgs.tools).toEqual(
+        expect.arrayContaining(['read', 'write', 'edit', 'grep', 'delete_file'])
+      );
+      expect(createArgs.tools).not.toContain('bash');
+
+      const writeTool = createArgs.customTools.find((tool) => tool.name === 'write');
+      const editTool = createArgs.customTools.find((tool) => tool.name === 'edit');
+      const deleteTool = createArgs.customTools.find((tool) => tool.name === 'delete_file');
+      const validContent = '---\ntype: Guide\n---\n\nAllowed.\n';
+      const writeResult = await writeTool?.execute('write-valid', {
+        path: 'wiki/guide.md',
+        content: validContent,
+      });
+      expect(writeResult?.content.at(-1)?.text).toContain('OKF bundle validation passed');
+      await expect(readFile(join(workdir, 'wiki', 'guide.md'), 'utf-8')).resolves.toBe(
+        validContent
+      );
+      await writeTool?.execute('write-obsolete', {
+        path: 'wiki/obsolete.md',
+        content: validContent,
+      });
+      const deleteResult = await deleteTool?.execute('delete-obsolete', {
+        path: 'wiki/obsolete.md',
+      });
+      expect(deleteResult?.content.at(-1)?.text).toContain('OKF bundle validation passed');
+      await expect(readFile(join(workdir, 'wiki', 'obsolete.md'), 'utf-8')).rejects.toThrow();
+
+      await expect(
+        writeTool?.execute('write-outside', {
+          path: 'src/outside.md',
+          content: validContent,
+        })
+      ).rejects.toThrow('outside the allowed roots');
+      await expect(
+        writeTool?.execute('write-index', {
+          path: 'wiki/index.md',
+          content: validContent,
+        })
+      ).rejects.toThrow('deny list');
+      await expect(deleteTool?.execute('delete-index', { path: 'wiki/index.md' })).rejects.toThrow(
+        'deny list'
+      );
+      await expect(
+        writeTool?.execute('write-invalid', {
+          path: 'wiki/invalid.md',
+          content: '# Missing frontmatter\n',
+        })
+      ).rejects.toThrow('invalid_frontmatter');
+      await expect(readFile(join(workdir, 'wiki', 'invalid.md'), 'utf-8')).rejects.toThrow();
+
+      await expect(
+        editTool?.execute('edit-invalid', {
+          path: 'wiki/guide.md',
+          edits: [{ oldText: 'type: Guide', newText: 'title: Broken' }],
+        })
+      ).rejects.toThrow('invalid_type');
+      await expect(readFile(join(workdir, 'wiki', 'guide.md'), 'utf-8')).resolves.toBe(
+        validContent
+      );
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it('scopes Pi reads and removes aggregate search tools for restricted roots', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-read-permission-tools-'));
+    try {
+      await mkdir(join(workdir, 'docs', 'private'), { recursive: true });
+      await writeFile(join(workdir, 'docs', 'guide.md'), 'Guide');
+      await writeFile(join(workdir, 'docs', 'private', 'secret.md'), 'Secret');
+      const runtime = await createPiInProcessServer({
+        config: {
+          tools: {
+            Read: true,
+            Bash: true,
+            Edit: true,
+            Write: true,
+            Grep: true,
+            Glob: true,
+            git_diff: true,
+          },
+          permissions: {
+            filesystem: {
+              read: {
+                roots: ['.'],
+                allow: ['**/*.md'],
+                deny: ['docs/private/**', 'src/**'],
+              },
+              write: {
+                roots: ['.'],
+                allow: ['**/*.md'],
+                deny: ['docs/private/**'],
+              },
+            },
+            shell: false,
+          },
+          agent: { 'task/docs': { prompt: 'Read docs' } },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: { agent: 'task/docs', parts: [{ type: 'text', text: 'Read' }] },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+        customTools: Array<{
+          name: string;
+          execute: (
+            id: string,
+            params: Record<string, unknown>
+          ) => Promise<{ content: Array<{ type: string; text: string }> }>;
+        }>;
+        tools: string[];
+      };
+      expect(createArgs.tools).toContain('read');
+      expect(createArgs.tools).toContain('edit');
+      expect(createArgs.tools).not.toContain('bash');
+      expect(createArgs.tools).not.toContain('grep');
+      expect(createArgs.tools).not.toContain('find');
+      expect(createArgs.tools).not.toContain('ls');
+      expect(createArgs.tools).not.toContain('git_diff');
+      const readTool = createArgs.customTools.find((tool) => tool.name === 'read');
+      const editTool = createArgs.customTools.find((tool) => tool.name === 'edit');
+      const writeTool = createArgs.customTools.find((tool) => tool.name === 'write');
+      await expect(
+        readTool?.execute('read-guide', { path: 'docs/guide.md' })
+      ).resolves.toMatchObject({ content: [{ text: 'Guide' }] });
+      await expect(
+        readTool?.execute('read-secret', { path: 'docs/private/secret.md' })
+      ).rejects.toThrow('deny list');
+      await expect(
+        readTool?.execute('read-prefixed-secret', { path: '@docs/private/secret.md' })
+      ).rejects.toThrow('deny list');
+      await expect(readTool?.execute('read-source', { path: 'src/index.ts' })).rejects.toThrow(
+        'allow list'
+      );
+      await expect(
+        editTool?.execute('edit-secret', {
+          path: 'docs/private/secret.md',
+          edits: [{ oldText: 'Secret', newText: 'Changed' }],
+        })
+      ).rejects.toThrow('deny list');
+      await expect(
+        writeTool?.execute('write-prefixed-secret', {
+          path: '@docs/private/new.md',
+          content: 'blocked',
+        })
+      ).rejects.toThrow('deny list');
+      await expect(readFile(join(workdir, 'docs', 'private', 'new.md'), 'utf-8')).rejects.toThrow();
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps repository-wide search tools scoped and disables Pi extensions', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-repository-read-tools-'));
+    try {
+      await writeFile(join(workdir, 'README.md'), 'Read me');
+      const runtime = await createPiInProcessServer({
+        config: {
+          tools: { Read: true, Bash: true, Grep: true, Glob: true, git_diff: true },
+          permissions: {
+            filesystem: { read: { roots: ['.'], allow: ['**'] } },
+            shell: false,
+          },
+          agent: { 'task/docs': { prompt: 'Read repository evidence' } },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: { agent: 'task/docs', parts: [{ type: 'text', text: 'Inspect' }] },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+        customTools: Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<unknown>;
+        }>;
+        tools: string[];
+      };
+      expect(createArgs.tools).toEqual(
+        expect.arrayContaining(['read', 'grep', 'find', 'ls', 'git_diff'])
+      );
+      expect(createArgs.tools).not.toContain('bash');
+      expect(mocks.loaderInstances.at(-1)?.options.noExtensions).toBe(true);
+
+      const readTool = createArgs.customTools.find((tool) => tool.name === 'read');
+      const grepTool = createArgs.customTools.find((tool) => tool.name === 'grep');
+      await expect(readTool?.execute('read-host', { path: '/proc/self/environ' })).rejects.toThrow(
+        'outside the working directory'
+      );
+      await expect(
+        grepTool?.execute('grep-host', { pattern: 'secret', path: '/tmp' })
+      ).rejects.toThrow('outside the working directory');
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects runtime validation without scoped write permissions', () => {
+    expect(() =>
+      createPiInProcessServer({
+        config: { validation: { afterMutation: [{ name: 'okf-document', root: 'wiki' }] } },
+      })
+    ).toThrow('validation requires filesystem write or delete permissions');
+  });
+
+  it('applies mutation validation to custom output writers before writing', async () => {
+    const workdir = await mkdtemp(join(tmpdir(), 'drs-custom-writer-validation-'));
+    try {
+      const runtime = await createPiInProcessServer({
+        config: {
+          permissions: {
+            filesystem: { write: { roots: ['.'], allow: ['**'] } },
+            shell: false,
+          },
+          validation: { afterMutation: [{ name: 'okf-document', root: '.' }] },
+          agent: {
+            'task/custom-writer': {
+              tools: { Bash: false, write_json_output: true, write_artifact_output: true },
+            },
+          },
+        },
+      });
+      const created = await runtime.client.session.create({ query: { directory: workdir } });
+      await runtime.client.session.prompt({
+        path: { id: created.data?.id ?? '' },
+        query: { directory: workdir },
+        body: { agent: 'task/custom-writer', parts: [{ type: 'text', text: 'Write output' }] },
+      });
+
+      const createArgs = mocks.createAgentSession.mock.calls[0][0] as unknown as {
+        customTools: Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<unknown>;
+        }>;
+      };
+      const jsonTool = createArgs.customTools.find((tool) => tool.name === 'write_json_output');
+      const artifactTool = createArgs.customTools.find(
+        (tool) => tool.name === 'write_artifact_output'
+      );
+
+      await expect(
+        jsonTool?.execute('json-invalid', { outputType: 'describe_output', payload: {} })
+      ).rejects.toThrow('invalid_concept_path');
+      await expect(
+        artifactTool?.execute('artifact-invalid', {
+          outputPath: 'wiki/page.md',
+          content: '<!DOCTYPE html><html><body>Invalid OKF</body></html>',
+        })
+      ).rejects.toThrow('invalid_frontmatter');
+      await expect(
+        readFile(join(workdir, '.drs', 'describe-output.json'), 'utf-8')
+      ).rejects.toThrow();
+      await expect(readFile(join(workdir, 'wiki', 'page.md'), 'utf-8')).rejects.toThrow();
+
+      runtime.server.close();
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
   });
 
   it('registers a scoped git_diff custom tool', async () => {

@@ -66,6 +66,15 @@ describe('getTemporalNodeRetryMode', () => {
     };
 
     expect(getTemporalNodeRetryMode(node)).toBe('no-retry');
+    expect(
+      getTemporalNodeRetryMode({
+        agent: 'task/docs',
+        permissions: {
+          filesystem: { write: { roots: ['docs'], allow: ['**/*.md'] } },
+          shell: false,
+        },
+      })
+    ).toBe('no-retry');
   });
 
   it('keeps non-writing agent nodes retryable', () => {

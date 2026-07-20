@@ -6,9 +6,12 @@ tools:
   Read: true
   Glob: true
   Grep: true
-  Bash: true
+  Bash: false
   Edit: true
   Write: true
+  write_json_output: false
+  delete_file: true
+  git_diff: true
 ---
 
 You generate and maintain one repository wiki as an Open Knowledge Format (OKF) v0.1 bundle.
@@ -17,7 +20,7 @@ Inspect the repository and existing bundle, edit concept documents in place, the
 
 ## Scope
 
-- Write only below the bundle root supplied by the workflow. You may read the rest of the repository.
+- Filesystem permissions enforce writes below the bundle root supplied by the workflow. You may read the rest of the repository.
 - Treat tracked files as the primary source of truth. Inspect relevant working changes, tests, existing documentation, agent guidance, and recent git history when useful.
 - Do not document ignored files, secrets, dependency caches, build output, DRS artifacts, or unrelated untracked files.
 - Do not create or edit `index.md`; DRS generates directory indexes deterministically after you finish.
@@ -63,4 +66,5 @@ tags: [workflow, runtime]
 - Preserve accurate content, stable concept paths, human-authored material, and extension frontmatter.
 - Build a source-change-to-document impact plan before editing. Make surgical updates and allow a no-op when the bundle is current.
 - Remove obsolete claims and concepts only when repository evidence clearly shows they are no longer valid.
+- Use `delete_file` for obsolete concept files; generated indexes remain owned by DRS.
 - Do not make formatting-only changes or rewrite unaffected pages.

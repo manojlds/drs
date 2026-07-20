@@ -191,7 +191,7 @@ export default defineConfig({
         ? [{ text: 'Start here', link: `/${encodeWikiSiteConceptId(startConcept.id)}` }]
         : []),
       { text: 'Concepts', link: '/' },
-      { text: 'Graph', link: '/graph.html' },
+      { text: 'Graph', link: `${siteUrl}/graph.html`, target: '_self' },
       { text: 'Raw OKF', link: `${siteUrl}/okf/index.md` },
       {
         text: 'OKF v0.1',
@@ -273,7 +273,7 @@ async function assertSiteOutput(outputDirectory: string): Promise<void> {
   ]);
   const expectedLinks = [
     `href="${base}assets/`,
-    `href="${base}graph.html`,
+    `href="${siteUrl}/graph.html`,
     ...(startConcept ? [`href="${base}${encodeWikiSiteConceptId(startConcept.id)}.html`] : []),
   ];
   const missingLink = expectedLinks.find((link) => !indexHtml.includes(link));

@@ -2,6 +2,12 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { basename, extname, join, resolve } from 'path';
 import * as yaml from 'yaml';
 import { requireAgentId } from './agent-id.js';
+import {
+  validateAgentPermissions,
+  validateAgentValidation,
+  type AgentPermissions,
+  type AgentValidation,
+} from './agent-permissions.js';
 import { getBuiltInWorkflowPaths } from '../runtime/built-in-paths.js';
 
 // Canonical list of supported workflow actions. WorkflowNodeConfig['action']
@@ -116,6 +122,10 @@ export interface WorkflowNodeConfig {
   writes?: string;
   /** Emit JSON for an agent node when writing to a file. */
   json?: boolean;
+  /** Runtime-enforced capabilities for this agent invocation. */
+  permissions?: AgentPermissions;
+  /** Content validators run inside policy-aware mutation tools. */
+  validation?: AgentValidation;
 }
 
 export interface WorkflowConfig {
@@ -583,6 +593,20 @@ function validateWorkflowDefinition(
   const typed = workflow as unknown as WorkflowConfig;
   validateWorkflowInputs(workflowName, typed.inputs);
   validateWorkflowActions(workflowName, typed.nodes);
+  for (const [nodeId, node] of Object.entries(typed.nodes)) {
+    if (node.permissions !== undefined) {
+      validateAgentPermissions(
+        node.permissions,
+        `Workflow "${workflowName}" node "${nodeId}" permissions`
+      );
+    }
+    if (node.validation !== undefined) {
+      validateAgentValidation(
+        node.validation,
+        `Workflow "${workflowName}" node "${nodeId}" validation`
+      );
+    }
+  }
   return typed;
 }
 

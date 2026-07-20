@@ -74,9 +74,9 @@ Clean Git submodules use the checked-out commit as their canonical fingerprint, 
 
 The packaged `repository-wiki-check` workflow recomputes the fingerprints and validates OKF without invoking a model. This repository runs it for the scheduled `drs/wiki-update` pull request, while ordinary feature pull requests validate the bundle through the wiki site build without requiring branch-local state freshness. Run `repository-wiki-sync --input check=true` locally when you want generation followed by a failure if the workflow produced uncommitted wiki or state changes.
 
-Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are reserved. The validator requires parseable YAML frontmatter with a non-empty `type` on every concept, permits producer-defined fields, accepts optional `timestamp`, and reports broken internal links as warnings as required by OKF's permissive consumption model.
+Every non-reserved Markdown file is an OKF concept. `index.md` and `log.md` are reserved. The validator requires parseable YAML frontmatter with a non-empty `type` on every concept, permits producer-defined fields, accepts optional `timestamp`, and reports broken internal links as warnings as required by OKF's permissive consumption model. The maintainer's Pi session can write only Markdown below the configured bundle root, cannot write generated indexes, and validates proposed documents before each write or edit.
 
-Run this workflow with the local executor. Its agent edits multiple files directly and does not yet declare those side effects to the experimental Temporal retry policy. DRS does not commit or push wiki changes; review the resulting working-tree diff normally.
+Run this workflow with the local executor. DRS does not commit or push wiki changes; review the resulting working-tree diff normally.
 
 ### Repository wiki search
 
@@ -209,8 +209,45 @@ Common node fields:
 | `writes` | Repo-relative path to write the node output/content |
 | `json` | For agent nodes, write JSON when `writes` is set |
 | `with` | Action-specific options |
+| `permissions` | Runtime-enforced filesystem and shell capabilities for agent nodes |
+| `validation` | Content validators invoked by policy-aware mutation tools |
 
 Workflow files are strictly validated. A node must use exactly one of `agent`, `agentsFrom`, `action`, or `control`; unknown node fields and unknown action options are rejected before execution.
+
+### Agent permissions
+
+Agent nodes can restrict filesystem mutations with literal repository-relative roots and root-relative glob patterns:
+
+```yaml
+nodes:
+  maintain-docs:
+    agent: task/docs-updater
+    permissions:
+      filesystem:
+        write:
+          roots: [docs]
+          allow: ["**/*.md"]
+          deny: ["**/index.md"]
+        delete:
+          roots: [docs]
+          allow: ["**/*.md"]
+          deny: ["**/index.md"]
+      shell: false
+    input: Update documentation.
+```
+
+`deny` takes precedence over `allow`. Literal `roots` are kept separate from glob patterns so rendered workflow inputs cannot broaden access through glob metacharacters. Filesystem policies require `shell: false`; otherwise shell commands could bypass path controls. DRS propagates the policy into same-name Pi `read`, `write`, and `edit` tool definitions plus the generic `delete_file` tool, rejects symbolic links and multiply-linked write targets, applies the policy to DRS custom tools, and compares Git-visible workspace files before and after the agent run as defense in depth. A restricted `read` rule disables aggregate `grep`, `find`, `ls`, and `git_diff` tools because those tools can traverse or expose denied descendants; omit `read` when the agent needs unrestricted repository evidence.
+
+An optional write validator can reject invalid content before modification and return full post-write validation feedback to the agent:
+
+```yaml
+    validation:
+      afterMutation:
+        - name: okf-document
+          root: "{{inputs.root}}"
+```
+
+The initial validator registry contains `okf-document`. Workflow actions remain outside the agent permission boundary, allowing deterministic nodes to generate indexes or state after the agent completes.
 
 ## Conditions
 

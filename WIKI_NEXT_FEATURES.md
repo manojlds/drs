@@ -25,18 +25,20 @@ This roadmap captures the remaining useful ideas from the OpenWiki comparison. T
 
 ## Priority 1: Scoped wiki mutation and in-run validation
 
+Status: implemented through generic workflow-agent permissions, with the wiki maintainer as the first consumer.
+
 ### Goal
 
 Prevent the wiki maintainer from modifying repository files outside the approved bundle before a post-run guard notices the change. Return validation failures to the agent while it can still repair them.
 
 ### Implementation outline
 
-1. Add a wiki-specific tool policy to Pi sessions used by `task/okf-wiki-maintainer`.
-2. Scope write and edit operations to concept Markdown files under the configured bundle root.
+1. Add generic agent `permissions` and `validation` fields to workflow nodes and propagate them into Pi sessions.
+2. Scope write, edit, and deletion operations with literal roots and root-relative allow/deny patterns.
 3. Reject traversal, symbolic links, and writes to generated `index.md` or `.drs/wiki-state.json`.
 4. Remove unrestricted shell execution from this agent, or replace it with bounded read-only Git/source evidence tools.
 5. Validate changed concepts after each mutation and return actionable OKF errors to the agent.
-6. Retain a deterministic final postcondition that rejects every changed path outside `wiki/` and `.drs/wiki-state.json` in local and CI execution paths.
+6. Retain a deterministic before/after workspace postcondition that rejects residual changes outside the same write policy.
 
 ### Likely files
 
@@ -58,7 +60,7 @@ Prevent the wiki maintainer from modifying repository files outside the approved
 
 ### Recommended first branch
 
-`feat/wiki-scoped-tools`
+`feat/agent-workspace-permissions`
 
 ## Priority 2: Persistent repository wiki brief
 
@@ -235,10 +237,10 @@ Each priority should be a separate PR unless implementation proves very small. C
 
 1. Add focused unit and CLI tests, including unsafe path and malformed input cases.
 2. Run `npm run check:all`.
-3. Run `node dist/cli/index.js workflow run repository-wiki-sync --executor local --json`.
-4. Confirm `repository-wiki-check` returns `noop` with zero validation warnings.
+3. Run a local `repository-wiki-sync` smoke test when provider credentials are available.
+4. Validate and build the canonical wiki bundle on the feature branch.
 5. Build the reusable wiki site when bundle or rendering behavior changes.
-6. Update `CHANGELOG.md`, user documentation, canonical wiki concepts, and `.drs/wiki-state.json`.
+6. Update `CHANGELOG.md`, user documentation, and canonical wiki concepts. Let the scheduled wiki-update pull request record post-merge `.drs/wiki-state.json` freshness.
 7. Push a feature branch, open a PR, and verify Node 22/24 CI plus trusted DRS review.
 
 ## Suggested prompt for the next session

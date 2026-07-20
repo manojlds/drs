@@ -82,6 +82,7 @@ import {
   type ReviewArtifactPayload,
 } from '../lib/review-artifact.js';
 import type { RunAgentOptions } from './run-agent.js';
+import { renderAgentPermissions, renderAgentValidation } from '../lib/agent-permissions.js';
 import { runAgent } from './run-agent.js';
 import { TraceCollector } from '../lib/trace-collector.js';
 import { renderTraceHtml } from '../lib/trace-html.js';
@@ -123,6 +124,7 @@ import {
   getWorkflowNodeSkipReason,
   getWorkflowNodes,
   hasWorkflowControlNodes,
+  isPotentialWorkspaceMutation,
   normalizeWorkflowBooleanLike,
   renderTemplate,
   runControlWorkflowNode,
@@ -150,6 +152,7 @@ interface WorkflowExecutionContext {
   locks: {
     exit: WorkflowLock;
     console: WorkflowLock;
+    workspace: WorkflowLock;
   };
 }
 
@@ -397,7 +400,9 @@ function hasConfiguredAgentPrompt(config: DRSConfig, agentId: string): boolean {
 function createAgentOptions(
   prompt: string | undefined,
   options: WorkflowRunOptions,
-  workingDir: string
+  workingDir: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
 ): RunAgentOptions {
   return {
     prompt,
@@ -408,6 +413,20 @@ function createAgentOptions(
     quiet: true,
     allowImplicitStdin: false,
     ignoreConfiguredOutput: true,
+    ...(node.permissions
+      ? {
+          permissions: renderAgentPermissions(node.permissions, (value) =>
+            renderTemplate(value, context)
+          ),
+        }
+      : {}),
+    ...(node.validation
+      ? {
+          validation: renderAgentValidation(node.validation, (value) =>
+            renderTemplate(value, context)
+          ),
+        }
+      : {}),
   };
 }
 
@@ -506,7 +525,7 @@ async function runAgentWorkflowNode(
     );
   }
 
-  const agentOptions = createAgentOptions(prompt, options, workingDir);
+  const agentOptions = createAgentOptions(prompt, options, workingDir, node, context);
   if (executionContext?.traceCollector && prompt) {
     agentOptions.traceCollector = executionContext.traceCollector;
     executionContext.traceCollector.setContext(nodeId, agentId, prompt);
@@ -566,7 +585,7 @@ async function runAgentsWorkflowNode(
 
   const responses = await Promise.all(
     agentIds.map((agentId) =>
-      runAgent(config, agentId, createAgentOptions(prompt, options, workingDir))
+      runAgent(config, agentId, createAgentOptions(prompt, options, workingDir, node, context))
     )
   );
 
@@ -3521,8 +3540,25 @@ async function runSingleWorkflowNode(
     return createSkippedWorkflowNodeResult(nodeId);
   }
 
-  if (kind === 'agent') {
-    return runAgentWorkflowNode(
+  const run = async (): Promise<WorkflowNodeResult> => {
+    if (kind === 'agent') {
+      return runAgentWorkflowNode(
+        config,
+        nodeId,
+        node,
+        options,
+        workingDir,
+        context,
+        executionContext
+      );
+    }
+    if (kind === 'agents') {
+      return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
+    }
+    if (kind === 'control') {
+      throw new Error(`Workflow control node "${nodeId}" cannot run in the static DAG executor.`);
+    }
+    return runActionWorkflowNode(
       config,
       nodeId,
       node,
@@ -3531,22 +3567,11 @@ async function runSingleWorkflowNode(
       context,
       executionContext
     );
-  }
-  if (kind === 'agents') {
-    return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
-  }
-  if (kind === 'control') {
-    throw new Error(`Workflow control node "${nodeId}" cannot run in the static DAG executor.`);
-  }
-  return runActionWorkflowNode(
-    config,
-    nodeId,
-    node,
-    options,
-    workingDir,
-    context,
-    executionContext
-  );
+  };
+
+  return isPotentialWorkspaceMutation(node)
+    ? withWorkflowLock(executionContext.locks.workspace, run)
+    : run();
 }
 
 /**
@@ -3597,6 +3622,7 @@ export async function runWorkflowNodeLocally(
     locks: {
       exit: createWorkflowLock(),
       console: createWorkflowLock(),
+      workspace: createWorkflowLock(),
     },
   };
   return runSingleWorkflowNode(
@@ -3705,6 +3731,7 @@ async function executeWorkflowRun(
     locks: {
       exit: createWorkflowLock(),
       console: createWorkflowLock(),
+      workspace: createWorkflowLock(),
     },
   };
   const nodeExecutor = new LocalNodeExecutor(config, options, workingDir, executionContext);
@@ -3874,6 +3901,8 @@ export interface WorkflowNodeDetail {
   output?: string;
   writes?: string;
   json?: boolean;
+  permissions?: WorkflowNodeConfig['permissions'];
+  validation?: WorkflowNodeConfig['validation'];
   routes?: Record<string, string | Record<string, string> | undefined>;
 }
 
@@ -4031,6 +4060,8 @@ function buildWorkflowDetail(
       output: node.output,
       writes: node.writes,
       json: node.json,
+      permissions: node.permissions,
+      validation: node.validation,
       routes: getWorkflowNodeRoutes(node),
     })),
     graph,
@@ -4127,6 +4158,8 @@ export function showWorkflow(
     if (node.if) console.log(`    if: ${node.if}`);
     if (node.output) console.log(`    output: ${node.output}`);
     if (node.writes) console.log(`    writes: ${node.writes}`);
+    if (node.permissions) console.log(`    permissions: ${JSON.stringify(node.permissions)}`);
+    if (node.validation) console.log(`    validation: ${JSON.stringify(node.validation)}`);
     if (node.input) console.log(`    input: ${node.input.split('\n')[0]}`);
     if (node.with && Object.keys(node.with).length > 0) {
       console.log(`    with: ${JSON.stringify(node.with)}`);

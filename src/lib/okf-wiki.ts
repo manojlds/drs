@@ -1,4 +1,5 @@
-import { lstat, readFile, readdir, realpath, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { lstat, readFile, readdir, realpath, rename, rm, writeFile } from 'fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'path';
 import * as path from 'path';
 import * as yaml from 'yaml';
@@ -26,6 +27,13 @@ export interface OkfBundleValidationResult {
   logs: number;
   errors: OkfValidationIssue[];
   graph: WikiConceptGraphMetrics;
+  warnings: OkfValidationIssue[];
+}
+
+export interface OkfDocumentValidationResult {
+  valid: boolean;
+  path: string;
+  errors: OkfValidationIssue[];
   warnings: OkfValidationIssue[];
 }
 
@@ -80,6 +88,7 @@ export async function synchronizeOkfIndexes(
   requireSupportedVersion(version);
   const bundle = await resolveBundleRoot(workingDir, root);
   const directories = await collectBundleDirectories(bundle.absolutePath);
+  const indexedDirectories = new Set<string>();
   let updated = 0;
 
   for (const directory of directories) {
@@ -95,11 +104,23 @@ export async function synchronizeOkfIndexes(
       });
     }
 
-    const directoryLinks = directory.directories.map((name) => ({
-      href: `${encodeURIComponent(name)}/`,
-      label: titleFromSlug(name),
-    }));
-    if (conceptLinks.length === 0 && directoryLinks.length === 0) continue;
+    const directoryLinks = directory.directories
+      .filter((name) => indexedDirectories.has(resolve(directory.absolutePath, name)))
+      .map((name) => ({
+        href: `${encodeURIComponent(name)}/`,
+        label: titleFromSlug(name),
+      }));
+    if (conceptLinks.length === 0 && directoryLinks.length === 0) {
+      const indexPath = resolve(directory.absolutePath, 'index.md');
+      try {
+        await lstat(indexPath);
+        await rm(indexPath, { force: true });
+        updated += 1;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      continue;
+    }
 
     const isRoot = directory.relativePath === '';
     const content = renderIndex(conceptLinks, directoryLinks, isRoot ? version : undefined);
@@ -108,19 +129,28 @@ export async function synchronizeOkfIndexes(
       ? await readFile(indexPath, 'utf-8')
       : undefined;
     if (existing !== content) {
-      await writeFile(indexPath, content, 'utf-8');
+      await writeFileAtomically(indexPath, content);
       updated += 1;
     }
+    indexedDirectories.add(directory.absolutePath);
   }
 
   return {
     version: SUPPORTED_OKF_VERSION,
     root: bundle.relativePath,
-    indexes: directories.filter(
-      (directory) => directory.files.some(isConceptFilename) || directory.directories.length > 0
-    ).length,
+    indexes: indexedDirectories.size,
     updated,
   };
+}
+
+async function writeFileAtomically(filePath: string, content: string): Promise<void> {
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    await writeFile(temporaryPath, content, { encoding: 'utf-8', flag: 'wx' });
+    await rename(temporaryPath, filePath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
 }
 
 /** Validate an OKF bundle without modifying it. */
@@ -219,6 +249,42 @@ export function formatOkfValidationErrors(result: OkfBundleValidationResult): st
       issuePath ? `- ${issuePath}: [${code}] ${message}` : `- [${code}] ${message}`
     )
     .join('\n');
+}
+
+/** Validate one proposed OKF Markdown document before a mutation tool writes it. */
+export function validateOkfDocument(
+  content: string,
+  relativePath: string
+): OkfDocumentValidationResult {
+  const normalizedPath = relativePath.replaceAll('\\', '/');
+  const filename = path.posix.basename(normalizedPath);
+  const errors: OkfValidationIssue[] = [];
+  const warnings: OkfValidationIssue[] = [];
+
+  if (filename === 'index.md') {
+    errors.push(
+      issue(
+        'generated_index',
+        'index.md is generated deterministically and cannot be written by an agent.',
+        normalizedPath
+      )
+    );
+  } else if (filename === 'log.md') {
+    validateLog(content, normalizedPath, errors);
+  } else if (!isConceptFilename(filename)) {
+    errors.push(
+      issue('invalid_concept_path', 'OKF documents must use a Markdown (.md) path.', normalizedPath)
+    );
+  } else {
+    validateConcept(content, normalizedPath, errors, warnings);
+  }
+
+  return {
+    valid: errors.length === 0,
+    path: normalizedPath,
+    errors,
+    warnings,
+  };
 }
 
 /** Load validated concept documents from an OKF bundle in stable path order. */

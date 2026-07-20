@@ -84,6 +84,31 @@ describe('workflow planning', () => {
 
       expect(() => getWorkflowExecutionOrder(nodes)).toThrow(/useChangeRequestCreator/);
     });
+
+    it('accepts permissions for agents and rejects them for actions', () => {
+      const permissions = {
+        filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+        shell: false,
+      };
+      expect(
+        getWorkflowExecutionOrder({ maintain: node({ agent: 'task/maintain', permissions }) })
+      ).toEqual(['maintain']);
+      expect(() =>
+        getWorkflowExecutionOrder({
+          write: node({ action: 'write', writes: 'out.md', permissions }),
+        })
+      ).toThrow('can only define permissions or validation for agents');
+      expect(() =>
+        getWorkflowExecutionOrder({
+          maintain: node({ agent: 'task/maintain', writes: 'out.md', permissions }),
+        })
+      ).toThrow('cannot combine agent permissions with writes');
+      expect(() =>
+        getWorkflowExecutionOrder({
+          maintain: node({ agentsFrom: 'review.agents', permissions }),
+        })
+      ).toThrow('cannot grant filesystem write permissions');
+    });
   });
 
   describe('validateWorkflowControlRouteDirection', () => {
