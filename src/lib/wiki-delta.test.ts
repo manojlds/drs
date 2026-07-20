@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkWikiClean, planWikiUpdate, recordWikiState } from './wiki-delta.js';
+import {
+  checkWikiClean,
+  planWikiUpdate,
+  recordWikiState,
+  resolveWikiInstructions,
+} from './wiki-delta.js';
 
 const tempDirectories: string[] = [];
 
@@ -304,6 +309,137 @@ describe('wiki delta state', () => {
     const statePath = join(root, '.drs/wiki-state.json');
     const state = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
     state.gitHead = '--output=/tmp/drs-wiki-state-injection';
+    writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8');
+
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({
+      mode: 'reconcile',
+      reason: 'Wiki state is missing or invalid.',
+    });
+  });
+
+  it('resolves the persistent wiki brief with explicit one-run precedence', async () => {
+    const root = createRepository();
+
+    const absent = await resolveWikiInstructions(root);
+    expect(absent).toMatchObject({
+      content: '',
+      source: 'none',
+      filePath: '.drs/wiki-instructions.md',
+    });
+    expect(absent.hash).toBeUndefined();
+    expect(absent.fileHash).toBeUndefined();
+
+    const inputOnly = await resolveWikiInstructions(root, {
+      instructions: '  One-run focus.  ',
+    });
+    expect(inputOnly).toMatchObject({ content: 'One-run focus.', source: 'input' });
+    expect(inputOnly.fileHash).toBeUndefined();
+
+    write(root, '.drs/wiki-instructions.md', 'Document the workflow engine first.\n');
+    const fileOnly = await resolveWikiInstructions(root);
+    expect(fileOnly).toMatchObject({
+      content: 'Document the workflow engine first.',
+      source: 'file',
+    });
+    expect(fileOnly.hash).toBe(fileOnly.fileHash);
+
+    const combined = await resolveWikiInstructions(root, { instructions: 'One-run focus.' });
+    expect(combined).toMatchObject({
+      content: 'Document the workflow engine first.\n\nOne-run focus.',
+      source: 'combined',
+    });
+    expect(combined.hash).not.toBe(combined.fileHash);
+  });
+
+  it('rejects unsafe wiki instructions paths', async () => {
+    const root = createRepository();
+
+    await expect(
+      resolveWikiInstructions(root, { instructionsPath: '../outside.md' })
+    ).rejects.toThrow('Refusing to read outside working directory');
+    await expect(
+      resolveWikiInstructions(root, { instructionsPath: '/tmp/absolute.md' })
+    ).rejects.toThrow('Wiki instructions path must be repository-relative');
+    await expect(resolveWikiInstructions(root, { instructionsPath: 'src' })).rejects.toThrow(
+      'Wiki instructions path must be a file'
+    );
+
+    write(root, '.drs/real-brief.md', 'Real brief.\n');
+    symlinkSync(join(root, '.drs', 'real-brief.md'), join(root, '.drs', 'linked-brief.md'));
+    await expect(
+      resolveWikiInstructions(root, { instructionsPath: '.drs/linked-brief.md' })
+    ).rejects.toThrow('symbolic link');
+
+    await expect(
+      planWikiUpdate(root, 'wiki', '.drs/wiki-state.json', {
+        instructionsPath: 'wiki/brief.md',
+      })
+    ).rejects.toThrow('Wiki instructions path must be outside the portable OKF bundle.');
+  });
+
+  it('invalidates wiki freshness only when the persistent brief changes', async () => {
+    const root = createRepository();
+    createWiki(root);
+    write(root, '.drs/wiki-instructions.md', 'Document the workflow engine.\n');
+    git(root, 'add', 'wiki', '.drs');
+    git(root, 'commit', '-m', 'add wiki and brief');
+
+    const state = await recordWikiState(root, 'wiki', '.drs/wiki-state.json', {
+      instructions: 'One-run focus.',
+    });
+    expect(state.instructionsHash).toBeTypeOf('string');
+    expect(
+      Object.prototype.hasOwnProperty.call(state.sourceFiles ?? {}, '.drs/wiki-instructions.md')
+    ).toBe(false);
+    git(root, 'add', '.drs/wiki-state.json');
+    git(root, 'commit', '-m', 'record wiki state');
+
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({
+      mode: 'noop',
+      instructionsSource: 'file',
+    });
+    await expect(
+      planWikiUpdate(root, 'wiki', '.drs/wiki-state.json', {
+        instructions: 'Another one-run focus.',
+      })
+    ).resolves.toMatchObject({ mode: 'noop', instructionsSource: 'combined' });
+
+    write(root, '.drs/wiki-instructions.md', 'Document the CLI instead.\n');
+    const changed = await planWikiUpdate(root);
+    expect(changed).toMatchObject({
+      mode: 'reconcile',
+      reason: 'Wiki instructions changed since the last recorded wiki state.',
+      previousInstructionsHash: state.instructionsHash,
+    });
+    expect(changed.instructionsHash).not.toBe(state.instructionsHash);
+
+    await recordWikiState(root);
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({ mode: 'noop' });
+  });
+
+  it('keeps legacy state without an instructions hash fresh until a brief appears', async () => {
+    const root = createRepository();
+    createWiki(root);
+    await recordWikiState(root);
+    git(root, 'add', 'wiki', '.drs/wiki-state.json');
+    git(root, 'commit', '-m', 'add wiki');
+
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({ mode: 'noop' });
+
+    write(root, '.drs/wiki-instructions.md', 'Document the workflow engine.\n');
+    await expect(planWikiUpdate(root)).resolves.toMatchObject({
+      mode: 'reconcile',
+      reason: 'Wiki instructions changed since the last recorded wiki state.',
+    });
+  });
+
+  it('treats a non-string instructions hash in state as invalid data', async () => {
+    const root = createRepository();
+    createWiki(root);
+    await recordWikiState(root);
+    const statePath = join(root, '.drs/wiki-state.json');
+    const state = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    state.instructionsHash = 42;
     writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf-8');
 
     await expect(planWikiUpdate(root)).resolves.toMatchObject({

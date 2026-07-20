@@ -18,6 +18,24 @@ import { resolveWithinWorkingDir } from './path-utils.js';
 const execFileAsync = promisify(execFile);
 const WIKI_STATE_VERSION = 1 as const;
 const MAX_CHANGED_PATHS = 500;
+const DEFAULT_WIKI_INSTRUCTIONS_PATH = '.drs/wiki-instructions.md';
+
+export type WikiInstructionsSource = 'file' | 'input' | 'combined' | 'none';
+
+export interface WikiInstructions {
+  content: string;
+  /** Hash of the effective content (persistent brief plus any one-run addition). */
+  hash?: string;
+  /** Hash of the persistent brief file only; recorded in wiki state for freshness checks. */
+  fileHash?: string;
+  source: WikiInstructionsSource;
+  filePath: string;
+}
+
+export interface WikiInstructionsOptions {
+  instructions?: string;
+  instructionsPath?: string;
+}
 
 export interface WikiUpdatePlan {
   mode: 'generate' | 'reconcile' | 'update' | 'noop';
@@ -34,6 +52,10 @@ export interface WikiUpdatePlan {
   changedPaths: string[];
   changedPathCount: number;
   changedPathsTruncated: boolean;
+  instructions: string;
+  instructionsSource: WikiInstructionsSource;
+  instructionsHash?: string;
+  previousInstructionsHash?: string;
 }
 
 export interface WikiState {
@@ -44,6 +66,8 @@ export interface WikiState {
   sourceHash: string;
   sourceFiles?: Record<string, string>;
   wikiHash: string;
+  /** Hash of the persistent wiki brief file; one-run instruction inputs are never recorded. */
+  instructionsHash?: string;
   updatedAt: string;
 }
 
@@ -58,14 +82,17 @@ export interface WikiCleanResult {
 export async function planWikiUpdate(
   workingDir: string,
   root = 'wiki',
-  statePath = '.drs/wiki-state.json'
+  statePath = '.drs/wiki-state.json',
+  options: WikiInstructionsOptions = {}
 ): Promise<WikiUpdatePlan> {
   const paths = resolveWikiPaths(workingDir, root, statePath);
   await assertSafeWikiPaths(workingDir, paths);
+  const instructions = await resolveWikiInstructions(workingDir, options);
+  assertInstructionsOutsideBundle(paths, instructions);
   await requireGitRepository(workingDir);
   const [gitHead, sourceFiles] = await Promise.all([
     runGit(workingDir, ['rev-parse', 'HEAD']),
-    listSourceFiles(workingDir, paths),
+    listSourceFiles(workingDir, paths, instructions.filePath),
   ]);
   const sourceSnapshot = await fingerprintSourceFiles(workingDir, sourceFiles);
   const sourceHash = sourceSnapshot.hash;
@@ -73,7 +100,14 @@ export async function planWikiUpdate(
   const state = await readWikiState(paths.absoluteStatePath);
 
   if (!wikiExists) {
-    return createPlan('generate', 'Wiki bundle does not exist.', paths, gitHead, sourceHash);
+    return createPlan(
+      'generate',
+      'Wiki bundle does not exist.',
+      paths,
+      gitHead,
+      sourceHash,
+      instructions
+    );
   }
 
   const wikiHash = await hashDirectory(paths.absoluteRoot);
@@ -84,6 +118,7 @@ export async function planWikiUpdate(
       paths,
       gitHead,
       sourceHash,
+      instructions,
       { wikiHash }
     );
   }
@@ -94,6 +129,19 @@ export async function planWikiUpdate(
       paths,
       gitHead,
       sourceHash,
+      instructions,
+      { state, wikiHash }
+    );
+  }
+
+  if (state.instructionsHash !== instructions.fileHash) {
+    return createPlan(
+      'reconcile',
+      'Wiki instructions changed since the last recorded wiki state.',
+      paths,
+      gitHead,
+      sourceHash,
+      instructions,
       { state, wikiHash }
     );
   }
@@ -105,7 +153,8 @@ export async function planWikiUpdate(
           workingDir,
           paths,
           state,
-          sourceFiles.map((entry) => entry.path)
+          sourceFiles.map((entry) => entry.path),
+          instructions.filePath
         );
     return createPlan(
       'update',
@@ -113,6 +162,7 @@ export async function planWikiUpdate(
       paths,
       gitHead,
       sourceHash,
+      instructions,
       { state, wikiHash, changedPaths }
     );
   }
@@ -124,6 +174,7 @@ export async function planWikiUpdate(
       paths,
       gitHead,
       sourceHash,
+      instructions,
       { state, wikiHash }
     );
   }
@@ -134,6 +185,7 @@ export async function planWikiUpdate(
     paths,
     gitHead,
     sourceHash,
+    instructions,
     { state, wikiHash }
   );
 }
@@ -142,10 +194,13 @@ export async function planWikiUpdate(
 export async function recordWikiState(
   workingDir: string,
   root = 'wiki',
-  statePath = '.drs/wiki-state.json'
+  statePath = '.drs/wiki-state.json',
+  options: WikiInstructionsOptions = {}
 ): Promise<WikiState> {
   const paths = resolveWikiPaths(workingDir, root, statePath);
   await assertSafeWikiPaths(workingDir, paths);
+  const instructions = await resolveWikiInstructions(workingDir, options);
+  assertInstructionsOutsideBundle(paths, instructions);
   await requireGitRepository(workingDir);
   if (!(await isDirectory(paths.absoluteRoot))) {
     throw new Error(`Cannot record wiki state because the bundle does not exist: ${paths.root}`);
@@ -153,7 +208,7 @@ export async function recordWikiState(
 
   const [gitHead, sourceFiles, wikiHash] = await Promise.all([
     runGit(workingDir, ['rev-parse', 'HEAD']),
-    listSourceFiles(workingDir, paths),
+    listSourceFiles(workingDir, paths, instructions.filePath),
     hashDirectory(paths.absoluteRoot),
   ]);
   const sourceSnapshot = await fingerprintSourceFiles(workingDir, sourceFiles, true);
@@ -165,6 +220,7 @@ export async function recordWikiState(
     sourceHash: sourceSnapshot.hash,
     sourceFiles: sourceSnapshot.files,
     wikiHash,
+    ...(instructions.fileHash ? { instructionsHash: instructions.fileHash } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -232,6 +288,66 @@ export async function checkWikiClean(
   };
 }
 
+/**
+ * Resolve the effective repository wiki brief. The persistent brief lives outside the portable
+ * bundle (default `.drs/wiki-instructions.md`); a one-run `instructions` value is appended after
+ * the file content so precedence stays explicit and deterministic.
+ */
+export async function resolveWikiInstructions(
+  workingDir: string,
+  options: WikiInstructionsOptions = {}
+): Promise<WikiInstructions> {
+  const requestedPath = normalizeRelativePath(
+    options.instructionsPath ?? DEFAULT_WIKI_INSTRUCTIONS_PATH,
+    'Wiki instructions path'
+  );
+  const absolutePath = resolveWithinWorkingDir(workingDir, requestedPath, 'read');
+  await assertNoSymlinkAncestors(workingDir, absolutePath, 'Wiki instructions path');
+  const filePath = toPosixPath(relative(resolve(workingDir), absolutePath));
+
+  let fileContent = '';
+  try {
+    const stats = await lstat(absolutePath);
+    if (stats.isSymbolicLink()) {
+      throw new Error(`Wiki instructions path cannot be a symbolic link: ${filePath}`);
+    }
+    if (!stats.isFile()) {
+      throw new Error(`Wiki instructions path must be a file: ${filePath}`);
+    }
+    fileContent = (await readFile(absolutePath, 'utf-8')).trim();
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+  }
+
+  const inputContent = options.instructions?.trim() ?? '';
+  const source: WikiInstructionsSource =
+    fileContent && inputContent
+      ? 'combined'
+      : fileContent
+        ? 'file'
+        : inputContent
+          ? 'input'
+          : 'none';
+  const content =
+    source === 'combined' ? `${fileContent}\n\n${inputContent}` : fileContent || inputContent;
+  return {
+    content,
+    ...(content ? { hash: hashValue(content) } : {}),
+    ...(fileContent ? { fileHash: hashValue(fileContent) } : {}),
+    source,
+    filePath,
+  };
+}
+
+function assertInstructionsOutsideBundle(
+  paths: ResolvedWikiPaths,
+  instructions: WikiInstructions
+): void {
+  if (isPathWithin(instructions.filePath, paths.root)) {
+    throw new Error('Wiki instructions path must be outside the portable OKF bundle.');
+  }
+}
+
 interface ResolvedWikiPaths {
   absoluteRoot: string;
   absoluteStatePath: string;
@@ -261,6 +377,7 @@ function createPlan(
   paths: ResolvedWikiPaths,
   gitHead: string,
   sourceHash: string,
+  instructions: WikiInstructions,
   details: PlanDetails = {}
 ): WikiUpdatePlan {
   const changedPaths = details.changedPaths ?? [];
@@ -279,6 +396,12 @@ function createPlan(
     changedPaths: changedPaths.slice(0, MAX_CHANGED_PATHS),
     changedPathCount: changedPaths.length,
     changedPathsTruncated: changedPaths.length > MAX_CHANGED_PATHS,
+    instructions: instructions.content,
+    instructionsSource: instructions.source,
+    ...(instructions.hash ? { instructionsHash: instructions.hash } : {}),
+    ...(details.state?.instructionsHash
+      ? { previousInstructionsHash: details.state.instructionsHash }
+      : {}),
   };
 }
 
@@ -352,7 +475,8 @@ async function requireGitRepository(workingDir: string): Promise<void> {
 
 async function listSourceFiles(
   workingDir: string,
-  paths: ResolvedWikiPaths
+  paths: ResolvedWikiPaths,
+  excludePath?: string
 ): Promise<SourceFileEntry[]> {
   const [stagedOutput, untracked] = await Promise.all([
     runGit(workingDir, ['ls-files', '--stage', '-z'], false, false),
@@ -374,7 +498,12 @@ async function listSourceFiles(
     entries.set(filePath, { path: filePath });
   }
   return [...entries.values()]
-    .filter((entry) => !isPathWithin(entry.path, paths.root) && entry.path !== paths.statePath)
+    .filter(
+      (entry) =>
+        !isPathWithin(entry.path, paths.root) &&
+        entry.path !== paths.statePath &&
+        entry.path !== excludePath
+    )
     .sort((left, right) => compareStrings(left.path, right.path));
 }
 
@@ -501,6 +630,7 @@ async function readWikiState(absoluteStatePath: string): Promise<WikiState | nul
       typeof value.sourceHash !== 'string' ||
       (value.sourceFiles !== undefined && !isSourceFileManifest(value.sourceFiles)) ||
       typeof value.wikiHash !== 'string' ||
+      (value.instructionsHash !== undefined && typeof value.instructionsHash !== 'string') ||
       typeof value.updatedAt !== 'string'
     ) {
       return null;
@@ -515,7 +645,8 @@ async function collectChangedSourcePaths(
   workingDir: string,
   paths: ResolvedWikiPaths,
   state: WikiState,
-  sourceFiles: string[]
+  sourceFiles: string[],
+  excludePath?: string
 ): Promise<string[]> {
   const [committed, working, untracked] = await Promise.all([
     listNullSeparatedGitOutput(
@@ -527,7 +658,12 @@ async function collectChangedSourcePaths(
     listNullSeparatedGitOutput(workingDir, ['ls-files', '--others', '--exclude-standard', '-z']),
   ]);
   const changed = [...new Set([...committed, ...working, ...untracked])]
-    .filter((filePath) => !isPathWithin(filePath, paths.root) && filePath !== paths.statePath)
+    .filter(
+      (filePath) =>
+        !isPathWithin(filePath, paths.root) &&
+        filePath !== paths.statePath &&
+        filePath !== excludePath
+    )
     .sort();
   return changed.length > 0 ? changed : sourceFiles;
 }

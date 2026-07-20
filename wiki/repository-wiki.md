@@ -27,7 +27,7 @@ drs workflow run repository-wiki-sync
 # Use a different bundle root
 drs workflow run repository-wiki-sync --input root=docs/wiki
 
-# Add project-specific guidance for the maintainer agent
+# Add one-run guidance for the maintainer agent
 drs workflow run repository-wiki-sync --input instructions="Focus on public APIs."
 
 # Use a different state path outside the bundle
@@ -36,6 +36,12 @@ drs workflow run repository-wiki-sync --input root=docs/wiki --input statePath=.
 # Fail if the workflow produces uncommitted changes
 drs workflow run repository-wiki-sync --input check=true
 ```
+
+## Persistent wiki brief
+
+Repository-specific scope, priorities, exclusions, terminology, and audience can live in a persistent brief at `.drs/wiki-instructions.md` (override with `--input instructionsPath=<path>`). The brief is optional and must live outside the portable bundle. The maintainer receives the effective instructions on every run: the persistent brief content with any one-run `instructions` input appended after it, so precedence stays explicit and deterministic.
+
+The brief is excluded from source fingerprints. Instead, `record-wiki-state` stores its hash as `instructionsHash` in the state file, so editing the brief invalidates freshness and the planner returns `reconcile` on the next run. One-run `instructions` inputs are never recorded and never invalidate freshness. The planner output exposes the effective instructions, their source (`file`, `input`, `combined`, or `none`), and the effective hash in workflow JSON output.
 
 Run the model-free check:
 
@@ -60,7 +66,7 @@ The planner returns one of four modes:
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | `generate` | The bundle does not exist. | Create the initial wiki. |
-| `reconcile` | The state file is missing/invalid, the bundle root changed, or the wiki content changed without a state update. | Repair state or bundle drift. |
+| `reconcile` | The state file is missing/invalid, the bundle root changed, the wiki content changed without a state update, or the persistent wiki brief changed. | Repair state or bundle drift. |
 | `update` | The `sourceHash` differs from the recorded state. | Edit directly affected concepts based on `changedPaths`. |
 | `noop` | Both source and wiki content match the recorded state. | Skip the agent and validate the current bundle. |
 
@@ -81,9 +87,12 @@ The state file `.drs/wiki-state.json` is kept outside the bundle so it does not 
     "src/example.ts": "<sha256>"
   },
   "wikiHash": "<sha256>",
+  "instructionsHash": "<sha256>",
   "updatedAt": "<ISO 8601>"
 }
 ```
+
+`instructionsHash` is present only when a persistent wiki brief exists; state files recorded before the brief was introduced continue to load, and adding a brief later reconciles once.
 
 The `record-wiki-state` action writes this atomically after a successful sync. Missing tracked paths are omitted from the manifest, so deletions and renames remain stable after they are committed. Clean Git submodules use their checked-out commit as a canonical fingerprint that also works in CI when submodules are not initialized. Planning detects dirty submodules, but they must be committed before state can be recorded. Symbolic links in bundle or state ancestors are rejected. The `.gitignore` keeps most of `.drs/` ignored but explicitly tracks `.drs/wiki-state.json`, so the state is committed with the source it describes. The wiki bundle itself is committed alongside the source unless the project chooses to ignore it.
 
