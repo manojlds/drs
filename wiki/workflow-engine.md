@@ -31,11 +31,43 @@ Common node fields include `needs`, `if`, `input`, `output`, `writes`, and `json
 
 ## Agent permissions
 
-Agent workflow nodes can constrain filesystem effects through generic permission rules. Each read or write rule uses literal repository-relative `roots`, root-relative `allow` patterns, and optional `deny` patterns. Denials take precedence, path traversal and symbolic links are rejected, and a filesystem policy requires `shell: false` so shell execution cannot bypass the boundary.
+Agent workflow nodes can constrain filesystem effects through generic permission rules. Each read, write, or delete rule uses literal repository-relative `roots`, root-relative `allow` glob patterns, and optional `deny` patterns. Denials take precedence, path traversal and symbolic links are rejected, and a filesystem policy requires `shell: false` so shell execution cannot bypass the boundary.
+
+```yaml
+nodes:
+  maintain-docs:
+    agent: task/docs-updater
+    permissions:
+      filesystem:
+        read:
+          roots: ['.']
+          allow: ['**']
+        write:
+          roots: [docs]
+          allow: ['**/*.md']
+          deny: ['**/index.md']
+        delete:
+          roots: [docs]
+          allow: ['**/*.md']
+          deny: ['**/index.md']
+      shell: false
+    validation:
+      afterMutation:
+        - name: okf-document
+          root: '{{inputs.root}}'
+    input: Update documentation.
+```
 
 `src/lib/agent-permissions.ts` validates and renders policies, authorizes tool paths, and fingerprints tracked and non-ignored untracked files before and after an agent run. [The Pi runtime](pi-runtime.md) installs policy-aware tools under Pi's original tool names, so enforcement occurs before filesystem access. The post-run comparison rejects residual changes outside the same write policy while tolerating source changes that existed before the agent started.
 
 Agent nodes may also configure an `afterMutation` validator. The `okf-document` validator checks proposed concept or log content before writes and returns full bundle validation feedback after a successful write, edit, or deletion. Deterministic workflow actions are outside the agent boundary, so they can safely generate derived files after the agent exits.
+
+Permission rules have important restrictions:
+
+- `permissions` and `validation` are allowed only on `agent` and single-agent nodes, not on `agentsFrom` nodes.
+- `agentsFrom` nodes cannot grant filesystem `write` or `delete` permissions; use explicit single-agent nodes when mutation is required.
+- A node cannot combine `permissions` with the `writes` field; deterministic `write` action nodes should persist output instead.
+- `validation.afterMutation` requires filesystem `write` or `delete` permissions, because validators run inside policy-aware mutation tools.
 
 ## Validation and compilation
 
@@ -62,6 +94,8 @@ The local executor is `LocalWorkflowExecutor` in `src/cli/workflow.ts`. It resol
 4. Action nodes dispatch to action runners in `src/cli/workflow.ts`.
 5. Control nodes route to the next segment; `loop` repeats until its condition is false or `maxIterations` is reached.
 6. Outputs are stored as artifacts for later nodes to reference.
+
+Nodes that can mutate the workspace — actions, agent nodes with a `writes` path, and agent nodes with filesystem `write`/`delete` permissions — are detected by `isPotentialWorkspaceMutation` in `src/lib/workflow/planning.ts`. The local executor serializes such nodes within a wave with a workspace lock, and the [Temporal executor](temporal-execution.md) serializes the whole wave when any runnable node is a potential mutation. This prevents conflicting filesystem edits from running concurrently without requiring every node to declare locks up front.
 
 Template references use `{{...}}` syntax:
 
