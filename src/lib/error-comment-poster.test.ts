@@ -134,6 +134,24 @@ describe('error-comment-poster', () => {
       expect(mockClient.deleteComment).not.toHaveBeenCalled();
     });
 
+    it('rechecks head freshness after reading and before deleting', async () => {
+      const existingErrorComment = {
+        id: 99,
+        body: `Error!\n<!-- drs-comment-id: ${ERROR_COMMENT_ID} -->`,
+      };
+      const mockClient = createMockPlatformClient({
+        getComments: vi.fn().mockResolvedValue([existingErrorComment]),
+      });
+      const assertCurrentHead = vi.fn().mockRejectedValue(new Error('head moved'));
+
+      await expect(
+        removeErrorComment(mockClient, 'owner/repo', 123, assertCurrentHead)
+      ).rejects.toThrow('head moved');
+
+      expect(assertCurrentHead).toHaveBeenCalledOnce();
+      expect(mockClient.deleteComment).not.toHaveBeenCalled();
+    });
+
     it('should handle empty comments array', async () => {
       const mockClient = createMockPlatformClient({
         getComments: vi.fn().mockResolvedValue([]),

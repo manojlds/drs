@@ -85,14 +85,23 @@ describe('workflow planning', () => {
       expect(() => getWorkflowExecutionOrder(nodes)).toThrow(/useChangeRequestCreator/);
     });
 
-    it('accepts permissions for agents and rejects them for actions', () => {
+    it('accepts permissions for agents and read-only review actions', () => {
       const permissions = {
         filesystem: { write: { roots: ['wiki'], allow: ['**/*.md'] } },
+        shell: false,
+      };
+      const readOnlyPermissions = {
+        filesystem: { read: { roots: ['.'], allow: ['**'] } },
         shell: false,
       };
       expect(
         getWorkflowExecutionOrder({ maintain: node({ agent: 'task/maintain', permissions }) })
       ).toEqual(['maintain']);
+      expect(
+        getWorkflowExecutionOrder({
+          review: node({ action: 'review', permissions: readOnlyPermissions }),
+        })
+      ).toEqual(['review']);
       expect(() =>
         getWorkflowExecutionOrder({
           write: node({ action: 'write', writes: 'out.md', permissions }),
@@ -108,6 +117,23 @@ describe('workflow planning', () => {
           maintain: node({ agentsFrom: 'review.agents', permissions }),
         })
       ).toThrow('cannot grant filesystem write permissions');
+      expect(() =>
+        getWorkflowExecutionOrder({ review: node({ action: 'review', permissions }) })
+      ).toThrow('cannot grant filesystem write permissions');
+      expect(() =>
+        getWorkflowExecutionOrder({
+          review: node({ action: 'review', permissions: { shell: true } }),
+        })
+      ).toThrow('require shell: false');
+      expect(() =>
+        getWorkflowExecutionOrder({
+          review: node({
+            action: 'review',
+            permissions: readOnlyPermissions,
+            validation: { afterMutation: [{ name: 'okf-document', root: '.' }] },
+          }),
+        })
+      ).toThrow('cannot define mutation validation');
     });
   });
 

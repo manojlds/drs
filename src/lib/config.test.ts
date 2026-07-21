@@ -190,6 +190,7 @@ describe('Config', () => {
       });
       expect(config.workflows?.['github-pr-review']?.inputs).toMatchObject({
         visual: { type: 'boolean', default: false },
+        requireCompleteDiff: { type: 'boolean', default: false },
         useChangeRequestAuthor: { type: 'boolean', default: true },
         visualOutputPath: { type: 'string', default: '.drs/visual-pr-explainer.html' },
       });
@@ -223,9 +224,34 @@ describe('Config', () => {
       expect(config.workflows?.['github-pr-review']?.nodes.review?.with).toMatchObject({
         source: 'change',
       });
+      expect(config.workflows?.['github-pr-review']?.nodes.review?.permissions).toEqual({
+        filesystem: { read: { roots: ['.'], allow: ['**'] } },
+        shell: false,
+      });
       expect(config.workflows?.['github-pr-review']?.nodes['post-comments']?.needs).toEqual([
         'review',
       ]);
+      expect(config.workflows?.['github-pr-review-post']).toMatchObject({
+        inputs: {
+          owner: { type: 'string', required: true },
+          repo: { type: 'string', required: true },
+          pr: { type: 'number', required: true },
+          expectedHeadSha: { type: 'string', required: true },
+        },
+        nodes: {
+          change: { action: 'change-source', with: { requireCompleteDiff: true } },
+          'load-review': { action: 'load-artifact' },
+          'post-comments': {
+            action: 'post-review-comments',
+            with: { expectedHeadSha: '{{inputs.expectedHeadSha}}' },
+          },
+        },
+      });
+      expect(
+        Object.values(config.workflows?.['github-pr-review-post']?.nodes ?? {}).some(
+          (workflowNode) => workflowNode.agent !== undefined || workflowNode.action === 'review'
+        )
+      ).toBe(false);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.describe?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.with).toMatchObject({

@@ -37,6 +37,7 @@ import { runDescribeAgent, type PreCompressedDiffs } from './description-executo
 import { formatDescribeSummary } from './description-formatter.js';
 import type { ReviewFinding } from './review-artifact.js';
 import type { TraceCollector } from './trace-collector.js';
+import type { AgentPermissions } from './agent-permissions.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -133,6 +134,11 @@ export interface ConnectOptions {
   modelOverrides?: ModelOverrides;
   thinkingLevel?: string;
   traceCollector?: TraceCollector;
+  permissions?: AgentPermissions;
+}
+
+export interface ExecuteReviewOptions {
+  permissions?: AgentPermissions;
 }
 
 /**
@@ -168,6 +174,7 @@ export async function connectToRuntime(
       debug: options?.debug,
       thinkingLevel,
       traceCollector: options?.traceCollector,
+      permissions: options?.permissions,
     });
   } catch (error) {
     console.error(chalk.red('✗ Failed to connect to Pi runtime'));
@@ -196,7 +203,8 @@ export async function connectToRuntime(
  */
 export async function executeReview(
   config: DRSConfig,
-  source: ReviewSource
+  source: ReviewSource,
+  options: ExecuteReviewOptions = {}
 ): Promise<ReviewResult> {
   console.log(chalk.gray(`Found ${source.files.length} changed file(s)\n`));
 
@@ -237,6 +245,7 @@ export async function executeReview(
     modelOverrides: reviewOverrides,
     thinkingLevel: source.thinkingLevel,
     traceCollector: source.context.traceCollector as TraceCollector | undefined,
+    permissions: options.permissions,
   });
 
   try {

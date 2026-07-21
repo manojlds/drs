@@ -1,7 +1,13 @@
 import type { ReviewResult, ReviewSource } from './review-orchestrator.js';
-import type { ReviewIssue } from './comment-formatter.js';
+import {
+  calculateSummary,
+  type IssueCategory,
+  type IssueSeverity,
+  type ReviewIssue,
+} from './comment-formatter.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 import { createIssueFingerprint } from './comment-manager.js';
+import { assertSafeArtifactId } from './workflow-artifacts.js';
 
 export type ReviewFindingState = 'open' | 'attempted' | 'resolved';
 export type ReviewFindingDisposition =
@@ -72,6 +78,252 @@ export interface ReviewFindingSelector {
 export interface UpdateReviewFindingsOptions extends ReviewFindingSelector {
   state?: ReviewFindingState;
   disposition?: ReviewFindingDisposition;
+}
+
+export interface ReviewArtifactPostingTarget {
+  platform: string;
+  projectId: string;
+  changeKind: string;
+  changeNumber: number | string;
+  expectedHeadSha: string;
+  currentHeadSha: string;
+  changedFiles: string[];
+}
+
+const ISSUE_SEVERITIES = new Set<IssueSeverity>(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
+const ISSUE_CATEGORIES = new Set<IssueCategory>([
+  'SECURITY',
+  'QUALITY',
+  'STYLE',
+  'PERFORMANCE',
+  'DOCUMENTATION',
+]);
+const FINDING_STATES = new Set<ReviewFindingState>(['open', 'attempted', 'resolved']);
+const FINDING_DISPOSITIONS = new Set<ReviewFindingDisposition>([
+  'confirmed',
+  'uncertain',
+  'pre_existing',
+  'partial',
+  'still_open',
+  'regression',
+  'resolved',
+]);
+const FINDING_SOURCES = new Set<ReviewFindingSource>(['agent', 'manual', 'external']);
+const REVIEW_ID_PATTERN = /^rev_[0-9]+_[a-z0-9]+$/;
+const MAX_FINDINGS = 1000;
+const MAX_ISSUE_TEXT_LENGTH = 20_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function requireString(value: unknown, field: string, maxLength = MAX_ISSUE_TEXT_LENGTH): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maxLength) {
+    throw new Error(`Review artifact ${field} must be a non-empty bounded string.`);
+  }
+  return value;
+}
+
+function requireTimestamp(value: unknown, field: string): string {
+  const timestamp = requireString(value, field, 100);
+  if (Number.isNaN(Date.parse(timestamp))) {
+    throw new Error(`Review artifact ${field} must be a valid timestamp.`);
+  }
+  return timestamp;
+}
+
+function requireNonNegativeNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Review artifact ${field} must be a non-negative number.`);
+  }
+  return value;
+}
+
+function validateIssue(value: unknown, changedFiles: Set<string>, index: number): ReviewIssue {
+  if (!isRecord(value)) {
+    throw new Error(`Review artifact finding ${index + 1} issue is invalid.`);
+  }
+  if (!ISSUE_SEVERITIES.has(value.severity as IssueSeverity)) {
+    throw new Error(`Review artifact finding ${index + 1} has invalid severity.`);
+  }
+  if (!ISSUE_CATEGORIES.has(value.category as IssueCategory)) {
+    throw new Error(`Review artifact finding ${index + 1} has invalid category.`);
+  }
+
+  const file = requireString(value.file, `finding ${index + 1} file`, 4096);
+  if (
+    file.startsWith('/') ||
+    file.includes('\\') ||
+    file.includes('\0') ||
+    file.split('/').includes('..') ||
+    !changedFiles.has(file)
+  ) {
+    throw new Error(`Review artifact finding ${index + 1} does not target a changed file.`);
+  }
+  if (value.line !== undefined && (!Number.isInteger(value.line) || (value.line as number) <= 0)) {
+    throw new Error(`Review artifact finding ${index + 1} has invalid line.`);
+  }
+  if (
+    value.references !== undefined &&
+    (!Array.isArray(value.references) ||
+      value.references.length > 100 ||
+      value.references.some(
+        (reference) => typeof reference !== 'string' || reference.length > 2000
+      ))
+  ) {
+    throw new Error(`Review artifact finding ${index + 1} has invalid references.`);
+  }
+
+  return {
+    category: value.category as IssueCategory,
+    severity: value.severity as IssueSeverity,
+    title: requireString(value.title, `finding ${index + 1} title`, 1000),
+    file,
+    ...(value.line !== undefined ? { line: value.line as number } : {}),
+    problem: requireString(value.problem, `finding ${index + 1} problem`),
+    solution: requireString(value.solution, `finding ${index + 1} solution`),
+    ...(value.references !== undefined ? { references: value.references as string[] } : {}),
+    agent: requireString(value.agent, `finding ${index + 1} agent`, 1000),
+  };
+}
+
+function validateReviewUsage(value: unknown): ReviewUsageSummary | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || !isRecord(value.total) || !Array.isArray(value.agents)) {
+    throw new Error('Review artifact usage is invalid.');
+  }
+  for (const field of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens', 'cost']) {
+    requireNonNegativeNumber(value.total[field], `usage.total.${field}`);
+  }
+  if (value.agents.length > 100) {
+    throw new Error('Review artifact usage has too many agents.');
+  }
+  for (const [index, agent] of value.agents.entries()) {
+    if (!isRecord(agent) || !isRecord(agent.usage)) {
+      throw new Error(`Review artifact usage agent ${index + 1} is invalid.`);
+    }
+    requireString(agent.agentType, `usage agent ${index + 1} type`, 1000);
+    requireNonNegativeNumber(agent.turns, `usage agent ${index + 1} turns`);
+    for (const field of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens', 'cost']) {
+      requireNonNegativeNumber(agent.usage[field], `usage agent ${index + 1}.${field}`);
+    }
+  }
+  return value as unknown as ReviewUsageSummary;
+}
+
+export function reviewArtifactToReviewResult(
+  value: unknown,
+  target: ReviewArtifactPostingTarget
+): ReviewResult {
+  if (!isRecord(value)) {
+    throw new Error('Review artifact envelope is invalid.');
+  }
+  if (value.schemaVersion !== 1 || value.kind !== 'review') {
+    throw new Error('Review artifact envelope has an unsupported schema or kind.');
+  }
+  assertSafeArtifactId(value.id, 'read');
+  requireTimestamp(value.createdAt, 'createdAt');
+  requireTimestamp(value.updatedAt, 'updatedAt');
+  if (!isRecord(value.scope)) {
+    throw new Error('Review artifact scope is invalid.');
+  }
+  if (
+    value.scope.platform !== target.platform ||
+    value.scope.projectId !== target.projectId ||
+    value.scope.changeKind !== target.changeKind ||
+    String(value.scope.changeNumber) !== String(target.changeNumber)
+  ) {
+    throw new Error('Review artifact scope does not match the posting target.');
+  }
+  if (target.currentHeadSha !== target.expectedHeadSha) {
+    throw new Error('Pull request head changed after the review started.');
+  }
+  if (!isRecord(value.payload)) {
+    throw new Error('Review artifact payload is invalid.');
+  }
+  const payload = value.payload;
+  if (payload.schemaVersion !== 1 || !REVIEW_ID_PATTERN.test(String(payload.reviewId))) {
+    throw new Error('Review artifact payload has an unsupported schema or review id.');
+  }
+  requireTimestamp(payload.reviewedAt, 'reviewedAt');
+  if (payload.reviewedSha !== target.expectedHeadSha) {
+    throw new Error('Review artifact head does not match the expected pull request head.');
+  }
+  if (!Array.isArray(payload.findings) || payload.findings.length > MAX_FINDINGS) {
+    throw new Error('Review artifact findings are invalid or exceed the allowed limit.');
+  }
+
+  const changedFiles = new Set(target.changedFiles);
+  const findingIds = new Set<string>();
+  const fingerprints = new Set<string>();
+  const issues = payload.findings.map((finding, index) => {
+    if (!isRecord(finding)) {
+      throw new Error(`Review artifact finding ${index + 1} is invalid.`);
+    }
+    const id = requireString(finding.id, `finding ${index + 1} id`, 100);
+    if (!/^F[0-9]+$/.test(id) || findingIds.has(id)) {
+      throw new Error(`Review artifact finding ${index + 1} has invalid or duplicate id.`);
+    }
+    findingIds.add(id);
+    if (!FINDING_STATES.has(finding.state as ReviewFindingState)) {
+      throw new Error(`Review artifact finding ${index + 1} has invalid state.`);
+    }
+    if (!FINDING_DISPOSITIONS.has(finding.disposition as ReviewFindingDisposition)) {
+      throw new Error(`Review artifact finding ${index + 1} has invalid disposition.`);
+    }
+    if (!FINDING_SOURCES.has(finding.source as ReviewFindingSource)) {
+      throw new Error(`Review artifact finding ${index + 1} has invalid source.`);
+    }
+    requireTimestamp(finding.createdAt, `finding ${index + 1} createdAt`);
+    requireTimestamp(finding.updatedAt, `finding ${index + 1} updatedAt`);
+
+    const issue = validateIssue(finding.issue, changedFiles, index);
+    const fingerprint = requireString(
+      finding.fingerprint,
+      `finding ${index + 1} fingerprint`,
+      5000
+    );
+    if (fingerprint !== createIssueFingerprint(issue) || fingerprints.has(fingerprint)) {
+      throw new Error(
+        `Review artifact finding ${index + 1} has an invalid or duplicate fingerprint.`
+      );
+    }
+    fingerprints.add(fingerprint);
+    return issue;
+  });
+
+  if (!isRecord(payload.summary)) {
+    throw new Error('Review artifact summary is invalid.');
+  }
+  const summary = payload.summary;
+  const filesReviewed = requireNonNegativeNumber(summary.filesReviewed, 'summary.filesReviewed');
+  if (!Number.isInteger(filesReviewed) || filesReviewed > changedFiles.size) {
+    throw new Error('Review artifact summary has invalid filesReviewed.');
+  }
+  if (!isRecord(summary.bySeverity) || !isRecord(summary.byCategory)) {
+    throw new Error('Review artifact summary counts are invalid.');
+  }
+  const bySeverity = summary.bySeverity;
+  const byCategory = summary.byCategory;
+  const expectedSummary = calculateSummary(filesReviewed, issues);
+  if (
+    summary.issuesFound !== expectedSummary.issuesFound ||
+    [...ISSUE_SEVERITIES].some(
+      (severity) => bySeverity[severity] !== expectedSummary.bySeverity[severity]
+    ) ||
+    [...ISSUE_CATEGORIES].some(
+      (category) => byCategory[category] !== expectedSummary.byCategory[category]
+    )
+  ) {
+    throw new Error('Review artifact summary does not match its findings.');
+  }
+
+  return {
+    issues,
+    summary: expectedSummary,
+    filesReviewed,
+    usage: validateReviewUsage(payload.usage),
+  };
 }
 
 function createReviewId(date: Date): string {

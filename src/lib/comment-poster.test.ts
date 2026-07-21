@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { postReviewComments } from './comment-poster.js';
-import type { ReviewIssue } from './comment-formatter.js';
+import { formatSummaryComment, type ReviewIssue } from './comment-formatter.js';
 import type { PlatformClient } from './platform-client.js';
 
 // Mock dependencies
@@ -113,6 +113,57 @@ describe('comment-poster', () => {
   });
 
   describe('postReviewComments', () => {
+    it('rejects oversized comments before reading or mutating platform state', async () => {
+      vi.mocked(formatSummaryComment).mockReturnValueOnce('x'.repeat(60_001));
+
+      await expect(
+        postReviewComments(
+          mockPlatformClient,
+          'owner/repo',
+          123,
+          mockSummary,
+          mockIssues,
+          undefined,
+          undefined,
+          {},
+          undefined,
+          undefined
+        )
+      ).rejects.toThrow('exceeds the safe platform comment length');
+
+      expect(mockPlatformClient.getComments).not.toHaveBeenCalled();
+      expect(mockPlatformClient.deleteComment).not.toHaveBeenCalled();
+      expect(mockPlatformClient.createComment).not.toHaveBeenCalled();
+      expect(mockPlatformClient.addLabels).not.toHaveBeenCalled();
+    });
+
+    it('rechecks head freshness after reads and before platform mutation', async () => {
+      const assertCurrentHead = vi.fn().mockRejectedValue(new Error('head moved'));
+
+      await expect(
+        postReviewComments(
+          mockPlatformClient,
+          'owner/repo',
+          123,
+          mockSummary,
+          mockIssues,
+          undefined,
+          undefined,
+          {},
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          assertCurrentHead
+        )
+      ).rejects.toThrow('head moved');
+
+      expect(mockPlatformClient.getComments).toHaveBeenCalled();
+      expect(mockPlatformClient.createComment).not.toHaveBeenCalled();
+      expect(mockPlatformClient.deleteComment).not.toHaveBeenCalled();
+      expect(mockPlatformClient.addLabels).not.toHaveBeenCalled();
+    });
+
     it('should create a new summary comment when none exists', async () => {
       await postReviewComments(
         mockPlatformClient,

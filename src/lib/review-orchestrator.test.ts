@@ -6,6 +6,7 @@ import {
   type ReviewSource,
 } from './review-orchestrator.js';
 import type { DRSConfig } from './config.js';
+import type { AgentPermissions } from './agent-permissions.js';
 
 // Mock dependencies
 vi.mock('./config.js', async () => {
@@ -312,6 +313,27 @@ describe('review-orchestrator', () => {
           config,
           directory: process.cwd(),
         })
+      );
+    });
+
+    it('passes invocation permissions to the runtime client', async () => {
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
+      const config: DRSConfig = {
+        pi: {},
+        agents: { default: { model: 'provider/default-model', skills: [] } },
+        gitlab: { url: '', token: '' },
+        github: { token: '' },
+        review: { agents: [], ignorePatterns: [] },
+      };
+      const permissions: AgentPermissions = {
+        filesystem: { read: { roots: ['.'], allow: ['**'] } },
+        shell: false,
+      };
+
+      await connectToRuntime(config, '/test/dir', { permissions });
+
+      expect(createRuntimeClientInstance).toHaveBeenCalledWith(
+        expect.objectContaining({ permissions })
       );
     });
   });

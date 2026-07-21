@@ -228,10 +228,11 @@ ai_review:
 DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-review.yml` with built-in protection against external PR abuse.
 
 **Security Features**:
-- ✅ **Auto-review for trusted contributors** (repository members/collaborators)
-- ⏸️ **Manual approval required** for external contributors
-- 🔒 **Cost protection** prevents spam PRs from draining API credits
-- 🏷️ **Label-based approval** with `safe-to-review` label
+- ✅ **Auto-review for trusted contributors** with write access using same-repository branches
+- ⏸️ **Manual approval required** for forked and external contributions
+- 🔒 **Trusted base checkout** prevents external PR code, configuration, agents, and install scripts from executing
+- 🔑 **Split credentials** keep model generation read-only and move GitHub writes into a separate deterministic artifact-posting job
+- 🏷️ **Label-based cost approval** with the `safe-to-review` label
 
 **Quick Setup**:
 
@@ -244,6 +245,7 @@ DRS includes a **secure, pre-configured workflow** at `.github/workflows/pr-revi
    - Create GitHub Environment: `external-pr-review`
    - Add required reviewers (maintainers)
    - Create `safe-to-review` label
+   - Prevent self-review and administrator bypass where repository policy allows
 
 **See [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md)** for:
 - Complete setup instructions

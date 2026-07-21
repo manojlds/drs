@@ -28,6 +28,10 @@ inputs:
     type: boolean
     default: false
     description: Post DRS review comments to the PR
+  requireCompleteDiff:
+    type: boolean
+    default: false
+    description: Fail when GitHub cannot provide a stable, complete file and patch snapshot
   visual:
     type: boolean
     default: false
@@ -81,6 +85,7 @@ nodes:
       owner: '{{inputs.owner}}'
       repo: '{{inputs.repo}}'
       pr: '{{inputs.pr}}'
+      requireCompleteDiff: '{{inputs.requireCompleteDiff}}'
     output: change
 
   describe:
@@ -99,6 +104,12 @@ nodes:
       - change
     with:
       source: change
+    permissions:
+      filesystem:
+        read:
+          roots: ['.']
+          allow: ['**']
+      shell: false
     output: review
 
   visual:
@@ -225,6 +236,12 @@ nodes:
       source: verificationChange
       reviewArtifact: reviewArtifact
       severity: '{{inputs.fixSeverity}}'
+    permissions:
+      filesystem:
+        read:
+          roots: ['.']
+          allow: ['**']
+      shell: false
     output: reReview
 
   verify-fix:

@@ -273,6 +273,7 @@ export const ACTION_OPTION_FIELDS: Partial<
     'mrIid',
     'source',
     'fixChange',
+    'requireCompleteDiff',
   ]),
   review: new Set(['source', 'reviewArtifact', 'severity', 'artifact']),
   'review-context': new Set(['source', 'file', 'baseBranch']),
@@ -299,7 +300,7 @@ export const ACTION_OPTION_FIELDS: Partial<
     'body',
     'marker',
   ]),
-  'post-review-comments': new Set(['source', 'review', 'removeErrorComment']),
+  'post-review-comments': new Set(['source', 'review', 'removeErrorComment', 'expectedHeadSha']),
   'post-fix-status': new Set([
     'platform',
     'owner',
@@ -364,9 +365,10 @@ export function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConf
     'node'
   );
   if (node.permissions !== undefined || node.validation !== undefined) {
-    if (kind !== 'agent' && kind !== 'agents') {
+    const isReviewAction = kind === 'action' && node.action === 'review';
+    if (kind !== 'agent' && kind !== 'agents' && !isReviewAction) {
       throw new Error(
-        `Workflow node "${nodeId}" can only define permissions or validation for agents.`
+        `Workflow node "${nodeId}" can only define permissions or validation for agents and review actions.`
       );
     }
     if (node.permissions !== undefined) {
@@ -384,8 +386,22 @@ export function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConf
           `Workflow agentsFrom node "${nodeId}" cannot grant filesystem write permissions; use single-agent nodes with explicit dependencies.`
         );
       }
+      if (
+        isReviewAction &&
+        (node.permissions.filesystem?.write || node.permissions.filesystem?.delete)
+      ) {
+        throw new Error(
+          `Workflow review action "${nodeId}" cannot grant filesystem write permissions.`
+        );
+      }
+      if (isReviewAction && node.permissions.shell !== false) {
+        throw new Error(`Workflow review action "${nodeId}" permissions require shell: false.`);
+      }
     }
     if (node.validation !== undefined) {
+      if (isReviewAction) {
+        throw new Error(`Workflow review action "${nodeId}" cannot define mutation validation.`);
+      }
       validateAgentValidation(node.validation, `Workflow node "${nodeId}" validation`);
       if (!node.permissions?.filesystem?.write && !node.permissions?.filesystem?.delete) {
         throw new Error(

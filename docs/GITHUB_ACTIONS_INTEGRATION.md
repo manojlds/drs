@@ -6,6 +6,8 @@ Use DRS to review pull requests in GitHub Actions.
 
 Pi runtime is bundled with DRS — `npm install -g @diff-review-system/drs` is all you need.
 
+This compact example is for trusted same-repository changes. For forks or other external contributors, use the repository's split `.github/workflows/pr-review.yml`; do not change this example to `pull_request_target` while continuing to check out the PR head.
+
 ```yaml
 name: PR Review
 
@@ -37,9 +39,12 @@ DRS uses Pi in-process runtime only. No runtime endpoint environment variables a
 
 ## Recommended Security Controls
 
-- Use repository environment protection for external contributors.
-- Restrict write permissions where possible.
-- Require manual approval for forked PR workflows that consume paid model APIs.
+- Treat fork PRs as external regardless of author permissions.
+- Use repository environment protection for the external model job.
+- Check out trusted base code, set `persist-credentials: false`, and never execute the external PR head under `pull_request_target`.
+- Give model generation only read permissions and use read-only `review` action permissions with `shell: false`.
+- Validate a canonical review artifact in a separate write-token job before posting comments or labels.
+- Require the `safe-to-review` label and environment approval before consuming paid model APIs.
 
 ## Required Secrets
 

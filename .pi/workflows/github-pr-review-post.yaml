@@ -1,10 +1,26 @@
 name: github-pr-review-post
-description: Describe and review a GitHub pull request, posting the description and DRS comments
+description: Validate and post a canonical DRS review artifact to a GitHub pull request
+metadata:
+  kind: review-post
+  tags: [review, github, pull-request, artifact]
 inputs:
-  owner: ''
-  repo: ''
-  pr: ''
-output: review
+  owner:
+    type: string
+    required: true
+    description: GitHub repository owner
+  repo:
+    type: string
+    required: true
+    description: GitHub repository name
+  pr:
+    type: number
+    required: true
+    description: Pull request number
+  expectedHeadSha:
+    type: string
+    required: true
+    description: Pull request head SHA reviewed by the producing job
+output: postedReview
 nodes:
   change:
     action: change-source
@@ -13,30 +29,24 @@ nodes:
       owner: '{{inputs.owner}}'
       repo: '{{inputs.repo}}'
       pr: '{{inputs.pr}}'
+      requireCompleteDiff: true
     output: change
 
-  describe:
-    action: describe
+  load-review:
+    action: load-artifact
     needs:
       - change
     with:
+      kind: review
       source: change
-      post: true
-    output: description
-
-  review:
-    action: review
-    needs:
-      - describe
-    with:
-      source: change
-    output: review
+    output: reviewArtifact
 
   post-comments:
     action: post-review-comments
     needs:
-      - review
+      - load-review
     with:
       source: change
-      review: review
+      review: reviewArtifact
+      expectedHeadSha: '{{inputs.expectedHeadSha}}'
     output: postedReview

@@ -26,6 +26,15 @@ import {
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 
+const MAX_PLATFORM_COMMENT_LENGTH = 60_000;
+const MAX_INLINE_COMMENTS_PER_REVIEW = 100;
+
+function assertPostBodyWithinLimit(body: string, subject: string): void {
+  if (body.length > MAX_PLATFORM_COMMENT_LENGTH) {
+    throw new Error(`${subject} exceeds the safe platform comment length.`);
+  }
+}
+
 /**
  * Post review comments to a PR/MR
  *
@@ -48,8 +57,29 @@ export async function postReviewComments(
   lineValidator?: LineValidator,
   createInlinePosition?: (issue: ReviewIssue, platformData: unknown) => InlineCommentPosition,
   cursorFixLinks?: CursorFixLinkOptions,
-  reviewMetadata?: ReviewMetadata
+  reviewMetadata?: ReviewMetadata,
+  assertCurrentHead?: () => Promise<void>,
+  beforeLabel?: () => Promise<void>
 ): Promise<void> {
+  const summaryComment = formatSummaryComment(
+    summary,
+    issues,
+    BOT_COMMENT_ID,
+    changeSummary,
+    reviewUsage,
+    cursorFixLinks,
+    reviewMetadata
+  );
+  assertPostBodyWithinLimit(summaryComment, 'Review summary');
+  for (const issue of issues) {
+    if (issue.severity === 'CRITICAL' || issue.severity === 'HIGH') {
+      assertPostBodyWithinLimit(
+        formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
+        'Inline review comment'
+      );
+    }
+  }
+
   console.log(chalk.gray('Fetching existing comments...\n'));
 
   // Fetch existing comments to prevent duplicates
@@ -67,34 +97,6 @@ export async function postReviewComments(
   const existingSummary = findExistingSummaryComment(
     existingComments.map((c) => ({ id: c.id, body: c.body }))
   );
-
-  await removeStaleInlineIssueComments(
-    platformClient,
-    projectId,
-    prNumber,
-    existingInlineComments.map((c) => ({ id: c.id, body: c.body })),
-    issues
-  );
-
-  // Post or update summary comment
-  console.log(chalk.gray('Posting review summary...\n'));
-  const summaryComment = formatSummaryComment(
-    summary,
-    issues,
-    BOT_COMMENT_ID,
-    changeSummary,
-    reviewUsage,
-    cursorFixLinks,
-    reviewMetadata
-  );
-
-  if (existingSummary) {
-    await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);
-    console.log(chalk.green('✓ Updated existing review summary'));
-  } else {
-    await platformClient.createComment(projectId, prNumber, summaryComment);
-    console.log(chalk.green('✓ Posted new review summary'));
-  }
 
   // Prepare issues for posting: filter to CRITICAL/HIGH, deduplicate, validate lines
   const criticalHighCount = issues.filter(
@@ -119,16 +121,43 @@ export async function postReviewComments(
     console.log(chalk.yellow(`⚠ Inline comments disabled (no position builder configured)\n`));
   }
 
-  if (prepared.inlineIssues.length > 0 && createInlinePosition) {
-    const inlineComments = prepared.inlineIssues.map((issue) => ({
-      body: formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
-      position: createInlinePosition(issue, platformData),
-    }));
+  const inlineComments = createInlinePosition
+    ? prepared.inlineIssues.map((issue) => ({
+        body: formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
+        position: createInlinePosition(issue, platformData),
+      }))
+    : [];
+  if (inlineComments.length > MAX_INLINE_COMMENTS_PER_REVIEW) {
+    throw new Error('Review has too many inline comments for one platform request.');
+  }
 
+  await assertCurrentHead?.();
+  console.log(chalk.gray('Posting review summary...\n'));
+  if (existingSummary) {
+    await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);
+    console.log(chalk.green('✓ Updated existing review summary'));
+  } else {
+    await platformClient.createComment(projectId, prNumber, summaryComment);
+    console.log(chalk.green('✓ Posted new review summary'));
+  }
+
+  await assertCurrentHead?.();
+  await removeStaleInlineIssueComments(
+    platformClient,
+    projectId,
+    prNumber,
+    existingInlineComments.map((c) => ({ id: c.id, body: c.body })),
+    issues
+  );
+
+  if (inlineComments.length > 0) {
+    await assertCurrentHead?.();
     await platformClient.createBulkInlineComments(projectId, prNumber, inlineComments);
   }
 
   // Add ai-reviewed label
+  await beforeLabel?.();
+  await assertCurrentHead?.();
   await platformClient.addLabels(projectId, prNumber, ['ai-reviewed']);
 
   console.log(chalk.green('✓ Review posted\n'));

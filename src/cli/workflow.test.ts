@@ -13,6 +13,10 @@ import {
   validateWorkflows,
 } from './workflow.js';
 import { compileWorkflowPlan } from '../lib/workflow/compiled-plan.js';
+import { createReviewArtifactPayload } from '../lib/review-artifact.js';
+import { saveWorkflowArtifact } from '../lib/workflow-artifacts.js';
+import type { ReviewResult, ReviewSource } from '../lib/review-orchestrator.js';
+import type { ReviewIssue } from '../lib/comment-formatter.js';
 
 const mocks = vi.hoisted(() => {
   const githubAdapter = {
@@ -307,8 +311,8 @@ describe('workflow runner', () => {
       {
         filename: 'src/github.ts',
         status: 'modified',
-        additions: 2,
-        deletions: 1,
+        additions: 1,
+        deletions: 0,
         patch: '@@ +1 @@\n+github',
       },
     ]);
@@ -1981,6 +1985,50 @@ describe('workflow runner', () => {
     });
   });
 
+  it('renders and passes review action permissions to the orchestrator', async () => {
+    const projectRoot = createTempDir('drs-workflow-review-permissions-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        restrictedReview: {
+          inputs: { root: { type: 'string', default: '.' } },
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'local', staged: true },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change' },
+              permissions: {
+                filesystem: { read: { roots: ['{{inputs.root}}'], allow: ['**'] } },
+                shell: false,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'restrictedReview', {
+      workingDir: projectRoot,
+      inputs: { root: 'src' },
+    });
+
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({ workingDir: projectRoot }),
+      {
+        permissions: {
+          filesystem: { read: { roots: ['src'], allow: ['**'] } },
+          shell: false,
+        },
+      }
+    );
+  });
+
   it('runs packaged local fix workflow with explicit verification over updated local diff', async () => {
     const projectRoot = createTempDir('drs-workflow-local-fix-loop-');
     const config = loadConfig(projectRoot);
@@ -2500,6 +2548,145 @@ describe('workflow runner', () => {
         }),
       })
     );
+  });
+
+  it('requires a stable and complete GitHub change snapshot when requested', async () => {
+    mocks.githubAdapter.getPullRequest.mockResolvedValue({
+      number: 7,
+      title: 'GitHub PR',
+      author: 'octocat',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changed_files: 1 },
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        completeChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+                requireCompleteDiff: true,
+              },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'completeChange', { workingDir: process.cwd() });
+
+    expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledTimes(2);
+    expect(result.artifacts.change).toMatchObject({ files: ['src/github.ts'] });
+  });
+
+  it('rejects partial, removed, and rename-only files without complete patches', async () => {
+    mocks.githubAdapter.getPullRequest.mockResolvedValue({
+      number: 7,
+      title: 'GitHub PR',
+      author: 'octocat',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changed_files: 3 },
+    });
+    mocks.githubAdapter.getChangedFiles.mockResolvedValue([
+      {
+        filename: 'src/github.ts',
+        status: 'modified',
+        additions: 2,
+        deletions: 1,
+        patch: '@@ +1 @@\n+only-one-line',
+      },
+      {
+        filename: 'src/removed.ts',
+        status: 'removed',
+        additions: 0,
+        deletions: 5,
+      },
+      {
+        filename: 'src/renamed.ts',
+        previousFilename: 'src/old-name.ts',
+        status: 'renamed',
+        additions: 0,
+        deletions: 0,
+      },
+    ]);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        incompleteChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+                requireCompleteDiff: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'incompleteChange', { workingDir: process.cwd() })
+    ).rejects.toThrow(/complete patches/);
+  });
+
+  it('rejects a GitHub head change while loading a complete diff', async () => {
+    mocks.githubAdapter.getPullRequest
+      .mockResolvedValueOnce({
+        number: 7,
+        title: 'GitHub PR',
+        author: 'octocat',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'abc123',
+        platformData: { changed_files: 1 },
+      })
+      .mockResolvedValueOnce({
+        number: 7,
+        title: 'GitHub PR',
+        author: 'octocat',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'new-head',
+        platformData: { changed_files: 1 },
+      });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        unstableChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+                requireCompleteDiff: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'unstableChange', { workingDir: process.cwd() })
+    ).rejects.toThrow(/unstable pull request head/);
   });
 
   it('runs packaged GitHub PR review visual explainer when enabled', async () => {
@@ -3261,6 +3448,268 @@ describe('workflow runner', () => {
       prNumber: 7,
       issues: 1,
     });
+  });
+
+  it('loads, validates, and posts a canonical GitHub review artifact', async () => {
+    const projectRoot = createTempDir('drs-workflow-post-review-artifact-');
+    const issue: ReviewIssue = {
+      category: 'QUALITY',
+      severity: 'HIGH',
+      title: 'Validate input',
+      file: 'src/github.ts',
+      line: 1,
+      problem: 'Input is not validated.',
+      solution: 'Validate it before use.',
+      references: [],
+      agent: 'review/quality',
+    };
+    const review: ReviewResult = {
+      issues: [issue],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: {
+          SECURITY: 0,
+          QUALITY: 1,
+          STYLE: 0,
+          PERFORMANCE: 0,
+          DOCUMENTATION: 0,
+        },
+      },
+      filesReviewed: 1,
+    };
+    const source: ReviewSource = {
+      name: 'GitHub PR octocat/hello-world#7',
+      files: ['src/github.ts'],
+      context: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        pullRequest: {
+          headSha: 'abc123',
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+        },
+      },
+    };
+    await saveWorkflowArtifact(projectRoot, {
+      kind: 'review',
+      scope: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        changeKind: 'pr',
+        changeNumber: 7,
+      },
+      payload: createReviewArtifactPayload(review, source),
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        postArtifact: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'change',
+            },
+            load: {
+              action: 'load-artifact',
+              needs: ['change'],
+              with: { kind: 'review', source: 'change' },
+              output: 'reviewArtifact',
+            },
+            post: {
+              action: 'post-review-comments',
+              needs: ['load'],
+              with: {
+                source: 'change',
+                review: 'reviewArtifact',
+                expectedHeadSha: 'abc123',
+              },
+              output: 'postResult',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'postArtifact', { workingDir: projectRoot });
+
+    expect(mocks.githubAdapter.createComment).toHaveBeenCalledWith(
+      'octocat/hello-world',
+      7,
+      expect.stringContaining('<!-- drs-comment-id: drs-review-summary -->')
+    );
+    expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledTimes(4);
+    expect(result.artifacts.postResult).toMatchObject({ issues: 1 });
+  });
+
+  it('rejects a stale canonical review artifact before any GitHub mutation', async () => {
+    const projectRoot = createTempDir('drs-workflow-stale-review-artifact-');
+    const review: ReviewResult = {
+      issues: [],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: {
+          SECURITY: 0,
+          QUALITY: 0,
+          STYLE: 0,
+          PERFORMANCE: 0,
+          DOCUMENTATION: 0,
+        },
+      },
+      filesReviewed: 1,
+    };
+    const source: ReviewSource = {
+      name: 'GitHub PR octocat/hello-world#7',
+      files: ['src/github.ts'],
+      context: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        pullRequest: {
+          headSha: 'abc123',
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+        },
+      },
+    };
+    await saveWorkflowArtifact(projectRoot, {
+      kind: 'review',
+      scope: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        changeKind: 'pr',
+        changeNumber: 7,
+      },
+      payload: createReviewArtifactPayload(review, source),
+    });
+    mocks.githubAdapter.getPullRequest.mockResolvedValueOnce({
+      number: 7,
+      title: 'GitHub PR',
+      author: 'octocat',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'new-head',
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        postArtifact: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'github-pr',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+              },
+              output: 'change',
+            },
+            load: {
+              action: 'load-artifact',
+              needs: ['change'],
+              with: { kind: 'review', source: 'change' },
+              output: 'reviewArtifact',
+            },
+            post: {
+              action: 'post-review-comments',
+              needs: ['load'],
+              with: {
+                source: 'change',
+                review: 'reviewArtifact',
+                expectedHeadSha: 'abc123',
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'postArtifact', { workingDir: projectRoot })).rejects.toThrow(
+      /head changed/
+    );
+    expect(mocks.githubAdapter.getComments).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.createComment).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.addLabels).not.toHaveBeenCalled();
+  });
+
+  it('does not let envelope fields bypass canonical artifact validation', async () => {
+    const projectRoot = createTempDir('drs-workflow-review-artifact-shape-');
+    const review: ReviewResult = {
+      issues: [],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: {
+          SECURITY: 0,
+          QUALITY: 0,
+          STYLE: 0,
+          PERFORMANCE: 0,
+          DOCUMENTATION: 0,
+        },
+      },
+      filesReviewed: 1,
+    };
+    const source: ReviewSource = {
+      name: 'GitHub PR octocat/hello-world#7',
+      files: ['src/github.ts'],
+      context: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        pullRequest: {
+          headSha: 'wrong-head',
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+        },
+      },
+    };
+    const saved = await saveWorkflowArtifact(projectRoot, {
+      kind: 'review',
+      scope: {
+        platform: 'github',
+        projectId: 'octocat/hello-world',
+        changeKind: 'pr',
+        changeNumber: 7,
+      },
+      payload: createReviewArtifactPayload(review, source),
+    });
+    writeFileSync(
+      saved.latestPath,
+      JSON.stringify({ ...saved.artifact, issues: [], summary: review.summary }),
+      'utf-8'
+    );
+    mocks.githubAdapter.getPullRequest.mockResolvedValue({
+      number: 7,
+      title: 'GitHub PR',
+      author: 'octocat',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changed_files: 1 },
+    });
+
+    await expect(
+      runWorkflow(loadConfig(projectRoot), 'github-pr-review-post', {
+        workingDir: projectRoot,
+        inputs: {
+          owner: 'octocat',
+          repo: 'hello-world',
+          pr: '7',
+          expectedHeadSha: 'abc123',
+        },
+      })
+    ).rejects.toThrow(/artifact head does not match/);
+    expect(mocks.githubAdapter.createComment).not.toHaveBeenCalled();
+    expect(mocks.githubAdapter.addLabels).not.toHaveBeenCalled();
   });
 
   it('writes a GitLab code quality report from workflow review artifacts', async () => {
