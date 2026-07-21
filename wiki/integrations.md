@@ -35,10 +35,11 @@ The `github-pr-post-comment` workflow posts or updates a single marked comment.
 
 `.github/workflows/pr-review.yml` is the production PR automation wrapper. It triggers on `pull_request_target` events of types `opened`, `synchronize`, `reopened`, and `labeled`, runs on `ubuntu-latest`, uses `actions/checkout@v5` and `actions/setup-node@v5` with Node `22.19.0`, and builds DRS with `npm ci` and `npm run build`. The `labeled` trigger is required so adding the `safe-to-review` label re-runs the workflow for external PRs. The workflow is split into several jobs:
 
-1. `verify-contributor` checks whether the PR author is a repository collaborator and whether the PR has the `safe-to-review` label.
-2. `review-trusted` runs for repository collaborators. It has a 30-minute timeout, resolves the model provider key from `DRS_PROVIDER_API_KEY` (falling back to `OPENCODE_API_KEY`), and runs `node dist/cli/index.js workflow run github-pr-review --post=true --trace` with `describe=false`, `visual=false`, `fix=true`, `fixMode=internal`, `fixSeverity=medium`, and `fixMaxIterations=1`. It uploads the visual explainer, DRS workflow artifacts, and trace viewer as artifacts.
-3. `review-external` runs for external contributors only when the PR has the `safe-to-review` label and the `external-pr-review` environment is approved. It has a 20-minute timeout, uses the same provider key resolution, and runs `github-pr-review` with `describe=true`, `visual=true`, `fix=false`, and `post=true`. It also uploads the visual explainer, workflow artifacts, and trace viewer.
-4. `notify-external` posts a comment on external PRs that lack the `safe-to-review` label, explaining that a maintainer must add the label or approve the workflow run.
+1. `verify-contributor` sends every fork PR through the external path. A same-repository PR is trusted only when its author has `write`, `maintain`, or `admin` permission. The job also checks for the `safe-to-review` label.
+2. `review-trusted` runs for trusted same-repository branches. It has a 30-minute timeout, resolves the model provider key from `DRS_PROVIDER_API_KEY` (falling back to `OPENCODE_API_KEY`), and runs `node dist/cli/index.js workflow run github-pr-review --post=true --trace` with `describe=false`, `visual=false`, `fix=true`, `fixMode=internal`, `fixSeverity=medium`, and `fixMaxIterations=1`. It uploads the visual explainer, DRS workflow artifacts, and trace viewer as artifacts.
+3. `review-external` runs after the label and configured environment approval. It checks out the pinned base SHA without persisted credentials, builds trusted base code, grants the GitHub token read-only access, and runs `github-pr-review` with `describe=false`, `post=false`, `visual=false`, `fix=false`, and `requireCompleteDiff=true`. Complete-diff mode paginates GitHub files and rejects unstable heads, incomplete file lists, missing patches, and patch counts that disagree with GitHub metadata. Review model sessions have repository read access but no shell or write tools. The job uploads only the scoped canonical `review/latest.json` artifact.
+4. `post-external-review` checks out the same trusted base SHA in a job that has no provider secret, downloads the exact same-run artifact, and invokes the model-free `github-pr-review-post` workflow with a write token. Posting fails before any mutation unless the artifact scope, expected and current PR head, findings, fingerprints, counts, and changed-file paths validate.
+5. `notify-external` posts a comment on external PRs that lack the `safe-to-review` label. A protected `external-pr-review` environment may require a second approval after labeling.
 
 Repository wiki updates are independent of feature PR review. `.github/workflows/wiki-update.yml` runs daily and on manual dispatch from the latest default branch, executes `repository-wiki-sync --executor local`, rejects unexpected changed paths, and uses a fixed `drs/wiki-update` branch to create or refresh one bot pull request. This avoids committing branch-specific `.drs/wiki-state.json` files into parallel feature PRs.
 
@@ -71,8 +72,9 @@ Local workflows use `simple-git` through `src/cli/workflow.ts` to read `git diff
 
 ## Security notes
 
-- The GitHub Actions workflow uses `pull_request_target`, which runs workflow YAML from the target branch, not the PR branch. This prevents external PRs from modifying the review automation.
-- External contributors require both the `safe-to-review` label and approval of the `external-pr-review` environment to prevent API-cost abuse.
+- `pull_request_target` selects workflow YAML from the target branch but is safe only if privileged jobs also avoid checking out and executing the PR head. External jobs pin the base SHA and disable checkout credential persistence.
+- External model generation has read-only GitHub and agent permissions. GitHub writes happen in a separate deterministic job after strict canonical artifact and head validation.
+- External contributors require the `safe-to-review` label and, when configured, approval of the `external-pr-review` environment to prevent API-cost abuse.
 - The `stack-guard` action refuses to run fix flows on branches with reserved prefixes (`drs-fix/`, `drs-guidance/`, `drs-stack/`).
 
 ## See also

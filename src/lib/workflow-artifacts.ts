@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { resolveWithinWorkingDir } from './path-utils.js';
 
@@ -71,6 +71,7 @@ export function createWorkflowArtifactId(date: Date = new Date()): string {
  * `../` segments and escape the `.drs/artifacts/<scope>/` namespace.
  */
 const ARTIFACT_ID_PATTERN = /^(art|rev)_[0-9]+_[a-z0-9]+$/;
+const MAX_REVIEW_ARTIFACT_BYTES = 5 * 1024 * 1024;
 
 /**
  * Assert that an artifact id matches the canonical auto-generated shape.
@@ -193,6 +194,23 @@ function assertWorkflowArtifactEnvelope(value: unknown): asserts value is Workfl
   }
 }
 
+function assertWorkflowArtifactScope(
+  actual: WorkflowArtifactScope,
+  expected: WorkflowArtifactScope
+): void {
+  const fields = [
+    'platform',
+    'projectId',
+    'subject',
+    'changeKind',
+    'changeNumber',
+    'branch',
+  ] as const;
+  if (fields.some((field) => actual[field] !== expected[field])) {
+    throw new Error('Workflow artifact scope does not match the requested scope.');
+  }
+}
+
 export async function loadWorkflowArtifact<T = unknown>(
   workingDir: string,
   kind: string,
@@ -204,11 +222,19 @@ export async function loadWorkflowArtifact<T = unknown>(
   }
   const directory = getWorkflowArtifactDirectory(workingDir, kind, scope);
   const path = join(directory, id ? `${id}.json` : 'latest.json');
+  if (kind === 'review' && (await stat(path)).size > MAX_REVIEW_ARTIFACT_BYTES) {
+    throw new Error('Review artifact exceeds the maximum allowed size.');
+  }
   const parsed = JSON.parse(await readFile(path, 'utf-8')) as unknown;
   assertWorkflowArtifactEnvelope(parsed);
+  assertSafeArtifactId(parsed.id, 'read');
   if (parsed.kind !== kind) {
     throw new Error(`Expected workflow artifact kind "${kind}" but found "${parsed.kind}".`);
   }
+  if (id !== undefined && parsed.id !== id) {
+    throw new Error(`Expected workflow artifact id "${id}" but found "${parsed.id}".`);
+  }
+  assertWorkflowArtifactScope(parsed.scope, scope);
   return { artifact: parsed as WorkflowArtifactEnvelope<T>, path };
 }
 

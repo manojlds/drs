@@ -39,6 +39,10 @@ The `review` action (`src/cli/workflow.ts`) calls `executeReview` in `src/lib/re
 
 The action exposes the raw review result as its node output and also saves a canonical review artifact envelope. By default the artifact is available as `artifacts.<nodeId>Artifact` (for example `artifacts.reviewArtifact`).
 
+Review action nodes may declare runtime `permissions`. The policy applies to every review and optional describe session; review actions reject write/delete capabilities and mutation validation. The packaged GitHub PR review grants repository read access with `shell: false`, which prevents review agents from executing commands or mutating the checkout.
+
+The GitHub workflow input `requireCompleteDiff=true` rejects an unstable or incomplete API snapshot. DRS paginates the changed-file list, compares it with GitHub's reported count, checks the head before and after retrieval, requires every file patch, and reconciles patch line counts with GitHub metadata. The external PR wrapper enables this fail-closed mode because only trusted base code is checked out.
+
 ## Agents and prompts
 
 The default review agent is `review/unified-reviewer`. Additional review agents can be added under `.drs/agents/review/<name>/agent.md` and listed in `review.agents`.
@@ -95,6 +99,10 @@ The `post-review-comments` action uses `src/lib/comment-poster.ts` to:
 - Post inline comments for CRITICAL/HIGH issues on valid diff lines.
 - Remove stale inline comments whose issue fingerprints no longer appear.
 - Add the `ai-reviewed` label.
+
+The action can also consume a loaded canonical review envelope when `expectedHeadSha` is set. Before any comment or label mutation it validates the envelope id and schema, repository/PR scope, reviewed and current head SHA, finding ids and fingerprints, changed-file paths, and summary counts. The model-free `github-pr-review-post` workflow uses this mode to keep external review generation separate from GitHub write credentials.
+
+Posting also preflights summary/inline body lengths and the inline-comment count before mutation so oversized model output cannot trigger destructive partial cleanup.
 
 For GitLab, the `code-quality-report` action writes a GitLab CodeClimate-compatible JSON report from the review result.
 

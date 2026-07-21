@@ -46,14 +46,14 @@ export class GitHubClient {
    * Get pull request files (changes)
    */
   async getPRFiles(owner: string, repo: string, prNumber: number): Promise<PRChange[]> {
-    const response = await this.octokit.pulls.listFiles({
+    const files = await this.octokit.paginate(this.octokit.pulls.listFiles, {
       owner,
       repo,
       pull_number: prNumber,
       per_page: 100,
     });
 
-    return response.data.map((file) => ({
+    return files.map((file) => ({
       filename: file.filename,
       status: file.status,
       additions: file.additions,

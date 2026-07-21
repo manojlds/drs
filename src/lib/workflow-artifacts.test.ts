@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -124,6 +124,43 @@ describe('workflow artifact fs operations enforce canonical id', () => {
     await expect(
       loadWorkflowArtifact(workingDir, 'review', REVIEW_SCOPE, '/etc/passwd')
     ).rejects.toThrow(/invalid id/);
+  });
+
+  it('load rejects a tampered id in latest.json', async () => {
+    const saved = await saveWorkflowArtifact(workingDir, {
+      kind: 'review',
+      scope: REVIEW_SCOPE,
+      payload: { hello: 'world' },
+    });
+    await writeFile(
+      saved.latestPath,
+      JSON.stringify({ ...saved.artifact, id: '../../../tmp/evil.json' }),
+      'utf-8'
+    );
+
+    await expect(loadWorkflowArtifact(workingDir, 'review', REVIEW_SCOPE)).rejects.toThrow(
+      /invalid id/
+    );
+  });
+
+  it('load rejects a scope mismatch in latest.json', async () => {
+    const saved = await saveWorkflowArtifact(workingDir, {
+      kind: 'review',
+      scope: REVIEW_SCOPE,
+      payload: { hello: 'world' },
+    });
+    await writeFile(
+      saved.latestPath,
+      JSON.stringify({
+        ...saved.artifact,
+        scope: { ...saved.artifact.scope, changeNumber: 2 },
+      }),
+      'utf-8'
+    );
+
+    await expect(loadWorkflowArtifact(workingDir, 'review', REVIEW_SCOPE)).rejects.toThrow(
+      /scope does not match/
+    );
   });
 
   it('update accepts envelopes with canonical rev_* ids', async () => {

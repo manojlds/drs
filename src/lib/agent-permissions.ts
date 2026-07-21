@@ -167,7 +167,7 @@ export class AgentFilesystemAuthorizer {
       : resolve(this.workingDir, requestedPath);
     const relativePath = relative(this.workingDir, absolutePath);
     if (
-      relativePath === '' ||
+      (relativePath === '' && operation !== 'read') ||
       relativePath === '..' ||
       relativePath.startsWith(`..${sep}`) ||
       isAbsolute(relativePath)

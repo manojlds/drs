@@ -226,12 +226,12 @@ Common node fields:
 | `writes` | Repo-relative path to write the node output/content |
 | `json` | For agent nodes, write JSON when `writes` is set |
 | `with` | Action-specific options |
-| `permissions` | Runtime-enforced filesystem and shell capabilities for agent nodes |
+| `permissions` | Runtime-enforced filesystem and shell capabilities for agent nodes and `action: review` |
 | `validation` | Content validators invoked by policy-aware mutation tools |
 
 Workflow files are strictly validated. A node must use exactly one of `agent`, `agentsFrom`, `action`, or `control`; unknown node fields and unknown action options are rejected before execution.
 
-### Agent permissions
+### Agent and review permissions
 
 Agent nodes can restrict filesystem mutations with literal repository-relative roots and root-relative glob patterns:
 
@@ -265,6 +265,10 @@ An optional write validator can reject invalid content before modification and r
 ```
 
 The initial validator registry contains `okf-document`. Workflow actions remain outside the agent permission boundary, allowing deterministic nodes to generate indexes or state after the agent completes.
+
+`action: review` also accepts permissions and propagates one policy to every review and describe model session. Review actions are intentionally read-only: planning rejects filesystem write/delete rules and mutation validation. The packaged GitHub PR workflow uses repository-wide read access with `shell: false`; callers that expose untrusted diffs must also ensure the checkout and project configuration are trusted.
+
+The packaged `github-pr-review` input `requireCompleteDiff=true` makes its GitHub change source fail closed unless the head stays stable while all paginated files are fetched, every file has a patch, and patch addition/deletion counts match GitHub metadata. The external PR wrapper enables this mode because its trusted base checkout cannot safely fall back to a working-tree diff of the PR head.
 
 ## Conditions
 
@@ -544,11 +548,14 @@ nodes:
       review: review
 ```
 
-The `source` must be a platform `change-source` artifact and `review` must be the output artifact from an `action: review` node.
+The `source` must be a platform `change-source` artifact. Normally `review` is the output artifact from an `action: review` node. It may instead reference a loaded canonical review envelope when `with.expectedHeadSha` is provided. Canonical-envelope mode validates the artifact schema, scope, current and reviewed head, findings, fingerprints, summary, and changed-file paths before any platform mutation. The packaged `github-pr-review-post` workflow provides this deterministic posting path.
+
+Posting preflights summary and inline comment sizes and the inline-comment count before changing platform state. Oversized model output fails instead of deleting stale comments and then relying on the platform API to reject the replacement.
 
 Optional flags:
 
 - `with.removeErrorComment` (default `true`): set to `false` to keep any existing DRS error comment instead of removing it before posting review comments.
+- `with.expectedHeadSha`: required when posting from a canonical review envelope; posting fails if the PR moved after review generation.
 
 ### `git-diff`
 

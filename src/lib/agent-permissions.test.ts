@@ -92,6 +92,19 @@ describe('agent permissions', () => {
     );
   });
 
+  it('allows repository-root reads without allowing root mutations', async () => {
+    const root = await createTempDir();
+    const authorizer = new AgentFilesystemAuthorizer(root, {
+      read: { roots: ['.'], allow: ['**'] },
+      write: { roots: ['.'], allow: ['**'] },
+    });
+
+    await expect(authorizer.authorize('read', '.')).resolves.toBe(root);
+    await expect(authorizer.authorize('write', '.')).rejects.toThrow(
+      'outside the working directory'
+    );
+  });
+
   it('rejects symbolic-link ancestors and targets', async () => {
     const root = await createTempDir();
     const outside = await createTempDir();

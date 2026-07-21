@@ -87,6 +87,7 @@ import {
   createReviewArtifactPayload,
   getReviewArtifactStatus,
   isReviewArtifactPayload,
+  reviewArtifactToReviewResult,
   updateReviewArtifactFindings,
   type ReviewFindingDisposition,
   type ReviewFinding,
@@ -1869,6 +1870,16 @@ function createPlatformChangeSource(
   };
 }
 
+function getPatchChangeCounts(patch: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('+')) additions += 1;
+    if (line.startsWith('-')) deletions += 1;
+  }
+  return { additions, deletions };
+}
+
 async function loadGitHubChangeSource(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -1881,10 +1892,49 @@ async function loadGitHubChangeSource(
   const prNumber = requireNumberActionOption(nodeId, node, 'pr', context);
   const projectId = `${owner}/${repo}`;
   const platformClient = getWorkflowPlatformClient(executionContext, 'github');
-  const [pullRequest, changedFiles] = await Promise.all([
-    platformClient.getPullRequest(projectId, prNumber),
-    platformClient.getChangedFiles(projectId, prNumber),
-  ]);
+  const requireCompleteDiff = getBooleanActionOption(node, 'requireCompleteDiff', context);
+  let pullRequest: PullRequest;
+  let changedFiles: FileChange[];
+  if (requireCompleteDiff) {
+    const before = await platformClient.getPullRequest(projectId, prNumber);
+    changedFiles = await platformClient.getChangedFiles(projectId, prNumber);
+    const after = await platformClient.getPullRequest(projectId, prNumber);
+    if (before.headSha !== after.headSha) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" cannot review an unstable pull request head.`
+      );
+    }
+    const platformData = after.platformData;
+    const expectedFileCount =
+      platformData && typeof platformData === 'object' && 'changed_files' in platformData
+        ? platformData.changed_files
+        : undefined;
+    if (
+      typeof expectedFileCount !== 'number' ||
+      !Number.isInteger(expectedFileCount) ||
+      expectedFileCount !== changedFiles.length
+    ) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" did not receive the complete GitHub file list.`
+      );
+    }
+    const incompleteFiles = changedFiles.filter((file) => {
+      if (!file.patch || file.patch.length === 0) return true;
+      const counts = getPatchChangeCounts(file.patch);
+      return counts.additions !== file.additions || counts.deletions !== file.deletions;
+    });
+    if (incompleteFiles.length > 0) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" did not receive complete patches for: ${incompleteFiles.map((file) => file.filename).join(', ')}`
+      );
+    }
+    pullRequest = after;
+  } else {
+    [pullRequest, changedFiles] = await Promise.all([
+      platformClient.getPullRequest(projectId, prNumber),
+      platformClient.getChangedFiles(projectId, prNumber),
+    ]);
+  }
 
   return createPlatformChangeSource(
     'github',
@@ -2879,20 +2929,40 @@ async function runPostReviewCommentsWorkflowNode(
   const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
   const reviewArtifact = getStringActionOption(node, 'review', context) ?? 'review';
   const source = context.artifacts[sourceArtifact];
-  const reviewResult = context.artifacts[reviewArtifact];
+  const reviewValue = context.artifacts[reviewArtifact];
   if (!isReviewSource(source)) {
     throw new Error(
       `Workflow post-review-comments node "${nodeId}" needs a ReviewSource artifact.`
     );
   }
-  if (!isReviewResult(reviewResult)) {
+  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
+  const pullRequest = target.pullRequest;
+  const canonicalArtifactMode = hasActionOption(node, 'expectedHeadSha');
+  const expectedHeadSha = getStringActionOption(node, 'expectedHeadSha', context)?.trim();
+  let reviewResult: ReviewResult;
+  if (canonicalArtifactMode) {
+    if (!expectedHeadSha || !pullRequest) {
+      throw new Error(
+        `Workflow post-review-comments node "${nodeId}" needs pull request metadata and a non-empty expectedHeadSha to validate a canonical review artifact.`
+      );
+    }
+    reviewResult = reviewArtifactToReviewResult(reviewValue, {
+      platform: target.platform,
+      projectId: target.projectId,
+      changeKind: target.platform === 'gitlab' ? 'mr' : 'pr',
+      changeNumber: target.prNumber,
+      expectedHeadSha,
+      currentHeadSha: pullRequest.headSha,
+      changedFiles: source.files,
+    });
+  } else if (isReviewResult(reviewValue)) {
+    reviewResult = reviewValue;
+  } else {
     throw new Error(
-      `Workflow post-review-comments node "${nodeId}" needs a ReviewResult artifact.`
+      `Workflow post-review-comments node "${nodeId}" needs a ReviewResult artifact or a canonical review artifact with expectedHeadSha.`
     );
   }
 
-  const target = resolvePostTarget(nodeId, node, context, executionContext, source);
-  const pullRequest = target.pullRequest;
   const platformData = pullRequest?.platformData;
   const lineValidator = createWorkflowLineValidator(target.platform, source);
   const createInlinePosition = lineValidator
@@ -2901,11 +2971,18 @@ async function runPostReviewCommentsWorkflowNode(
   const shouldRemoveErrorComment =
     !hasActionOption(node, 'removeErrorComment') ||
     getBooleanActionOption(node, 'removeErrorComment', context);
+  const assertCurrentHead = expectedHeadSha
+    ? async () => {
+        const latestPullRequest = await target.platformClient.getPullRequest(
+          target.projectId,
+          target.prNumber
+        );
+        if (latestPullRequest.headSha !== expectedHeadSha) {
+          throw new Error('Pull request head changed before review comments could be posted.');
+        }
+      }
+    : undefined;
   await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, async () => {
-    if (shouldRemoveErrorComment) {
-      await removeErrorComment(target.platformClient, target.projectId, target.prNumber);
-    }
-
     const cursorFixLinks = resolveCursorFixLinkOptions(config, target.projectId, workingDir);
     await postReviewComments(
       target.platformClient,
@@ -2925,6 +3002,16 @@ async function runPostReviewCommentsWorkflowNode(
             sourceBranch: pullRequest.sourceBranch,
             targetBranch: pullRequest.targetBranch,
           }
+        : undefined,
+      assertCurrentHead,
+      shouldRemoveErrorComment
+        ? () =>
+            removeErrorComment(
+              target.platformClient,
+              target.projectId,
+              target.prNumber,
+              assertCurrentHead
+            )
         : undefined
     );
   });
@@ -3363,11 +3450,19 @@ async function runReviewWorkflowNode(
     }
 
     try {
-      return await executeReview(config, {
+      const reviewSource = {
         ...sourceForReview,
         workingDir: sourceForReview.workingDir ?? workingDir,
         debug: options.debug,
         thinkingLevel: options.thinkingLevel,
+      };
+      if (!node.permissions) {
+        return await executeReview(config, reviewSource);
+      }
+      return await executeReview(config, reviewSource, {
+        permissions: renderAgentPermissions(node.permissions, (value) =>
+          renderTemplate(value, context)
+        ),
       });
     } finally {
       if (options.jsonOutput) {

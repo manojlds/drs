@@ -22,26 +22,24 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_REPOSITORY: ${{ github.repository }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          # Check if PR author is a repository member or collaborator
-          AUTHOR="${{ github.event.pull_request.user.login }}"
-          REPO="${{ github.repository }}"
+          echo "Checking whether $PR_AUTHOR can use the trusted review path..."
 
-          echo "Checking if $AUTHOR is a trusted contributor..."
-
-          # Check organization membership or repository collaborator status
-          if gh api "/repos/$REPO/collaborators/$AUTHOR" --silent 2>/dev/null; then
-            echo "✅ $AUTHOR is a repository collaborator"
+          permission="$(gh api "/repos/$BASE_REPOSITORY/collaborators/$PR_AUTHOR/permission" --jq '.permission' 2>/dev/null || true)"
+          if [ "$HEAD_REPOSITORY" = "$BASE_REPOSITORY" ] && [[ "$permission" =~ ^(admin|maintain|write)$ ]]; then
+            echo "$PR_AUTHOR has $permission access on a same-repository branch"
             echo "is-trusted=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️  $AUTHOR is an external contributor"
+            echo "$PR_AUTHOR must use the external review path"
             echo "is-trusted=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check if PR has the safe-to-review label
-          LABELS='${{ toJSON(github.event.pull_request.labels.*.name) }}'
-          if echo "$LABELS" | grep -q "safe-to-review"; then
-            echo "✅ PR has 'safe-to-review' label"
+          if jq -e 'index("safe-to-review") != null' <<<"$PR_LABELS" >/dev/null; then
+            echo "PR has the safe-to-review label"
             echo "has-review-label=true" >> $GITHUB_OUTPUT
           else
             echo "has-review-label=false" >> $GITHUB_OUTPUT
@@ -218,7 +216,7 @@ jobs:
             -F force=false \
             --silent
 
-  # Review for external contributors - requires environment approval OR safe-to-review label
+  # Generate an external review from trusted base code with read-only credentials.
   review-external:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -226,24 +224,18 @@ jobs:
     if: |
       needs.verify-contributor.outputs.is-trusted == 'false' &&
       needs.verify-contributor.outputs.has-review-label == 'true'
-    # Use protected environment for manual approval gate
-    # Repository admins must configure this environment in Settings > Environments
+    # Configure required reviewers for this environment in repository settings.
     environment: external-pr-review
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
 
     steps:
-      - name: Checkout PR code
+      - name: Checkout trusted base code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Fetch base branch for git diff
-        run: |
-          # Fetch the base branch to make origin/<base> available for git diff
-          git fetch origin ${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -294,36 +286,85 @@ jobs:
             --input owner="${{ github.event.repository.owner.login }}" \
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
-            --input describe=true \
-            --input post=true \
-            --input visual=true \
-            --input fix=false \
-            --input visualOutputPath=".drs/visual-pr-explainer.html" \
-            --trace
+            --input describe=false \
+            --input post=false \
+            --input visual=false \
+            --input requireCompleteDiff=true \
+            --input fix=false
 
-      - name: Upload visual explainer artifact
-        if: always()
+      - name: Resolve canonical review artifact path
+        id: review-artifact
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          project_slug="${GITHUB_REPOSITORY//\//-}"
+          echo "path=.drs/artifacts/github/$project_slug/pr-$PR_NUMBER/review/latest.json" >> "$GITHUB_OUTPUT"
+
+      - name: Upload canonical review artifact
         uses: actions/upload-artifact@v4
         with:
-          name: visual-pr-explainer-external
-          path: .drs/visual-pr-explainer.html
-          if-no-files-found: ignore
+          name: drs-external-review-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ steps.review-artifact.outputs.path }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
 
-      - name: Upload DRS workflow artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: drs-workflow-artifacts-external
-          path: .drs/artifacts/**
-          if-no-files-found: ignore
+  # Consume only the validated artifact; no model provider secret enters this job.
+  post-external-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: review-external
+    permissions:
+      contents: read
+      pull-requests: write
 
-      - name: Upload trace viewer
-        if: always()
-        uses: actions/upload-artifact@v4
+    steps:
+      - name: Checkout trusted base code
+        uses: actions/checkout@v5
         with:
-          name: trace-viewer-external
-          path: .drs/artifacts/**/trace.html
-          if-no-files-found: ignore
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.19.0'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build DRS
+        run: npm run build
+
+      - name: Prepare canonical review artifact directory
+        id: review-artifact
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          project_slug="${GITHUB_REPOSITORY//\//-}"
+          artifact_directory=".drs/artifacts/github/$project_slug/pr-$PR_NUMBER/review"
+          mkdir -p "$artifact_directory"
+          echo "directory=$artifact_directory" >> "$GITHUB_OUTPUT"
+
+      - name: Download canonical review artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: drs-external-review-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ steps.review-artifact.outputs.directory }}
+
+      - name: Validate and post external review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          OPENCODE_API_KEY: ""
+          ZHIPU_API_KEY: ""
+        run: |
+          node dist/cli/index.js workflow run github-pr-review-post \
+            --input owner="${{ github.event.repository.owner.login }}" \
+            --input repo="${{ github.event.repository.name }}" \
+            --input pr="${{ github.event.pull_request.number }}" \
+            --input expectedHeadSha="${{ github.event.pull_request.head.sha }}"
 
   # Notify when external PR is waiting for approval
   notify-external:
@@ -344,10 +385,8 @@ jobs:
             --repo ${{ github.repository }} \
             --body "👋 Thanks for your contribution!
 
-          Since this is from an external contributor, automated review requires approval from a repository maintainer.
+          Since this change uses the external review path, automated review requires approval from a repository maintainer.
 
-          **Maintainers:** To trigger the automated review, either:
-          1. Add the \`safe-to-review\` label to this PR
-          2. Approve the workflow run in the Actions tab
+          **Maintainers:** Add the \`safe-to-review\` label to trigger review. If the \`external-pr-review\` environment is protected, also approve the queued job in the Actions tab.
 
           This helps prevent abuse and protects API costs. Thank you for understanding! 🙏"

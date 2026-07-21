@@ -52,23 +52,29 @@ export async function postErrorComment(
 export async function removeErrorComment(
   platformClient: PlatformClient,
   projectId: string,
-  prNumber: number
+  prNumber: number,
+  assertCurrentHead?: () => Promise<void>
 ): Promise<void> {
+  let existingError: PlatformComment | null | undefined;
   try {
     const existingComments = await platformClient.getComments(projectId, prNumber);
     const mappedComments: PlatformComment[] = existingComments.map((c) => ({
       id: c.id,
       body: c.body,
     }));
-
-    const existingError = findExistingErrorComment(mappedComments);
-
-    if (existingError) {
-      await platformClient.deleteComment(projectId, prNumber, existingError.id);
-      console.log(chalk.green('Removed previous error comment'));
-    }
+    existingError = findExistingErrorComment(mappedComments);
   } catch (error) {
-    // Non-fatal: just log a warning if we can't remove the error comment
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(chalk.yellow(`Could not remove previous error comment: ${errorMessage}`));
+    return;
+  }
+
+  if (!existingError) return;
+  await assertCurrentHead?.();
+  try {
+    await platformClient.deleteComment(projectId, prNumber, existingError.id);
+    console.log(chalk.green('Removed previous error comment'));
+  } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn(chalk.yellow(`Could not remove previous error comment: ${errorMessage}`));
   }
