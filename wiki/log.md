@@ -72,6 +72,8 @@ Removed the obsolete bundled skill installation and synchronization commands fro
 
 Added generic workflow-agent filesystem permissions and applied them to repository wiki maintenance.
 
+Added `drs_sources` provenance citations to the repository wiki concept, workflow engine concept, and testing concept so future delta updates can map source changes to affected concepts through the recorded `sourceConcepts` state. Cited the changed wiki workflows, site adapter/theme, delta planner, OKF validation, search, publishing safety, and their tests. No substantive content changes were required; the existing descriptions already matched the current source behavior, and only source citations were added.
+
 Core changes:
 
 - Workflow nodes can now declare `permissions` and `validation` fields. `permissions` supports `read`, `write`, and `delete` rules with literal repository-relative `roots`, root-relative `allow`/`deny` glob patterns, and mandatory `shell: false`. `validation.afterMutation` currently supports the `okf-document` validator, which checks proposed OKF documents before writes and returns full bundle validation feedback after mutations. `src/lib/config.ts` and `src/lib/workflow/planning.ts` validate these fields and reject forbidden combinations such as `permissions` with `writes`, `agentsFrom` write/delete permissions, or validators without write/delete access.
