@@ -16,6 +16,7 @@ inputs:
   branchPrefix: 'drs-fix/pr-'
   allowStackedSource: 'false'
   draft: 'false'
+  useChangeRequestAuthor: 'true'
 output: changeRequest
 nodes:
   change:
@@ -100,7 +101,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for PR #{{inputs.pr}}'
       paths: '.'
-      useChangeRequestAuthor: true
+      useChangeRequestAuthor: '{{inputs.useChangeRequestAuthor}}'
     output: commit
 
   push:

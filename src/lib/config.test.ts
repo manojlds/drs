@@ -88,6 +88,37 @@ describe('Config', () => {
     });
   });
 
+  it('should load Temporal settings from project config', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-temporal-config-'));
+    try {
+      mkdirSync(join(projectRoot, '.drs'), { recursive: true });
+      writeFileSync(
+        join(projectRoot, '.drs', 'drs.config.yaml'),
+        [
+          'temporal:',
+          '  address: temporal.example.test:7233',
+          '  namespace: release',
+          '  taskQueue: drs-release',
+          '  workflowIdPrefix: release-drs',
+          '  workspace:',
+          '    mode: managed',
+          '    root: /tmp/drs-temporal',
+          '',
+        ].join('\n')
+      );
+
+      expect(loadConfig(projectRoot).temporal).toEqual({
+        address: 'temporal.example.test:7233',
+        namespace: 'release',
+        taskQueue: 'drs-release',
+        workflowIdPrefix: 'release-drs',
+        workspace: { mode: 'managed', root: '/tmp/drs-temporal' },
+      });
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('should load fix.checks when provided', () => {
     const config = loadConfig(process.cwd(), {
       fix: {
@@ -153,13 +184,18 @@ describe('Config', () => {
         visual: { type: 'boolean', default: false },
         fixMode: { type: 'enum', default: 'stacked' },
         fixSeverity: { type: 'enum', default: 'high' },
+        useChangeRequestAuthor: { type: 'boolean', default: true },
         visualOutputPath: { type: 'string', default: '.drs/visual-mr-explainer.html' },
         codeQuality: { type: 'boolean', default: false },
       });
       expect(config.workflows?.['github-pr-review']?.inputs).toMatchObject({
         visual: { type: 'boolean', default: false },
+        useChangeRequestAuthor: { type: 'boolean', default: true },
         visualOutputPath: { type: 'string', default: '.drs/visual-pr-explainer.html' },
       });
+      expect(
+        config.workflows?.['github-pr-review']?.nodes['commit-internal-fix']?.with
+      ).toMatchObject({ useChangeRequestAuthor: '{{inputs.useChangeRequestAuthor}}' });
       expect(config.workflows?.['github-pr-review']?.nodes.visual).toMatchObject({
         agent: 'visual/pr-explainer',
         needs: ['change', 'review'],

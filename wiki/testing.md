@@ -1,7 +1,7 @@
 ---
 type: Operations
 title: Testing and quality gate
-description: How DRS is tested, including the mandatory quality gate, unit tests, live tests, and Temporal smoke tests.
+description: How DRS is tested, including the mandatory quality gate, unit tests, and opt-in Temporal smoke tests.
 tags: [testing, vitest, quality-gate, ci]
 drs_sources:
   - path: src/cli/workflow.test.ts
@@ -64,16 +64,6 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/lib/wiki-run-summary.test.ts` — wiki structural and usage summaries, net concept-change classification, no-op reporting, and escaped Markdown output.
 - `src/lib/wiki-site*.test.ts` — directed graph extraction and metrics, publishing safety, reusable build/serve setup, deployed-site smoke checks, and the full site integration path.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs, plus `git-commit` creator attribution.
-
-## Live tests
-
-The E2E live test runs the local review workflow against the actual repository:
-
-```bash
-DRS_E2E_LIVE=1 npm run test:e2e
-```
-
-This executes `src/cli/review-local.live.e2e.test.ts` and requires a working model provider key.
 
 ## Temporal smoke test
 

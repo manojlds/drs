@@ -1,8 +1,10 @@
 # Temporal Execution
 
-DRS can run workflow YAML through Temporal. The YAML remains the source of truth: DRS compiles it to a JSON plan, the generic Temporal workflow schedules nodes deterministically, and node work runs in activities.
+DRS can run workflow YAML through an experimental Temporal backend. The YAML remains the source of truth: DRS compiles it to a JSON plan, the generic Temporal workflow schedules nodes deterministically, and node work runs in activities.
 
 Temporal mode is intended for longer-running repository maintenance workflows where you want durable execution, a worker process, Temporal UI visibility, and retry/cancellation semantics.
+
+The backend is not yet a production multi-worker control plane. Artifact references and managed workspaces require worker-visible storage, secure Temporal Cloud/TLS configuration is not exposed yet, and the smoke suite remains opt-in.
 
 ## Configuration
 

@@ -22,10 +22,12 @@ All notable changes to DRS are documented in this file.
 
 - Preserve directed concept links in repository wiki graphs, show incoming and outgoing relationships separately, and report deterministic orphan and weak-connection quality metrics during validation.
 - Run repository wiki maintenance with scoped Markdown writes, generated-index denial, no shell access, and immediate OKF validation feedback.
+- Declare the npm distribution as CLI-only, expose `useChangeRequestAuthor` inputs on packaged fix/guidance workflows, update Pi to 0.79.10 and Temporal to 1.20.3, and pin patched transitive dependencies where supported.
 
 ### Fixed
 
 - Harden reusable wiki rendering against symbolic-link escapes and overlapping in-process operations, support valid bundles without DRS-specific quickstart/log pages, and exclude generated site output from the npm package.
+- Preserve `temporal` settings loaded from `.drs/drs.config.yaml` instead of silently dropping them during config merge.
 
 ### Removed
 

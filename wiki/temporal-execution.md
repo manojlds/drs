@@ -7,7 +7,9 @@ tags: [temporal, durable, worker, executor]
 
 # Temporal execution
 
-DRS can run the same YAML workflows through Temporal for durable execution, visibility, retry semantics, and long-running repository maintenance. The workflow YAML remains the source of truth; the engine compiles it to a JSON plan and a generic Temporal workflow schedules the nodes.
+DRS can run the same YAML workflows through an experimental Temporal backend for durable execution, visibility, retry semantics, and long-running repository maintenance. The workflow YAML remains the source of truth; the engine compiles it to a JSON plan and a generic Temporal workflow schedules the nodes.
+
+The backend is not yet a production multi-worker control plane. Artifact references and managed workspaces require worker-visible storage, secure Temporal Cloud/TLS configuration is not exposed yet, and the smoke suite remains opt-in.
 
 ## When to use Temporal
 

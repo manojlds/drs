@@ -51,6 +51,10 @@ inputs:
   allowStackedSource:
     type: boolean
     default: false
+  useChangeRequestAuthor:
+    type: boolean
+    default: true
+    description: Attribute generated fix commits to the merge request creator
   fixDraft:
     type: boolean
     default: false
@@ -276,7 +280,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
-      useChangeRequestAuthor: true
+      useChangeRequestAuthor: '{{inputs.useChangeRequestAuthor}}'
     output: internalFixCommit
 
   push-internal-fix:
@@ -304,7 +308,7 @@ nodes:
     with:
       message: 'fix: address DRS review issues for MR !{{inputs.mr}}'
       paths: '.'
-      useChangeRequestAuthor: true
+      useChangeRequestAuthor: '{{inputs.useChangeRequestAuthor}}'
     output: fixCommit
 
   fix-push:
