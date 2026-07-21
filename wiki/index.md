@@ -13,5 +13,5 @@ okf_version: "0.1"
 * [Repository wiki](repository-wiki.md) - Generate and maintain an OKF v0.1 repository wiki bundle with deterministic delta fingerprints, model-free checks, and CI validation.
 * [Review workflows](review-workflows.md) - How DRS performs code reviews from local diffs, GitHub PRs, and GitLab MRs, including change sources, findings, fix verification, and posting.
 * [Temporal execution](temporal-execution.md) - Durable workflow execution through Temporal, including worker deployment, workspace modes, and queries.
-* [Testing and quality gate](testing.md) - How DRS is tested, including the mandatory quality gate, unit tests, live tests, and Temporal smoke tests.
+* [Testing and quality gate](testing.md) - How DRS is tested, including the mandatory quality gate, unit tests, and opt-in Temporal smoke tests.
 * [Workflow engine](workflow-engine.md) - How DRS compiles, validates, schedules, and executes YAML workflows, including built-in actions and control nodes.

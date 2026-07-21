@@ -44,6 +44,8 @@ npm install -g @diff-review-system/drs
 
 This installs DRS with Pi runtime bundled — no separate runtime installation needed.
 
+The npm package is a CLI application. Programmatic imports and deep imports from `dist/` are not a supported API.
+
 ### 3. Initialize Project
 
 ```bash

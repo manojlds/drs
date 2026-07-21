@@ -8,6 +8,7 @@ inputs:
   branchPrefix: 'drs-guidance/pr-'
   allowStackedSource: 'false'
   draft: 'false'
+  useChangeRequestAuthor: 'true'
 output: changeRequest
 nodes:
   change:
@@ -70,7 +71,7 @@ nodes:
     with:
       message: 'docs: update agent guidance for PR #{{inputs.pr}}'
       paths: '{{inputs.paths}}'
-      useChangeRequestAuthor: true
+      useChangeRequestAuthor: '{{inputs.useChangeRequestAuthor}}'
     output: commit
 
   push:

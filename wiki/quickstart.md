@@ -20,7 +20,7 @@ DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub
 - [Configuration](configuration.md) — `.drs/drs.config.yaml`, environment variables, models, compression, and runtime timeouts.
 - [Integrations](integrations.md) — GitHub/GitLab clients and CI/CD wrappers.
 - [Temporal execution](temporal-execution.md) — durable workflow execution with a Temporal worker.
-- [Testing](testing.md) — unit tests, quality gate, live tests, and smoke coverage.
+- [Testing](testing.md) — unit tests, quality gate, and opt-in smoke coverage.
 
 ## Quick orientation
 

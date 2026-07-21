@@ -880,6 +880,7 @@ function mergeConfig(base: DRSConfig, override: Partial<DRSConfig>): DRSConfig {
     agents: mergeSection(base.agents, override.agents),
     workflows: mergeSection(base.workflows, override.workflows),
     workflow: mergeSection(base.workflow, override.workflow),
+    temporal: mergeSection(base.temporal, override.temporal),
     gitlab: mergeSection(base.gitlab, override.gitlab),
     github: mergeSection(base.github, override.github),
     review: mergeSection(base.review, override.review),
