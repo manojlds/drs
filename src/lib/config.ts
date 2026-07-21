@@ -44,6 +44,7 @@ export const SUPPORTED_WORKFLOW_ACTIONS = [
   'plan-wiki-update',
   'sync-okf-indexes',
   'validate-okf-wiki',
+  'summarize-wiki-run',
   'record-wiki-state',
   'check-wiki-state',
   'check-wiki-clean',

@@ -281,6 +281,7 @@ export const ACTION_OPTION_FIELDS: Partial<
   'plan-wiki-update': new Set(['root', 'statePath', 'instructions', 'instructionsPath']),
   'sync-okf-indexes': new Set(['root', 'version']),
   'validate-okf-wiki': new Set(['root', 'version']),
+  'summarize-wiki-run': new Set(['plan', 'validation', 'agentNode']),
   'record-wiki-state': new Set(['root', 'statePath', 'instructions', 'instructionsPath']),
   'check-wiki-state': new Set(['root', 'statePath', 'instructions', 'instructionsPath']),
   'check-wiki-clean': new Set(['root', 'statePath']),

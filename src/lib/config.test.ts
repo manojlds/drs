@@ -286,7 +286,7 @@ describe('Config', () => {
           statePath: { type: 'string', default: '.drs/wiki-state.json' },
           check: { type: 'boolean', default: false },
         },
-        output: 'wikiValidation',
+        output: 'wikiResult',
         nodes: {
           'plan-update': {
             action: 'plan-wiki-update',
@@ -310,10 +310,20 @@ describe('Config', () => {
             action: 'record-wiki-state',
             needs: ['validate-updated-wiki'],
           },
+          'summarize-updated-wiki': {
+            action: 'summarize-wiki-run',
+            needs: ['record-state'],
+            output: 'wikiResult',
+          },
           'validate-current-wiki': {
             action: 'validate-okf-wiki',
             needs: ['plan-update'],
             output: 'wikiValidation',
+          },
+          'summarize-current-wiki': {
+            action: 'summarize-wiki-run',
+            needs: ['validate-current-wiki'],
+            output: 'wikiResult',
           },
         },
       });

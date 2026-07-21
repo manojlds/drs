@@ -144,7 +144,7 @@ describe('run-agent', () => {
     const validation = {
       afterMutation: [{ name: 'okf-document' as const, root: 'wiki' }],
     };
-    await runAgent(baseConfig, 'task/docs-updater', {
+    const result = await runAgent(baseConfig, 'task/docs-updater', {
       prompt: 'Maintain the wiki',
       workingDir: process.cwd(),
       permissions,
@@ -154,6 +154,7 @@ describe('run-agent', () => {
     expect(mocks.createRuntimeClientInstance).toHaveBeenCalledWith(
       expect.objectContaining({ permissions, validation })
     );
+    expect(result.workspaceChanges).toEqual({ added: [], modified: [], deleted: [] });
   });
 
   it('rejects residual changes outside agent filesystem permissions', async () => {
@@ -194,6 +195,54 @@ describe('run-agent', () => {
         },
       })
     ).rejects.toThrow('source.ts');
+  });
+
+  it('returns allowed workspace changes classified by operation', async () => {
+    const projectRoot = createTempDir('drs-run-agent-changes-');
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+    mkdirSync(join(projectRoot, 'wiki'));
+    writeFileSync(join(projectRoot, 'wiki', 'guide.md'), 'before\n');
+    writeFileSync(join(projectRoot, 'wiki', 'old.md'), 'old\n');
+    execFileSync('git', ['add', '.'], { cwd: projectRoot, stdio: 'ignore' });
+    mocks.runtimeClient.streamMessages.mockImplementationOnce(async function* () {
+      writeFileSync(join(projectRoot, 'wiki', 'guide.md'), 'after\n');
+      writeFileSync(join(projectRoot, 'wiki', 'new.md'), 'new\n');
+      rmSync(join(projectRoot, 'wiki', 'old.md'));
+      yield {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Updated wiki files',
+        timestamp: new Date(),
+        provider: 'provider',
+        model: 'default-model',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
+      };
+    });
+
+    const result = await runAgent(baseConfig, 'task/docs-updater', {
+      prompt: 'Maintain the wiki',
+      workingDir: projectRoot,
+      permissions: {
+        filesystem: {
+          write: { roots: ['wiki'], allow: ['**/*.md'] },
+          delete: { roots: ['wiki'], allow: ['**/*.md'] },
+        },
+        shell: false,
+      },
+    });
+
+    expect(result.workspaceChanges).toEqual({
+      added: ['wiki/new.md'],
+      modified: ['wiki/guide.md'],
+      deleted: ['wiki/old.md'],
+    });
   });
 
   it('rejects an output path outside agent filesystem permissions before writing', async () => {

@@ -27,7 +27,7 @@ inputs:
     type: boolean
     default: false
     description: Fail when the workflow produces uncommitted wiki or state changes
-output: wikiValidation
+output: wikiResult
 nodes:
   plan-update:
     action: plan-wiki-update
@@ -123,6 +123,28 @@ nodes:
       root: '{{inputs.root}}'
       statePath: '{{inputs.statePath}}'
 
+  summarize-updated-wiki:
+    action: summarize-wiki-run
+    needs:
+      - record-state
+    if: inputs.check == false
+    with:
+      plan: wikiDelta
+      validation: wikiValidation
+      agentNode: maintain-wiki
+    output: wikiResult
+
+  summarize-checked-updated-wiki:
+    action: summarize-wiki-run
+    needs:
+      - check-updated-wiki
+    if: inputs.check == true
+    with:
+      plan: wikiDelta
+      validation: wikiValidation
+      agentNode: maintain-wiki
+    output: wikiResult
+
   validate-current-wiki:
     action: validate-okf-wiki
     needs:
@@ -141,3 +163,25 @@ nodes:
     with:
       root: '{{inputs.root}}'
       statePath: '{{inputs.statePath}}'
+
+  summarize-current-wiki:
+    action: summarize-wiki-run
+    needs:
+      - validate-current-wiki
+    if: inputs.check == false
+    with:
+      plan: wikiDelta
+      validation: wikiValidation
+      agentNode: maintain-wiki
+    output: wikiResult
+
+  summarize-checked-current-wiki:
+    action: summarize-wiki-run
+    needs:
+      - check-current-wiki
+    if: inputs.check == true
+    with:
+      plan: wikiDelta
+      validation: wikiValidation
+      agentNode: maintain-wiki
+    output: wikiResult

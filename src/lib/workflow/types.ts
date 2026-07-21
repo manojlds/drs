@@ -1,4 +1,6 @@
 import type { AgentRunResult } from '../agent-result.js';
+import type { AgentWorkspaceChanges } from '../agent-permissions.js';
+import type { AgentUsageSummary } from '../review-usage.js';
 
 export interface WorkflowRunOptions {
   inputs?: Record<string, string>;
@@ -42,6 +44,8 @@ export interface WorkflowNodeResult {
   target?: string;
   response?: string;
   responses?: AgentRunResult[];
+  usage?: AgentUsageSummary;
+  workspaceChanges?: AgentWorkspaceChanges;
   output?: unknown;
   outputs?: Record<string, unknown>;
   writes?: string;
@@ -64,6 +68,7 @@ export interface WorkflowRunResult {
 }
 
 export interface WorkflowTemplateContext {
+  startedAt?: string;
   inputs: Record<string, string>;
   nodes: Record<string, WorkflowNodeResult>;
   artifacts: Record<string, unknown>;

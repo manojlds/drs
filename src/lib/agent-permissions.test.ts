@@ -151,9 +151,11 @@ describe('agent permissions', () => {
     const before = await captureAgentWorkspaceSnapshot(root);
 
     await writeFile(join(root, 'wiki', 'guide.md'), 'after\n');
-    await expect(assertAgentWorkspaceChangesAllowed(root, permissions, before)).resolves.toEqual([
-      'wiki/guide.md',
-    ]);
+    await expect(assertAgentWorkspaceChangesAllowed(root, permissions, before)).resolves.toEqual({
+      added: [],
+      modified: ['wiki/guide.md'],
+      deleted: [],
+    });
 
     const beforeDelete = await captureAgentWorkspaceSnapshot(root);
     await rm(join(root, 'wiki', 'guide.md'));
@@ -166,7 +168,7 @@ describe('agent permissions', () => {
         },
         beforeDelete
       )
-    ).resolves.toEqual(['wiki/guide.md']);
+    ).resolves.toEqual({ added: [], modified: [], deleted: ['wiki/guide.md'] });
 
     await writeFile(join(root, 'source.ts'), 'after\n');
     await expect(assertAgentWorkspaceChangesAllowed(root, permissions, before)).rejects.toThrow(

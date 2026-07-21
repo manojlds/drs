@@ -7,6 +7,7 @@ drs_sources:
   - path: .pi/agents/task/okf-wiki-maintainer.md
   - path: .pi/workflows/repository-wiki-check.yaml
   - path: .pi/workflows/repository-wiki-sync.yaml
+  - path: .github/workflows/wiki-update.yml
   - path: .wiki-site/.vitepress/config.mts
   - path: .wiki-site/.vitepress/theme/PageLead.vue
   - path: src/cli/workflow.ts
@@ -16,12 +17,15 @@ drs_sources:
     symbols: [planWikiUpdate, recordWikiState, checkWikiClean, resolveWikiInstructions]
   - path: src/lib/wiki-search.ts
     symbols: [searchWiki]
+  - path: src/lib/wiki-run-summary.ts
+    symbols: [createWikiRunSummary, formatWikiRunSummaryHuman, formatWikiRunSummaryMarkdown]
   - path: src/lib/wiki-site-safety.ts
     symbols: [neutralizeWikiSiteMarkdown, sanitizeWikiSiteFrontmatter, isSafeWikiSiteRemoteUrl, readWikiSiteOkfVersion]
   - path: src/cli/workflow.test.ts
   - path: src/lib/okf-wiki.test.ts
   - path: src/lib/wiki-delta.test.ts
   - path: src/lib/wiki-search.test.ts
+  - path: src/lib/wiki-run-summary.test.ts
 ---
 
 # Repository wiki
@@ -88,6 +92,12 @@ drs workflow run repository-wiki-check
 ```
 
 The sync workflow runs the `task/okf-wiki-maintainer` agent only when the delta plan decides work is needed. If both source and wiki content match the recorded state, the agent node is skipped and the current bundle is validated instead.
+
+## Run summary
+
+Every `repository-wiki-sync` run ends with a deterministic summary in normal terminal output and under `output.summary` in JSON. It reports the delta mode and changed-source count; final concept total and net additions, edits, and deletions; validation warnings and errors; directed graph counts; provenance coverage; whether a model was invoked; model identity, turns, token usage, and estimated cost; elapsed time; and the effective instructions hash. A no-op explicitly reports that no model was invoked and uses zero model usage and concept changes.
+
+Net concept changes come from the same before/after workspace fingerprint used by the agent permission postcondition. Generated `index.md` files and `log.md` are excluded. The summary contains metrics and identifiers only, not prompts, concept bodies, or the maintainer's prose response. The final output preserves the existing validation fields and adds `summary` plus an escaped `summaryMarkdown` rendering.
 
 ## Deterministic delta fingerprints
 
@@ -179,9 +189,9 @@ The `repository-wiki-check` workflow combines `check-wiki-state` with `validate-
 
 Ordinary feature pull requests do not update `.drs/wiki-state.json`. Their wiki site build still validates OKF conformance, publishing safety, and rendering, but allows the canonical wiki to remain temporarily stale until scheduled maintenance runs. This avoids deterministic-state conflicts between parallel source branches.
 
-`.github/workflows/wiki-update.yml` runs daily at 04:00 UTC and on manual dispatch. It checks out the latest default branch, runs `repository-wiki-sync --executor local`, rejects changes outside `wiki/` and `.drs/wiki-state.json`, and creates or updates one `drs/wiki-update` pull request. Reusing one branch serializes generated wiki maintenance instead of producing one state file per feature branch. If the default branch moves before merge, rerun the workflow to regenerate the wiki and state from the new combined source tree.
+`.github/workflows/wiki-update.yml` runs daily at 04:00 UTC and on manual dispatch. It checks out the latest default branch, runs `repository-wiki-sync --executor local`, rejects changes outside `wiki/` and `.drs/wiki-state.json`, and creates or updates one `drs/wiki-update` pull request. The generation job writes the escaped run summary to `$GITHUB_STEP_SUMMARY`; when wiki files changed, the publish job uses the same Markdown as the pull request body instead of posting recurring comments. Reusing one branch serializes generated wiki maintenance instead of producing one state file per feature branch. If the base branch moves before merge, rerun the workflow to regenerate the wiki and state from the new combined source tree.
 
-Configure `DRS_PROVIDER_API_KEY` (or the legacy `OPENCODE_API_KEY` fallback) for generation. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` with repository Contents and pull requests read/write access for the final bot-PR step. Model execution and path guards run in a token-free job that exports a binary patch. A fresh checkout reapplies and verifies that patch before the write token is supplied only to the pinned `peter-evans/create-pull-request` action. The bot PR runs the strict freshness check, and GitHub Pages repeats it before deployment.
+Configure `DRS_PROVIDER_API_KEY` (or the legacy `OPENCODE_API_KEY` fallback) for generation. Configure a fine-grained `DRS_WIKI_SYNC_TOKEN` with repository Contents and pull requests read/write access for the final bot-PR step. Model execution and path guards run in a token-free job that exports only a binary patch and sanitized summary Markdown; full workflow JSON is not transferred to the token-bearing job. A fresh checkout reapplies and verifies that patch before the write token is supplied only to the pinned `peter-evans/create-pull-request` action. The bot PR runs the strict freshness check, and GitHub Pages repeats it before deployment.
 
 ## Model-free search
 
@@ -233,9 +243,10 @@ Wiki behavior is covered by:
 - `src/lib/agent-permissions.test.ts` and `src/pi/sdk.test.ts` — policy validation, path and symbolic-link denial, Pi tool enforcement, in-run validation feedback, and post-run mutation checks.
 - `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — deterministic concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — delta planning, fingerprinting, state recording, and clean checks.
+- `src/lib/wiki-run-summary.test.ts` — structural metrics, net concept-change classification, model-free no-op reporting, and Markdown escaping.
 - `src/lib/wiki-site*.test.ts` — directed graph extraction and metrics, publishing safety, reusable build/serve setup, and deployed-site smoke checks.
 - `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs.
-- `src/temporal/retry-policy.test.ts` — Temporal retry classification for wiki actions (`sync-okf-indexes` and `record-wiki-state` are no-retry; `plan-wiki-update`, `validate-okf-wiki`, `check-wiki-state`, and `check-wiki-clean` are retryable).
+- `src/temporal/retry-policy.test.ts` — Temporal retry classification for wiki actions (`sync-okf-indexes` and `record-wiki-state` are no-retry; `plan-wiki-update`, `validate-okf-wiki`, `summarize-wiki-run`, `check-wiki-state`, and `check-wiki-clean` are retryable).
 
 ## See also
 

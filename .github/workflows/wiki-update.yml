@@ -52,6 +52,7 @@ jobs:
           DRS_RUNTIME_STREAM_TIMEOUT_MS: '900000'
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: '2000'
         run: |
+          set -euo pipefail
           resolved_key="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
           if [ -z "$resolved_key" ]; then
             echo "Missing DRS_PROVIDER_API_KEY or OPENCODE_API_KEY"
@@ -59,9 +60,22 @@ jobs:
           fi
 
           export OPENCODE_API_KEY="$resolved_key"
+          artifact_dir="$RUNNER_TEMP/repository-wiki-artifacts"
+          result_path="$RUNNER_TEMP/repository-wiki-result.json"
+          mkdir -p "$artifact_dir"
           node dist/cli/index.js workflow run repository-wiki-sync \
             --executor local \
-            --json
+            --json | tee "$result_path"
+          jq -er '.output.summaryMarkdown' "$result_path" \
+            > "$artifact_dir/repository-wiki-summary.md"
+          rm "$result_path"
+
+      - name: Report repository wiki summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat "$RUNNER_TEMP/repository-wiki-artifacts/repository-wiki-summary.md" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: Guard wiki-only changes
         id: wiki-changes
@@ -108,17 +122,16 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             git diff --cached --check
-            patch_path="$RUNNER_TEMP/repository-wiki.patch"
+            patch_path="$RUNNER_TEMP/repository-wiki-artifacts/repository-wiki.patch"
             rm -f "$patch_path"
             git diff --cached --binary --full-index > "$patch_path"
           fi
 
-      - name: Upload repository wiki patch
-        if: steps.wiki-changes.outputs.changed == 'true'
+      - name: Upload repository wiki artifacts
         uses: actions/upload-artifact@v4
         with:
           name: repository-wiki-patch-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/repository-wiki.patch
+          path: ${{ runner.temp }}/repository-wiki-artifacts
           if-no-files-found: error
           retention-days: 1
 
@@ -137,8 +150,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Download repository wiki patch
-        if: needs.generate.outputs.changed == 'true'
+      - name: Download repository wiki artifacts
         uses: actions/download-artifact@v4
         with:
           name: repository-wiki-patch-${{ github.run_id }}-${{ github.run_attempt }}
@@ -190,10 +202,7 @@ jobs:
             .drs/wiki-state.json
           commit-message: 'docs(wiki): synchronize repository wiki'
           title: 'docs(wiki): synchronize repository wiki'
-          body: |
-            Automated repository wiki update generated from the latest default branch.
-
-            If the base branch moves before merge, rerun this workflow to refresh the wiki and deterministic state.
+          body-path: ${{ runner.temp }}/repository-wiki-patch/repository-wiki-summary.md
 
       - name: Report pull request
         if: steps.wiki-pr.outputs.pull-request-url != ''

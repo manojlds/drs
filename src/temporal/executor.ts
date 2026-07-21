@@ -11,6 +11,7 @@ import { compileWorkflowPlan, type CompiledWorkflowInput } from '../lib/workflow
 import type { WorkflowExecutor } from '../lib/workflow/executor.js';
 import { normalizeWorkflowBooleanLike } from '../lib/workflow/planning.js';
 import type { WorkflowRunOptions, WorkflowRunResult } from '../lib/workflow/types.js';
+import { formatWikiRunSummaryHuman, getWikiRunSummary } from '../lib/wiki-run-summary.js';
 import { resolveTemporalConfig } from './config.js';
 import { deriveTemporalWorkflowId } from './workflow-id.js';
 import type { TemporalManagedWorkspaceInput, TemporalWorkflowInput } from './types.js';
@@ -307,8 +308,13 @@ export class TemporalWorkflowExecutor implements WorkflowExecutor {
 
       if (options.jsonOutput) {
         console.log(formatWorkflowJson(result));
-      } else if (typeof result.output === 'string' && result.output.trim()) {
-        console.log(`\n${result.output}`);
+      } else {
+        const wikiSummary = getWikiRunSummary(result.output);
+        if (wikiSummary) {
+          console.log(`\n${formatWikiRunSummaryHuman(wikiSummary)}`);
+        } else if (typeof result.output === 'string' && result.output.trim()) {
+          console.log(`\n${result.output}`);
+        }
       }
 
       return result;

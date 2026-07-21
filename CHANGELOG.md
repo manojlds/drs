@@ -16,6 +16,7 @@ All notable changes to DRS are documented in this file.
 - Add generic workflow-agent filesystem permissions with literal roots, allow/deny patterns, shell isolation, Pi-native tool enforcement, post-run mutation checks, and in-run content validators.
 - Add a persistent repository wiki brief at `.drs/wiki-instructions.md`: the `repository-wiki-sync` workflow loads it on every run, appends any one-run `instructions` input with explicit precedence, exposes the effective instructions source and hash in JSON output, and reconciles the wiki when the brief changes. One-run inputs are never recorded in wiki state and never invalidate freshness.
 - Add structured source provenance for repository wiki concepts: declare `drs_sources` citations in concept frontmatter, keep a `source path -> concept paths` reverse map in wiki state, scope update runs to `candidateConcepts` whose cited sources changed, render a Sources panel on the wiki site, and expose citations in `drs wiki search --json`. Malformed declarations fail validation; missing cited paths and missing provenance are warnings so coverage grows incrementally.
+- Add deterministic repository wiki run summaries with delta and concept-change counts, validation, graph and provenance metrics, model usage and estimated cost, elapsed time, and explicit model-free no-op reporting. Human and JSON workflow output share the summary; scheduled wiki updates publish escaped Markdown to the GitHub job summary and reusable wiki pull request body without adding comments.
 
 ### Changed
 
