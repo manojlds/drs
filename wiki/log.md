@@ -95,3 +95,7 @@ Updated concepts:
 - [repository-wiki.md](repository-wiki.md) — documented atomic index writes, empty-index cleanup, and the maintainer's permission boundary.
 - [maintenance-workflows.md](maintenance-workflows.md) — noted the scoped permissions and in-run validation on `repository-wiki-sync`.
 - [testing.md](testing.md) — listed the new planning, permission, and wiki-site integration tests.
+
+## 2026-07-21
+
+Added deterministic repository wiki run summaries. `repository-wiki-sync` now preserves final validation fields and adds structural, provenance, model usage, estimated cost, elapsed-time, and effective-instructions-hash metrics. Normal CLI output and JSON expose the summary, and no-op runs explicitly report that no model was invoked. The scheduled update workflow writes escaped Markdown to the GitHub job summary and updates the reusable wiki pull request body without posting recurring comments or passing full workflow JSON into the token-bearing job.

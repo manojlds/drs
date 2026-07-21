@@ -466,6 +466,24 @@ nodes:
     output: wikiValidation
 ```
 
+### `summarize-wiki-run`
+
+Combines a `plan-wiki-update` artifact, final `validate-okf-wiki` artifact, and wiki maintainer node metadata into a deterministic run summary. The summary reports delta mode, changed sources, net concept additions/edits/deletions, validation and graph metrics, provenance coverage, model invocation and usage, estimated cost, elapsed time, and the effective instructions hash. It does not include prompts, repository content, or the maintainer's prose response.
+
+The action preserves the validation fields and adds `summary` plus escaped `summaryMarkdown`. `repository-wiki-sync` uses this enriched object as its final output. Human CLI runs render the same summary, while the scheduled GitHub workflow places `summaryMarkdown` in the job summary and updates the reusable wiki pull request body without posting comments.
+
+```yaml
+nodes:
+  summarize-wiki:
+    action: summarize-wiki-run
+    needs: [record-state]
+    with:
+      plan: wikiDelta
+      validation: wikiValidation
+      agentNode: maintain-wiki
+    output: wikiResult
+```
+
 ### `describe`
 
 Generates a PR/MR description from a platform `change-source` artifact. Set `with.post: true` to update the PR/MR description on the platform.

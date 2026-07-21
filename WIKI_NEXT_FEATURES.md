@@ -2,7 +2,7 @@
 
 ## Next-session handoff
 
-Baseline: `main` at merge commit `f55211e` (PR #186).
+Baseline: `main` at merge commit `106f231` (PR #193).
 
 The repository wiki now has:
 
@@ -12,6 +12,9 @@ The repository wiki now has:
 - An OKF v0.1 canonical bundle under `wiki/` with validation and generated indexes.
 - A reusable VitePress site, local search, raw OKF output, `llms.txt`, and a concept graph.
 - Model-free `drs wiki search <query...>` with ranked human and JSON results.
+- Structured source provenance with reverse mapping from changed sources to concepts.
+- Directed graph rendering, quality metrics, and orphan warnings.
+- Deterministic wiki run summaries in human/JSON output and the scheduled wiki pull request body.
 
 This roadmap captures the remaining useful ideas from the OpenWiki comparison. The recommended order prioritizes security and deterministic evidence before adding more model-driven behavior.
 
@@ -142,6 +145,8 @@ drs_sources:
 
 ## Priority 4: Directed graph semantics and quality checks
 
+Status: implemented. Semantic links remain directed, reciprocal edges stay distinct, generated navigation is excluded, validation reports graph-quality metrics and orphan warnings, and the site renders arrowheads plus separate incoming/outgoing neighbors. Surrounding-sentence relationship explanations remain an optional enhancement.
+
 ### Goal
 
 Preserve the direction of semantic Markdown links and expose useful graph-quality signals.
@@ -194,6 +199,8 @@ Build an optional grounded question-answering command on top of model-free searc
 
 ## Priority 6: Wiki run metrics and self-correction
 
+Status: structural run summary implemented. Human and JSON output report delta mode, changed sources, net concept additions/edits/deletions, final validation counts, directed graph metrics, provenance coverage, model invocation and usage, estimated cost, elapsed time, and effective instructions hash. Scheduled GitHub updates use escaped summary Markdown for the job summary and reusable pull request body. Historical in-run validation failure and repair-attempt counters remain unimplemented.
+
 ### Goal
 
 Make wiki maintenance quality and cost visible without adopting default telemetry.
@@ -228,12 +235,14 @@ DRS already has stronger deterministic state, OKF validation, static publishing,
 
 ## Recommended implementation order
 
-1. Scoped wiki mutation and in-run validation.
-2. Persistent repository wiki brief.
-3. Structured source provenance and reverse map.
-4. Directed graph semantics and graph-quality checks.
-5. Read-only `drs wiki ask`.
-6. Wiki metrics and self-correction reporting.
+Completed priorities: scoped wiki mutation, persistent briefs, structured provenance, directed graph quality, and the structural run-summary slice of metrics.
+
+Recommended remaining order:
+
+1. Read-only `drs wiki ask` with invocation-level tool and skill isolation.
+2. Validation failure, repair-attempt, and successful-repair counters for wiki maintenance.
+3. Optional `drs init` wiki discovery block.
+4. Optional graph relationship explanations and stronger browser accessibility tests.
 
 Each priority should be a separate PR unless implementation proves very small. Complete the security boundary before adding `wiki ask` or external ingestion.
 
@@ -250,5 +259,5 @@ Each priority should be a separate PR unless implementation proves very small. C
 ## Suggested prompt for the next session
 
 ```text
-Read WIKI_NEXT_FEATURES.md and implement Priority 4 leftovers (arrowhead rendering, incoming/outgoing neighbor separation, relationship explanations) or Priority 5: Read-only `drs wiki ask`. Start from current main, inspect the graph analysis in src/lib/wiki-site-graph.ts and model-free retrieval in src/lib/wiki-search.ts before editing, keep the change minimal, add security-focused tests, update and synchronize the canonical wiki, run npm run check:all, and open a PR.
+Read WIKI_NEXT_FEATURES.md and implement Priority 5: read-only `drs wiki ask`, or the remaining Priority 6 validation/repair counters. For `wiki ask`, inspect model-free retrieval in src/lib/wiki-search.ts and enforce invocation-level tool and skill isolation outside repository-controlled agent configuration. Keep the change focused, add security tests, update the canonical wiki, run npm run check:all, and open a PR.
 ```

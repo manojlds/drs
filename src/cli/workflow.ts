@@ -55,13 +55,21 @@ import {
   formatOkfValidationErrors,
   synchronizeOkfIndexes,
   validateOkfBundle,
+  type OkfBundleValidationResult,
 } from '../lib/okf-wiki.js';
 import {
   checkWikiClean,
   planWikiUpdate,
   recordWikiState,
   type WikiInstructionsOptions,
+  type WikiUpdatePlan,
 } from '../lib/wiki-delta.js';
+import {
+  createWikiRunSummary,
+  formatWikiRunSummaryHuman,
+  formatWikiRunSummaryMarkdown,
+  getWikiRunSummary,
+} from '../lib/wiki-run-summary.js';
 import { createGitHubClient } from '../github/client.js';
 import { GitHubPlatformAdapter } from '../github/platform-adapter.js';
 import { createGitLabClient } from '../gitlab/client.js';
@@ -555,6 +563,8 @@ async function runAgentWorkflowNode(
     type: 'agent',
     agent: agentId,
     response: result.response,
+    usage: result.usage,
+    workspaceChanges: result.workspaceChanges,
     output,
     writes,
   };
@@ -734,6 +744,9 @@ async function runActionWorkflowNode(
   }
   if (node.action === 'validate-okf-wiki') {
     return runValidateOkfWikiWorkflowNode(nodeId, node, workingDir, context);
+  }
+  if (node.action === 'summarize-wiki-run') {
+    return runSummarizeWikiRunWorkflowNode(nodeId, node, context);
   }
   if (node.action === 'record-wiki-state') {
     return runRecordWikiStateWorkflowNode(nodeId, node, workingDir, context);
@@ -2547,6 +2560,94 @@ async function runValidateOkfWikiWorkflowNode(
   };
 }
 
+function runSummarizeWikiRunWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  context: WorkflowTemplateContext
+): WorkflowNodeResult {
+  const planName = getStringActionOption(node, 'plan', context)?.trim() ?? 'wikiDelta';
+  const validationName =
+    getStringActionOption(node, 'validation', context)?.trim() ?? 'wikiValidation';
+  const agentNodeId = getStringActionOption(node, 'agentNode', context)?.trim() ?? 'maintain-wiki';
+  const plan = requireWikiUpdatePlan(context.artifacts[planName], nodeId, planName);
+  const validation = requireWikiValidation(
+    context.artifacts[validationName],
+    nodeId,
+    validationName
+  );
+  const agentNode = context.nodes[agentNodeId];
+  if (
+    plan.shouldRun &&
+    (!agentNode || agentNode.status === 'skipped' || agentNode.type !== 'agent')
+  ) {
+    throw new Error(
+      `Workflow summarize-wiki-run node "${nodeId}" expected completed agent node "${agentNodeId}".`
+    );
+  }
+
+  const startedAt = context.startedAt ? Date.parse(context.startedAt) : Date.now();
+  const summary = createWikiRunSummary({
+    plan,
+    validation,
+    modelInvoked: plan.shouldRun,
+    usage: plan.shouldRun ? agentNode?.usage : undefined,
+    workspaceChanges: plan.shouldRun ? agentNode?.workspaceChanges : undefined,
+    elapsedMs: Date.now() - (Number.isFinite(startedAt) ? startedAt : Date.now()),
+  });
+  const response = formatWikiRunSummaryHuman(summary);
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response,
+    output: { ...validation, summary, summaryMarkdown: formatWikiRunSummaryMarkdown(summary) },
+  };
+}
+
+function requireWikiUpdatePlan(
+  value: unknown,
+  nodeId: string,
+  artifactName: string
+): WikiUpdatePlan {
+  if (
+    !isRecord(value) ||
+    !['generate', 'reconcile', 'update', 'noop'].includes(String(value.mode)) ||
+    typeof value.shouldRun !== 'boolean' ||
+    typeof value.changedPathCount !== 'number'
+  ) {
+    throw new Error(
+      `Workflow summarize-wiki-run node "${nodeId}" needs a wiki update plan artifact at "${artifactName}".`
+    );
+  }
+  return value as unknown as WikiUpdatePlan;
+}
+
+function requireWikiValidation(
+  value: unknown,
+  nodeId: string,
+  artifactName: string
+): OkfBundleValidationResult {
+  if (
+    !isRecord(value) ||
+    typeof value.valid !== 'boolean' ||
+    typeof value.root !== 'string' ||
+    typeof value.concepts !== 'number' ||
+    !Array.isArray(value.errors) ||
+    !Array.isArray(value.warnings) ||
+    !isRecord(value.graph)
+  ) {
+    throw new Error(
+      `Workflow summarize-wiki-run node "${nodeId}" needs an OKF validation artifact at "${artifactName}".`
+    );
+  }
+  return value as unknown as OkfBundleValidationResult;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 async function runRecordWikiStateWorkflowNode(
   nodeId: string,
   node: WorkflowNodeConfig,
@@ -3746,6 +3847,7 @@ async function executeWorkflowRun(
   options: WorkflowRunOptions,
   controlSegments?: CompiledWorkflowSegment[]
 ): Promise<WorkflowRunResult> {
+  const startedAt = new Date().toISOString();
   const workflow = config.workflows?.[workflowName];
   if (!workflow) {
     throw new Error(`Unknown workflow "${workflowName}".`);
@@ -3755,7 +3857,7 @@ async function executeWorkflowRun(
   const nodes: Record<string, WorkflowNodeResult> = {};
   const artifacts: Record<string, unknown> = {};
   const loop: Record<string, WorkflowLoopState> = {};
-  const context: WorkflowTemplateContext = { inputs, nodes, artifacts, loop };
+  const context: WorkflowTemplateContext = { startedAt, inputs, nodes, artifacts, loop };
   const executionContext: WorkflowExecutionContext = {
     gitClients: new Map(),
     platformClients: {},
@@ -3899,8 +4001,13 @@ async function executeWorkflowRun(
 
   if (options.jsonOutput) {
     console.log(formatWorkflowJson(result));
-  } else if (typeof result.output === 'string' && result.output.trim()) {
-    console.log(`\n${result.output}`);
+  } else {
+    const wikiSummary = getWikiRunSummary(result.output);
+    if (wikiSummary) {
+      console.log(`\n${formatWikiRunSummaryHuman(wikiSummary)}`);
+    } else if (typeof result.output === 'string' && result.output.trim()) {
+      console.log(`\n${result.output}`);
+    }
   }
 
   return result;

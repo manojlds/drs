@@ -21,6 +21,7 @@ import {
   captureAgentWorkspaceSnapshot,
   type AgentPermissions,
   type AgentValidation,
+  type AgentWorkspaceChanges,
   type AgentWorkspaceSnapshot,
 } from '../lib/agent-permissions.js';
 
@@ -157,6 +158,7 @@ export async function runAgent(
   let result: AgentRunResult | undefined;
   let operationError: Error | undefined;
   let cleanupError: Error | undefined;
+  let workspaceChanges: AgentWorkspaceChanges | undefined;
   const logger = getLogger();
 
   try {
@@ -238,7 +240,7 @@ export async function runAgent(
         (effectiveOptions.permissions?.filesystem?.write ||
           effectiveOptions.permissions?.filesystem?.delete)
       ) {
-        await assertAgentWorkspaceChangesAllowed(
+        workspaceChanges = await assertAgentWorkspaceChangesAllowed(
           workingDir,
           effectiveOptions.permissions.filesystem,
           workspaceSnapshot
@@ -252,5 +254,6 @@ export async function runAgent(
   if (operationError) throw operationError;
   if (cleanupError) throw cleanupError;
   if (!result) throw new Error(`Agent "${agentId}" completed without a result.`);
+  if (workspaceChanges) result.workspaceChanges = workspaceChanges;
   return result;
 }

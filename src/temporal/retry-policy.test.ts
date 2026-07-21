@@ -48,6 +48,7 @@ describe('getTemporalNodeRetryMode', () => {
       'code-quality-report',
       'plan-wiki-update',
       'validate-okf-wiki',
+      'summarize-wiki-run',
       'check-wiki-clean',
       'check-wiki-state',
       'verify-fix',

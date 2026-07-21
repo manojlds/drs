@@ -94,6 +94,7 @@ drs workflow run local-fix-review-issues
 drs workflow run local-update-agents-md
 
 # Generate or update one OKF v0.1 repository wiki bundle under wiki/
+# The command ends with a structural, usage, cost, and elapsed-time summary.
 drs workflow run repository-wiki-sync
 
 # Verify the committed wiki delta state and OKF bundle without a model call

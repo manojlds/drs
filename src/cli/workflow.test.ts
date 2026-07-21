@@ -94,15 +94,17 @@ const mocks = vi.hoisted(() => {
       agent,
       response: `${agent}: ${options.prompt ?? 'configured prompt'}`,
       usage: {
-        agent,
+        agentType: agent,
         success: true,
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 2,
-        cost: 0,
-        messages: 1,
+        turns: 1,
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
       },
     })),
   };
@@ -186,15 +188,17 @@ describe('workflow runner', () => {
       agent,
       response,
       usage: {
-        agent,
+        agentType: agent,
         success: true,
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 2,
-        cost: 0,
-        messages: 1,
+        turns: 1,
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
       },
     };
   }
@@ -262,15 +266,17 @@ describe('workflow runner', () => {
         agent,
         response: `${agent}: ${options.prompt ?? 'configured prompt'}`,
         usage: {
-          agent,
+          agentType: agent,
           success: true,
-          inputTokens: 1,
-          outputTokens: 1,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
-          totalTokens: 2,
-          cost: 0,
-          messages: 1,
+          turns: 1,
+          usage: {
+            input: 1,
+            output: 1,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 2,
+            cost: 0,
+          },
         },
       })
     );
@@ -3373,15 +3379,23 @@ describe('workflow runner', () => {
           agent,
           response: 'Created the repository wiki.',
           usage: {
-            agent,
+            agentType: agent,
+            model: 'provider/model',
             success: true,
-            inputTokens: 1,
-            outputTokens: 1,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-            totalTokens: 2,
-            cost: 0,
-            messages: 1,
+            turns: 1,
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: 0,
+            },
+          },
+          workspaceChanges: {
+            added: ['knowledge/quickstart.md'],
+            modified: [],
+            deleted: [],
           },
         };
       }
@@ -3402,7 +3416,16 @@ describe('workflow runner', () => {
       root: 'knowledge',
       concepts: 1,
       indexes: 1,
+      summary: {
+        mode: 'generate',
+        concepts: { total: 1, added: 1, edited: 0, deleted: 0 },
+        model: { invoked: true, id: 'provider/model', usage: { totalTokens: 2 } },
+      },
     });
+    expect((result.output as { summaryMarkdown: string }).summaryMarkdown).toContain(
+      '## Repository wiki summary'
+    );
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Repository wiki summary'));
     expect(readFileSync(join(projectRoot, 'knowledge', 'index.md'), 'utf-8')).toContain(
       '* [Repository quickstart](quickstart.md) - Entry point for repository knowledge.'
     );
@@ -3439,7 +3462,33 @@ describe('workflow runner', () => {
     });
     expect(noOpResult.nodes['maintain-wiki']).toMatchObject({ status: 'skipped' });
     expect(noOpResult.nodes['validate-current-wiki']).toMatchObject({ type: 'action' });
-    expect(noOpResult.output).toMatchObject({ valid: true, root: 'knowledge' });
+    expect(noOpResult.output).toMatchObject({
+      valid: true,
+      root: 'knowledge',
+      summary: {
+        mode: 'noop',
+        concepts: { total: 1, added: 0, edited: 0, deleted: 0 },
+        model: { invoked: false, usage: { totalTokens: 0 } },
+      },
+    });
+
+    execFileSync('git', ['add', 'knowledge', '.drs/wiki-state.json'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '-m', 'record wiki'], { cwd: projectRoot });
+    const checkedNoOpResult = await runWorkflow(config, 'repository-wiki-sync', {
+      workingDir: projectRoot,
+      inputs: {
+        root: 'knowledge',
+        instructions: 'Focus on workflow behavior.',
+        check: 'true',
+      },
+    });
+    expect(checkedNoOpResult.nodes['check-current-wiki']).toMatchObject({ type: 'action' });
+    expect(checkedNoOpResult.nodes['summarize-checked-current-wiki']).toMatchObject({
+      type: 'action',
+    });
+    expect(checkedNoOpResult.output).toMatchObject({
+      summary: { mode: 'noop', model: { invoked: false } },
+    });
 
     writeFileSync(join(projectRoot, 'README.md'), '# Changed repository\n');
     await expect(
@@ -3493,15 +3542,23 @@ describe('workflow runner', () => {
           agent,
           response: 'Created the repository wiki.',
           usage: {
-            agent,
+            agentType: agent,
+            model: 'provider/model',
             success: true,
-            inputTokens: 1,
-            outputTokens: 1,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-            totalTokens: 2,
-            cost: 0,
-            messages: 1,
+            turns: 1,
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: 0,
+            },
+          },
+          workspaceChanges: {
+            added: ['wiki/quickstart.md'],
+            modified: [],
+            deleted: [],
           },
         };
       }
@@ -3559,6 +3616,25 @@ describe('workflow runner', () => {
 
     await expect(runWorkflow(config, 'invalidWiki', { workingDir: projectRoot })).rejects.toThrow(
       'found 1 error(s)'
+    );
+  });
+
+  it('rejects summarize-wiki-run when its artifacts are missing', async () => {
+    const config = {
+      ...baseConfig,
+      workflows: {
+        invalidSummary: {
+          nodes: {
+            summarize: {
+              action: 'summarize-wiki-run',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'invalidSummary')).rejects.toThrow(
+      'needs a wiki update plan artifact at "wikiDelta"'
     );
   });
 
@@ -4733,15 +4809,17 @@ describe('compiled plan execution', () => {
       agent,
       response: `${agent}: ${options.prompt ?? 'prompt'}`,
       usage: {
-        agent,
+        agentType: agent,
         success: true,
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 2,
-        cost: 0,
-        messages: 1,
+        turns: 1,
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
       },
     }));
 
@@ -4790,15 +4868,17 @@ describe('compiled plan execution', () => {
       agent,
       response: `${agent}: ${options.prompt ?? 'prompt'}`,
       usage: {
-        agent,
+        agentType: agent,
         success: true,
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 2,
-        cost: 0,
-        messages: 1,
+        turns: 1,
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: 0,
+        },
       },
     }));
 

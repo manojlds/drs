@@ -37,6 +37,12 @@ export interface AgentWorkspaceSnapshot {
   files: Record<string, string>;
 }
 
+export interface AgentWorkspaceChanges {
+  added: string[];
+  modified: string[];
+  deleted: string[];
+}
+
 const execFileAsync = promisify(execFile);
 
 const PERMISSION_FIELDS = new Set(['filesystem', 'shell']);
@@ -240,12 +246,19 @@ export async function assertAgentWorkspaceChangesAllowed(
   workingDir: string,
   permissions: AgentFilesystemPermissions,
   before: AgentWorkspaceSnapshot
-): Promise<string[]> {
+): Promise<AgentWorkspaceChanges> {
   const after = await captureAgentWorkspaceSnapshot(workingDir);
   const changedPaths = [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])]
     .filter((filePath) => before.files[filePath] !== after.files[filePath])
     .sort();
-  if (changedPaths.length === 0) return [];
+  const changes: AgentWorkspaceChanges = {
+    added: changedPaths.filter((filePath) => before.files[filePath] === undefined),
+    modified: changedPaths.filter(
+      (filePath) => before.files[filePath] !== undefined && after.files[filePath] !== undefined
+    ),
+    deleted: changedPaths.filter((filePath) => after.files[filePath] === undefined),
+  };
+  if (changedPaths.length === 0) return changes;
   if (!permissions.write && !permissions.delete) {
     throw new Error(
       `Agent changed path(s) without filesystem write permission:\n${changedPaths.map((filePath) => `- ${filePath}`).join('\n')}`
@@ -277,7 +290,7 @@ export async function assertAgentWorkspaceChangesAllowed(
       `Agent changed path(s) outside its filesystem permissions:\n${denied.map(({ path, reason }) => `- ${path}: ${reason}`).join('\n')}`
     );
   }
-  return changedPaths;
+  return changes;
 }
 
 function validatePathPermissions(value: unknown, subject: string): void {

@@ -452,6 +452,7 @@ export async function drsWorkflow(input: TemporalWorkflowInput): Promise<Tempora
   const runningNodeIds = new Set<string>();
   let isCancelled = false;
   const context: WorkflowTemplateContext = {
+    startedAt: info.runStartTime.toISOString(),
     inputs: input.inputs,
     nodes,
     artifacts,
