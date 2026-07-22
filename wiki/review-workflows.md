@@ -3,6 +3,16 @@ type: Workflow
 title: Review workflows
 description: How DRS performs code reviews from local diffs, GitHub PRs, and GitLab MRs, including change sources, findings, fix verification, and posting.
 tags: [review, workflow, findings, comments, code-quality]
+drs_sources:
+  - path: src/cli/workflow.ts
+  - path: src/lib/review-orchestrator.ts
+    symbols: [executeReview, ExecuteReviewOptions]
+  - path: src/lib/review-artifact.ts
+    symbols: [reviewArtifactToReviewResult]
+  - path: src/lib/comment-poster.ts
+    symbols: [postReviewComments]
+  - path: src/lib/error-comment-poster.ts
+    symbols: [removeErrorComment]
 ---
 
 # Review workflows
@@ -39,7 +49,7 @@ The `review` action (`src/cli/workflow.ts`) calls `executeReview` in `src/lib/re
 
 The action exposes the raw review result as its node output and also saves a canonical review artifact envelope. By default the artifact is available as `artifacts.<nodeId>Artifact` (for example `artifacts.reviewArtifact`).
 
-Review action nodes may declare runtime `permissions`. The policy applies to every review and optional describe session; review actions reject write/delete capabilities and mutation validation. The packaged GitHub PR review grants repository read access with `shell: false`, which prevents review agents from executing commands or mutating the checkout.
+Review action nodes may declare runtime `permissions` that apply to every review and optional describe session. The policy rejects filesystem `write`/`delete` rules and mutation validation, and requires `shell: false`. The packaged `github-pr-review` workflow uses repository-wide read access with `shell: false` so review agents cannot execute commands or mutate the checkout.
 
 The GitHub workflow input `requireCompleteDiff=true` rejects an unstable or incomplete API snapshot. DRS paginates the changed-file list, compares it with GitHub's reported count, checks the head before and after retrieval, requires every file patch, and reconciles patch line counts with GitHub metadata. The external PR wrapper enables this fail-closed mode because only trusted base code is checked out.
 
@@ -93,7 +103,7 @@ Standalone stacked fix workflows `github-pr-fix-review-issues-stacked` and `gitl
 
 ## Posting results
 
-The `post-review-comments` action uses `src/lib/comment-poster.ts` to:
+The `post-review-comments` action uses `src/lib/comment-poster.ts` and `src/lib/error-comment-poster.ts` to:
 
 - Post or update a summary comment (identified by a bot marker).
 - Post inline comments for CRITICAL/HIGH issues on valid diff lines.
@@ -102,7 +112,7 @@ The `post-review-comments` action uses `src/lib/comment-poster.ts` to:
 
 The action can also consume a loaded canonical review envelope when `expectedHeadSha` is set. Before any comment or label mutation it validates the envelope id and schema, repository/PR scope, reviewed and current head SHA, finding ids and fingerprints, changed-file paths, and summary counts. The model-free `github-pr-review-post` workflow uses this mode to keep external review generation separate from GitHub write credentials.
 
-Posting also preflights summary/inline body lengths and the inline-comment count before mutation so oversized model output cannot trigger destructive partial cleanup.
+Posting preflights summary and inline comment body lengths and the inline-comment count before mutation, and re-checks the current PR head before each mutating step, so oversized model output or a head change fails instead of leaving partial or stale comments.
 
 For GitLab, the `code-quality-report` action writes a GitLab CodeClimate-compatible JSON report from the review result.
 

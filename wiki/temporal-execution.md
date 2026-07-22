@@ -3,6 +3,12 @@ type: Architecture
 title: Temporal execution
 description: Durable workflow execution through Temporal, including worker deployment, workspace modes, and queries.
 tags: [temporal, durable, worker, executor]
+drs_sources:
+  - path: src/temporal/executor.ts
+  - path: src/temporal/workflows.ts
+  - path: src/temporal/worker.ts
+  - path: src/temporal/retry-policy.test.ts
+  - path: src/temporal/activities.ts
 ---
 
 # Temporal execution
@@ -101,7 +107,7 @@ temporal workflow query --workflow-id <id> --type drsWorkflowStatus
 - Large values are offloaded to the artifact store under `.drs/artifacts/temporal/`.
 - Cancellation is honored: the workflow queries expose `cancelled` and running node ids.
 
-`src/temporal/retry-policy.ts` classifies every workflow action. Writing actions (`write`, `git-add`, `git-branch`, `git-commit`, `git-push`, `save-artifact`, `sync-okf-indexes`, `record-wiki-state`, posting, and change-request creation) are no-retry. Agent nodes are no-retry when they declare a fixed `writes` path or filesystem `write`/`delete` permissions. The wiki maintainer edits a dynamic tree with scoped permissions instead of a fixed `writes` path, so `repository-wiki-sync` remains local-executor-only; wiki planning, validation, and model-free checks are retryable.
+`src/temporal/retry-policy.ts` classifies every workflow action. Writing actions (`write`, `git-add`, `git-branch`, `git-commit`, `git-push`, `save-artifact`, `sync-okf-indexes`, `record-wiki-state`, posting, and change-request creation) are no-retry. Agent nodes are no-retry when they declare a fixed `writes` path or filesystem `write`/`delete` permissions. The wiki maintainer edits a dynamic tree with scoped permissions instead of a fixed `writes` path, so `repository-wiki-sync` remains local-executor-only; wiki planning, validation, `summarize-wiki-run`, and model-free checks are retryable.
 
 The generic Temporal workflow in `src/temporal/workflows.ts` serializes execution of a parallel wave when any runnable node is a potential workspace mutation (action, `writes`, or filesystem `write`/`delete` permissions). This matches the local executor's workspace lock and keeps concurrent nodes from colliding on the filesystem.
 

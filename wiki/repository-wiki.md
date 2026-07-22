@@ -18,7 +18,7 @@ drs_sources:
   - path: src/lib/wiki-search.ts
     symbols: [searchWiki]
   - path: src/lib/wiki-run-summary.ts
-    symbols: [createWikiRunSummary, formatWikiRunSummaryHuman, formatWikiRunSummaryMarkdown]
+    symbols: [createWikiRunSummary, formatWikiRunSummaryHuman, formatWikiRunSummaryMarkdown, getWikiRunSummary]
   - path: src/lib/wiki-site-safety.ts
     symbols: [neutralizeWikiSiteMarkdown, sanitizeWikiSiteFrontmatter, isSafeWikiSiteRemoteUrl, readWikiSiteOkfVersion]
   - path: src/cli/workflow.test.ts
@@ -91,7 +91,7 @@ Run the model-free check:
 drs workflow run repository-wiki-check
 ```
 
-The sync workflow runs the `task/okf-wiki-maintainer` agent only when the delta plan decides work is needed. If both source and wiki content match the recorded state, the agent node is skipped and the current bundle is validated instead.
+The sync workflow runs the `task/okf-wiki-maintainer` agent only when the delta plan decides work is needed. If both source and wiki content match the recorded state, the agent node is skipped and the current bundle is validated instead. The workflow output is `wikiResult`: the final validation object enriched with `summary` and escaped `summaryMarkdown`.
 
 ## Run summary
 

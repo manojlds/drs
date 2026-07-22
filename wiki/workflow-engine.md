@@ -7,6 +7,14 @@ drs_sources:
   - path: src/cli/workflow.ts
   - path: src/lib/workflow/planning.ts
     symbols: [validateWorkflowNodeShape, isPotentialWorkspaceMutation]
+  - path: src/lib/workflow/types.ts
+    symbols: [WorkflowNodeResult, WorkflowTemplateContext]
+  - path: src/lib/review-orchestrator.ts
+    symbols: [ExecuteReviewOptions]
+  - path: src/lib/comment-poster.ts
+    symbols: [postReviewComments]
+  - path: src/lib/error-comment-poster.ts
+    symbols: [removeErrorComment]
 ---
 
 # Workflow engine
@@ -31,7 +39,7 @@ Every node must define exactly one execution type:
 - `action` — run a built-in action.
 - `control` — route execution with `loop`, `switch`, `passThrough`, or `end`.
 
-Common node fields include `needs`, `if`, `input`, `output`, `writes`, and `json`. Agent nodes can also declare runtime-enforced `permissions` and mutation `validation`; action nodes use `with` for action-specific options.
+Common node fields include `needs`, `if`, `input`, `output`, `writes`, and `json`. Agent nodes and `action: review` nodes can also declare runtime-enforced `permissions`; agent nodes can add mutation `validation`. Action nodes use `with` for action-specific options.
 
 ## Agent permissions
 
@@ -68,7 +76,7 @@ Agent nodes may also configure an `afterMutation` validator. The `okf-document` 
 
 Permission rules have important restrictions:
 
-- `permissions` and `validation` are allowed only on `agent` and single-agent nodes, not on `agentsFrom` nodes.
+- `permissions` and `validation` are allowed on `agent` nodes, single-agent nodes, and `action: review` nodes; they are not allowed on `agentsFrom` nodes.
 - `agentsFrom` nodes cannot grant filesystem `write` or `delete` permissions; use explicit single-agent nodes when mutation is required.
 - A node cannot combine `permissions` with the `writes` field; deterministic `write` action nodes should persist output instead.
 - `validation.afterMutation` requires filesystem `write` or `delete` permissions, because validators run inside policy-aware mutation tools.
@@ -90,7 +98,7 @@ Permission rules have important restrictions:
 
 ## Execution
 
-The local executor is `LocalWorkflowExecutor` in `src/cli/workflow.ts`. It resolves inputs, builds the template context (`inputs`, `nodes`, `artifacts`, `loop`), and walks the execution plan:
+The local executor is `LocalWorkflowExecutor` in `src/cli/workflow.ts`. It resolves inputs, builds the template context (`inputs`, `nodes`, `artifacts`, `loop`, `startedAt`), and walks the execution plan:
 
 1. DAG segments run in parallel waves based on `needs`.
 2. A node is skipped if any dependency was skipped or if its `if` condition evaluates to false.
@@ -106,6 +114,9 @@ Template references use `{{...}}` syntax:
 - `{{inputs.diff}}` — workflow input.
 - `{{nodes.summarize.response}}` — raw response from a previous node.
 - `{{artifacts.summary}}` — artifact produced by a previous node.
+- `{{nodes.<id>.usage}}` and `{{nodes.<id>.workspaceChanges}}` — agent usage and filesystem changes from a previous agent node.
+
+The template context also carries `startedAt`, an ISO timestamp used by the `summarize-wiki-run` action to compute elapsed time.
 
 ## Control nodes
 
@@ -118,7 +129,7 @@ Template references use `{{...}}` syntax:
 
 The full list of actions is in `src/lib/config.ts` (`SUPPORTED_WORKFLOW_ACTIONS`). Important categories include:
 
-- **Change sources**: `change-source` with types `local`, `git-range`, `github-pr`, `gitlab-mr`, and `fix-verification`.
+- **Change sources**: `change-source` with types `local`, `git-range`, `github-pr`, `gitlab-mr`, and `fix-verification`. GitHub change sources support `requireCompleteDiff: true` to fail closed unless the PR head stays stable and every paginated file includes a complete patch.
 - **Review**: `review`, `review-context`, `review-threshold`, `verify-fix`, `create-review-artifact`, `review-artifact-status`, `review-artifact-add-finding`, `review-artifact-update-findings`, `review-artifact-promote-finding`, `review-artifact-resolve-finding`.
 - **Describe / post**: `describe`, `post-comment`, `post-review-comments`, `post-fix-status`, `code-quality-report`.
 - **Wiki / OKF**: `plan-wiki-update`, `sync-okf-indexes`, `validate-okf-wiki`, `summarize-wiki-run`, `record-wiki-state`, `check-wiki-state`, `check-wiki-clean`.

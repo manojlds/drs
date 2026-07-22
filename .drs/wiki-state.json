@@ -2,8 +2,8 @@
   "version": 1,
   "okfVersion": "0.1",
   "root": "wiki",
-  "gitHead": "cace0068849bc7297146197fe4681e0ff6c9b694",
-  "sourceHash": "426e74a9c70ecd6a5f0adb5636cb6afe1eda98b0da6752f54ddbdb975023680a",
+  "gitHead": "7da2cd776ee9fbfd6996ac9bba58e6162ccdea99",
+  "sourceHash": "1e08c866b190296f4c7db9be53d23dd86625bec67c51abbf00270c2d6245d835",
   "sourceFiles": {
     ".drs/agents/review/quality/context.md": "009e512eb2a7edbbc621818ea8fb6cf58bdb3c52d69f7cbb55d55d01442ba3fe",
     ".drs/agents/review/style/context.md": "37d5284a6143d3f969d601298d7704ac24a6c85f256491b4aec33812bd298637",
@@ -14,15 +14,15 @@
     ".drs/workflows/local-changelog-review.yaml": "a0057dccdd68edb02e7f80c1a62b2f5b661c61990d1767373f45967e54f7e6c2",
     ".env.example": "c53f51ba8575ce0b12493ed555a9538785601f789e6d5f686017bf6e3bbe71ad",
     ".eslintrc.json": "108594051e01651cf5182c797559ce2f252d4479019767c187a252a24c668b9d",
-    ".github/workflows/ci.yml": "26257c3c9fa2bc6e5df21d063dbaeca15e0529447becfcdf0f34a723a5923de7",
+    ".github/scripts/release-metadata.mjs": "c5971ca8b2fc326ca0261bc8d0b45e50a43a227f090bf9d66c10f79896136593",
+    ".github/workflows/ci.yml": "614272e81b32462ddfad239597cc76ef9b5d2b147643be963b65ff04ea4ff403",
     ".github/workflows/drs-fix-stacked.yml": "3d70abe574557c62291a38255ed1629503ffacaa2e97f70aa217a53653f72a92",
     ".github/workflows/drs-guidance-stacked.yml": "891f2cb664da7c3c97ecdd6430edb787c92e4b85a911a3e5da5094f9d75bcdbd",
-    ".github/workflows/pr-review.yml": "e4b0001e57ec799439754992921b7d51a1ab975319f36d9406a74723a272d46c",
-    ".github/workflows/publish.yml": "0c77d6fc9f8c930867840315fda939e0f67ecc64c244af1ad82dea68ae93621d",
-    ".github/workflows/release-changelog.yml": "3c9c1fe8f6c173b2676357817e94a8ad6568b9576c930d35ae1ff0e237fda6a1",
-    ".github/workflows/tag-changelog.yml": "f0ce1f625ee792bdb521741af2f6d7f2b2dd458fefd17d3dd2515d5f0154a91a",
+    ".github/workflows/pr-review.yml": "8a250f3270be6a902b9ede71df3f67186276c3604c1c9cc07195dff9680d5278",
+    ".github/workflows/publish.yml": "54e72815625dd0ac01f05ec5ea1d7d790d58c4a34ebbe029846b5fd1344f28b9",
+    ".github/workflows/release-changelog.yml": "2a265b7b110fb1ae4cb7947fc4be55a67ba79b8c1ac6db1bd5238d2aca1db3c8",
     ".github/workflows/wiki-pages.yml": "6db2e044afb441e5d8e6bcd78828e15db52f24bf64a468a947e573795ad1a0a8",
-    ".github/workflows/wiki-update.yml": "47fe714dd4037c8cafef521686a82ece04ba1b7b6c4ba4fc97296eac0c42115a",
+    ".github/workflows/wiki-update.yml": "070e9df05fc11a92b474f5e1b469343f1e071eac8ef3a6ef3eb2983c55765f90",
     ".gitignore": "7eb6d619b6cca1314c409b62cf89e219e1cbff9c75bf5d0396f9049df08ab4a2",
     ".npmignore": "45123059d5ca8606655033183621721d51a456a7f84efc5cba493dbfd4aedd2b",
     ".pi/agents/describe/pr-describer.md": "3ae7cef9854c657d7ab981d4250f812276e2889885fb4685175ec3b1e3a7afd0",
@@ -34,28 +34,28 @@
     ".pi/agents/task/review-issue-fixer.md": "edcf0fce97612bb550ee9f92364d1cedc254fb324cfc10da2d18608330a898ec",
     ".pi/agents/visual/pr-explainer.md": "75c13f6de67d0bf4f5e036960e8b0af8fa6ca270ebfdf4be6174bc895f1bff32",
     ".pi/workflows/github-pr-describe.yaml": "341b2f21239baa117f9f475a697f8b9dd6abe35cb1efcfa86a7f5e54cda8170a",
-    ".pi/workflows/github-pr-fix-review-issues-stacked.yaml": "9e726eda7a830707831d1d3c8f9ebd1d5d1a3ad94ea62ec162574d4b994f5523",
+    ".pi/workflows/github-pr-fix-review-issues-stacked.yaml": "6596ab0cdd7359fb3906c0132d9afa11dc20d714eefc0ff104f2eae2b2d6c288",
     ".pi/workflows/github-pr-post-comment.yaml": "b9c0d62bd1f227b4dfd9349b49932aa5039fb3053dbca7d13f11967ee60008e5",
-    ".pi/workflows/github-pr-review-post.yaml": "fcbc14b989b51ddf433f1b3a3c10cf610d31074fa2bd299b7df83709ca277353",
-    ".pi/workflows/github-pr-review.yaml": "a06b9652db139dadd7a4130b12ab14240fcfccbcde97cd87b4f1ce4c836a4cc4",
+    ".pi/workflows/github-pr-review-post.yaml": "8ee2fec899512015b2ad2269bdfbcda6706e5e74156dca21521ce79d1b8fc1f8",
+    ".pi/workflows/github-pr-review.yaml": "7e0c12dc8b348ad48788ce536aba5baf891b0ad78568a1dc9d0507d167bd5925",
     ".pi/workflows/github-pr-show-changes.yaml": "1d6651240908b4121411d10cd20f5ef606934738cd108714ec94542b3a029515",
-    ".pi/workflows/github-pr-update-agents-md-stacked.yaml": "9edc0d70b09e567ed8cf28b654180105307121be0d48cd8514a9d48c7b190aed",
+    ".pi/workflows/github-pr-update-agents-md-stacked.yaml": "d9e0d5e3f4c45f7a082373e301bdc0925ed93b99400b2f44e7c187aa95e5329b",
     ".pi/workflows/github-pr-visual-explain.yaml": "8319ad87a55021b9155766a7d6f88d8aeac9231a419fa0702dc306f1ac5a64a9",
     ".pi/workflows/gitlab-mr-describe.yaml": "e1ba72f19542d3f725dff6f36cdc058188e460b2d5bba3787ad5e17162fb61a1",
-    ".pi/workflows/gitlab-mr-fix-review-issues-stacked.yaml": "7b9206c625ad2a32d6d35aa19c78dc2326ed191b9380cdd9aa02885af5d84bdd",
+    ".pi/workflows/gitlab-mr-fix-review-issues-stacked.yaml": "d1edc2e173bec9720ccb5c2566c8328f4da60f0af8ade0c7354006dfff04aad8",
     ".pi/workflows/gitlab-mr-post-comment.yaml": "eb72a941f708913667dfae567a57a6729afbfe7200f439dea23bf78acc3eecd8",
-    ".pi/workflows/gitlab-mr-review.yaml": "f28c7af58c87a2b1d2a97b499507aa67da63866d570b7a5320f740b0a601d97a",
+    ".pi/workflows/gitlab-mr-review.yaml": "feca1a238c9f54aee070c47185b8a2d651d229eb0a26d142db725f5e3281419f",
     ".pi/workflows/gitlab-mr-show-changes.yaml": "feb4df524aacf771e259b664641647af7c81609b5b58b546a6151f8f348d02ed",
-    ".pi/workflows/gitlab-mr-update-agents-md-stacked.yaml": "73397033fee07df37e3b930786fd453a16ba6f873f8d5e41625f5116a0d4b14f",
+    ".pi/workflows/gitlab-mr-update-agents-md-stacked.yaml": "32d01ddb91d0a678c63fe05b7fbbf64d662d2824db4b4cee9422c79991bd3e0a",
     ".pi/workflows/gitlab-mr-visual-explain.yaml": "7097bf2a1afd20820a0bb3c39b2e628fd9de67e4ab4ec728bef694dc9b7cd2df",
     ".pi/workflows/local-changelog-update.yaml": "6700c96e1c0087bf39ced3898b25a71982f1d120a12d448d28fae5b36475bf8b",
     ".pi/workflows/local-fix-review-issues.yaml": "3d74e43942efbc3a786d44c6bfaf3b777337dc5623e2e1b947401a8355c7368d",
     ".pi/workflows/local-review.yaml": "89cfc1878459aff9c7cd631406fa52044798d8fa159870dfb03b1842b38ad94d",
     ".pi/workflows/local-update-agents-md.yaml": "a85bdc645b0b2ea1a1580c92cc133033fe4beafa880fdecdeece6a9555d6f442",
     ".pi/workflows/local-visual-explain.yaml": "0a93841ca6f7322d181281edde1e8107c540fc8e8298fe1500b12c88d80cdec7",
-    ".pi/workflows/release-changelog-finalize.yaml": "893e941735645e7f8c7a17ead1095aeb4723b783f40119bc8c9951c941966cdf",
+    ".pi/workflows/release-changelog-finalize.yaml": "7345f911eeb8c0afe9df6ab680408053f0e84d439748299ea57fde8e4037d196",
     ".pi/workflows/repository-wiki-check.yaml": "4ebe8ae57fb9f0e99ab2ccb8a12062290e41c32d3fc221a5d214d636f8b43e36",
-    ".pi/workflows/repository-wiki-sync.yaml": "aab1f26cdd31628faff4d377508ec8b2a23f0784e54a564832e010c6b21f1f0c",
+    ".pi/workflows/repository-wiki-sync.yaml": "a65cccf5fbb7637cd2be00e964baf09c06550e06bf988be1865f7ddfbfe6abdc",
     ".pi/workflows/tag-changelog-update.yaml": "3762a069e233e5799afc9450d325cde0e99eaa803ddf0964affa7af30afe47e9",
     ".pi/workflows/temporal-control-smoke.yaml": "6b865705247f9b98b0891d909674e37ae1244a17d5824f61cc2093343865f517",
     ".pre-commit-config.yaml": "b2626e56fbaf3feb04d2c63bd2312b929efef8c39c8cb2ff86bc37902acde4e8",
@@ -66,40 +66,44 @@
     ".wiki-site/.vitepress/theme/index.ts": "5a94e930da69570ef5af61b15b32e65bd16dd0353d0666aae3ad6a34aa35a6cc",
     ".wiki-site/.vitepress/theme/style.css": "5091fab623b537f05496c6467d1900de1c80799b0c616717e60e657828d3bc3e",
     "AGENTS.md": "f09a968670f68333c840118b4791b5dd2a6c6e680ec50051dbe860993c819336",
-    "CHANGELOG.md": "aff8600e0dd950dcac941c9dfe60e0c95fb86cf446ed28db7ab8ff8b9c36d450",
+    "CHANGELOG.md": "86ba2157770e92688cb6368db70db884e688b1851541283961a7e07c2302370a",
     "CLAUDE.md": "2a6774170e6644e20b6248937307de686c24757112838aae64d8146a7c2b55d7",
     "LICENSE": "1171b005993589334b333d9fcfea08bbe3ce06ff3c309d6c74f4b1ae1a3d5dab",
-    "README.md": "7fb8d0a7e339ecbf6c3636e5286c064f9e2739e08f1f881e2630c3c15b907f01",
+    "README.md": "8c4a105258bbb12cef8103bee8ca89efefecfe4ebb25c22ec5f3736de6ee99f8",
     "TEMPORAL_EXECUTION_PLAN.md": "4df3f9f4bde87acabaa681a4606b434dfa1acf1c50b545b82a4c6124ab211cce",
-    "WIKI_NEXT_FEATURES.md": "586908c2eb1e010cd548ef6eb656f75ccc0528ce50057add2909c7ed1d8b09e2",
+    "WIKI_NEXT_FEATURES.md": "cc86d1b983ff458833451b009f7715a3a9cf46bee4157c4d1c09a11df451d7a8",
+    "clean-dist.mjs": "727ed01df58f1f055c2a2dd2df0c3627752197eb19bc4c90e2ac6be1597fd6ec",
     "docs/CUSTOM_AGENTS.md": "940918a09d3490d48a2e1536993c16e94e0fcf407f9b4ccae2758d398eeca0c4",
-    "docs/EXTERNAL_PR_SECURITY.md": "7e65b371922e392ac230b8a7f83f0bcd1e499d63fc9e465f02c48537a1a4e49b",
-    "docs/GITHUB_ACTIONS_INTEGRATION.md": "b8665961980783ddd72c1fc12ce4a3f4998a711004584d43ebb92ec1c5c44861",
+    "docs/EXTERNAL_PR_SECURITY.md": "9fc5949ca9134f2d103bf137d0da1a87cf91ce364a69710fc9c7303785af0de3",
+    "docs/GITHUB_ACTIONS_INTEGRATION.md": "aa4b2f66aed0e8c71baf2d91bd4a59160fb0f890254ebdf36db911855cd3aa2b",
     "docs/GITLAB_CI_INTEGRATION.md": "a4677fe030a61e51ea29e2f9f93878a5f9bc2ed9a72f0e8618e14ff7314ea980",
+    "docs/MIGRATING_TO_5.md": "ed3f5c16a3b7651b16bf84a0df957f8007192340856b88ffcef6f0d45a7de9f8",
     "docs/MODEL_OVERRIDES.md": "27947f8539dad69543224eea94039293d451514b480d3361e8f7ea4bce2f9a1a",
-    "docs/TEMPORAL.md": "532308d8f9f265195e20deefc0b2a29e2098252722439f56e571946d179977b4",
-    "docs/WORKFLOWS.md": "95ffb01aba3439fc332f1622ef1c6095f484f0c6a58ae1c22a6972c661851d91",
+    "docs/RELEASING.md": "2d1613fa8d3cef748c7eef4983dda347961f938a1b66f9c746b405fa50116f79",
+    "docs/TEMPORAL.md": "117fc4548a23f2b901d4a115feded6440df282d246a2981f9ac1746d6d1a9617",
+    "docs/WORKFLOWS.md": "36c614d7727aa0fca56b2ee19d3892443aada05d45661bd0216abba6b834502d",
     "docs/fix-flow-design.md": "90d1bcc864fbf00f639a70fe216f9cc4771547ad9715131946b0205cba51fefd",
     "docs/runtime-port.md": "d14b0a76385bf307be0e909566500af5c4d7d8be91b5219fcf6e6a4bbcd8de59",
     "mise.toml": "750a06cf0aa629648bf945982104a2af115beebc3d6307f462a55bbf47ab33fa",
-    "package-lock.json": "9cf12a840fe4d533694afcdefbed23a5959fe01bde56a30871bbed1704da26f6",
-    "package.json": "1212e2da0ce5818e0189b90f56dd13827afbc741f4bc6038512cb88a9de5f862",
+    "package-lock.json": "2ecaff871bcd5353680dbc5b42d44b3be6a0ce26c5f4bfd6fde69e3749095772",
+    "package.json": "9b471b7747f5f02b71d3094d24b38aad1f7fb0396d7a6fa041647e357f0ab826",
     "plan.md": "f4f84ed1caf7a340e08eff91260e2085c6ef7819932fd77675f00f8d71ce2f5f",
     "src/ci/gitlab-ci.template.yml": "40617e0b8e1341a45d4f30c00f8fed25bc17f8b0c2f9918e2a57e74ee1296311",
     "src/ci/runner.ts": "abc6afe21e377a9364e2de8785dd0801a6c16670df2812f57454ebfec51bd1d0",
     "src/cli/index.ts": "0b122d56ca930fc3f0423fe79d96faa071aa18f14382576ca60e0dffbab3f77b",
     "src/cli/init-smoke.test.ts": "64257d77e9d50d179bf427c77d45ed859f2d5aafab6601d7e2aee3492ea2acd6",
     "src/cli/init.ts": "846e296c494c1ee2214d23c777333b09b108f4dc63410ed7b4fd570f12f9d75f",
-    "src/cli/run-agent.test.ts": "fa0b0a69929cb5b53cc28a631059aa559030e6e0f399640a33476aad14fd62ed",
-    "src/cli/run-agent.ts": "2c7142e5c5a7027abe5982023a71ce0cec89cbb963d6b0c32c6e0da35beffff3",
+    "src/cli/run-agent.test.ts": "cefdafd0c2b4add1e8d459e26dc11607d64a9fcc0d53748f3293334a67340c2f",
+    "src/cli/run-agent.ts": "c45ce3b312e62feeab9c835127a63bf7754a6983fa052d77fd71831eda2f3c49",
     "src/cli/wiki.test.ts": "42db9eb4f9e68d2f1df6b01fb45b87a2e0ced0394b1f1b0f0fae5e3dff164e5f",
     "src/cli/wiki.ts": "66e7169275ecfe787691971e3d953c3e5d20bed6b91c4276914a5893bfc0b7a7",
     "src/cli/workflow-executor-selection.test.ts": "4315eab44d9d582816886afe4fc72c54c13858e5d06f7ffc7d59f4184f9ab686",
     "src/cli/workflow-executor-selection.ts": "833f12f2e493f7855ab7ffbfbb04d04cf5e1c85f32010663df055c014cf1f6ac",
-    "src/cli/workflow.test.ts": "b190407b60ea729c0a05f7b004a90b033916c7ff5c5f5264ad5661bf8146d257",
-    "src/cli/workflow.ts": "c1e2d370b4dcb4106b4638d1d6a651bbdd48329fa32c820fdf90490da82fba2a",
+    "src/cli/workflow.test.ts": "3ccfd2854b2501861941ed1262b4e58fc21e8afdff92c6cc0caa0c32faf88aed",
+    "src/cli/workflow.ts": "ede0b1e320fc1d6fdaf0672c782a282b02df19de7343a8353ec28c776fa6ca07",
+    "src/github/client-api.test.ts": "aaaa868e9dfbff333022d91748f6df1b89362009143b2113d7ce1078fa319608",
     "src/github/client.test.ts": "0fb4ca01508dc1f78e7ee52f9a52537b6d58410b6cb43de7da6c96c91e328d26",
-    "src/github/client.ts": "2f380bc0365f409dd398deae14f736417687813f5eb14aa93778549381e588a7",
+    "src/github/client.ts": "14e494d429a63d2954c94ccb80739f76d4e390c67a5ec2e9f2aa051b0d2f6d87",
     "src/github/platform-adapter.test.ts": "04134979b84555f819174f19010311d24556c2beb438434f686a24bc4e335d2e",
     "src/github/platform-adapter.ts": "f7c121b9b5fd9c51955172f08b6cddb1783e55417d4822589814e94e9a1ac413",
     "src/gitlab/client.test.ts": "1fd937695269d9431b7bb2ab132ee7026a0e67abebd9973f9ba11ea47801e320",
@@ -107,11 +111,11 @@
     "src/gitlab/diff-parser.test.ts": "7650ac32980173861b702de76287a42f7159b7d61decce36a12a7596befa84f0",
     "src/gitlab/platform-adapter.test.ts": "7f8cf244a576b6db5a2876545a8223772920248ca3114047793034fe1a30cebc",
     "src/gitlab/platform-adapter.ts": "4a3c0b6f9d00e6fb2f8af2685a6816025dd53cdd9484cd1ea059f00647635ab0",
-    "src/index.test.ts": "79fbeb7a363a9b72fa0987fb60478e16c20c56bdf4c866382da59f11d1777ba5",
+    "src/index.test.ts": "cf92a97b21bd2cf90d5e20114e834ce0fb5ae4a5af610c49028ddb6f4dee9349",
     "src/lib/agent-id.ts": "06792e9242f799a814da808c9081170b7aaec3d7319887d8573066cbcf555d02",
-    "src/lib/agent-permissions.test.ts": "836924cff72b048fca2cb20f26afcbff97ab640854e9b91043bc57f2f735b25b",
-    "src/lib/agent-permissions.ts": "4aad4c6d016582378910366f869acebca0f2af3e16cf8aa0e3cd92d189746d04",
-    "src/lib/agent-result.ts": "9c1ad0b0fc167a59e78f69d3f5125844bb30c500e49934c0f44e1604aabd8d3d",
+    "src/lib/agent-permissions.test.ts": "7fa545d1efaa71c6bffba1f23f56fe01f9cfc89d82f5f1613d8cb3578d010fc9",
+    "src/lib/agent-permissions.ts": "d08673e51f44ae4ee8df14ed0a5f237177cf8aa47ec3965e462f2ae4a2eebdfc",
+    "src/lib/agent-result.ts": "f54dbebeae6d8027b5d7d52e506d1854f1513aad345d6a754d91abc3e0aeea9f",
     "src/lib/change-summary.ts": "f748f21b8f3044d52a3251bf28c5dc0b2032a2ff0209b573ca01c1a263085539",
     "src/lib/code-quality-report.test.ts": "98bc5ebf7e58124f15c7ddd50d36ceb48fdcad576766b27cc1137af1d7fd0123",
     "src/lib/code-quality-report.ts": "ed300093c392256047971ef40f87af999146837a08d3c4d57762729ff21d40c3",
@@ -119,11 +123,11 @@
     "src/lib/comment-formatter.ts": "8230c1e5238866f3508581be72295b61e6b770cf4cf844eeadbb12092a017839",
     "src/lib/comment-manager.test.ts": "dec32123eaca92d3871666083a5617711f046465e3acea2b5687224a34d313b4",
     "src/lib/comment-manager.ts": "7e52e6143b47fb356a0cd0fd635afeb4f69e07818eb7efea720c5a4c9732139b",
-    "src/lib/comment-poster.test.ts": "7efd1144c3bf6d541c80ab41d450896d9b6fa0b395a038fb24de5167f6bf1d72",
-    "src/lib/comment-poster.ts": "4d0ae7a833d4b7e1144d9d5dc712811418733f75196c4b014d6b0acb7c5f9191",
+    "src/lib/comment-poster.test.ts": "51f7ff42cbded5cf338a299642ebabe656ae10a31fcbf60240f282c8ddd0f291",
+    "src/lib/comment-poster.ts": "9b3b9207552c22412dd973d51148bb06ce9db0f72012ce74a286270c045d863b",
     "src/lib/config-model-overrides.test.ts": "6abb2b56019949ff8ea4edb80479a7dc25ffca32da3f23adbc05f0d37bb3163d",
-    "src/lib/config.test.ts": "f2e1cfbee5b4b98ef12356be2b5accdf068ede20b3a69086309edd793f111718",
-    "src/lib/config.ts": "2b71823e1d77924d3c51532d87b813d627049d7bafe9f471e26ebb16a6d2ae0a",
+    "src/lib/config.test.ts": "622047836f25ab9f4b5d89d76aa3d18f292193f569d772ba3f9fa486357e6b1d",
+    "src/lib/config.ts": "f01781fccb33d1b6fd619f2e13cf541d54eda9720293ba5d0a0a3d36857d79e0",
     "src/lib/context-compression.test.ts": "00a4e337df6b5aaea5e2943dcf4621f4a243b31fd37d165d23acbb5a58a78738",
     "src/lib/context-compression.ts": "6049e27e7f56d61fee11455a719cb79a5b4193cf78e641578491373becdbcee3",
     "src/lib/context-loader.test.ts": "08d026468caf79711ff7129e62adde9fc5fca04b7277c24b52095d3b1bfb2812",
@@ -143,8 +147,8 @@
     "src/lib/diff-lines.ts": "56c27c232f2b6c4a586efadfd691e04b23ea82f72689549a9b581160f8ef05bb",
     "src/lib/diff-parser.test.ts": "a15e231b024195e02682296877893fc07c926c87a6fc963f81537e7718805c43",
     "src/lib/diff-parser.ts": "0b22377de83bdd785a8c70bfc3f141db442040ad4218456f26069c7c0a8eca8b",
-    "src/lib/error-comment-poster.test.ts": "7002516849760b618d640c21b84741a9d1d67d17588d79b96e0d5c166aed943a",
-    "src/lib/error-comment-poster.ts": "ed00a0c529df03a73f6e254a35b9b92aedc366b4b62ec99d43d851c72c0c0c4d",
+    "src/lib/error-comment-poster.test.ts": "25af7a6a3c7dd7cb30ca16bd1da00ea2c0979cf7c5115961afd5982e7e89341e",
+    "src/lib/error-comment-poster.ts": "bf68fe90e7990070b87f74ae45abf7e4db52b71d44f257791e39a12c133f03c8",
     "src/lib/exit.test.ts": "344f143d3632103db3afec6b0cea38d980d5230b36cf4996153088f9805e134a",
     "src/lib/exit.ts": "66d1b8d778b139db1c20824a6e2d02657280d5758cd537cc0254c201bc036ef6",
     "src/lib/format-utils.ts": "3664d6d6f1dec5e8671edc9a0b9d701b2f9b0d73a3ffe6a0b5b97d7f04d6314e",
@@ -165,18 +169,21 @@
     "src/lib/platform-client.ts": "2d54d321fe7c768e58d6a26bfa9f4793771c66ad5768b3ba066c3454d4815aef",
     "src/lib/position-validator.test.ts": "47a6901e13f59098efdb711701505b2d8a04b29b9fc04117fbd5c2a6b67da9b9",
     "src/lib/position-validator.ts": "acd5b08b526d8487e892b10a43b1a5283815907c32eb3f1a10afeee602058756",
+    "src/lib/pr-review-workflow-security.test.ts": "3185b290d7de4047fb264062525f594e87ab4206c44e5d6a367ee4210330f54c",
     "src/lib/project-setup.ts": "1835f26964ac559783498047f84553284299e0cd5948e09273502f7fa2dbd875",
     "src/lib/prompt-budget.test.ts": "8491bb781d83b2ecb118010d3e43d0e2fffaa151f09f3aa9a1229000babd94da",
     "src/lib/prompt-budget.ts": "fbba2347fa6c2f283b02aeb9ed70da1414c5b812e91c2a32eb349cf945f907dd",
+    "src/lib/release-automation.test.ts": "187b96dca491270fb1eaf07036bc95bf9fe94333bf0d87730f2c57f2dee408af",
     "src/lib/repository-validator.test.ts": "b05163c2e6278fe59b0acd9ad5f8f363a84684a315326a92b254d376943b679a",
     "src/lib/repository-validator.ts": "9e6b8c94780e9a1cb8bec955f1807fbbef5e6e60527d7b297af914d1b8681e09",
     "src/lib/review-artifact-store.test.ts": "7c7602398f0f9fdbab8b6a9db7700febc62a6eeeae81edd3a96c41409bf8eb24",
     "src/lib/review-artifact-store.ts": "db3f062d62a7091f6018c4faab1ed3de2697282f433cfe2677a8ffcd503349f0",
-    "src/lib/review-artifact.ts": "7076c3af9109d53c4fccb4b072b0ed30c84ce1e809966d9551de18f2245cb6b3",
+    "src/lib/review-artifact-validation.test.ts": "b88bb25df960ce5c6d8b2648df99e61b80df56727ff6bf17f1e2703a172fdd49",
+    "src/lib/review-artifact.ts": "805c31fa741b1a65994b5ef9ad9609ab32e575f2976eea6c139d7ec412ecc491",
     "src/lib/review-core.test.ts": "331f33923249dae51aac7cc276b2f0c8fb0164519b968260a83c7fd0023b41eb",
     "src/lib/review-core.ts": "1c27e07c18277f1f17a631b8a1d7ecee88534731576e777a58d90ebafa820675",
-    "src/lib/review-orchestrator.test.ts": "cf8ccc456ea4d533ef76a3865a42d86692bcc399534fffaf44ace1fdc64876d1",
-    "src/lib/review-orchestrator.ts": "0fc1c1f355cdb4c5b4309fc94e2aaf18d3b64e2ae42ee96aa830739135c03bcc",
+    "src/lib/review-orchestrator.test.ts": "a0e6bc6ff7d2b6d153b35042d592fee2bf888dc69b74fe24465d94ef6c6a4b7b",
+    "src/lib/review-orchestrator.ts": "2819c64173a162cdbbb162118e3cd5486be2308604cc9e0a714bbe3a9f05e286",
     "src/lib/review-parser.test.ts": "bc25021e7da1839a0bdf6e5146a39cb434e1964e0252ee8aed24925195deba9a",
     "src/lib/review-parser.ts": "cb936aa911ea71ee91b94bccb6e5d80af8fe4fdb7234446748284d4e8d097acf",
     "src/lib/review-usage.test.ts": "822513561ebe717e36da416f59ba34a6c24ab0e53cb68af4f9c26743219151e5",
@@ -185,6 +192,8 @@
     "src/lib/trace-html.ts": "fe39ed362849caa2e83c564ec4c5558b4d0a6303f843e6527c41dbfe74b7b4cc",
     "src/lib/wiki-delta.test.ts": "6ce8e534012458e834f6d9eecfe5243693fe4aac7be0e4c6906a62e09bfd7b99",
     "src/lib/wiki-delta.ts": "e338b7a309198e3aa5894b233283365e23f5d069d979c7a8e8d36f38bebb9429",
+    "src/lib/wiki-run-summary.test.ts": "c08966a46e5a1424973c3dc0a8de4e3416578476b929c6985c065df57cb37920",
+    "src/lib/wiki-run-summary.ts": "dffcc2092972886dabb703c1547534bc5214ff854ca8bc1abc4364f889f34564",
     "src/lib/wiki-search.test.ts": "a3c723d43643b71e1d73cc1c5729b9c035ec245cf4a52ce1b22fcc5a6fe8d6df",
     "src/lib/wiki-search.ts": "be2f0f5b0d6c0a7d24b0dcff26fd73ab33b0c1f075e0819845b8cb9acf6b8d56",
     "src/lib/wiki-site-graph.test.ts": "abd881892a138f4db7e9bbe4b37c31ad65696b35452b78065393d39965126d35",
@@ -196,8 +205,8 @@
     "src/lib/wiki-site.integration.test.ts": "9e8be17f843b9741f41d99d32a4387cea59a9db35e7be66e8af8261c3c62f54c",
     "src/lib/wiki-site.test.ts": "6f9d8f8f618193cacdf4a4a8d323c121a77d5c61ed8a3b1f644d47bdf9aeb6b4",
     "src/lib/wiki-site.ts": "82307428425361ee9fe4576f439ce35166c3f23e19dcdf31ae96b03c19369c32",
-    "src/lib/workflow-artifacts.test.ts": "a8b74bfc9bd4c2dd53a0af77729fee683329388286771da368af1448afd4203b",
-    "src/lib/workflow-artifacts.ts": "282fee7ece16119587f828fac51bdc9789b5b8d88e1597e9ff447fada915d795",
+    "src/lib/workflow-artifacts.test.ts": "254f91ffda7c8d6037ca087967a1a2adffa020b412548b5a25b627ccc33c956c",
+    "src/lib/workflow-artifacts.ts": "bfa12214bccf6c30d5452616ea7f9084c4e604c1c6de92fb8f010e47c539c888",
     "src/lib/workflow/artifact-store.test.ts": "40f2c061240488d2ee02b6e02ca1e12bdd3423bbe853d46149da11fd0e5ffe28",
     "src/lib/workflow/artifact-store.ts": "c6529a7247838da327748ff74bdaafba24f9c59ecd9f711c1967b31556b1d11b",
     "src/lib/workflow/compiled-plan.test.ts": "842d4d46b0f1b54078ade6e8d593a0a8ff5f094ba255f1d6d0188d06f3b062dd",
@@ -206,9 +215,9 @@
     "src/lib/workflow/graph.ts": "17f232518353f132e907bd884df77eb9c15789f377eafe331895553d5cd56562",
     "src/lib/workflow/input.ts": "3985f26e7e69fbdc4fc04da6adf6de42e2499b0e6c4df8ba8a0d8f4a35b1a4bb",
     "src/lib/workflow/node-executor.ts": "f583ceb9357f847cbc0106b7e46a3fcf81193bd222de551fa5da77ac41d033b7",
-    "src/lib/workflow/planning.test.ts": "46831a25be0cc367f07381cf0e4764094ca531f39e86b1e6a329f4ee9eba913f",
-    "src/lib/workflow/planning.ts": "3c5250a1f55f98e3d8f4a7d8bc8696e21b303f3eaeede127d6c8ba874470c021",
-    "src/lib/workflow/types.ts": "43fe71ad3619013efc256e943b106b4ba89a64d930fe4649d98080211c1f8437",
+    "src/lib/workflow/planning.test.ts": "dc1aaf821d30cb1e8d15935903ee7080bc3b34e21a99c7f0915e040a8c9c0581",
+    "src/lib/workflow/planning.ts": "af7ef1e726ae84fb25ec062f6648d3ccaf78dd109a7f2db3f6e6d03cbdb7ac54",
+    "src/lib/workflow/types.ts": "81e7433896fbfb42d0a1462f26d8f31da22bbd3a9b178e14de6c5490534423ff",
     "src/lib/write-json-output.test.ts": "3688b057a96bccf2db03ccfbb2981dc3aca89e887778f86251e31be9ff307240",
     "src/lib/write-json-output.ts": "f5d3370f0a10b9cd75cd6f65349948dfc7fe99a6f5c6f0e3ab651d0917425208",
     "src/pi/sdk.test.ts": "e841278c09daec9261065b1697471c30d8a1afe815b7900024fb5e44fafa0545",
@@ -225,8 +234,8 @@
     "src/temporal/config.test.ts": "0ce87568dad4ecf13635045dbeb759df7da9dadfad782d3c52daa036fb33f096",
     "src/temporal/config.ts": "76134404c740558bbc62583e73f34106a2e2eb84e20a86d91e7c7e7ee126feca",
     "src/temporal/executor.test.ts": "1cb19fefc3fc3af5390544e768dc635af0168060a584170acf6a43b07c1b777f",
-    "src/temporal/executor.ts": "18e1e5a29953651b2425c0bc0a199de099663003b742bf1e6ff485c6b3c3feea",
-    "src/temporal/retry-policy.test.ts": "e62fd8f7b150ceceac9e626a3c935b21b5fd9d789d0797391c8f69ddfe1875cb",
+    "src/temporal/executor.ts": "e193a6e8bdf2ca4d504eea58f92001319d7ac30aaeda4bfe231400706ff5da71",
+    "src/temporal/retry-policy.test.ts": "f0954b730c995ba8503d5ccb1daca34474ca221ed7561e2d385c731ad3f14f1a",
     "src/temporal/retry-policy.ts": "c336d381bd1911474122370ae9092d3709ffe64c59371ee40511a3d4473d3a86",
     "src/temporal/smoke.test.ts": "bdcddfdef3b8c9b026fd4df38cebeff8b1f459c3144017657250ba4a2c531f4d",
     "src/temporal/types.ts": "c03f34b9777122f3ac9c6e8a631fbfdd0e9c9115001d3457bb92b77805fb3a3f",
@@ -234,20 +243,66 @@
     "src/temporal/workflow-id.test.ts": "99eaa0f621ea861ec3f404b822dceb98177950073345d6becc36d401228f2e48",
     "src/temporal/workflow-id.ts": "84921c6be20c620cbe291ab3d03b881d984d352e2226c81dd3fa58ebaed78882",
     "src/temporal/workflows.test.ts": "46d2e63ad7ca409447ae769ccb2cb9cd06d43eb08134362629977baff32380bf",
-    "src/temporal/workflows.ts": "48e1107ab42c303c9f22efa3e0e5d33f25778d667ed336b277902cf03a9ae914",
+    "src/temporal/workflows.ts": "b9d5e36155e4a480977b8db5b2c02e8f1b5a4cd8c4aaf9debc71a785f2d812e0",
     "tsconfig.json": "017a6d1c52d39a1a81fc3b561a3144c360f9dc630ff878043aef3212d1994d7e",
     "vitest.config.ts": "2dc230b842df634ca28f62f97356e804f35d2475979e64fc0a3dbf672879e748"
   },
-  "wikiHash": "d4bcb3b4baef7d8459bb80549cc1abb55d25d7aca04bca27044249c54a7d56b6",
+  "wikiHash": "93f6c9c8392595c65489f57de82c83b0320b9ecb2e097d8443f46c5ccac5bba0",
   "sourceConcepts": {
+    ".drs/drs.config.yaml": [
+      "configuration.md"
+    ],
+    ".drs/workflows/local-changelog-review.yaml": [
+      "maintenance-workflows.md"
+    ],
+    ".github/workflows/pr-review.yml": [
+      "integrations.md"
+    ],
+    ".github/workflows/publish.yml": [
+      "integrations.md"
+    ],
+    ".github/workflows/release-changelog.yml": [
+      "integrations.md",
+      "maintenance-workflows.md"
+    ],
+    ".github/workflows/wiki-update.yml": [
+      "integrations.md",
+      "repository-wiki.md"
+    ],
     ".pi/agents/task/okf-wiki-maintainer.md": [
       "repository-wiki.md"
     ],
+    ".pi/workflows/github-pr-review-post.yaml": [
+      "integrations.md"
+    ],
+    ".pi/workflows/github-pr-review.yaml": [
+      "integrations.md"
+    ],
+    ".pi/workflows/gitlab-mr-review.yaml": [
+      "integrations.md"
+    ],
+    ".pi/workflows/local-changelog-update.yaml": [
+      "maintenance-workflows.md"
+    ],
+    ".pi/workflows/local-fix-review-issues.yaml": [
+      "maintenance-workflows.md"
+    ],
+    ".pi/workflows/local-update-agents-md.yaml": [
+      "maintenance-workflows.md"
+    ],
+    ".pi/workflows/release-changelog-finalize.yaml": [
+      "maintenance-workflows.md"
+    ],
     ".pi/workflows/repository-wiki-check.yaml": [
+      "maintenance-workflows.md",
       "repository-wiki.md"
     ],
     ".pi/workflows/repository-wiki-sync.yaml": [
+      "maintenance-workflows.md",
       "repository-wiki.md"
+    ],
+    ".pi/workflows/tag-changelog-update.yaml": [
+      "maintenance-workflows.md"
     ],
     ".wiki-site/.vitepress/config.mts": [
       "repository-wiki.md"
@@ -255,12 +310,58 @@
     ".wiki-site/.vitepress/theme/PageLead.vue": [
       "repository-wiki.md"
     ],
+    "README.md": [
+      "quickstart.md"
+    ],
+    "package.json": [
+      "quickstart.md"
+    ],
+    "src/ci/gitlab-ci.template.yml": [
+      "integrations.md"
+    ],
+    "src/cli/index.ts": [
+      "quickstart.md"
+    ],
+    "src/cli/run-agent.ts": [
+      "pi-runtime.md"
+    ],
     "src/cli/workflow.test.ts": [
       "repository-wiki.md",
       "testing.md"
     ],
     "src/cli/workflow.ts": [
       "repository-wiki.md",
+      "review-workflows.md",
+      "workflow-engine.md"
+    ],
+    "src/github/client.ts": [
+      "integrations.md"
+    ],
+    "src/github/platform-adapter.ts": [
+      "integrations.md"
+    ],
+    "src/gitlab/client.ts": [
+      "integrations.md"
+    ],
+    "src/gitlab/platform-adapter.ts": [
+      "integrations.md"
+    ],
+    "src/lib/agent-permissions.test.ts": [
+      "testing.md"
+    ],
+    "src/lib/agent-permissions.ts": [
+      "pi-runtime.md"
+    ],
+    "src/lib/comment-poster.ts": [
+      "review-workflows.md",
+      "workflow-engine.md"
+    ],
+    "src/lib/config.ts": [
+      "configuration.md",
+      "pi-runtime.md"
+    ],
+    "src/lib/error-comment-poster.ts": [
+      "review-workflows.md",
       "workflow-engine.md"
     ],
     "src/lib/okf-wiki.test.ts": [
@@ -270,11 +371,37 @@
     "src/lib/okf-wiki.ts": [
       "repository-wiki.md"
     ],
+    "src/lib/platform-client.ts": [
+      "integrations.md"
+    ],
+    "src/lib/pr-review-workflow-security.test.ts": [
+      "testing.md"
+    ],
+    "src/lib/release-automation.test.ts": [
+      "testing.md"
+    ],
+    "src/lib/review-artifact-validation.test.ts": [
+      "testing.md"
+    ],
+    "src/lib/review-artifact.ts": [
+      "review-workflows.md"
+    ],
+    "src/lib/review-orchestrator.ts": [
+      "review-workflows.md",
+      "workflow-engine.md"
+    ],
     "src/lib/wiki-delta.test.ts": [
       "repository-wiki.md",
       "testing.md"
     ],
     "src/lib/wiki-delta.ts": [
+      "repository-wiki.md"
+    ],
+    "src/lib/wiki-run-summary.test.ts": [
+      "repository-wiki.md",
+      "testing.md"
+    ],
+    "src/lib/wiki-run-summary.ts": [
       "repository-wiki.md"
     ],
     "src/lib/wiki-search.test.ts": [
@@ -295,7 +422,34 @@
     ],
     "src/lib/workflow/planning.ts": [
       "workflow-engine.md"
+    ],
+    "src/lib/workflow/types.ts": [
+      "workflow-engine.md"
+    ],
+    "src/pi/sdk.ts": [
+      "pi-runtime.md"
+    ],
+    "src/runtime/agent-loader.ts": [
+      "pi-runtime.md"
+    ],
+    "src/runtime/client.ts": [
+      "pi-runtime.md"
+    ],
+    "src/temporal/activities.ts": [
+      "temporal-execution.md"
+    ],
+    "src/temporal/executor.ts": [
+      "temporal-execution.md"
+    ],
+    "src/temporal/retry-policy.test.ts": [
+      "temporal-execution.md"
+    ],
+    "src/temporal/worker.ts": [
+      "temporal-execution.md"
+    ],
+    "src/temporal/workflows.ts": [
+      "temporal-execution.md"
     ]
   },
-  "updatedAt": "2026-07-20T23:54:16.430Z"
+  "updatedAt": "2026-07-22T11:55:21.500Z"
 }

@@ -5,7 +5,11 @@ description: How DRS is tested, including the mandatory quality gate, unit tests
 tags: [testing, vitest, quality-gate, ci]
 drs_sources:
   - path: src/cli/workflow.test.ts
+  - path: src/lib/agent-permissions.test.ts
   - path: src/lib/okf-wiki.test.ts
+  - path: src/lib/pr-review-workflow-security.test.ts
+  - path: src/lib/release-automation.test.ts
+  - path: src/lib/review-artifact-validation.test.ts
   - path: src/lib/wiki-delta.test.ts
   - path: src/lib/wiki-search.test.ts
   - path: src/lib/wiki-run-summary.test.ts
@@ -52,18 +56,21 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/lib/workflow/*.test.ts` — planning, compilation, artifact store, and node execution boundaries.
 - `src/lib/review-artifact-store.test.ts` and `src/lib/review-artifact.test.ts` — artifact persistence and finding state.
 - `src/lib/comment-*.test.ts` — comment formatting, posting, and fingerprinting.
+- `src/lib/review-artifact-validation.test.ts` — canonical review envelope validation for the split external-review posting path: scope, head SHA, finding fingerprints, changed files, and summary consistency.
+- `src/lib/pr-review-workflow-security.test.ts` — assertions over `.github/workflows/pr-review.yml` that the external model job checks out trusted base code with read-only permissions, disables posting/visual/fix, requires complete diffs, and that the deterministic posting job carries no provider secrets.
 - `src/runtime/*.test.ts` — agent loading and path config.
 - `src/github/*.test.ts` and `src/gitlab/*.test.ts` — platform clients and adapters, including creator identity mapping with public email and platform no-reply fallback.
 - `src/gitlab/client.test.ts` — GitLab private commit email domain derivation and `GITLAB_COMMIT_EMAIL_DOMAIN` override.
 - `src/temporal/*.test.ts` — Temporal planning, retry policies, workflow ids, and activities.
 - `src/lib/okf-wiki.test.ts` — OKF v0.1 index synchronization and bundle validation.
-- `src/lib/agent-permissions.test.ts` and `src/pi/sdk.test.ts` — generic agent policy validation, path and symbolic-link rejection, Pi tool enforcement, validator feedback, and post-run mutation guards.
+- `src/lib/agent-permissions.test.ts` and `src/pi/sdk.test.ts` — generic agent policy validation, repository-root reads, path and symbolic-link rejection, Pi tool enforcement, validator feedback, and post-run mutation guards that report added, modified, and deleted paths.
 - `src/lib/workflow/planning.test.ts` — workflow node shape validation for `permissions` and `validation`, including conflicts with `writes` and `agentsFrom` write restrictions.
 - `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — model-free concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — deterministic delta planning, source/wiki fingerprints, state recording, and clean checks.
 - `src/lib/wiki-run-summary.test.ts` — wiki structural and usage summaries, net concept-change classification, no-op reporting, and escaped Markdown output.
+- `src/lib/release-automation.test.ts` — release metadata script semantics, exact SemVer validation, changelog finalization, pack manifest checks, and the atomic release/publish workflow transaction.
 - `src/lib/wiki-site*.test.ts` — directed graph extraction and metrics, publishing safety, reusable build/serve setup, deployed-site smoke checks, and the full site integration path.
-- `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs, plus `git-commit` creator attribution.
+- `src/cli/workflow.test.ts` — end-to-end `repository-wiki-sync` and `repository-wiki-check` workflow runs, `git-commit` creator attribution, review action permissions propagation, GitHub `requireCompleteDiff` validation, and canonical review artifact loading/posting.
 
 ## Temporal smoke test
 

@@ -3,11 +3,15 @@ type: Quickstart
 title: DRS repository wiki
 description: Entry point for the DRS wiki. Learn what DRS does, how it is organized, and where to find the key concepts.
 tags: [quickstart, overview, drs]
+drs_sources:
+  - path: README.md
+  - path: src/cli/index.ts
+  - path: package.json
 ---
 
 # DRS repository wiki
 
-DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub pull requests, GitLab merge requests, local diffs, and agentic repository upkeep. The CLI runs packaged YAML workflows that compose agents and built-in actions into a dependency graph.
+DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub pull requests, GitLab merge requests, local diffs, and agentic repository upkeep. The published npm package is a CLI application; programmatic imports and deep imports from `dist/` are not a supported API. The CLI runs packaged YAML workflows that compose agents and built-in actions into a dependency graph.
 
 ## What this wiki covers
 
@@ -43,7 +47,7 @@ npm run dev:cli -- workflow run gitlab-mr-review --input project=<group>/<repo> 
 # Update CHANGELOG.md from local changes
 npm run dev:cli -- workflow run local-changelog-update
 
-# Generate or update the repository wiki
+# Generate or update the repository wiki (ends with a structural, usage, cost, and elapsed-time summary)
 npm run dev:cli -- workflow run repository-wiki-sync
 
 # Check the repository wiki is current (model-free)

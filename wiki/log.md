@@ -99,3 +99,17 @@ Updated concepts:
 ## 2026-07-21
 
 Added deterministic repository wiki run summaries. `repository-wiki-sync` now preserves final validation fields and adds structural, provenance, model usage, estimated cost, elapsed-time, and effective-instructions-hash metrics. Normal CLI output and JSON expose the summary, and no-op runs explicitly report that no model was invoked. The scheduled update workflow writes escaped Markdown to the GitHub job summary and updates the reusable wiki pull request body without posting recurring comments or passing full workflow JSON into the token-bearing job.
+
+## 2026-07-22
+
+Updated the wiki for the split external-review security model, review action permissions, complete-diff validation, artifact hardening, and release automation tests.
+
+- [workflow-engine.md](workflow-engine.md) — noted that `action: review` nodes may declare read-only `permissions` (no write/delete, `shell: false`), that GitHub `change-source` supports `requireCompleteDiff`, and that the template context carries `startedAt`, `usage`, and `workspaceChanges`.
+- [review-workflows.md](review-workflows.md) — described review action permission constraints, canonical review artifact posting through `expectedHeadSha`, and head re-checks before each mutating post step.
+- [integrations.md](integrations.md) — documented the `github-pr-review-post` workflow, the split `pr-review.yml` jobs (`verify-contributor`, `review-trusted`, `review-external`, `post-external-review`, `notify-external`), and the wiki update workflow's `summaryMarkdown` pull-request body.
+- [pi-runtime.md](pi-runtime.md) — noted repository-root reads under the working directory and structured added/modified/deleted change reporting from the post-run workspace guard.
+- [repository-wiki.md](repository-wiki.md) and [maintenance-workflows.md](maintenance-workflows.md) — updated `repository-wiki-sync` output to `wikiResult` (validation + `summary` + `summaryMarkdown`).
+- [testing.md](testing.md) — added `src/lib/pr-review-workflow-security.test.ts`, `src/lib/review-artifact-validation.test.ts`, and `src/lib/release-automation.test.ts`.
+- [temporal-execution.md](temporal-execution.md) — added `summarize-wiki-run` to the retryable wiki actions.
+- [quickstart.md](quickstart.md) — noted the structural, usage, cost, and elapsed-time summary for `repository-wiki-sync`.
+- Added or updated `drs_sources` citations in [quickstart.md](quickstart.md), [workflow-engine.md](workflow-engine.md), [review-workflows.md](review-workflows.md), [integrations.md](integrations.md), [pi-runtime.md](pi-runtime.md), [maintenance-workflows.md](maintenance-workflows.md), [temporal-execution.md](temporal-execution.md), [configuration.md](configuration.md), and [testing.md](testing.md).

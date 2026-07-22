@@ -3,6 +3,9 @@ type: Configuration
 title: DRS configuration
 description: How DRS loads configuration from .drs/drs.config.yaml, environment variables, and CLI overrides.
 tags: [configuration, drs.config.yaml, env, models, agents]
+drs_sources:
+  - path: src/lib/config.ts
+  - path: .drs/drs.config.yaml
 ---
 
 # DRS configuration

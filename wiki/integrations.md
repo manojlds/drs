@@ -3,6 +3,20 @@ type: Integration
 title: Platform integrations
 description: How DRS integrates with GitHub, GitLab, and CI/CD systems.
 tags: [github, gitlab, ci-cd, integration]
+drs_sources:
+  - path: src/github/client.ts
+  - path: src/github/platform-adapter.ts
+  - path: src/gitlab/client.ts
+  - path: src/gitlab/platform-adapter.ts
+  - path: src/lib/platform-client.ts
+  - path: .github/workflows/pr-review.yml
+  - path: .github/workflows/wiki-update.yml
+  - path: .github/workflows/release-changelog.yml
+  - path: .github/workflows/publish.yml
+  - path: .pi/workflows/github-pr-review.yaml
+  - path: .pi/workflows/github-pr-review-post.yaml
+  - path: .pi/workflows/gitlab-mr-review.yaml
+  - path: src/ci/gitlab-ci.template.yml
 ---
 
 # Platform integrations
@@ -25,7 +39,9 @@ The GitHub adapter (`src/github/platform-adapter.ts`) wraps `@octokit/rest` thro
 
 ## GitHub workflows
 
-The packaged `github-pr-review` workflow loads a `github-pr` change source and can optionally describe, post review comments, generate a visual HTML explainer, and create a stacked fix PR. Inputs include `owner`, `repo`, `pr`, `describe`, `post`, `visual`, `fix`, `fixMode`, `fixSeverity`, and `fixMaxIterations`.
+The packaged `github-pr-review` workflow loads a `github-pr` change source and can optionally describe, post review comments, generate a visual HTML explainer, and create a stacked fix PR. Inputs include `owner`, `repo`, `pr`, `describe`, `post`, `requireCompleteDiff`, `visual`, `fix`, `fixMode`, `fixSeverity`, `fixMaxIterations`, and `useChangeRequestAuthor`.
+
+The `github-pr-review-post` workflow is a model-free deterministic posting path. It loads a canonical `review` artifact, validates it against the current PR head, and posts or updates the review summary and inline comments. It requires `owner`, `repo`, `pr`, and `expectedHeadSha`.
 
 The `github-pr-show-changes` workflow runs `change-source` and `review-context` to print the context DRS would send to agents.
 
@@ -43,7 +59,7 @@ The `github-pr-post-comment` workflow posts or updates a single marked comment.
 
 Repository wiki updates are independent of feature PR review. `.github/workflows/wiki-update.yml` runs daily and on manual dispatch from the latest default branch, executes `repository-wiki-sync --executor local`, rejects unexpected changed paths, and uses a fixed `drs/wiki-update` branch to create or refresh one bot pull request. This avoids committing branch-specific `.drs/wiki-state.json` files into parallel feature PRs.
 
-The scheduled workflow resolves the model key from `DRS_PROVIDER_API_KEY` with `OPENCODE_API_KEY` as a fallback. Its fine-grained `DRS_WIKI_SYNC_TOKEN` needs repository Contents and pull requests read/write access. Generation and path checks run without the write token, produce a binary patch, and pass that patch to a fresh job and checkout. The fresh job verifies allowed paths and symlink modes before only the pinned `peter-evans/create-pull-request` step receives the token. Ordinary feature PRs build the wiki site for model-free bundle and rendering validation. The dedicated bot PR additionally runs `repository-wiki-check`, so its source and wiki fingerprints must match before merge.
+The scheduled workflow resolves the model key from `DRS_PROVIDER_API_KEY` with `OPENCODE_API_KEY` as a fallback. Its fine-grained `DRS_WIKI_SYNC_TOKEN` needs repository Contents and pull requests read/write access. Generation and path checks run without the write token, produce a binary patch and a `summaryMarkdown` file, and pass both to a fresh job and checkout. The fresh job verifies allowed paths and symlink modes before only the pinned `peter-evans/create-pull-request` step receives the token; the reusable pull request body is rendered from `summaryMarkdown` instead of a static template. Ordinary feature PRs build the wiki site for model-free bundle and rendering validation. The dedicated bot PR additionally runs `repository-wiki-check`, so its source and wiki fingerprints must match before merge.
 
 Trusted internal review fixes are pushed with the workflow `GITHUB_TOKEN`, which does not trigger ordinary push workflows. When the reviewed head changed, a separate no-checkout `refresh-trusted-checks` job uses the GitHub Git Data API to append one empty check-refresh commit with `DRS_WIKI_SYNC_TOKEN`. That token-backed ref update emits the normal `synchronize` event, so standard PR CI tests the synthetic merge result and applies the strict freshness check to `drs/wiki-update`. The job verifies the URL-encoded remote ref before its non-force update and runs no repository-controlled code with the token. PR review runs are serialized rather than canceled so a label event cannot interrupt this finalization, and the refresh commit disables internal fixing on its follow-up review to cap the cross-run fix cycle.
 
