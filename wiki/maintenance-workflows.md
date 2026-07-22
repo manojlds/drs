@@ -27,9 +27,9 @@ These workflows are defined in `.pi/workflows/*.yaml`. They are intentionally lo
 
 `local-changelog-update` loads the local unstaged diff, runs the `task/changelog-updater` agent, and writes the updated `CHANGELOG.md`. It does not stage or commit.
 
-`tag-changelog-update` uses a `change-source` action with `type: git-range`. When `from` and `to` are omitted, it infers `to` from the GitHub Actions tag event (`GITHUB_REF_NAME`) or the exact tag at `HEAD`, and `from` from the previous reachable stable semver tag. Set `includePrereleaseFrom: true` to compare an RC against the previous RC. This is used by `.github/workflows/tag-changelog.yml` for RC tags.
+`tag-changelog-update` uses a `change-source` action with `type: git-range`. When `from` and `to` are omitted, it infers `to` from a tag event (`GITHUB_REF_NAME`) or the exact tag at `HEAD`, and `from` from the previous reachable stable semver tag. Set `includePrereleaseFrom: true` to compare an RC against the previous RC. It remains an explicit local analysis utility; repository release automation does not run after tags.
 
-`release-changelog-finalize` is meant for final releases. The manual `.github/workflows/release-changelog.yml` runs it with explicit inputs, commits the changelog to the default branch, and optionally creates the final `v<version>` tag so the publish workflow runs from a commit that already contains the changelog.
+`release-changelog-finalize` supports prereleases and final releases. The manual `.github/workflows/release-changelog.yml` transaction uses a protected read-only preparation job to validate increasing exact SemVer, update package and lockfile versions, finalize the changelog, refresh the wiki, and run release checks. A deterministic write job applies the checked binary patch and atomically pushes the release commit with its tag. It explicitly dispatches CI, Pages, and the manual-only npm publisher against that immutable tag and commit; a `GITHUB_TOKEN` push is never used as an implicit trigger.
 
 ## Fix workflows
 

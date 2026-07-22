@@ -1,73 +1,135 @@
 name: Publish to npm
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to publish (e.g., 1.0.0)'
-        required: false
+      tag:
+        description: 'Exact existing release tag, for example v5.0.0-rc.1'
+        required: true
+      commit:
+        description: 'Exact commit SHA the release tag must resolve to'
+        required: true
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
     permissions:
       contents: read
-      id-token: write # Required for npm provenance and trusted publishing (OIDC)
+      id-token: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Determine version and npm tag from git tag
-        id: release
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            # GITHUB_REF_NAME is the pushed tag, e.g. v4.0.0-rc.3
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-
-          if echo "$VERSION" | grep -qE '(alpha|beta|rc|pre)'; then
-            NPM_TAG="next"
-          else
-            NPM_TAG="latest"
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
-          echo "Publishing version $VERSION with npm tag $NPM_TAG"
-
-      - name: Update package.json version from tag
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.version = '${{ steps.release.outputs.version }}';
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          NODE
+      - name: Checkout exact release tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Use npm with trusted publishing support
+        run: npm install --global npm@11.6.2
+
+      - name: Validate tag, commit, and package metadata
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_REF_TYPE: ${{ github.ref_type }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_REF_TYPE" != "tag" ] || [ "$EVENT_REF_NAME" != "$INPUT_TAG" ]; then
+            echo "Publication must be dispatched with --ref set to $INPUT_TAG"
+            exit 1
+          fi
+          if ! [[ "$INPUT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Publication commit must be a full lowercase commit SHA"
+            exit 1
+          fi
+          requested_metadata="$(node .github/scripts/release-metadata.mjs validate-version "${INPUT_TAG#v}")"
+          requested_tag="$(jq -r '.tag' <<<"$requested_metadata")"
+          if [ "$INPUT_TAG" != "$requested_tag" ]; then
+            echo "Publication tag must be an exact v-prefixed SemVer"
+            exit 1
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "$INPUT_TAG^{commit}")"
+          if [ "$head_sha" != "$INPUT_COMMIT" ] || \
+             [ "$tag_sha" != "$INPUT_COMMIT" ] || \
+             [ "$EVENT_SHA" != "$INPUT_COMMIT" ]; then
+            echo "Tag, event, checkout, and requested commit do not agree"
+            exit 1
+          fi
+
+          git fetch origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$INPUT_COMMIT" "origin/$DEFAULT_BRANCH"; then
+            echo "$INPUT_COMMIT is not reachable from origin/$DEFAULT_BRANCH"
+            exit 1
+          fi
+
+          metadata="$(node .github/scripts/release-metadata.mjs check-package "$INPUT_TAG")"
+          version="$(jq -r '.version' <<<"$metadata")"
+          npm_tag="$(jq -r '.npmTag' <<<"$metadata")"
+          node .github/scripts/release-metadata.mjs check-changelog-version "$version"
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Release tag checkout is not clean"
+            exit 1
+          fi
+          if npm_output="$(npm view "@diff-review-system/drs@$version" version --json 2>&1)"; then
+            echo "npm version $version already exists: $npm_output"
+            exit 1
+          elif [[ "$npm_output" != *E404* ]]; then
+            echo "npm registry version check failed: $npm_output"
+            exit 1
+          fi
+          dist_tags="$(npm view @diff-review-system/drs dist-tags --json)"
+          current_dist_version="$(jq -r --arg tag "$npm_tag" '.[$tag] // empty' <<<"$dist_tags")"
+          if [ -n "$current_dist_version" ]; then
+            node .github/scripts/release-metadata.mjs assert-greater "$version" "$current_dist_version"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "npm-tag=$npm_tag" >> "$GITHUB_OUTPUT"
+          echo "Publishing $INPUT_TAG at $INPUT_COMMIT with npm tag $npm_tag"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
+      - name: Verify tagged package
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          node .github/scripts/release-metadata.mjs check-package "$TAG"
+          npm run format:check
+          npm run type-check
+          npm run lint
+          npm test
+          npm run build
+          npm pack --dry-run --json > "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/release-metadata.mjs check-pack \
+            "$RUNNER_TEMP/npm-pack.json" \
+            "${{ steps.release.outputs.version }}"
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Tagged package verification dirtied the checkout"
+            exit 1
+          fi
 
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public --tag ${{ steps.release.outputs.tag }}
-        # Uses OIDC trusted publishing - no NODE_AUTH_TOKEN needed
+        env:
+          NPM_TAG: ${{ steps.release.outputs.npm-tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"

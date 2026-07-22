@@ -31,6 +31,15 @@ nodes:
     agent: task/changelog-updater
     needs:
       - release-change
+    permissions:
+      filesystem:
+        read:
+          roots: ['.']
+          allow: [CHANGELOG.md]
+        write:
+          roots: ['.']
+          allow: [CHANGELOG.md]
+      shell: false
     input: |
       Finalize CHANGELOG.md for release {{inputs.version}} dated {{inputs.date}}.
 
@@ -41,6 +50,7 @@ nodes:
       - Ensure the file starts with `# Changelog` followed by the standard introduction.
       - Move release-worthy `## Unreleased` entries into `## {{inputs.version}} - {{inputs.date}}`.
       - Create `## {{inputs.version}} - {{inputs.date}}` directly above the previous released version if it does not exist.
+      - Consolidate any earlier prerelease sections for the same major.minor.patch version into this release section. A final release must not retain separate RC, beta, or alpha sections for that version.
       - Keep `## Unreleased` above the release section only if there are remaining unreleased entries; otherwise remove empty duplicate/unneeded headings.
       - Preserve existing older release sections.
       - Do not create git tags, publish packages, or edit files other than CHANGELOG.md.

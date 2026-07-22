@@ -1,48 +1,131 @@
-name: Prepare release changelog
+name: Create release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version without leading v, for example 4.0.0'
+        description: 'Exact release version without leading v, for example 5.0.0-rc.1'
         required: true
       from:
-        description: 'Base ref or previous release tag'
+        description: 'Previous stable release tag'
         required: true
-        default: 'v3.3.1'
-      to:
-        description: 'Release commit/ref to summarize'
-        required: true
-        default: 'HEAD'
+        default: 'v4.1.0'
       releaseDate:
         description: 'Release date YYYY-MM-DD; defaults to today UTC'
         required: false
-      createTag:
-        description: 'Create and push v<version> after committing changelog'
-        type: boolean
-        required: true
-        default: false
 
-permissions:
-  contents: write
+concurrency:
+  group: create-release
+  cancel-in-progress: false
 
 jobs:
-  changelog:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      date: ${{ steps.release.outputs.date }}
+      from: ${{ steps.release.outputs.from }}
+      baseline-sha: ${{ steps.release.outputs.baseline-sha }}
+      patch-sha: ${{ steps.preparation.outputs.patch-sha }}
     steps:
-      - name: Checkout default branch with tags
-        uses: actions/checkout@v5
+      - name: Checkout selected default-branch commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22.19.0'
           cache: npm
+
+      - name: Validate release inputs and baseline
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_SHA: ${{ github.sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_FROM: ${{ inputs.from }}
+          INPUT_RELEASE_DATE: ${{ inputs.releaseDate }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            echo "Release workflow must be dispatched from $DEFAULT_BRANCH"
+            exit 1
+          fi
+
+          metadata="$(node .github/scripts/release-metadata.mjs validate-version "$INPUT_VERSION")"
+          version="$(jq -r '.version' <<<"$metadata")"
+          tag="$(jq -r '.tag' <<<"$metadata")"
+          npm_tag="$(jq -r '.npmTag' <<<"$metadata")"
+          node .github/scripts/release-metadata.mjs validate-stable-tag "$INPUT_FROM"
+
+          release_date="$INPUT_RELEASE_DATE"
+          if [ -z "$release_date" ]; then
+            release_date="$(date -u +%F)"
+          fi
+          node .github/scripts/release-metadata.mjs validate-date "$release_date"
+
+          baseline_sha="$(git rev-parse HEAD)"
+          if [ "$baseline_sha" != "$EVENT_SHA" ]; then
+            echo "Checkout does not match the workflow dispatch commit"
+            exit 1
+          fi
+          remote_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')"
+          if [ "$baseline_sha" != "$remote_sha" ]; then
+            echo "Default branch moved after this release was dispatched"
+            exit 1
+          fi
+
+          from_commit="$(git rev-parse --verify --end-of-options "$INPUT_FROM^{commit}")"
+          if ! git merge-base --is-ancestor "$from_commit" "$baseline_sha"; then
+            echo "Base tag $INPUT_FROM is not an ancestor of $baseline_sha"
+            exit 1
+          fi
+          latest_stable="$(git tag --merged "$baseline_sha" --sort=-v:refname | node .github/scripts/release-metadata.mjs latest-stable-tag | jq -r '.tag')"
+          if [ "$INPUT_FROM" != "$latest_stable" ]; then
+            echo "Release base must be the latest reachable stable tag $latest_stable"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists on origin"
+            exit 1
+          fi
+
+          current_version="$(node -p "require('./package.json').version")"
+          node .github/scripts/release-metadata.mjs check-package "v$current_version"
+          node .github/scripts/release-metadata.mjs assert-greater "$version" "$current_version"
+
+          if npm_output="$(npm view "@diff-review-system/drs@$version" version --json 2>&1)"; then
+            echo "npm version $version already exists: $npm_output"
+            exit 1
+          elif [[ "$npm_output" != *E404* ]]; then
+            echo "npm registry version check failed: $npm_output"
+            exit 1
+          fi
+          dist_tags="$(npm view @diff-review-system/drs dist-tags --json)"
+          current_dist_version="$(jq -r --arg tag "$npm_tag" '.[$tag] // empty' <<<"$dist_tags")"
+          if [ -n "$current_dist_version" ]; then
+            node .github/scripts/release-metadata.mjs assert-greater "$version" "$current_dist_version"
+          fi
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Release checkout is not clean"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "date=$release_date" >> "$GITHUB_OUTPUT"
+          echo "from=$INPUT_FROM" >> "$GITHUB_OUTPUT"
+          echo "baseline-sha=$baseline_sha" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
@@ -50,26 +133,24 @@ jobs:
       - name: Build DRS
         run: npm run build
 
-      - name: Resolve release date
-        id: release-date
+      - name: Set package version
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          RELEASE_DATE="${{ inputs.releaseDate }}"
-          if [ -z "$RELEASE_DATE" ]; then
-            RELEASE_DATE="$(date -u +%F)"
-          fi
-          echo "date=$RELEASE_DATE" >> "$GITHUB_OUTPUT"
+          npm version "$VERSION" --no-git-tag-version --ignore-scripts
+          node .github/scripts/release-metadata.mjs check-package "v$VERSION"
 
       - name: Resolve model provider key
         env:
           DRS_PROVIDER_API_KEY: ${{ secrets.DRS_PROVIDER_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
-          RESOLVED_KEY="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
-          if [ -z "$RESOLVED_KEY" ]; then
+          resolved_key="${DRS_PROVIDER_API_KEY:-$OPENCODE_API_KEY}"
+          if [ -z "$resolved_key" ]; then
             echo "Missing model provider key. Configure DRS_PROVIDER_API_KEY or OPENCODE_API_KEY."
             exit 1
           fi
-          echo "OPENCODE_API_KEY=$RESOLVED_KEY" >> "$GITHUB_ENV"
+          echo "OPENCODE_API_KEY=$resolved_key" >> "$GITHUB_ENV"
 
       - name: Finalize changelog
         env:
@@ -77,34 +158,249 @@ jobs:
           DRS_RUNTIME_OPERATION_TIMEOUT_MS: '300000'
           DRS_RUNTIME_STREAM_TIMEOUT_MS: '900000'
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: '2000'
+          FROM_REF: ${{ steps.release.outputs.from }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_DATE: ${{ steps.release.outputs.date }}
         run: |
           node dist/cli/index.js workflow run release-changelog-finalize \
-            --input from="${{ inputs.from }}" \
-            --input to="${{ inputs.to }}" \
-            --input version="${{ inputs.version }}" \
-            --input date="${{ steps.release-date.outputs.date }}"
+            --input from="$FROM_REF" \
+            --input to=HEAD \
+            --input version="$VERSION" \
+            --input date="$RELEASE_DATE"
+          node .github/scripts/release-metadata.mjs check-changelog "$VERSION" "$RELEASE_DATE"
 
-      - name: Commit changelog update
+      - name: Refresh repository wiki
+        env:
+          DRS_DEFAULT_MODEL: opencode-go/kimi-k2.7-code
+          DRS_RUNTIME_OPERATION_TIMEOUT_MS: '300000'
+          DRS_RUNTIME_STREAM_TIMEOUT_MS: '900000'
+          DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: '2000'
         run: |
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "No changelog update needed"
-            exit 0
+          node dist/cli/index.js workflow run repository-wiki-sync --executor local --json
+          node dist/cli/index.js workflow run repository-wiki-check --executor local --json
+
+      - name: Guard and stage release paths
+        id: staged
+        run: |
+          changed_paths="$({ git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u)"
+          if [ -z "$changed_paths" ]; then
+            echo "Release transaction produced no changes"
+            exit 1
           fi
+          while IFS= read -r path; do
+            case "$path" in
+              package.json|package-lock.json|CHANGELOG.md|.drs/wiki-state.json|wiki/*) ;;
+              *)
+                echo "Unexpected release path: $path"
+                exit 1
+                ;;
+            esac
+          done <<<"$changed_paths"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs: finalize changelog for v${{ inputs.version }}"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
+          git add package.json package-lock.json CHANGELOG.md .drs/wiki-state.json wiki
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Release tree contains unstaged or untracked changes"
+            exit 1
+          fi
+          git diff --cached --check
+          index_sha="$(git diff --cached --binary --full-index | sha256sum | cut -d ' ' -f1)"
+          echo "index-sha=$index_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Create release tag
-        if: ${{ inputs.createTag }}
+      - name: Verify prepared release tree
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_DATE: ${{ steps.release.outputs.date }}
         run: |
-          TAG="v${{ inputs.version }}"
+          node .github/scripts/release-metadata.mjs check-package "$TAG"
+          node .github/scripts/release-metadata.mjs check-version-only "$VERSION"
+          node .github/scripts/release-metadata.mjs check-changelog "$VERSION" "$RELEASE_DATE"
+          npm run format:check
+          npm run type-check
+          npm run lint
+          npm run build
+          npm test
+          npm run wiki:site:build
+          npm pack --dry-run --json > "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/release-metadata.mjs check-pack "$RUNNER_TEMP/npm-pack.json" "$VERSION"
+          changed_paths="$({ git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u)"
+          while IFS= read -r path; do
+            case "$path" in
+              package.json|package-lock.json|CHANGELOG.md|.drs/wiki-state.json|wiki/*) ;;
+              *)
+                echo "Unexpected release path after verification: $path"
+                exit 1
+                ;;
+            esac
+          done <<<"$changed_paths"
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Release verification produced unstaged or untracked changes"
+            exit 1
+          fi
+          current_index_sha="$(git diff --cached --binary --full-index | sha256sum | cut -d ' ' -f1)"
+          if [ "$current_index_sha" != "${{ steps.staged.outputs.index-sha }}" ]; then
+            echo "Release verification changed the staged patch"
+            exit 1
+          fi
+          node .github/scripts/release-metadata.mjs check-package "$TAG"
+          node .github/scripts/release-metadata.mjs check-version-only "$VERSION"
+          node .github/scripts/release-metadata.mjs check-changelog "$VERSION" "$RELEASE_DATE"
+          git diff --cached --check
+
+      - name: Create release preparation artifact
+        id: preparation
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_DATE: ${{ steps.release.outputs.date }}
+          FROM_REF: ${{ steps.release.outputs.from }}
+          BASELINE_SHA: ${{ steps.release.outputs.baseline-sha }}
+        run: |
+          artifact_dir="$RUNNER_TEMP/release-preparation"
+          mkdir -p "$artifact_dir"
+          git diff --cached --binary --full-index > "$artifact_dir/release.patch"
+          if [ ! -s "$artifact_dir/release.patch" ]; then
+            echo "Release patch is empty"
+            exit 1
+          fi
+          patch_sha="$(sha256sum "$artifact_dir/release.patch" | cut -d ' ' -f1)"
+          if [ "$patch_sha" != "${{ steps.staged.outputs.index-sha }}" ]; then
+            echo "Generated release patch does not match the verified index"
+            exit 1
+          fi
+          jq -n \
+            --arg version "$VERSION" \
+            --arg tag "$TAG" \
+            --arg date "$RELEASE_DATE" \
+            --arg from "$FROM_REF" \
+            --arg baselineSha "$BASELINE_SHA" \
+            --arg patchSha "$patch_sha" \
+            '{version: $version, tag: $tag, date: $date, from: $from, baselineSha: $baselineSha, patchSha: $patchSha}' \
+            > "$artifact_dir/metadata.json"
+          echo "patch-sha=$patch_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release preparation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-preparation
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: prepare
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout immutable release baseline
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.baseline-sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Download release preparation
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-preparation
+
+      - name: Validate and apply release preparation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_DATE: ${{ needs.prepare.outputs.date }}
+          FROM_REF: ${{ needs.prepare.outputs.from }}
+          BASELINE_SHA: ${{ needs.prepare.outputs.baseline-sha }}
+          PATCH_SHA: ${{ needs.prepare.outputs.patch-sha }}
+        run: |
+          metadata="$RUNNER_TEMP/release-preparation/metadata.json"
+          patch="$RUNNER_TEMP/release-preparation/release.patch"
+          test "$(jq -r '.version' "$metadata")" = "$VERSION"
+          test "$(jq -r '.tag' "$metadata")" = "$TAG"
+          test "$(jq -r '.date' "$metadata")" = "$RELEASE_DATE"
+          test "$(jq -r '.from' "$metadata")" = "$FROM_REF"
+          test "$(jq -r '.baselineSha' "$metadata")" = "$BASELINE_SHA"
+          test "$(jq -r '.patchSha' "$metadata")" = "$PATCH_SHA"
+          test "$(sha256sum "$patch" | cut -d ' ' -f1)" = "$PATCH_SHA"
+          test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+
+          remote_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')"
+          if [ "$remote_sha" != "$BASELINE_SHA" ]; then
+            echo "origin/$DEFAULT_BRANCH moved during release preparation"
+            exit 1
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists on origin"
             exit 1
           fi
 
-          git tag "$TAG"
-          git push origin "$TAG"
+          git apply --index --binary "$patch"
+          changed_paths="$(git diff --cached --name-only | sort -u)"
+          while IFS= read -r path; do
+            case "$path" in
+              package.json|package-lock.json|CHANGELOG.md|.drs/wiki-state.json|wiki/*) ;;
+              *)
+                echo "Unexpected release path: $path"
+                exit 1
+                ;;
+            esac
+          done <<<"$changed_paths"
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Applied release tree contains unstaged or untracked changes"
+            exit 1
+          fi
+          git diff --cached --check
+          node .github/scripts/release-metadata.mjs check-package "$TAG"
+          node .github/scripts/release-metadata.mjs check-version-only "$VERSION"
+          node .github/scripts/release-metadata.mjs check-changelog "$VERSION" "$RELEASE_DATE"
+
+      - name: Commit and atomically tag release
+        id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BASELINE_SHA: ${{ needs.prepare.outputs.baseline-sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(release): $TAG"
+          release_sha="$(git rev-parse HEAD)"
+          git tag "$TAG" "$release_sha"
+
+          remote_sha="$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f1)"
+          if [ "$remote_sha" != "$BASELINE_SHA" ]; then
+            echo "origin/$DEFAULT_BRANCH moved before the atomic push"
+            exit 1
+          fi
+          basic_auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$basic_auth"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic_auth" \
+            git push --atomic origin \
+            "HEAD:refs/heads/$DEFAULT_BRANCH" \
+            "refs/tags/$TAG:refs/tags/$TAG"
+          echo "release-sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch tag-bound verification, wiki publication, and npm publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.release-sha }}
+        run: |
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          gh workflow run wiki-pages.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          gh workflow run publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TAG" \
+            --field tag="$TAG" \
+            --field commit="$RELEASE_SHA"
+          echo "Dispatched release workflows for $TAG at $RELEASE_SHA"
