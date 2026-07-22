@@ -885,6 +885,7 @@ Apache-2.0
 - [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
 - [Custom Agents & Skills Guide](docs/CUSTOM_AGENTS.md) - Custom agents, context, skills, and per-agent tools
 - [Workflows Guide](docs/WORKFLOWS.md) - Compose agents and actions into dependency graphs
+- [Release Guide](docs/RELEASING.md) - Atomic release tagging and tag-bound npm publication
 - [Model Overrides Guide](docs/MODEL_OVERRIDES.md) - Per-agent model configuration
 - [Pi Documentation](https://github.com/badlogic/pi-mono)
 

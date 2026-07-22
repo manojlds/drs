@@ -49,6 +49,12 @@ Trusted internal review fixes are pushed with the workflow `GITHUB_TOKEN`, which
 
 Additional manual wrappers exist for stacked guidance updates (`.github/workflows/drs-guidance-stacked.yml`) and stacked fixes (`.github/workflows/drs-fix-stacked.yml`).
 
+### Release and npm publication
+
+`.github/workflows/release-changelog.yml` is the only repository release entry point. A protected read-only job pins the dispatch SHA, validates increasing exact SemVer and the latest stable base tag, updates package and lockfile versions, finalizes the changelog, refreshes the canonical wiki, and runs release checks. A separate deterministic write job applies the checked binary patch and atomically pushes one release commit with its tag. The workflow then explicitly dispatches CI, Pages, and `publish.yml` for the exact tag and commit SHA.
+
+`publish.yml` has no tag-push trigger and never rewrites package files. Under the protected `release` environment, it checks out the requested tag, verifies that the event, tag, commit, package manifests, changelog, pack manifest, and default-branch history agree, then publishes with npm provenance. Registry failures stop publication; globally serialized prereleases can only move `next` forward and stable releases can only move `latest` forward. Explicit dispatch is required because GitHub does not create ordinary tag-push workflow runs for tags or branches written with `GITHUB_TOKEN`.
+
 ## GitLab workflows
 
 The packaged `gitlab-mr-review` workflow loads a `gitlab-mr` change source and supports `describe`, `post`, and `codeQuality`. The `codeQuality=true` input writes a GitLab CodeClimate-compatible report to `gl-code-quality-report.json` via the `code-quality-report` action.

@@ -413,6 +413,26 @@ describe('Config', () => {
           },
         },
       });
+      expect(config.workflows?.['release-changelog-finalize']).toMatchObject({
+        inputs: {
+          from: { type: 'string', required: true },
+          version: { type: 'string', required: true },
+          date: { type: 'string', required: true },
+        },
+        nodes: {
+          'release-change': { action: 'change-source' },
+          'finalize-changelog': {
+            agent: 'task/changelog-updater',
+            permissions: {
+              filesystem: {
+                read: { roots: ['.'], allow: ['CHANGELOG.md'] },
+                write: { roots: ['.'], allow: ['CHANGELOG.md'] },
+              },
+              shell: false,
+            },
+          },
+        },
+      });
       expect(config.workflows?.['tag-changelog-update']).toMatchObject({
         description: 'Update CHANGELOG.md from changes between two git refs or tags',
         inputs: {

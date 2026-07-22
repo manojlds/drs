@@ -723,78 +723,27 @@ drs workflow run local-update-agents-md --input path=AGENTS.md
 
 These workflows are intentionally local and do not commit changes. Compose them with `git-add`, `git-commit`, review, or platform posting nodes in project workflows when your repository wants stronger automation.
 
-### Release Changelog In GitHub Actions
+### Atomic Releases In GitHub Actions
 
-For final releases, use `.github/workflows/release-changelog.yml` before publishing. It is manually triggered, runs `release-changelog-finalize`, commits the changelog to the default branch, and can optionally create the final `v<version>` tag after the changelog commit. The tag push then triggers the publish workflow from a commit that already contains the finalized changelog.
+Use the manual `.github/workflows/release-changelog.yml` transaction for prereleases and stable releases. A protected, read-only preparation job pins the dispatch commit, validates increasing exact SemVer and the latest stable base tag, updates both package manifests, finalizes the changelog, refreshes the repository wiki, and runs release checks. A separate deterministic write job applies the resulting binary patch and atomically pushes one release commit plus its `v<version>` tag. It then explicitly dispatches CI, Pages, and `.github/workflows/publish.yml` against the exact tag and commit SHA.
 
-Typical final release inputs:
+Typical 5.0 RC inputs:
 
 ```text
-version: 4.0.0
-from: v3.3.1
-to: HEAD
-releaseDate: 2026-06-27
-createTag: true
+version: 5.0.0-rc.1
+from: v4.1.0
+releaseDate: 2026-07-22
 ```
 
-### RC Tag Changelog In GitHub Actions
+Do not push RC tags manually. Tags pushed by `GITHUB_TOKEN` do not trigger ordinary tag-push workflows, and post-tag changelog updates cannot become part of the tag. `publish.yml` is therefore manual-only and refuses branch dispatches, mismatched SHAs, or package/tag/changelog version drift.
 
-`tag-changelog-update` is designed for release-candidate tag-triggered GitHub Actions. When `from` and `to` are omitted, it uses `GITHUB_REF_NAME` as the current tag and asks git for the previous reachable stable semver tag. This means `v4.0.0-rc.1` compares against the previous stable tag, not an older release-candidate tag. Final releases should use the manual release changelog workflow above so the final tag includes the changelog commit.
-
-```yaml
-name: Update changelog from tag
-
-on:
-  push:
-    tags:
-      - "v*-rc.*"
-
-jobs:
-  changelog:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.19.0'
-
-      - run: npm ci
-      - run: npm run build
-
-      - run: node dist/cli/index.js workflow run tag-changelog-update
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - run: |
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "No changelog update needed"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs: update changelog for $GITHUB_REF_NAME"
-          git push
-```
-
-For release-candidate testing before final `v4.0.0`, create and push an RC tag:
-
-```bash
-git tag v4.0.0-rc.1
-git push origin v4.0.0-rc.1
-```
-
-For local dry-runs, pass explicit refs:
+The packaged `tag-changelog-update` workflow remains available for local analysis with explicit refs; it is not repository release automation:
 
 ```bash
 drs workflow run tag-changelog-update --input from=v3.3.1 --input to=v4.0.0-rc.1
 ```
+
+See [Releasing DRS](RELEASING.md) for prerequisites, npm dist-tags, and recovery without moving an existing tag.
 
 ## DRS Local Changelog Workflow
 

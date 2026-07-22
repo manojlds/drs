@@ -17,6 +17,7 @@ All notable changes to DRS are documented in this file.
 - Add a persistent repository wiki brief at `.drs/wiki-instructions.md`: the `repository-wiki-sync` workflow loads it on every run, appends any one-run `instructions` input with explicit precedence, exposes the effective instructions source and hash in JSON output, and reconciles the wiki when the brief changes. One-run inputs are never recorded in wiki state and never invalidate freshness.
 - Add structured source provenance for repository wiki concepts: declare `drs_sources` citations in concept frontmatter, keep a `source path -> concept paths` reverse map in wiki state, scope update runs to `candidateConcepts` whose cited sources changed, render a Sources panel on the wiki site, and expose citations in `drs wiki search --json`. Malformed declarations fail validation; missing cited paths and missing provenance are warnings so coverage grows incrementally.
 - Add deterministic repository wiki run summaries with delta and concept-change counts, validation, graph and provenance metrics, model usage and estimated cost, elapsed time, and explicit model-free no-op reporting. Human and JSON workflow output share the summary; scheduled wiki updates publish escaped Markdown to the GitHub job summary and reusable wiki pull request body without adding comments.
+- Add exact SemVer/date/package/changelog validation and documented recovery for release automation.
 
 ### Changed
 
@@ -29,6 +30,7 @@ All notable changes to DRS are documented in this file.
 - Harden reusable wiki rendering against symbolic-link escapes and overlapping in-process operations, support valid bundles without DRS-specific quickstart/log pages, and exclude generated site output from the npm package.
 - Preserve `temporal` settings loaded from `.drs/drs.config.yaml` instead of silently dropping them during config merge.
 - Isolate external GitHub PR model execution from write credentials and PR-controlled code by using trusted base checkouts, read-only review permissions, a canonical artifact handoff, and strict scope/head/finding validation before deterministic posting.
+- Commit package, changelog, and wiki metadata before atomically creating a release tag, then explicitly dispatch npm publication against that immutable tag and commit instead of relying on suppressed or racing tag-push workflows.
 
 ### Removed
 
