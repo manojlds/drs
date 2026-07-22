@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { isDeepStrictEqual } from 'util';
 
 const SEMVER_PATTERN =
@@ -144,6 +144,144 @@ function changelogHeadings() {
     .filter((line) => line.startsWith('## '));
 }
 
+function parseChangelog(content) {
+  const lines = content.replace(/\r\n/gu, '\n').split('\n');
+  const starts = [];
+  for (let index = 0; index < lines.length; index++) {
+    if (lines[index].startsWith('## ')) starts.push(index);
+  }
+  if (starts.length === 0) fail('CHANGELOG.md does not contain any release sections.');
+  return {
+    introduction: lines.slice(0, starts[0]),
+    sections: starts.map((start, index) => ({
+      heading: lines[start].slice(3),
+      body: lines.slice(start + 1, starts[index + 1] ?? lines.length),
+    })),
+  };
+}
+
+function releaseHeadingMetadata(heading) {
+  const match = /^(.+) - (\d{4}-\d{2}-\d{2})$/u.exec(heading);
+  if (!match) return undefined;
+  try {
+    return { ...parseExactSemVer(match[1]), date: validateDate(match[2]) };
+  } catch {
+    return undefined;
+  }
+}
+
+function trimBlankLines(lines) {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === '') start++;
+  while (end > start && lines[end - 1].trim() === '') end--;
+  return lines.slice(start, end);
+}
+
+function bodyCategories(body) {
+  const categories = [];
+  let current;
+  for (const line of trimBlankLines(body)) {
+    if (line.startsWith('### ')) {
+      current = { name: line.slice(4), lines: [] };
+      categories.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    } else if (line.trim() !== '') {
+      fail('CHANGELOG.md release content must be grouped under level-three headings.');
+    }
+  }
+  return categories;
+}
+
+function categoryEntries(lines) {
+  const entries = [];
+  let current = [];
+  const flush = () => {
+    if (current.length > 0) entries.push(trimBlankLines(current));
+    current = [];
+  };
+  for (const line of trimBlankLines(lines)) {
+    if (line.startsWith('- ')) flush();
+    if (line.trim() === '') flush();
+    else current.push(line);
+  }
+  flush();
+  return entries.filter((entry) => entry.length > 0);
+}
+
+function mergeChangelogBodies(bodies) {
+  const categoryOrder = [];
+  const categories = new Map();
+  for (const body of bodies) {
+    for (const category of bodyCategories(body)) {
+      if (!categories.has(category.name)) {
+        categoryOrder.push(category.name);
+        categories.set(category.name, []);
+      }
+      const entries = categories.get(category.name);
+      const seen = new Set(entries.map((entry) => entry.join('\n')));
+      for (const entry of categoryEntries(category.lines)) {
+        const key = entry.join('\n');
+        if (!seen.has(key)) {
+          entries.push(entry);
+          seen.add(key);
+        }
+      }
+    }
+  }
+
+  const output = [];
+  for (const name of categoryOrder) {
+    const entries = categories.get(name);
+    if (entries.length === 0) continue;
+    if (output.length > 0) output.push('');
+    output.push(`### ${name}`, '');
+    entries.forEach((entry, index) => {
+      if (index > 0 && !entry[0].startsWith('- ')) output.push('');
+      output.push(...entry);
+    });
+  }
+  if (output.length === 0) fail('CHANGELOG.md has no release entries to finalize.');
+  return output;
+}
+
+export function finalizeChangelog(version, date) {
+  const metadata = parseExactSemVer(version);
+  validateDate(date);
+  const parsed = parseChangelog(readFileSync('CHANGELOG.md', 'utf-8'));
+  const sourceIndexes = [];
+  parsed.sections.forEach((section, index) => {
+    if (section.heading === 'Unreleased') {
+      sourceIndexes.push(index);
+      return;
+    }
+    const release = releaseHeadingMetadata(section.heading);
+    if (release?.baseVersion === metadata.baseVersion && release.prerelease !== null) {
+      sourceIndexes.push(index);
+    }
+  });
+  if (sourceIndexes.length === 0) {
+    fail(`CHANGELOG.md has no Unreleased or ${metadata.baseVersion} prerelease entries.`);
+  }
+
+  const mergedBody = mergeChangelogBodies(
+    sourceIndexes.map((index) => parsed.sections[index].body)
+  );
+  const insertionIndex = Math.min(...sourceIndexes);
+  const sourceSet = new Set(sourceIndexes);
+  const sections = parsed.sections.filter((_, index) => !sourceSet.has(index));
+  sections.splice(insertionIndex, 0, { heading: `${version} - ${date}`, body: mergedBody });
+
+  const introduction = trimBlankLines(parsed.introduction).join('\n');
+  const renderedSections = sections.map((section) => {
+    const body = trimBlankLines(section.body).join('\n');
+    return `## ${section.heading}${body ? `\n\n${body}` : ''}`;
+  });
+  writeFileSync('CHANGELOG.md', `${introduction}\n\n${renderedSections.join('\n\n')}\n`);
+  return checkChangelog(version, date);
+}
+
 export function checkChangelog(version, expectedDate) {
   const metadata = parseExactSemVer(version);
   const releasePrefix = `## ${version} - `;
@@ -205,6 +343,8 @@ try {
     print(assertGreaterVersion(args[0], args[1]));
   else if (command === 'check-package' && args.length === 1) print(checkPackage(args[0]));
   else if (command === 'check-version-only' && args.length === 1) print(checkVersionOnly(args[0]));
+  else if (command === 'finalize-changelog' && args.length === 2)
+    print(finalizeChangelog(args[0], args[1]));
   else if (command === 'check-changelog' && args.length === 2)
     print(checkChangelog(args[0], args[1]));
   else if (command === 'check-changelog-version' && args.length === 1)
