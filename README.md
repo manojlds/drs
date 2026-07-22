@@ -24,6 +24,7 @@ DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review i
 - [Repository Knowledge Map](https://manojlds.github.io/drs/)
 - [Interactive Concept Graph](https://manojlds.github.io/drs/graph.html)
 - [Quick Start](#quick-start)
+- [Upgrading From 4.1 To 5.0](https://github.com/manojlds/drs/blob/main/docs/MIGRATING_TO_5.md)
 - [Deployment Modes](#deployment-modes)
 - [Customization](#customization)
 - [Configuration](#configuration)
@@ -880,6 +881,7 @@ Apache-2.0
 
 ## Documentation
 
+- [5.0 Migration Guide](https://github.com/manojlds/drs/blob/main/docs/MIGRATING_TO_5.md) - Required changes when upgrading from DRS 4.1
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup
 - [External PR Security Guide](docs/EXTERNAL_PR_SECURITY.md) - Security controls for external contributors
