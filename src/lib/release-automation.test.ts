@@ -114,6 +114,55 @@ describe('release metadata validation', () => {
     );
   });
 
+  it('deterministically consolidates unreleased and prerelease changelog entries', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'drs-release-changelog-'));
+    tempDirs.push(directory);
+    writeFileSync(
+      join(directory, 'CHANGELOG.md'),
+      [
+        '# Changelog',
+        '',
+        'All notable changes are documented here.',
+        '',
+        '## Unreleased',
+        '',
+        '### Added',
+        '',
+        '- Add the final feature.',
+        '',
+        '## 5.0.0-rc.1 - 2026-07-21',
+        '',
+        '### Added',
+        '',
+        '- Add the first feature.',
+        '- Add the final feature.',
+        '',
+        '### Fixed',
+        '',
+        '- Fix the release.',
+        '',
+        '## 4.1.0 - 2026-07-17',
+        '',
+        '### Added',
+        '',
+        '- Add the previous feature.',
+        '',
+      ].join('\n')
+    );
+
+    const result = runMetadata(['finalize-changelog', '5.0.0', '2026-07-22'], directory);
+    const changelog = readFileSync(join(directory, 'CHANGELOG.md'), 'utf-8');
+
+    expect(result.status).toBe(0);
+    expect(changelog).toContain('## 5.0.0 - 2026-07-22');
+    expect(changelog).not.toContain('## Unreleased');
+    expect(changelog).not.toContain('## 5.0.0-rc.1');
+    expect(changelog.match(/- Add the final feature\./gu)).toHaveLength(1);
+    expect(changelog).toContain('- Add the first feature.');
+    expect(changelog).toContain('- Fix the release.');
+    expect(changelog).toContain('## 4.1.0 - 2026-07-17');
+  });
+
   it('checks required and forbidden npm pack paths', () => {
     const directory = mkdtempSync(join(tmpdir(), 'drs-release-pack-'));
     tempDirs.push(directory);
@@ -156,6 +205,8 @@ describe('release workflow transaction', () => {
     expect(workflow.jobs.prepare.permissions).toEqual({ contents: 'read' });
     expect(workflow.jobs.commit.permissions).toMatchObject({ contents: 'write', actions: 'write' });
     expect(prepareRuns).toContain('npm version "$VERSION" --no-git-tag-version --ignore-scripts');
+    expect(prepareRuns).toContain('finalize-changelog "$VERSION" "$RELEASE_DATE"');
+    expect(prepareRuns).not.toContain('release-changelog-finalize');
     expect(prepareRuns).toContain('repository-wiki-sync');
     expect(prepareRuns).toContain('git diff --cached --binary --full-index');
     expect(prepareRuns).toContain('check-version-only "$VERSION"');
