@@ -11,7 +11,7 @@ All notable changes to DRS are documented in this file.
 - Add source/wiki fingerprints, persisted delta state, model-free no-op and PR checks, and changed-path-scoped wiki maintenance.
 - Add an OKF-aware VitePress website with local search, concept metadata, raw bundle and `llms.txt` outputs, PR build validation, and GitHub Pages deployment.
 - Add an interactive internal-link concept graph, reusable `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, and post-deployment Pages smoke checks.
-- Add scheduled repository wiki synchronization through a dedicated bot pull request, plus opt-in PR/MR creator attribution for workflow-generated commits.
+- Add scheduled repository wiki synchronization through a dedicated bot pull request.
 - Add model-free `drs wiki search` with deterministic metadata/body ranking, repository-relative citations, snippets, limits, and JSON output.
 - Add generic workflow-agent filesystem permissions with literal roots, allow/deny patterns, shell isolation, Pi-native tool enforcement, post-run mutation checks, and in-run content validators.
 - Add a persistent repository wiki brief at `.drs/wiki-instructions.md`: the `repository-wiki-sync` workflow loads it on every run, appends any one-run `instructions` input with explicit precedence, exposes the effective instructions source and hash in JSON output, and reconciles the wiki when the brief changes. One-run inputs are never recorded in wiki state and never invalidate freshness.
@@ -24,6 +24,11 @@ All notable changes to DRS are documented in this file.
 - Preserve directed concept links in repository wiki graphs, show incoming and outgoing relationships separately, and report deterministic orphan and weak-connection quality metrics during validation.
 - Run repository wiki maintenance with scoped Markdown writes, generated-index denial, no shell access, and immediate OKF validation feedback.
 - Declare the npm distribution as CLI-only, expose `useChangeRequestAuthor` inputs on packaged fix/guidance workflows, update Pi to 0.79.10 and Temporal to 1.20.3, and pin patched transitive dependencies where supported.
+- Repurpose `github-pr-review-post` as a model-free canonical-artifact posting workflow that requires the exact reviewed head SHA; use `github-pr-review` with `describe=true` and `post=true` for one-step review and posting.
+- Run packaged GitHub review model sessions with repository-read-only access and no shell, and serialize workflow nodes that may mutate the workspace.
+- Attribute commits from packaged PR/MR fix and agent-guidance workflows to the change-request creator by default; set `useChangeRequestAuthor=false` when push rules require the automation identity.
+- Remove bundled-skill details from `doctor --json`, add per-agent usage and optional workspace-change details to workflow JSON, and strictly validate canonical artifact scope and contents before posting.
+- Reject oversized review artifacts and platform comments before mutation, with bounded finding and inline-comment counts.
 
 ### Fixed
 
@@ -35,6 +40,10 @@ All notable changes to DRS are documented in this file.
 ### Removed
 
 - Remove bundled skill installation and synchronization commands, content lock tracking, and the obsolete top-level `drs sync` command now that DRS no longer packages skills. Project-authored agent skills remain supported.
+
+### Documentation
+
+- Add a [5.0 migration guide](docs/MIGRATING_TO_5.md) covering removed commands, configuration cleanup, workflow trust boundaries, changed defaults, and JSON contracts.
 
 ## 4.1.0 - 2026-07-17
 
