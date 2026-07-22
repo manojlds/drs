@@ -154,7 +154,7 @@ jobs:
 
       - name: Finalize changelog
         env:
-          DRS_DEFAULT_MODEL: opencode-go/kimi-k2.7-code
+          DRS_DEFAULT_MODEL: opencode-go/minimax-m3
           DRS_RUNTIME_OPERATION_TIMEOUT_MS: '300000'
           DRS_RUNTIME_STREAM_TIMEOUT_MS: '900000'
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: '2000'
