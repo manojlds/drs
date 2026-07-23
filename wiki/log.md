@@ -1,5 +1,13 @@
 # Wiki update log
 
+## 2026-07-23
+
+Updated the wiki for the DRS 5.0.0 release and the new 5.0 migration guide.
+
+- Added [migration.md](migration.md) to cover the 5.0 breaking changes described in `docs/MIGRATING_TO_5.md` and `CHANGELOG.md`: removed skill/sync commands, CLI-only package, `github-pr-review-post` as a model-free artifact consumer, split external-review trust boundary, default `useChangeRequestAuthor`, JSON and artifact contract limits, and atomic release automation.
+- Updated [quickstart.md](quickstart.md) to list the new `drs wiki build`, `drs wiki serve`, and `drs wiki check-site` commands, link to the migration concept, and note that the package is at version 5.0.0.
+- Recorded the changed `package.json` and `docs/MIGRATING_TO_5.md` provenance through the existing quickstart citation and the new migration concept.
+
 ## 2026-07-18
 
 Generated the initial DRS repository wiki bundle under `wiki/` and then reconciled it for the final OKF repository wiki feature delta after hardening.

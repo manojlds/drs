@@ -2,8 +2,8 @@
   "version": 1,
   "okfVersion": "0.1",
   "root": "wiki",
-  "gitHead": "7da2cd776ee9fbfd6996ac9bba58e6162ccdea99",
-  "sourceHash": "1e08c866b190296f4c7db9be53d23dd86625bec67c51abbf00270c2d6245d835",
+  "gitHead": "85fb01cae11d5e84d16778ee8e03f427e31513dc",
+  "sourceHash": "05503451891fb32a70dd33ace385ab03eb76657c1608fa5de7cec86647d81bb0",
   "sourceFiles": {
     ".drs/agents/review/quality/context.md": "009e512eb2a7edbbc621818ea8fb6cf58bdb3c52d69f7cbb55d55d01442ba3fe",
     ".drs/agents/review/style/context.md": "37d5284a6143d3f969d601298d7704ac24a6c85f256491b4aec33812bd298637",
@@ -66,7 +66,7 @@
     ".wiki-site/.vitepress/theme/index.ts": "5a94e930da69570ef5af61b15b32e65bd16dd0353d0666aae3ad6a34aa35a6cc",
     ".wiki-site/.vitepress/theme/style.css": "5091fab623b537f05496c6467d1900de1c80799b0c616717e60e657828d3bc3e",
     "AGENTS.md": "f09a968670f68333c840118b4791b5dd2a6c6e680ec50051dbe860993c819336",
-    "CHANGELOG.md": "86ba2157770e92688cb6368db70db884e688b1851541283961a7e07c2302370a",
+    "CHANGELOG.md": "a0f6f64c073a691b25367eabbda0d950cf4ace9e7bbd8a23dba0b6e01cff393b",
     "CLAUDE.md": "2a6774170e6644e20b6248937307de686c24757112838aae64d8146a7c2b55d7",
     "LICENSE": "1171b005993589334b333d9fcfea08bbe3ce06ff3c309d6c74f4b1ae1a3d5dab",
     "README.md": "8c4a105258bbb12cef8103bee8ca89efefecfe4ebb25c22ec5f3736de6ee99f8",
@@ -77,7 +77,7 @@
     "docs/EXTERNAL_PR_SECURITY.md": "9fc5949ca9134f2d103bf137d0da1a87cf91ce364a69710fc9c7303785af0de3",
     "docs/GITHUB_ACTIONS_INTEGRATION.md": "aa4b2f66aed0e8c71baf2d91bd4a59160fb0f890254ebdf36db911855cd3aa2b",
     "docs/GITLAB_CI_INTEGRATION.md": "a4677fe030a61e51ea29e2f9f93878a5f9bc2ed9a72f0e8618e14ff7314ea980",
-    "docs/MIGRATING_TO_5.md": "ed3f5c16a3b7651b16bf84a0df957f8007192340856b88ffcef6f0d45a7de9f8",
+    "docs/MIGRATING_TO_5.md": "5df8b9d7b0b7840d7c0c52138d75fa8f11e494ec08e7fd6b49ca409879f25bdf",
     "docs/MODEL_OVERRIDES.md": "27947f8539dad69543224eea94039293d451514b480d3361e8f7ea4bce2f9a1a",
     "docs/RELEASING.md": "2d1613fa8d3cef748c7eef4983dda347961f938a1b66f9c746b405fa50116f79",
     "docs/TEMPORAL.md": "117fc4548a23f2b901d4a115feded6440df282d246a2981f9ac1746d6d1a9617",
@@ -85,8 +85,8 @@
     "docs/fix-flow-design.md": "90d1bcc864fbf00f639a70fe216f9cc4771547ad9715131946b0205cba51fefd",
     "docs/runtime-port.md": "d14b0a76385bf307be0e909566500af5c4d7d8be91b5219fcf6e6a4bbcd8de59",
     "mise.toml": "750a06cf0aa629648bf945982104a2af115beebc3d6307f462a55bbf47ab33fa",
-    "package-lock.json": "2ecaff871bcd5353680dbc5b42d44b3be6a0ce26c5f4bfd6fde69e3749095772",
-    "package.json": "9b471b7747f5f02b71d3094d24b38aad1f7fb0396d7a6fa041647e357f0ab826",
+    "package-lock.json": "323ca7aef18d399bb8aadbdca9094705b9038ac381514118f87f5c031bdf741c",
+    "package.json": "dff85e08447b76f3982246807bbfb924036487f954226ffcfe10b3a53a081a6d",
     "plan.md": "f4f84ed1caf7a340e08eff91260e2085c6ef7819932fd77675f00f8d71ce2f5f",
     "src/ci/gitlab-ci.template.yml": "40617e0b8e1341a45d4f30c00f8fed25bc17f8b0c2f9918e2a57e74ee1296311",
     "src/ci/runner.ts": "abc6afe21e377a9364e2de8785dd0801a6c16670df2812f57454ebfec51bd1d0",
@@ -247,7 +247,7 @@
     "tsconfig.json": "017a6d1c52d39a1a81fc3b561a3144c360f9dc630ff878043aef3212d1994d7e",
     "vitest.config.ts": "2dc230b842df634ca28f62f97356e804f35d2475979e64fc0a3dbf672879e748"
   },
-  "wikiHash": "93f6c9c8392595c65489f57de82c83b0320b9ecb2e097d8443f46c5ccac5bba0",
+  "wikiHash": "faf4fe789a234d02dc3abef5dad01a348e14e0d0510e2bf28bd386e6984fd30c",
   "sourceConcepts": {
     ".drs/drs.config.yaml": [
       "configuration.md"
@@ -310,8 +310,17 @@
     ".wiki-site/.vitepress/theme/PageLead.vue": [
       "repository-wiki.md"
     ],
+    "CHANGELOG.md": [
+      "migration.md"
+    ],
     "README.md": [
       "quickstart.md"
+    ],
+    "docs/MIGRATING_TO_5.md": [
+      "migration.md"
+    ],
+    "docs/RELEASING.md": [
+      "migration.md"
     ],
     "package.json": [
       "quickstart.md"
@@ -451,5 +460,5 @@
       "temporal-execution.md"
     ]
   },
-  "updatedAt": "2026-07-22T11:55:21.500Z"
+  "updatedAt": "2026-07-23T09:54:03.861Z"
 }

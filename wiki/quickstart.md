@@ -11,7 +11,7 @@ drs_sources:
 
 # DRS repository wiki
 
-DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub pull requests, GitLab merge requests, local diffs, and agentic repository upkeep. The published npm package is a CLI application; programmatic imports and deep imports from `dist/` are not a supported API. The CLI runs packaged YAML workflows that compose agents and built-in actions into a dependency graph.
+DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub pull requests, GitLab merge requests, local diffs, and agentic repository upkeep. As of version 5.0.0, the published npm package is a CLI application; programmatic imports and deep imports from `dist/` are not a supported API. The CLI runs packaged YAML workflows that compose agents and built-in actions into a dependency graph.
 
 ## What this wiki covers
 
@@ -25,6 +25,7 @@ DRS (Diff Review System) is a workflow-first AI code-maintenance tool for GitHub
 - [Integrations](integrations.md) — GitHub/GitLab clients and CI/CD wrappers.
 - [Temporal execution](temporal-execution.md) — durable workflow execution with a Temporal worker.
 - [Testing](testing.md) — unit tests, quality gate, and opt-in smoke coverage.
+- [Migration from 4.1 to 5.0](migration.md) — removed commands, CLI-only package, split GitHub review posting, and changed defaults.
 
 ## Quick orientation
 
@@ -56,6 +57,13 @@ npm run dev:cli -- workflow run repository-wiki-check
 # Search the repository wiki (model-free)
 npm run dev:cli -- wiki search "temporal retry policy" --limit 5
 
+# Build or locally serve the human-readable wiki website
+npm run dev:cli -- wiki build --source wiki --output .drs/wiki-site
+npm run dev:cli -- wiki serve --source wiki
+
+# Verify a deployed wiki site
+npm run dev:cli -- wiki check-site https://example.github.io/project/
+
 # Run a single agent
 npm run dev:cli -- run-agent review/unified-reviewer --prompt "Review src/lib/config.ts"
 ```
@@ -72,3 +80,4 @@ npm run check:all
 - To customize agents, models, or skills, read [Pi runtime](pi-runtime.md) and [Configuration](configuration.md).
 - To add DRS to a CI/CD pipeline, read [Integrations](integrations.md).
 - To generate or maintain the repository wiki, read [Repository wiki](repository-wiki.md).
+- To upgrade from DRS 4.1, read [Migration from 4.1 to 5.0](migration.md).

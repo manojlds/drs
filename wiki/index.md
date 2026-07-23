@@ -8,6 +8,7 @@ okf_version: "0.1"
 * [DRS configuration](configuration.md) - How DRS loads configuration from .drs/drs.config.yaml, environment variables, and CLI overrides.
 * [Platform integrations](integrations.md) - How DRS integrates with GitHub, GitLab, and CI/CD systems.
 * [Maintenance workflows](maintenance-workflows.md) - DRS workflows for repository upkeep — changelog updates, review-issue fixes, agent guidance refresh, and release changelog finalization.
+* [Migrating from DRS 4.1 to 5.0](migration.md) - Required changes and behavioral differences when upgrading from DRS 4.1 to 5.0, including removed commands, the CLI-only package, split GitHub review posting, and changed defaults.
 * [Pi runtime and agents](pi-runtime.md) - How DRS runs the Pi SDK in-process, discovers agents, resolves models, attaches skills, and exposes custom tools.
 * [DRS repository wiki](quickstart.md) - Entry point for the DRS wiki. Learn what DRS does, how it is organized, and where to find the key concepts.
 * [Repository wiki](repository-wiki.md) - Generate and maintain an OKF v0.1 repository wiki bundle with deterministic delta fingerprints, model-free checks, and CI validation.
