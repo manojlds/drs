@@ -34,9 +34,13 @@ All notable changes to DRS are documented in this file.
 
 - Harden reusable wiki rendering against symbolic-link escapes and overlapping in-process operations, support valid bundles without DRS-specific quickstart/log pages, and exclude generated site output from the npm package.
 - Preserve `temporal` settings loaded from `.drs/drs.config.yaml` instead of silently dropping them during config merge.
-- Isolate external GitHub PR model execution from write credentials and PR-controlled code by using trusted base checkouts, read-only review permissions, a canonical artifact handoff, and strict scope/head/finding validation before deterministic posting.
+- Fix the wiki site concept graph navigation to bypass the VitePress router so the interactive graph page loads correctly from the deployed site.
 - Commit package, changelog, and wiki metadata before atomically creating a release tag, then explicitly dispatch npm publication against that immutable tag and commit instead of relying on suppressed or racing tag-push workflows.
 - Finalize release changelog headings and cumulative prerelease entries deterministically instead of depending on a live model request.
+
+### Security
+
+- Isolate external GitHub PR model execution from write credentials and PR-controlled code by using trusted base checkouts, read-only review permissions, a canonical artifact handoff, and strict scope/head/finding validation before deterministic posting.
 
 ### Removed
 

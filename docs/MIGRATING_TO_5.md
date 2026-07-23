@@ -51,7 +51,7 @@ with CLI workflow or command invocation. There is no supported JavaScript API re
 
 ## GitHub Review Posting
 
-`github-pr-review-post` is now a deterministic, model-free consumer of an existing canonical review artifact. It no longer generates a description or review. It requires `expectedHeadSha`, validates the artifact against the current pull request, and then posts it.
+`github-pr-review-post` is now a deterministic, model-free consumer of an existing canonical review artifact. It no longer generates a description or review. It requires `expectedHeadSha`, validates the artifact against the current pull request, and then posts it. Its workflow output key changed from `review` to `postedReview`.
 
 For the former one-command review and posting behavior, run:
 
@@ -112,6 +112,7 @@ The canonical review schema remains version 1, but loading and posting now enfor
 - An artifact may contain at most 1,000 findings.
 - A posted review may contain at most 100 inline comments.
 - A posted summary or individual comment must not exceed 60,000 JavaScript characters.
+- Finding `problem` and `solution` text is limited to 20,000 characters each, with smaller caps on metadata fields (title and agent 1,000, file path 4,096, id 100) and at most 100 references per finding.
 - Scope, repository, change number, head SHA, changed paths, fingerprints, and summary counts must agree before any platform mutation.
 
 These limits are not configurable. Bound custom reviewer output or consume the JSON through a project-specific integration when different limits are required.
