@@ -129,7 +129,7 @@ The template context also carries `startedAt`, an ISO timestamp used by the `sum
 
 The full list of actions is in `src/lib/config.ts` (`SUPPORTED_WORKFLOW_ACTIONS`). Important categories include:
 
-- **Change sources**: `change-source` with types `local`, `git-range`, `github-pr`, `gitlab-mr`, and `fix-verification`. GitHub change sources support `requireCompleteDiff: true` to fail closed unless the PR head stays stable and every paginated file includes a complete patch.
+- **Change sources**: `change-source` with types `local`, `git-range`, `github-pr`, `gitlab-mr`, and `fix-verification`. GitHub and GitLab change sources support `requireCompleteDiff: true` to fail closed unless the change-request head stays stable and the platform returns a complete file list with patches. GitHub additionally reconciles patch line counts with per-file API metadata.
 - **Review**: `review`, `review-context`, `review-threshold`, `verify-fix`, `create-review-artifact`, `review-artifact-status`, `review-artifact-add-finding`, `review-artifact-update-findings`, `review-artifact-promote-finding`, `review-artifact-resolve-finding`.
 - **Describe / post**: `describe`, `post-comment`, `post-review-comments`, `post-fix-status`, `code-quality-report`.
 - **Wiki / OKF**: `plan-wiki-update`, `sync-okf-indexes`, `validate-okf-wiki`, `summarize-wiki-run`, `record-wiki-state`, `check-wiki-state`, `check-wiki-clean`.

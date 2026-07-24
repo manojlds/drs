@@ -13,6 +13,13 @@ export interface MRChange {
   renamedFile: boolean;
   deletedFile: boolean;
   diff: string;
+  collapsed: boolean;
+  tooLarge: boolean;
+}
+
+export interface MRChangesSnapshot {
+  changes: MRChange[];
+  overflow?: boolean;
 }
 
 export function resolveGitLabCommitEmailDomain(url: string, configuredDomain?: string): string {
@@ -50,26 +57,36 @@ export class GitLabClient {
    * Get merge request changes (diffs)
    */
   async getMRChanges(projectId: string, mrIid: number): Promise<MRChange[]> {
+    return (await this.getMRChangesSnapshot(projectId, mrIid)).changes;
+  }
+
+  async getMRChangesSnapshot(projectId: string, mrIid: number): Promise<MRChangesSnapshot> {
     const mr = (await this.client.MergeRequests.changes(projectId, mrIid)) as {
+      overflow?: boolean;
       changes?: Array<{
         old_path: string;
         new_path: string;
         new_file: boolean;
         renamed_file: boolean;
         deleted_file: boolean;
-        diff: string;
+        diff?: string;
+        collapsed?: boolean;
+        too_large?: boolean;
       }>;
     };
-    if (!mr.changes) return [];
-
-    return mr.changes.map((change) => ({
-      oldPath: change.old_path,
-      newPath: change.new_path,
-      newFile: change.new_file,
-      renamedFile: change.renamed_file,
-      deletedFile: change.deleted_file,
-      diff: change.diff,
-    }));
+    return {
+      overflow: mr.overflow,
+      changes: (mr.changes ?? []).map((change) => ({
+        oldPath: change.old_path,
+        newPath: change.new_path,
+        newFile: change.new_file,
+        renamedFile: change.renamed_file,
+        deletedFile: change.deleted_file,
+        diff: change.diff ?? '',
+        collapsed: change.collapsed === true,
+        tooLarge: change.too_large === true,
+      })),
+    };
   }
 
   /**

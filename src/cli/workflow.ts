@@ -1960,10 +1960,58 @@ async function loadGitLabChangeSource(
     ? requireNumberActionOption(nodeId, node, 'mr', context)
     : requireNumberActionOption(nodeId, node, 'mrIid', context);
   const platformClient = getWorkflowPlatformClient(executionContext, 'gitlab');
-  const [pullRequest, changedFiles] = await Promise.all([
-    platformClient.getPullRequest(projectId, mrIid),
-    platformClient.getChangedFiles(projectId, mrIid),
-  ]);
+  const requireCompleteDiff = getBooleanActionOption(node, 'requireCompleteDiff', context);
+  let pullRequest: PullRequest;
+  let changedFiles: FileChange[];
+  if (requireCompleteDiff) {
+    const before = await platformClient.getPullRequest(projectId, mrIid);
+    if (!platformClient.getChangedFilesSnapshot) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" cannot verify GitLab diff completeness.`
+      );
+    }
+    const snapshot = await platformClient.getChangedFilesSnapshot(projectId, mrIid);
+    changedFiles = snapshot.files;
+    const after = await platformClient.getPullRequest(projectId, mrIid);
+    if (!before.headSha || before.headSha !== after.headSha) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" cannot review an unstable merge request head.`
+      );
+    }
+    const platformData = after.platformData;
+    const reportedFileCount =
+      platformData && typeof platformData === 'object' && 'changes_count' in platformData
+        ? platformData.changes_count
+        : undefined;
+    const expectedFileCount =
+      typeof reportedFileCount === 'number'
+        ? reportedFileCount
+        : typeof reportedFileCount === 'string' && /^\d+$/.test(reportedFileCount)
+          ? Number(reportedFileCount)
+          : undefined;
+    if (
+      expectedFileCount === undefined ||
+      !Number.isSafeInteger(expectedFileCount) ||
+      expectedFileCount !== changedFiles.length
+    ) {
+      throw new Error(
+        `Workflow change-source node "${nodeId}" did not receive the complete GitLab file list.`
+      );
+    }
+    if (!snapshot.complete) {
+      const suffix =
+        snapshot.incompleteFiles.length > 0 ? `: ${snapshot.incompleteFiles.join(', ')}` : '';
+      throw new Error(
+        `Workflow change-source node "${nodeId}" did not receive complete GitLab patches${suffix}`
+      );
+    }
+    pullRequest = after;
+  } else {
+    [pullRequest, changedFiles] = await Promise.all([
+      platformClient.getPullRequest(projectId, mrIid),
+      platformClient.getChangedFiles(projectId, mrIid),
+    ]);
+  }
 
   return createPlatformChangeSource(
     'gitlab',
@@ -2971,14 +3019,20 @@ async function runPostReviewCommentsWorkflowNode(
   const shouldRemoveErrorComment =
     !hasActionOption(node, 'removeErrorComment') ||
     getBooleanActionOption(node, 'removeErrorComment', context);
-  const assertCurrentHead = expectedHeadSha
+  const guardedHeadSha = expectedHeadSha ?? pullRequest?.headSha.trim();
+  if (pullRequest && !guardedHeadSha) {
+    throw new Error(
+      `Workflow post-review-comments node "${nodeId}" cannot publish a review without a change request head SHA.`
+    );
+  }
+  const assertCurrentHead = guardedHeadSha
     ? async () => {
         const latestPullRequest = await target.platformClient.getPullRequest(
           target.projectId,
           target.prNumber
         );
-        if (latestPullRequest.headSha !== expectedHeadSha) {
-          throw new Error('Pull request head changed before review comments could be posted.');
+        if (latestPullRequest.headSha !== guardedHeadSha) {
+          throw new Error('Change request head changed before review comments could be posted.');
         }
       }
     : undefined;

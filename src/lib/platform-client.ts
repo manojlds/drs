@@ -23,6 +23,12 @@ export interface FileChange {
   previousFilename?: string;
 }
 
+export interface ChangedFilesSnapshot {
+  files: FileChange[];
+  complete: boolean;
+  incompleteFiles: string[];
+}
+
 /**
  * Represents a pull/merge request
  */
@@ -100,6 +106,11 @@ export interface PlatformClient {
    * Get list of changed files in a PR/MR
    */
   getChangedFiles(projectId: string, prNumber: number): Promise<FileChange[]>;
+
+  /**
+   * Get changed files with platform completeness metadata when supported.
+   */
+  getChangedFilesSnapshot?(projectId: string, prNumber: number): Promise<ChangedFilesSnapshot>;
 
   /**
    * Get existing comments on the PR/MR

@@ -181,6 +181,7 @@ describe('Config', () => {
         mr: { type: 'number', required: true },
         describe: { type: 'boolean', default: false },
         post: { type: 'boolean', default: false },
+        requireCompleteDiff: { type: 'boolean', default: false },
         visual: { type: 'boolean', default: false },
         fixMode: { type: 'enum', default: 'stacked' },
         fixSeverity: { type: 'enum', default: 'high' },
@@ -256,6 +257,17 @@ describe('Config', () => {
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.needs).toEqual(['change']);
       expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.with).toMatchObject({
         source: 'change',
+      });
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.change?.with).toMatchObject({
+        requireCompleteDiff: '{{inputs.requireCompleteDiff}}',
+      });
+      expect(config.workflows?.['gitlab-mr-review']?.nodes.review?.permissions).toEqual({
+        filesystem: { read: { roots: ['.'], allow: ['**'] } },
+        shell: false,
+      });
+      expect(config.workflows?.['gitlab-mr-review']?.nodes['re-review']?.permissions).toEqual({
+        filesystem: { read: { roots: ['.'], allow: ['**'] } },
+        shell: false,
       });
       expect(config.workflows?.['gitlab-mr-review']?.nodes.visual?.needs).toEqual([
         'change',

@@ -69,6 +69,69 @@ describe('GitLabPlatformAdapter', () => {
     });
   });
 
+  it('preserves GitLab completeness metadata for strict diff loading', async () => {
+    const client = {
+      getMRChangesSnapshot: vi.fn().mockResolvedValue({
+        overflow: false,
+        changes: [
+          {
+            oldPath: 'src/index.ts',
+            newPath: 'src/index.ts',
+            newFile: false,
+            renamedFile: false,
+            deletedFile: false,
+            diff: '@@ -1 +1 @@\n-old\n+new',
+            collapsed: false,
+            tooLarge: false,
+          },
+        ],
+      }),
+    };
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getChangedFilesSnapshot('group/repo', 8)).resolves.toMatchObject({
+      complete: true,
+      incompleteFiles: [],
+      files: [{ filename: 'src/index.ts', patch: '@@ -1 +1 @@\n-old\n+new' }],
+    });
+  });
+
+  it.each([
+    { overflow: true, diff: '@@ +1 @@\n+new', collapsed: false, tooLarge: false },
+    { overflow: false, diff: '@@ +1 @@\n+new', collapsed: true, tooLarge: false },
+    { overflow: false, diff: '@@ +1 @@\n+new', collapsed: false, tooLarge: true },
+    {
+      overflow: false,
+      diff: 'Binary files a/file and b/file differ',
+      collapsed: false,
+      tooLarge: false,
+    },
+    { overflow: false, diff: 'GIT binary patch', collapsed: false, tooLarge: false },
+  ])('rejects incomplete GitLab patch metadata in strict snapshots', async (changeState) => {
+    const client = {
+      getMRChangesSnapshot: vi.fn().mockResolvedValue({
+        overflow: changeState.overflow,
+        changes: [
+          {
+            oldPath: 'src/index.ts',
+            newPath: 'src/index.ts',
+            newFile: false,
+            renamedFile: false,
+            deletedFile: false,
+            diff: changeState.diff,
+            collapsed: changeState.collapsed,
+            tooLarge: changeState.tooLarge,
+          },
+        ],
+      }),
+    };
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getChangedFilesSnapshot('group/repo', 8)).resolves.toMatchObject({
+      complete: false,
+    });
+  });
+
   it('falls back to general comment when inline comment fails', async () => {
     const client = {
       createMRDiscussionThread: vi.fn().mockRejectedValue(new Error('boom')),

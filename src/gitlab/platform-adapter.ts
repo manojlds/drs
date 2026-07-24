@@ -8,12 +8,14 @@ import type {
   PlatformClient,
   PullRequest,
   FileChange,
+  ChangedFilesSnapshot,
   Comment,
   InlineCommentPosition,
   ChangeRequest,
   ChangeRequestInput,
 } from '../lib/platform-client.js';
 import { GitLabPositionValidator, validatePositionOrThrow } from '../lib/position-validator.js';
+import type { MRChange } from './client.js';
 
 function nonEmptyIdentityValue(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -31,6 +33,7 @@ interface GitLabMergeRequest {
   iid: number;
   title: string;
   description?: string;
+  changes_count?: string | number;
   author?: {
     id?: number;
     name?: string;
@@ -81,22 +84,45 @@ export class GitLabPlatformAdapter implements PlatformClient {
 
   async getChangedFiles(projectId: string, prNumber: number): Promise<FileChange[]> {
     const changes = await this.client.getMRChanges(projectId, prNumber);
+    return changes.map((change) => this.mapChangedFile(change));
+  }
 
-    return changes.map((change) => {
-      let status: FileChange['status'] = 'modified';
-      if (change.newFile) status = 'added';
-      else if (change.deletedFile) status = 'removed';
-      else if (change.renamedFile) status = 'renamed';
+  async getChangedFilesSnapshot(
+    projectId: string,
+    prNumber: number
+  ): Promise<ChangedFilesSnapshot> {
+    const snapshot = await this.client.getMRChangesSnapshot(projectId, prNumber);
+    const incompleteFiles = snapshot.changes
+      .filter(
+        (change) =>
+          change.collapsed ||
+          change.tooLarge ||
+          change.diff.length === 0 ||
+          /^Binary files .* differ\s*$/m.test(change.diff) ||
+          /^GIT binary patch\s*$/m.test(change.diff)
+      )
+      .map((change) => change.newPath);
+    return {
+      files: snapshot.changes.map((change) => this.mapChangedFile(change)),
+      complete: snapshot.overflow === false && incompleteFiles.length === 0,
+      incompleteFiles,
+    };
+  }
 
-      return {
-        filename: change.newPath,
-        status,
-        additions: 0, // GitLab doesn't provide this in the same way
-        deletions: 0,
-        patch: change.diff,
-        previousFilename: change.renamedFile ? change.oldPath : undefined,
-      };
-    });
+  private mapChangedFile(change: MRChange): FileChange {
+    let status: FileChange['status'] = 'modified';
+    if (change.newFile) status = 'added';
+    else if (change.deletedFile) status = 'removed';
+    else if (change.renamedFile) status = 'renamed';
+
+    return {
+      filename: change.newPath,
+      status,
+      additions: 0, // GitLab doesn't provide this in the same way
+      deletions: 0,
+      patch: change.diff,
+      previousFilename: change.renamedFile ? change.oldPath : undefined,
+    };
   }
 
   async getComments(projectId: string, prNumber: number): Promise<Comment[]> {
