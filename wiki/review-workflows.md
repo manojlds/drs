@@ -57,13 +57,13 @@ The GitHub workflow input `requireCompleteDiff=true` rejects an unstable or inco
 
 The default review agent is `review/unified-reviewer`. Additional review agents can be added under `.drs/agents/review/<name>/agent.md` and listed in `review.agents`.
 
-`src/lib/review-core.ts` builds the prompt that every review agent receives. It includes the diff content, an output JSON schema, and strict rules to only report issues on added or modified lines. When the diff is too large, the prompt tells the agent to call `git_diff` for files that were omitted.
+`src/lib/review-core.ts` builds the prompt that every review agent receives. It includes the diff content, an output JSON schema, and strict rules to report only issues introduced by additions, modifications, or deletions. Deletion-only findings omit `line` unless a relevant added line independently anchors the issue, so they remain file-level findings rather than using invalid old-file coordinates. When the diff is too large, the prompt tells the agent to call `git_diff` for files that were omitted.
 
 ## Context compression
 
 `src/lib/context-compression.ts` trims diff content before sending it to models:
 
-- Removes deletion-only hunks.
+- Retains deletion-only hunks so removed validation, authorization, cleanup, compatibility, or test coverage can be reviewed.
 - Excludes generated files (detected by markers like `@generated`).
 - Drops whole patches when the total estimated tokens exceed a budget.
 - Budget can be dynamic: `thresholdPercent * modelContextWindow` when context-window metadata is available.

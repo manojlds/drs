@@ -48,10 +48,6 @@ review:
   agents:
     - review/unified-reviewer
   ignorePatterns:
-    - "*.test.ts"
-    - "*.spec.ts"
-    - "**/__tests__/**"
-    - "**/__mocks__/**"
     - "package-lock.json"
     - "yarn.lock"
     - "pnpm-lock.yaml"

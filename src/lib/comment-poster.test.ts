@@ -219,6 +219,7 @@ describe('comment-poster', () => {
     it('should post inline comments for CRITICAL/HIGH issues', async () => {
       const mockLineValidator = {
         isValidLine: vi.fn((_file: string, _line: number) => true),
+        isChangedLine: vi.fn((_file: string, _line: number) => true),
       };
 
       const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({
@@ -256,6 +257,86 @@ describe('comment-poster', () => {
       );
     });
 
+    it('keeps a deletion-only finding in the summary without posting it inline', async () => {
+      const deletionIssue: ReviewIssue = {
+        severity: 'HIGH',
+        category: 'SECURITY',
+        title: 'Authorization check removed',
+        problem: 'The deletion removes the required authorization check.',
+        solution: 'Restore the authorization check.',
+        file: 'src/api.ts',
+        agent: 'security',
+      };
+      const mockLineValidator = {
+        isValidLine: vi.fn(() => true),
+        isChangedLine: vi.fn(() => true),
+      };
+      const mockCreateInlinePosition = vi.fn();
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        { ...mockSummary, issuesFound: 1 },
+        [deletionIssue],
+        undefined,
+        undefined,
+        {},
+        mockLineValidator,
+        mockCreateInlinePosition
+      );
+
+      expect(formatSummaryComment).toHaveBeenCalledWith(
+        expect.anything(),
+        [deletionIssue],
+        expect.any(String),
+        undefined,
+        undefined,
+        undefined,
+        undefined
+      );
+      expect(mockLineValidator.isChangedLine).not.toHaveBeenCalled();
+      expect(mockCreateInlinePosition).not.toHaveBeenCalled();
+      expect(mockPlatformClient.createBulkInlineComments).not.toHaveBeenCalled();
+    });
+
+    it('posts only findings anchored to added lines', async () => {
+      const findings: ReviewIssue[] = [
+        { ...mockIssues[0], title: 'Added-line issue', line: 11 },
+        { ...mockIssues[1], title: 'Context-line issue', line: 10 },
+        { ...mockIssues[1], title: 'Deleted-line issue', line: 9 },
+      ];
+      const mockLineValidator = {
+        isValidLine: vi.fn(() => true),
+        isChangedLine: vi.fn((_file: string, line: number) => line === 11),
+      };
+      const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({
+        path: issue.file,
+        line: issue.line!,
+      }));
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        findings,
+        undefined,
+        undefined,
+        {},
+        mockLineValidator,
+        mockCreateInlinePosition
+      );
+
+      expect(mockLineValidator.isChangedLine).toHaveBeenCalledTimes(3);
+      expect(mockLineValidator.isValidLine).not.toHaveBeenCalled();
+      expect(mockCreateInlinePosition).toHaveBeenCalledTimes(1);
+      expect(mockCreateInlinePosition).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Added-line issue', line: 11 }),
+        {}
+      );
+    });
+
     it('should not post inline comments for MEDIUM/LOW issues', async () => {
       const lowSeverityIssues: ReviewIssue[] = [
         {
@@ -282,6 +363,7 @@ describe('comment-poster', () => {
 
       const mockLineValidator = {
         isValidLine: vi.fn(() => true),
+        isChangedLine: vi.fn(() => true),
       };
 
       const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({
@@ -339,6 +421,7 @@ describe('comment-poster', () => {
     it('should skip inline comments when no position builder provided', async () => {
       const mockLineValidator = {
         isValidLine: vi.fn(() => true),
+        isChangedLine: vi.fn(() => true),
       };
 
       await postReviewComments(
@@ -535,6 +618,7 @@ describe('comment-poster', () => {
     it('should pass Cursor fix link options into formatted comments when enabled', async () => {
       const mockLineValidator = {
         isValidLine: vi.fn((_file: string, _line: number) => true),
+        isChangedLine: vi.fn((_file: string, _line: number) => true),
       };
 
       const mockCreateInlinePosition = vi.fn((issue: ReviewIssue) => ({

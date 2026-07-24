@@ -116,6 +116,7 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
 - Return only the raw JSON object.
 - Do not call write_json_output.
 - Do not include markdown, code fences, or extra text.
+- The "line" property is optional. Include it only for a valid added new-file line; omit it for a deletion-only finding without a genuine added-line anchor.
 - Follow this exact schema:
 {
   "timestamp": "ISO-8601 timestamp or descriptive string",
@@ -157,10 +158,10 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
 3. If the prompt says a diff was omitted or summarized, call git_diff for that file before making file-specific claims.
 
 **Review rules:**
-4. **IMPORTANT: Only report issues on lines that were actually changed or added (lines starting with + in the diff).** Do not report issues on unchanged code.
-5. Only flag deviations or new risks introduced by the changes.
-6. Populate summary counts based on the issues you report (use 0 when none).
-7. Focus on the changes - only report issues for newly added or modified lines (lines with + prefix in the diff).`;
+4. Report only concrete issues introduced by this diff. Additions, modifications, and deletions can all introduce issues; unchanged pre-existing code cannot.
+5. For an issue caused by an added or modified line, set "line" to that added new-file line. For an issue caused solely by deleted code, omit "line" unless a relevant added line independently anchors the issue. Never use an old-file line number from a deleted line.
+6. Only report a deletion when removing the code creates a concrete behavioral regression, such as lost validation, authorization, cleanup, compatibility, or test coverage.
+7. Populate summary counts based on the issues you report (use 0 when none).`;
   }
 
   // No diff content available - instruct agent to read files directly
@@ -168,10 +169,11 @@ ${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
 
 ${fileList}
 
-Output requirements:
+${compressionSummary ? `${compressionSummary}\n\n` : ''}Output requirements:
 - Return only the raw JSON object.
 - Do not call write_json_output.
 - Do not include markdown, code fences, or extra text.
+- The "line" property is optional. Include it only for a valid added new-file line; omit it for a deletion-only finding without a genuine added-line anchor.
 - Follow this exact schema:
 {
   "timestamp": "ISO-8601 timestamp or descriptive string",
@@ -209,11 +211,11 @@ Output requirements:
 
 **Instructions:**
 1. The diffs for these files were omitted due to size constraints. Use git_diff to inspect the file diffs, then use Read/Grep for surrounding context as needed.
-2. Focus your review on newly added or modified code patterns from the git_diff output.
-3. **IMPORTANT: Only report issues on lines that were actually changed or added.** Do not report issues on existing code that was not modified.
-4. Analyze the changed code for issues in your specialty area
-5. Populate summary counts based on the issues you report (use 0 when none).
-6. Focus on the changes - only report issues for newly added or modified lines.`;
+2. Report only concrete issues introduced by additions, modifications, or deletions in the git_diff output. Do not report unchanged pre-existing code.
+3. For an issue caused by an added or modified line, set "line" to that added new-file line. For an issue caused solely by deleted code, omit "line" unless a relevant added line independently anchors the issue. Never use an old-file line number from a deleted line.
+4. Only report a deletion when removing the code creates a concrete behavioral regression, such as lost validation, authorization, cleanup, compatibility, or test coverage.
+5. Analyze the changed code for issues in your specialty area.
+6. Populate summary counts based on the issues you report (use 0 when none).`;
 }
 
 function buildVerificationSchemaSnippet(): string {

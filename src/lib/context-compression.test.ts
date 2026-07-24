@@ -6,23 +6,22 @@ import {
   formatCompressionSummary,
   prepareDiffsForAgent,
   resolveCompressionBudget,
-  stripDeletionOnlyHunks,
 } from './context-compression.js';
 
 describe('context compression', () => {
-  it('removes deletion-only hunks', () => {
+  it('retains deletion-only hunks as review context', () => {
     const patch = ['@@ -1,3 +1,0 @@', '-const remove = true;', '-const gone = false;'].join('\n');
-    expect(stripDeletionOnlyHunks(patch)).toBe('');
-  });
+    const result = compressFilesWithDiffs([{ filename: 'src/removed.ts', patch }], {
+      maxTokens: 1000,
+      softBufferTokens: 10,
+      hardBufferTokens: 5,
+      tokenEstimateDivisor: 1,
+    });
 
-  it('keeps hunks with additions', () => {
-    const patch = [
-      '@@ -1,3 +1,4 @@',
-      ' const keep = true;',
-      '+const added = true;',
-      '-const removed = false;',
-    ].join('\n');
-    expect(stripDeletionOnlyHunks(patch)).toContain('+const added = true;');
+    expect(result.mode).toBe('full');
+    expect(result.stats.filesWithDiffs).toBe(1);
+    expect(result.stats.inlineFiles).toBe(1);
+    expect(result.files[0].patch).toBe(patch);
   });
 
   it('omits patches that exceed token budget', () => {
@@ -238,6 +237,15 @@ describe('prepareDiffsForAgent', () => {
     expect(summary).toContain('src/gen.ts');
   });
 
+  it('does not classify a file as generated from a deleted marker', () => {
+    const patch = ['@@ -1,2 +1,0 @@', '-// DO NOT EDIT', '-const generated = true;'].join('\n');
+
+    const result = prepareDiffsForAgent([{ filename: 'src/formerly-generated.ts', patch }]);
+
+    expect(result.omitted.generated).toEqual([]);
+    expect(result.files[0].patch).toBe(patch);
+  });
+
   it('combines generated filtering with budget compression', () => {
     const files = [
       { filename: 'src/gen.ts', patch: '@@ -1,1 +1,2 @@\n+// @generated' },
@@ -327,6 +335,29 @@ describe('computePatchStats', () => {
 });
 
 describe('omitted file annotations', () => {
+  it('preserves deletion counts when a deletion-only patch exceeds the token budget', () => {
+    const patch = '@@ -1,20 +1,0 @@\n' + '-removed line\n'.repeat(20);
+    const result = compressFilesWithDiffs([{ filename: 'src/removed.ts', patch }], {
+      maxTokens: 20,
+      softBufferTokens: 2,
+      hardBufferTokens: 1,
+      summaryThresholdMultiplier: 1,
+      tokenEstimateDivisor: 1,
+    });
+
+    expect(result.mode).toBe('summary');
+    expect(result.files[0].patch).toBeUndefined();
+    expect(result.omitted.dueToBudget).toEqual([
+      expect.objectContaining({
+        filename: 'src/removed.ts',
+        additions: 0,
+        deletions: 20,
+        addedLineRanges: [],
+      }),
+    ]);
+    expect(formatCompressionSummary(result)).toContain('src/removed.ts (+0, -20');
+  });
+
   it('includes additions, deletions, and token count in omitted file info', () => {
     const files = [
       {

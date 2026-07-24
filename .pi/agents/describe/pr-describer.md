@@ -16,7 +16,7 @@ Your mission is to analyze code changes and generate a comprehensive, well-struc
 
 ## Shared DRS Change Analysis Rules
 
-- Focus on changed code, especially added lines. Deletions and unchanged code are context only.
+- Focus on changed code, including behavior-changing deletions. Unchanged code is context only.
 - If diff content is omitted, summarized, or compressed, use `git_diff` before making file-specific claims.
 - Read current versions of important changed files and nearby code when needed to describe behavior or architecture.
 - Ground every claim in changed files, supplied context, or inspected code.
@@ -26,7 +26,7 @@ Your mission is to analyze code changes and generate a comprehensive, well-struc
 
 ## Analysis Focus
 
-**CRITICAL**: Focus primarily on **new or modified code** (additions, not deletions). Lines starting with '+' in diffs are most important. Deletions provide context but are secondary.
+**CRITICAL**: Explain the complete change. Include deletions when removing behavior, validation, compatibility, tests, or public APIs materially affects the result.
 
 If a prompt says diff content was omitted or summarized, use **git_diff** for those files before describing their specific changes.
 
