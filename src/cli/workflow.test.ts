@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => {
   const gitlabAdapter = {
     getPullRequest: vi.fn(),
     getChangedFiles: vi.fn(),
+    getChangedFilesSnapshot: vi.fn(),
     getComments: vi.fn(),
     getInlineComments: vi.fn(),
     createComment: vi.fn(),
@@ -357,6 +358,19 @@ describe('workflow runner', () => {
         patch: '@@ +1 @@\n+gitlab',
       },
     ]);
+    mocks.gitlabAdapter.getChangedFilesSnapshot.mockResolvedValue({
+      files: [
+        {
+          filename: 'src/gitlab.ts',
+          status: 'modified',
+          additions: 3,
+          deletions: 1,
+          patch: '@@ +1 @@\n+gitlab',
+        },
+      ],
+      complete: true,
+      incompleteFiles: [],
+    });
     mocks.gitlabAdapter.getComments.mockResolvedValue([]);
     mocks.gitlabAdapter.getInlineComments.mockResolvedValue([]);
     mocks.gitlabAdapter.createComment.mockResolvedValue(undefined);
@@ -4148,6 +4162,265 @@ describe('workflow runner', () => {
         }),
       })
     );
+  });
+
+  it('requires a stable and complete GitLab change snapshot when requested', async () => {
+    mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+      number: 8,
+      title: 'GitLab MR',
+      author: 'gitlab-user',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changes_count: '1' },
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        completeChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+                requireCompleteDiff: true,
+              },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'completeChange', { workingDir: process.cwd() });
+
+    expect(mocks.gitlabAdapter.getPullRequest).toHaveBeenCalledTimes(2);
+    expect(mocks.gitlabAdapter.getChangedFilesSnapshot).toHaveBeenCalledWith('group/repo', 8);
+    expect(mocks.gitlabAdapter.getPullRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.gitlabAdapter.getChangedFilesSnapshot.mock.invocationCallOrder[0] ?? 0
+    );
+    expect(mocks.gitlabAdapter.getChangedFilesSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.gitlabAdapter.getPullRequest.mock.invocationCallOrder[1] ?? 0
+    );
+    expect(result.artifacts.change).toMatchObject({ files: ['src/gitlab.ts'] });
+  });
+
+  it('accepts a stable complete GitLab snapshot with no changed files', async () => {
+    mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+      number: 8,
+      title: 'GitLab MR',
+      author: 'gitlab-user',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changes_count: '0' },
+    });
+    mocks.gitlabAdapter.getChangedFilesSnapshot.mockResolvedValue({
+      files: [],
+      complete: true,
+      incompleteFiles: [],
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        completeChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+                requireCompleteDiff: true,
+              },
+              output: 'change',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    const result = await runWorkflow(config, 'completeChange', { workingDir: process.cwd() });
+
+    expect(result.artifacts.change).toMatchObject({ files: [], filesWithDiffs: [] });
+  });
+
+  it.each([undefined, null, '', '1000+', Number.MAX_SAFE_INTEGER + 1])(
+    'rejects an inexact GitLab changes_count value: %s',
+    async (changesCount) => {
+      mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+        number: 8,
+        title: 'GitLab MR',
+        author: 'gitlab-user',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'abc123',
+        platformData: { changes_count: changesCount },
+      });
+      const config = {
+        ...baseConfig,
+        workflows: {
+          incompleteChange: {
+            nodes: {
+              change: {
+                action: 'change-source',
+                with: {
+                  type: 'gitlab-mr',
+                  project: 'group/repo',
+                  mr: 8,
+                  requireCompleteDiff: true,
+                },
+              },
+            },
+          },
+        },
+      } as unknown as DRSConfig;
+
+      await expect(
+        runWorkflow(config, 'incompleteChange', { workingDir: process.cwd() })
+      ).rejects.toThrow(/complete GitLab file list/);
+    }
+  );
+
+  it('rejects an incomplete GitLab file list or missing patch', async () => {
+    mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+      number: 8,
+      title: 'GitLab MR',
+      author: 'gitlab-user',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changes_count: '2' },
+    });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        incompleteChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+                requireCompleteDiff: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'incompleteChange', { workingDir: process.cwd() })
+    ).rejects.toThrow(/complete GitLab file list/);
+
+    mocks.gitlabAdapter.getPullRequest.mockResolvedValue({
+      number: 8,
+      title: 'GitLab MR',
+      author: 'gitlab-user',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      headSha: 'abc123',
+      platformData: { changes_count: '1' },
+    });
+    mocks.gitlabAdapter.getChangedFilesSnapshot.mockResolvedValue({
+      files: [
+        {
+          filename: 'src/removed.ts',
+          status: 'removed',
+          additions: 0,
+          deletions: 0,
+        },
+      ],
+      complete: false,
+      incompleteFiles: ['src/removed.ts'],
+    });
+
+    await expect(
+      runWorkflow(config, 'incompleteChange', { workingDir: process.cwd() })
+    ).rejects.toThrow(/complete GitLab patches/);
+  });
+
+  it('rejects a GitLab head change while loading a complete diff', async () => {
+    mocks.gitlabAdapter.getPullRequest
+      .mockResolvedValueOnce({
+        number: 8,
+        title: 'GitLab MR',
+        author: 'gitlab-user',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'abc123',
+        platformData: { changes_count: '1' },
+      })
+      .mockResolvedValueOnce({
+        number: 8,
+        title: 'GitLab MR',
+        author: 'gitlab-user',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'new-head',
+        platformData: { changes_count: '1' },
+      });
+    const config = {
+      ...baseConfig,
+      workflows: {
+        unstableChange: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: {
+                type: 'gitlab-mr',
+                project: 'group/repo',
+                mr: 8,
+                requireCompleteDiff: true,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runWorkflow(config, 'unstableChange', { workingDir: process.cwd() })
+    ).rejects.toThrow(/unstable merge request head/);
+  });
+
+  it('does not publish a packaged GitLab review after the MR head changes', async () => {
+    const projectRoot = createTempDir('drs-workflow-stale-gitlab-review-');
+    mocks.gitlabAdapter.getPullRequest
+      .mockResolvedValueOnce({
+        number: 8,
+        title: 'GitLab MR',
+        author: 'gitlab-user',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'abc123',
+      })
+      .mockResolvedValueOnce({
+        number: 8,
+        title: 'GitLab MR',
+        author: 'gitlab-user',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        headSha: 'new-head',
+      });
+
+    await expect(
+      runWorkflow(loadConfig(projectRoot), 'gitlab-mr-review', {
+        workingDir: projectRoot,
+        inputs: { project: 'group/repo', mr: '8', post: 'true' },
+      })
+    ).rejects.toThrow(/head changed/);
+
+    expect(mocks.gitlabAdapter.getComments).toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.createComment).not.toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.updateComment).not.toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.deleteComment).not.toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.createBulkInlineComments).not.toHaveBeenCalled();
+    expect(mocks.gitlabAdapter.addLabels).not.toHaveBeenCalled();
   });
 
   it('rejects empty GitLab MR aliases without falling through to mrIid', async () => {

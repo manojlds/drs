@@ -37,6 +37,8 @@ DRS integrates with GitHub and GitLab through a shared `PlatformClient` interfac
 
 The GitHub adapter (`src/github/platform-adapter.ts`) wraps `@octokit/rest` through `src/github/client.ts`. The GitLab adapter (`src/gitlab/platform-adapter.ts`) wraps `@gitbeaker/node` through `src/gitlab/client.ts`. Both adapters normalize the change request creator: a public email is preserved when available, otherwise a platform-specific no-reply address is synthesized (`{id}+{login}@users.noreply.github.com` or `{id}-{username}@<GitLab commit email domain>`). Self-managed GitLab defaults to `users.noreply.<instance-host>` and can override the domain with `GITLAB_COMMIT_EMAIL_DOMAIN`.
 
+The packaged `gitlab-mr-review` workflow gives review and re-review agents repository-wide read access with shell disabled. Its optional `requireCompleteDiff=true` input fails closed unless the MR head remains stable during retrieval, GitLab reports an exact `changes_count` matching the returned file list, and every changed file includes a reviewable patch. Overflowed, collapsed, too-large, binary, and patchless metadata-only changes are rejected. The surrounding API reads narrow but cannot eliminate GitLab's non-atomic snapshot window. Review-result publication rechecks the current MR head before summary comments, stale-comment cleanup, inline discussions, and labels.
+
 ## GitHub workflows
 
 The packaged `github-pr-review` workflow loads a `github-pr` change source and can optionally describe, post review comments, generate a visual HTML explainer, and create a stacked fix PR. Inputs include `owner`, `repo`, `pr`, `describe`, `post`, `requireCompleteDiff`, `visual`, `fix`, `fixMode`, `fixSeverity`, `fixMaxIterations`, and `useChangeRequestAuthor`.

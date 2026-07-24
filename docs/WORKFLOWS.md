@@ -266,9 +266,11 @@ An optional write validator can reject invalid content before modification and r
 
 The initial validator registry contains `okf-document`. Workflow actions remain outside the agent permission boundary, allowing deterministic nodes to generate indexes or state after the agent completes.
 
-`action: review` also accepts permissions and propagates one policy to every review and describe model session. Review actions are intentionally read-only: planning rejects filesystem write/delete rules and mutation validation. The packaged GitHub PR workflow uses repository-wide read access with `shell: false`; callers that expose untrusted diffs must also ensure the checkout and project configuration are trusted.
+`action: review` also accepts permissions and propagates one policy to every review and describe model session. Review actions are intentionally read-only: planning rejects filesystem write/delete rules and mutation validation. The packaged GitHub PR and GitLab MR workflows use repository-wide read access with `shell: false`; callers that expose untrusted diffs must also ensure the checkout and project configuration are trusted.
 
 The packaged `github-pr-review` input `requireCompleteDiff=true` makes its GitHub change source fail closed unless the head stays stable while all paginated files are fetched, every file has a patch, and patch addition/deletion counts match GitHub metadata. The external PR wrapper enables this mode because its trusted base checkout cannot safely fall back to a working-tree diff of the PR head.
+
+The packaged `gitlab-mr-review` workflow provides the same opt-in input. GitLab complete-diff mode checks that the MR head stays stable during retrieval, requires an exact `changes_count` matching the returned file list, and rejects API overflow, collapsed or too-large diffs, binary sentinels, and files without patches. GitLab does not expose GitHub-equivalent per-file addition/deletion metadata, so DRS cannot reconcile patch line counts for GitLab. Strict mode conservatively rejects patchless metadata-only changes. The surrounding API reads narrow but cannot eliminate the race window because GitLab does not provide an atomic snapshot through this endpoint.
 
 ## Conditions
 
