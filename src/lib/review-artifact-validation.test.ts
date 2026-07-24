@@ -70,6 +70,19 @@ describe('review artifact posting validation', () => {
     });
   });
 
+  it('preserves a file-level finding without a line number', () => {
+    const envelope = createEnvelope();
+    delete envelope.payload.findings[0].issue.line;
+    envelope.payload.findings[0].fingerprint = createIssueFingerprint(
+      envelope.payload.findings[0].issue
+    );
+
+    const result = reviewArtifactToReviewResult(envelope, target);
+
+    expect(result.issues[0]).not.toHaveProperty('line');
+    expect(result.issues[0].file).toBe('src/app.ts');
+  });
+
   it('rejects scope and head mismatches', () => {
     const wrongScope = createEnvelope();
     wrongScope.scope.changeNumber = 8;

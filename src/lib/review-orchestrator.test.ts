@@ -120,11 +120,11 @@ vi.mock('./comment-formatter.js', () => ({
 vi.mock('./context-compression.js', () => ({
   compressFilesWithDiffs: vi.fn((files) => ({
     files,
-    omitted: { deletionsOnly: [], dueToBudget: [], generated: [] },
+    omitted: { dueToBudget: [], generated: [] },
   })),
   prepareDiffsForAgent: vi.fn((files) => ({
     files,
-    omitted: { deletionsOnly: [], dueToBudget: [], generated: [] },
+    omitted: { dueToBudget: [], generated: [] },
   })),
   formatCompressionSummary: vi.fn(() => null),
   resolveCompressionBudget: vi.fn((_contextWindow: unknown, options: unknown) => options ?? {}),

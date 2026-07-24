@@ -73,7 +73,7 @@ ${hasDiffs ? `## Diff Content\n\n${diffContent}\n` : ''}
 ${compressionSummary ? `${compressionSummary}\n\n` : ''}${outputSchema}
 
 Instructions:
-1. Focus on new or modified code (lines starting with + in diffs).
+1. Describe behavior-changing additions, modifications, and deletions in the diff.
 2. Summarize intent and impact. Avoid code review feedback.
 3. If diff content is omitted or summarized, use git_diff for the relevant files before describing their specific changes.
 4. Use the Read tool for additional context if needed.

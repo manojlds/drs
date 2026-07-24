@@ -180,7 +180,7 @@ describe('describe-core', () => {
       expect(instructions).toContain('significance');
     });
 
-    it('should include instructions about focusing on new/modified code', () => {
+    it('should include instructions about additions, modifications, and deletions', () => {
       const files: FileWithDiff[] = [
         {
           filename: 'src/app.ts',
@@ -190,8 +190,9 @@ describe('describe-core', () => {
 
       const instructions = buildDescribeInstructions('PR #123', files);
 
-      expect(instructions).toContain('Focus on new or modified code');
-      expect(instructions).toContain('lines starting with +');
+      expect(instructions).toContain(
+        'Describe behavior-changing additions, modifications, and deletions'
+      );
     });
 
     it('should handle empty files array', () => {

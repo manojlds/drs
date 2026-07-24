@@ -128,7 +128,11 @@ describe('review-core', () => {
       expect(instructions).toContain('- old line\n+ new line');
       expect(instructions).toContain('+ added line');
       expect(instructions).toContain('write_json_output');
-      expect(instructions).toContain('Only report issues on lines that were actually changed');
+      expect(instructions).toContain(
+        'Additions, modifications, and deletions can all introduce issues'
+      );
+      expect(instructions).toContain('The "line" property is optional');
+      expect(instructions).toContain('Never use an old-file line number from a deleted line');
     });
 
     it('should build instructions without diff content', () => {
@@ -142,8 +146,25 @@ describe('review-core', () => {
       expect(instructions).toContain('omitted due to size constraints');
       expect(instructions).toContain('Use git_diff');
       expect(instructions).toContain('Read/Grep for surrounding context');
+      expect(instructions).toContain('For an issue caused solely by deleted code, omit "line"');
       expect(instructions).not.toContain('Bash tool');
       expect(instructions).not.toContain('Diff Content');
+    });
+
+    it('includes deletion metadata when every patch was omitted', () => {
+      const compressionSummary = ['## Omitted Files', 'src/removed.ts (+0, -20, ~300 tokens)'].join(
+        '\n'
+      );
+
+      const instructions = buildBaseInstructions(
+        'PR #123',
+        [{ filename: 'src/removed.ts' }],
+        undefined,
+        compressionSummary
+      );
+
+      expect(instructions).toContain('src/removed.ts (+0, -20');
+      expect(instructions).toContain('The "line" property is optional');
     });
 
     it('should include compression summary when provided', () => {

@@ -105,7 +105,7 @@ export async function postReviewComments(
 
   const prepared = prepareIssuesForPosting(issues, allComments, (issue) => {
     if (!issue.line || !lineValidator) return false;
-    return lineValidator.isValidLine(issue.file, issue.line);
+    return lineValidator.isChangedLine(issue.file, issue.line);
   });
 
   // Log diagnostic info about inline comment filtering

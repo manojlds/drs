@@ -44,7 +44,7 @@ Do not build from the diff alone. Read the current versions of important changed
 
 ## Shared DRS Change Analysis Rules
 
-- Focus on changed code, especially added lines. Deletions and unchanged code are context only.
+- Focus on changed code, including behavior-changing deletions. Unchanged code is context only.
 - If diff content is omitted, summarized, or compressed, use `git_diff` before making file-specific claims.
 - Read current versions of important changed files and nearby code when needed to explain behavior or architecture.
 - Ground every claim in changed files, supplied context, or inspected code.
@@ -158,7 +158,7 @@ Do not inflate small PRs. If two nodes teach the same fact, merge them. Sparse a
 
 ## Accuracy Rules
 
-- Focus on changed code, especially added lines.
+- Focus on changed code, including significant additions, modifications, and deletions.
 - Do not invent architecture or product intent not supported by the diff/context.
 - Separate stable architecture from PR-specific changes. Keep the system overview stable and move PR evidence into data-flow, dependency, user-action, file-group, or appendix sections.
 - If uncertain, phrase as a review question instead of a fact.
