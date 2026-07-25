@@ -62,7 +62,7 @@ const baseConfig = {
   gitlab: { url: '', token: '' },
   github: { token: '' },
   review: {
-    agents: ['review/security'],
+    agent: 'review/security',
     ignorePatterns: [],
   },
 } as unknown as DRSConfig;

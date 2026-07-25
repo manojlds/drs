@@ -8,12 +8,15 @@ import chalk from 'chalk';
 import type { DRSConfig } from './config.js';
 import {
   getModelOverrides,
-  getReviewAgentIds,
+  getReviewAgentId,
   getUnifiedModelOverride,
   resolveAgentSkills,
 } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
-import { parseReviewIssues } from './issue-parser.js';
+import {
+  parseReviewIssuesWithDiagnostics,
+  type ReviewIssueParserDiagnostics,
+} from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
@@ -48,10 +51,10 @@ export interface FileWithDiff {
 }
 
 /**
- * Result from running review agents
+ * Result from running the review agent
  */
 export interface AgentReviewResult {
-  /** All issues found by review agents */
+  /** All issues found by the review agent */
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
@@ -60,11 +63,12 @@ export interface AgentReviewResult {
   /** Number of files actually reviewed */
   filesReviewed: number;
   /** Agent execution results */
-  agentResults: AgentResult[];
+  agentResult: AgentResult;
   /** Token usage and cost details for the review run */
   usage?: ReviewUsageSummary;
   /** Explicit verification verdicts for existing review findings. */
   verification?: ReviewVerificationResult;
+  parserDiagnostics?: ReviewIssueParserDiagnostics[];
 }
 
 export interface AgentResult {
@@ -74,6 +78,22 @@ export interface AgentResult {
   error?: string;
   verification?: ReviewVerificationResult;
   usage?: AgentUsageSummary;
+  parserDiagnostics?: ReviewIssueParserDiagnostics;
+}
+
+export class ReviewAgentExecutionError extends Error {
+  readonly code: 'REVIEW_AGENT_PARSE_ERROR' | 'REVIEW_AGENT_RUNTIME_ERROR';
+
+  constructor(
+    readonly agentResult: AgentResult,
+    readonly reviewUsage: ReviewUsageSummary
+  ) {
+    super(`Review agent failed: ${agentResult.agentType}: ${agentResult.error ?? 'unknown error'}`);
+    this.name = 'ReviewAgentExecutionError';
+    this.code = agentResult.parserDiagnostics
+      ? 'REVIEW_AGENT_PARSE_ERROR'
+      : 'REVIEW_AGENT_RUNTIME_ERROR';
+  }
 }
 
 /**
@@ -239,54 +259,39 @@ function getConfiguredAgentInfo(
   config: DRSConfig,
   workingDir: string,
   cachedAgents?: AgentDefinition[]
-): Array<{ name: string; description: string }> {
-  const configuredNames = getReviewAgentIds(config);
+): { name: string; description: string } {
+  const configuredName = getReviewAgentId(config);
   const allAgents = cachedAgents ?? loadAgents(workingDir, config);
-
-  return configuredNames
-    .map((agentId) => {
-      const agent = allAgents.find((a) => a.id === agentId);
-      return {
-        name: agentId,
-        description: agent?.description ?? `${agentId} review agent`,
-      };
-    })
-    .filter((a) => a !== null);
+  const agent = allAgents.find((a) => a.id === configuredName);
+  return {
+    name: configuredName,
+    description: agent?.description ?? `${configuredName} review agent`,
+  };
 }
 
-function validateConfiguredReviewAgents(
+function validateConfiguredReviewAgent(
   config: DRSConfig,
   workingDir: string,
   cachedAgents?: AgentDefinition[]
 ): void {
-  const configuredAgentIds = getReviewAgentIds(config);
+  const configuredAgentId = getReviewAgentId(config);
   const availableAgents = new Set(
     (cachedAgents ?? loadAgents(workingDir, config))
       .filter((agent) => agent.namespace === 'review')
       .map((agent) => agent.id)
   );
 
-  const missingAgents = configuredAgentIds.filter((agentId) => !availableAgents.has(agentId));
-  if (missingAgents.length === 0) {
-    return;
-  }
+  if (availableAgents.has(configuredAgentId)) return;
 
   const availableList = Array.from(availableAgents).sort();
   throw new Error(
-    `Unknown review agent(s) configured: ${missingAgents.join(', ')}. Available agents: ${availableList.join(', ')}`
+    `Unknown review agent configured: ${configuredAgentId}. Available agents: ${availableList.join(', ')}`
   );
 }
 
-function summarizeRunUsage(agentResults: AgentResult[]): ReviewUsageSummary {
-  const agentUsage = agentResults
-    .map((result) => {
-      const usage = result.usage ?? createAgentUsageSummary(result.agentType);
-      return {
-        ...usage,
-        success: result.success,
-      };
-    })
-    .sort((a, b) => a.agentType.localeCompare(b.agentType));
+function summarizeRunUsage(agentResult: AgentResult): ReviewUsageSummary {
+  const usage = agentResult.usage ?? createAgentUsageSummary(agentResult.agentType);
+  const agentUsage = [{ ...usage, success: agentResult.success }];
 
   return aggregateAgentUsage(agentUsage);
 }
@@ -391,6 +396,7 @@ async function executeSingleAgent(
   const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
   const modelId = reviewModelOverrides[agentName];
   let sawSkillToolCall = false;
+  let fullResponse = '';
 
   try {
     // Build prompt with global and agent-specific context
@@ -433,7 +439,6 @@ async function executeSingleAgent(
     });
 
     const agentIssues: ReviewIssue[] = [];
-    let fullResponse = '';
 
     // Collect results from this agent
     for await (const message of runtime.streamMessages(session.id)) {
@@ -481,7 +486,8 @@ async function executeSingleAgent(
     await runtime.closeSession(session.id);
 
     const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
-    const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
+    const parsed = parseReviewIssuesWithDiagnostics(JSON.stringify(reviewOutput), agentType);
+    const parsedIssues = parsed.issues;
     const verification = parseReviewVerification(reviewOutput);
     if (parsedIssues.length > 0) {
       agentIssues.push(...parsedIssues);
@@ -496,6 +502,7 @@ async function executeSingleAgent(
         ...agentUsage,
         success: true,
       },
+      parserDiagnostics: parsed.diagnostics,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -509,11 +516,23 @@ async function executeSingleAgent(
         ...agentUsage,
         success: false,
       },
+      parserDiagnostics:
+        error instanceof Error && 'code' in error && error.code === 'REVIEW_OUTPUT_PARSE_ERROR'
+          ? {
+              rawResponsePresent: fullResponse.trim().length > 0,
+              validJson: false,
+              validReviewSchema: false,
+              emittedCount: 0,
+              validCount: 0,
+              invalidCount: 0,
+              errors: [message],
+            }
+          : undefined,
     };
   }
 }
 
-export async function runReviewAgents(
+export async function runReviewAgent(
   runtime: RuntimeClient,
   config: DRSConfig,
   baseInstructions: string,
@@ -526,19 +545,14 @@ export async function runReviewAgents(
   console.log(chalk.gray('Starting code analysis...\n'));
 
   const allAgents = loadAgents(workingDir, config);
-  validateConfiguredReviewAgents(config, workingDir, allAgents);
+  validateConfiguredReviewAgent(config, workingDir, allAgents);
 
   const configuredAgentInfo = getConfiguredAgentInfo(config, workingDir, allAgents);
-  if (configuredAgentInfo.length > 0) {
-    console.log(chalk.bold('🧰 Available Review Agents'));
-    configuredAgentInfo.forEach((agent) => {
-      console.log(`  • ${chalk.cyan(agent.name)} - ${agent.description}`);
-    });
-    console.log('');
-  }
+  console.log(chalk.bold('🧰 Review Agent'));
+  console.log(`  • ${chalk.cyan(configuredAgentInfo.name)} - ${configuredAgentInfo.description}\n`);
 
-  const agentNames = getReviewAgentIds(config);
-  console.log(chalk.bold(`🎯 Selected Agents: ${agentNames.join(', ') || 'None'}\n`));
+  const agentName = getReviewAgentId(config);
+  console.log(chalk.bold(`🎯 Selected Agent: ${agentName}\n`));
   const reviewModelOverrides = resolveReviewModelOverrides(config);
 
   const describeSummary =
@@ -549,71 +563,37 @@ export async function runReviewAgents(
     ? additionalContext.verificationContext
     : undefined;
 
-  const agentResults = await Promise.all(
-    agentNames.map((agentType) =>
-      executeSingleAgent(
-        runtime,
-        config,
-        baseInstructions,
-        reviewLabel,
-        filteredFiles,
-        workingDir,
-        debug,
-        agentType,
-        reviewModelOverrides,
-        describeSummary,
-        verificationContext
-      )
-    )
+  const agentResult = await executeSingleAgent(
+    runtime,
+    config,
+    baseInstructions,
+    reviewLabel,
+    filteredFiles,
+    workingDir,
+    debug,
+    agentName,
+    reviewModelOverrides,
+    describeSummary,
+    verificationContext
   );
 
   // Check agent results
-  const successfulAgents = agentResults.filter((r) => r.success);
-  const failedAgents = agentResults.filter((r) => !r.success);
-
-  if (successfulAgents.length === 0) {
-    const failureDetails = failedAgents
-      .map((result) => `${result.agentType}: ${result.error ?? 'unknown error'}`)
-      .join('; ');
-    console.error(chalk.red('\n✗ All review agents failed!\n'));
-    console.error(
-      chalk.yellow(
-        'This usually means:\n' +
-          '  1. Model configuration is incorrect or missing\n' +
-          '  2. API credentials are invalid or missing\n' +
-          '  3. Models are not accessible or timed out\n' +
-          '  4. Agents cannot find files to review\n'
-      )
-    );
-    throw new Error(
-      failureDetails ? `All review agents failed: ${failureDetails}` : 'All review agents failed'
-    );
+  if (!agentResult.success) {
+    throw new ReviewAgentExecutionError(agentResult, summarizeRunUsage(agentResult));
   }
 
-  if (failedAgents.length > 0) {
-    console.log(
-      chalk.yellow(
-        `\n⚠️  ${failedAgents.length} of ${agentResults.length} agents failed: ${failedAgents.map((r) => r.agentType).join(', ')}\n`
-      )
-    );
-  }
-
-  // Flatten all issues from successful agents
-  const issues: ReviewIssue[] = [];
-  agentResults.forEach((result) => issues.push(...result.issues));
+  const issues = agentResult.issues;
 
   const summary = calculateSummary(filteredFiles.length, issues);
-  const verificationFindings = agentResults.flatMap(
-    (result) => result.verification?.findings ?? []
-  );
 
   return {
     issues,
     summary,
     filesReviewed: filteredFiles.length,
-    agentResults,
-    verification: verificationFindings.length > 0 ? { findings: verificationFindings } : undefined,
-    usage: summarizeRunUsage(agentResults),
+    agentResult,
+    verification: agentResult.verification,
+    usage: summarizeRunUsage(agentResult),
+    parserDiagnostics: agentResult.parserDiagnostics ? [agentResult.parserDiagnostics] : [],
   };
 }
 
@@ -627,7 +607,7 @@ export async function runReviewPipeline(
   workingDir: string = process.cwd(),
   debug = false
 ): Promise<AgentReviewResult> {
-  return runReviewAgents(
+  return runReviewAgent(
     runtime,
     config,
     baseInstructions,

@@ -8,7 +8,7 @@ DRS runs Pi agents addressed by fully qualified ids: `<namespace>/<name>`. It sh
 |------|-------|--------|
 | Override a built-in agent | `.drs/agents/<namespace>/<name>/agent.md` | Replaces the built-in prompt entirely |
 | Add context to a built-in agent | `.drs/agents/<namespace>/<name>/context.md` | Injected alongside the built-in prompt |
-| Create a review agent | `.drs/agents/review/<name>/agent.md` + add to `review.agents` | Runs as an additional reviewer |
+| Create a review agent | `.drs/agents/review/<name>/agent.md` + select with `review.agent` | Becomes the canonical reviewer |
 | Create any other agent | `.drs/agents/<namespace>/<name>/agent.md` | Run with `drs run-agent <namespace>/<name>` |
 | Global project context | `.drs/context.md` | Injected into every agent's prompt |
 | Custom skill | `.drs/skills/<name>/SKILL.md` (or `.agents/skills/<name>/SKILL.md`) | Available to agents via config |
@@ -78,9 +78,9 @@ This context is **injected alongside** the built-in unified reviewer prompt, not
 
 ---
 
-## Creating Brand New Agents
+## Creating a Brand New Review Agent
 
-You can add review agents that don't correspond to any built-in:
+You can create a review agent that doesn't correspond to a built-in and select it as the canonical reviewer:
 
 ```bash
 mkdir -p .drs/agents/review/api-reviewer
@@ -105,17 +105,15 @@ You review REST API changes for backward compatibility.
 - Inconsistent error response format
 ```
 
-Then add it to your config:
+Then select it in your config:
 
 ```yaml
 # .drs/drs.config.yaml
 review:
-  agents:
-    - review/unified-reviewer
-    - review/api-reviewer  # Your custom agent
+  agent: review/api-reviewer
 ```
 
-Agent ids must be fully qualified. They're validated at startup — if an agent in `review.agents` doesn't have a corresponding definition, DRS throws an error listing available agents.
+The agent id must be fully qualified. It's validated at startup — if `review.agent` doesn't have a corresponding definition, DRS throws an error listing available agents.
 
 You can also create agents outside the review namespace and run them directly:
 
@@ -249,11 +247,10 @@ agents:
 
 ```yaml
 review:
-  agents:
-    - name: review/api-reviewer
-      skills:
-        - sql-patterns      # Only for this custom agent
-    - review/unified-reviewer # Uses only default skills
+  agent:
+    name: review/api-reviewer
+    skills:
+      - sql-patterns      # Only for this custom agent
 ```
 
 Per-agent skills are **merged** with default skills. If `agents.default.skills` is `['baseline']` and `review/api-reviewer` has `skills: ['sql-patterns']`, then `review/api-reviewer` gets both `['baseline', 'sql-patterns']`.
@@ -304,16 +301,12 @@ agents:
     skills: config/skills
 
 review:
-  # Agents to run (execution order)
-  agents:
-    # Simple format (uses default model, no per-agent skills)
-    - review/unified-reviewer
-
-    # Detailed format (per-agent model and skills)
-    - name: review/api-reviewer
-      model: openai/gpt-4o
-      skills:
-        - rest-conventions
+  # Canonical review agent (simple format: review/unified-reviewer)
+  agent:
+    name: review/api-reviewer
+    model: openai/gpt-4o
+    skills:
+      - rest-conventions
 
   # Files to skip
   ignorePatterns:
@@ -352,7 +345,7 @@ When DRS loads an agent named `review/unified-reviewer`:
 ```
 .drs/
   context.md
-  drs.config.yaml          # agents: [review/unified-reviewer, review/api-reviewer]
+  drs.config.yaml          # review.agent: review/api-reviewer
   agents/
     review/unified-reviewer/
       context.md           # Extra context for packaged reviewer
@@ -370,11 +363,10 @@ agents:
     model: anthropic/claude-sonnet-4-5-20250929
 
 review:
-  agents:
-    - review/unified-reviewer
-    - name: review/api-reviewer
-      skills:
-        - rest-conventions
+  agent:
+    name: review/api-reviewer
+    skills:
+      - rest-conventions
 ```
 
 ### Generic Agent Execution

@@ -11,9 +11,8 @@ import type {
 } from '../lib/config.js';
 import {
   getDescriberModelOverride,
-  getReviewAgentIds,
+  getReviewAgentId,
   loadWorkflowSourceInfo,
-  normalizeAgentConfig,
   resolveAgentRunConfig,
   type WorkflowSource,
 } from '../lib/config.js';
@@ -401,16 +400,6 @@ async function resolveWorkflowInputs(
   return values;
 }
 
-function resolveAgentsFrom(config: DRSConfig, agentsFrom: string): string[] {
-  if (agentsFrom === 'review.agents') {
-    return normalizeAgentConfig(config.review.agents).map((agent) => agent.name);
-  }
-
-  throw new Error(
-    `Unsupported workflow agentsFrom "${agentsFrom}". ` + 'Currently supported: review.agents.'
-  );
-}
-
 function hasConfiguredAgentPrompt(config: DRSConfig, agentId: string): boolean {
   const runConfig = resolveAgentRunConfig(config, agentId);
   return runConfig.prompt !== undefined || runConfig.promptFile !== undefined;
@@ -572,63 +561,6 @@ async function runAgentWorkflowNode(
     usage: result.usage,
     workspaceChanges: result.workspaceChanges,
     output,
-    writes,
-  };
-}
-
-async function runAgentsWorkflowNode(
-  config: DRSConfig,
-  nodeId: string,
-  node: WorkflowNodeConfig,
-  options: WorkflowRunOptions,
-  workingDir: string,
-  context: WorkflowTemplateContext
-): Promise<WorkflowNodeResult> {
-  const agentsFrom = node.agentsFrom;
-  if (!agentsFrom) {
-    throw new Error(`Workflow node "${nodeId}" is missing agentsFrom.`);
-  }
-
-  const agentIds = resolveAgentsFrom(config, agentsFrom);
-  const prompt = node.input === undefined ? undefined : renderTemplate(node.input, context);
-
-  if (prompt === undefined) {
-    const missingPromptAgent = agentIds.find(
-      (agentId) => !hasConfiguredAgentPrompt(config, agentId)
-    );
-    if (missingPromptAgent) {
-      throw new Error(
-        `Workflow agentsFrom node "${nodeId}" must define input or configure ` +
-          `agents.overrides.${missingPromptAgent}.run.prompt/promptFile.`
-      );
-    }
-  }
-
-  const responses = await Promise.all(
-    agentIds.map((agentId) =>
-      runAgent(config, agentId, createAgentOptions(prompt, options, workingDir, node, context))
-    )
-  );
-
-  const response = responses
-    .map((result) => `## ${result.agent}\n\n${result.response.trim()}`.trim())
-    .join('\n\n');
-  const writes = renderNodeWritesPath(nodeId, node, context);
-  if (writes) {
-    await writeWorkflowFile(
-      workingDir,
-      writes,
-      node.json === true ? JSON.stringify(responses, null, 2) : response
-    );
-  }
-
-  return {
-    id: nodeId,
-    type: 'agents',
-    agents: agentIds,
-    response,
-    responses,
-    output: response,
     writes,
   };
 }
@@ -3525,8 +3457,7 @@ async function runReviewWorkflowNode(
       };
 
   if (traceCollector) {
-    const agentIds = getReviewAgentIds(config);
-    traceCollector.setContext(nodeId, agentIds[0] ?? 'review/unified-reviewer', '');
+    traceCollector.setContext(nodeId, getReviewAgentId(config), '');
   }
 
   const reviewResult = await withWorkflowLock(executionContext.locks.exit, async () => {
@@ -3603,7 +3534,7 @@ function recordNodeArtifact(
   result: WorkflowNodeResult,
   artifacts: Record<string, unknown>
 ): void {
-  const artifactValue = result.output ?? result.response ?? result.responses;
+  const artifactValue = result.output ?? result.response;
   artifacts[nodeId] = artifactValue;
   if (node.output) {
     artifacts[node.output] = artifactValue;
@@ -3868,9 +3799,6 @@ async function runSingleWorkflowNode(
         context,
         executionContext
       );
-    }
-    if (kind === 'agents') {
-      return runAgentsWorkflowNode(config, nodeId, node, options, workingDir, context);
     }
     if (kind === 'control') {
       throw new Error(`Workflow control node "${nodeId}" cannot run in the static DAG executor.`);
@@ -4212,10 +4140,9 @@ export interface WorkflowListOptions {
 
 export interface WorkflowNodeDetail {
   id: string;
-  kind: 'agent' | 'agents' | 'action' | 'control';
+  kind: 'agent' | 'action' | 'control';
   needs: string[];
   agent?: string;
-  agentsFrom?: string;
   action?: string;
   control?: string;
   if?: string;
@@ -4374,7 +4301,6 @@ function buildWorkflowDetail(
       kind: getNodeKind(node),
       needs: getNodeNeeds(node),
       agent: node.agent,
-      agentsFrom: node.agentsFrom,
       action: node.action,
       control: node.control,
       if: node.if,
@@ -4475,7 +4401,6 @@ export function showWorkflow(
       console.log(`    needs: ${node.needs.join(', ')}`);
     }
     if (node.agent) console.log(`    agent: ${node.agent}`);
-    if (node.agentsFrom) console.log(`    agentsFrom: ${node.agentsFrom}`);
     if (node.action) console.log(`    action: ${node.action}`);
     if (node.control) console.log(`    control: ${node.control}`);
     if (node.if) console.log(`    if: ${node.if}`);

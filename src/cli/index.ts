@@ -15,6 +15,7 @@ import { createWorkflowExecutor } from './workflow-executor-selection.js';
 import { config as loadDotenv } from 'dotenv';
 import { getProjectSetupStatus } from '../lib/project-setup.js';
 import { createWikiCommand } from './wiki.js';
+import { createBenchmarkCommand } from './benchmark.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -71,6 +72,8 @@ program
   .name('drs')
   .description('Workflow-first AI code maintenance for reviews, docs, and repository upkeep')
   .version(version);
+
+program.addCommand(createBenchmarkCommand());
 
 program
   .command('run-agent <agentId>')

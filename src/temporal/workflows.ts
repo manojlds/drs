@@ -61,7 +61,7 @@ function recordNodeArtifact(
   result: WorkflowNodeResult,
   artifacts: Record<string, unknown>
 ): void {
-  const artifactValue = result.output ?? result.response ?? result.responses;
+  const artifactValue = result.output ?? result.response;
   artifacts[nodeId] = artifactValue;
   if (node.output) {
     artifacts[node.output] = artifactValue;

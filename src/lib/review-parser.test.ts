@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { parseReviewOutput } from './review-parser.js';
+import { parseReviewOutput, ReviewOutputParseError } from './review-parser.js';
 import type { ReviewArtifactPayload } from './review-artifact.js';
 import type { WorkflowArtifactEnvelope } from './workflow-artifacts.js';
 
@@ -113,9 +113,9 @@ That's it.`;
   describe('output pointer', () => {
     it('throws for outputType-only pointers', async () => {
       const raw = JSON.stringify({ outputType: 'describe_output' });
-      await expect(parseReviewOutput(testDir, false, raw)).rejects.toThrow(
-        'Unexpected output type for review output'
-      );
+      const output = parseReviewOutput(testDir, false, raw);
+      await expect(output).rejects.toBeInstanceOf(ReviewOutputParseError);
+      await expect(output).rejects.toThrow('Unexpected output type for review output');
     });
 
     it('follows outputPath pointer to custom file', async () => {
@@ -143,6 +143,13 @@ That's it.`;
       const raw = JSON.stringify({ outputType: 'describe_output', outputPath: '.drs/custom.json' });
       await expect(parseReviewOutput(testDir, false, raw)).rejects.toThrow(
         'Unexpected output type for review output'
+      );
+    });
+
+    it('classifies unsafe output paths as review output parse errors', async () => {
+      const raw = JSON.stringify({ outputPath: '../outside.json' });
+      await expect(parseReviewOutput(testDir, false, raw)).rejects.toBeInstanceOf(
+        ReviewOutputParseError
       );
     });
   });

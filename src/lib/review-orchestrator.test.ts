@@ -91,7 +91,7 @@ vi.mock('./review-core.js', () => ({
       byCategory: { SECURITY: 0, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
     },
     filesReviewed: files.length,
-    agentResults: [],
+    agentResult: { agentType: 'review/unified-reviewer', issues: [], success: true },
   })),
   displayReviewSummary: vi.fn(),
   hasBlockingIssues: vi.fn(() => false),
@@ -228,7 +228,7 @@ describe('review-orchestrator', () => {
         agents: { default: { model: 'provider/default-model', skills: [] } },
         gitlab: { url: '', token: '' },
         github: { token: '' },
-        review: { agents: [], ignorePatterns: [] },
+        review: { agent: 'review/unified-reviewer', ignorePatterns: [] },
       };
 
       const client = await connectToRuntime(config, '/test/dir');
@@ -249,7 +249,7 @@ describe('review-orchestrator', () => {
         agents: { default: { model: 'provider/default-model', skills: [] } },
         gitlab: { url: '', token: '' },
         github: { token: '' },
-        review: { agents: [], ignorePatterns: [] },
+        review: { agent: 'review/unified-reviewer', ignorePatterns: [] },
       };
 
       await expect(connectToRuntime(config)).rejects.toThrow('Connection failed');
@@ -274,7 +274,7 @@ describe('review-orchestrator', () => {
         agents: { default: { model: 'provider/default-model', skills: [] } },
         gitlab: { url: '', token: '' },
         github: { token: '' },
-        review: { agents: [], ignorePatterns: [] },
+        review: { agent: 'review/unified-reviewer', ignorePatterns: [] },
       };
 
       await connectToRuntime(config, '/test/dir', { debug: true });
@@ -303,7 +303,7 @@ describe('review-orchestrator', () => {
         agents: { default: { model: 'provider/default-model', skills: [] } },
         gitlab: { url: '', token: '' },
         github: { token: '' },
-        review: { agents: [], ignorePatterns: [] },
+        review: { agent: 'review/unified-reviewer', ignorePatterns: [] },
       };
 
       await connectToRuntime(config);
@@ -323,7 +323,7 @@ describe('review-orchestrator', () => {
         agents: { default: { model: 'provider/default-model', skills: [] } },
         gitlab: { url: '', token: '' },
         github: { token: '' },
-        review: { agents: [], ignorePatterns: [] },
+        review: { agent: 'review/unified-reviewer', ignorePatterns: [] },
       };
       const permissions: AgentPermissions = {
         filesystem: { read: { roots: ['.'], allow: ['**'] } },
@@ -348,7 +348,7 @@ describe('review-orchestrator', () => {
         gitlab: { url: '', token: '' },
         github: { token: '' },
         review: {
-          agents: ['review/security', 'review/quality'],
+          agent: 'review/security',
           ignorePatterns: ['*.test.ts'],
         },
         contextCompression: {
@@ -576,7 +576,7 @@ describe('review-orchestrator', () => {
           ...mockConfig,
           review: {
             ...mockConfig.review,
-            agents: ['review/unified-reviewer'],
+            agent: 'review/unified-reviewer',
           },
         },
         source
@@ -585,7 +585,7 @@ describe('review-orchestrator', () => {
       expect(mockRuntimeClient.getMinContextWindow).toHaveBeenCalledWith(['provider/large-200k']);
     });
 
-    it('uses only multi-agent model IDs for budget sizing in multi-agent mode', async () => {
+    it('uses the selected custom reviewer model ID for budget sizing', async () => {
       const { getModelOverrides, getUnifiedModelOverride } = await import('./config.js');
       vi.mocked(getModelOverrides).mockReturnValueOnce({
         'review/security': 'provider/large-200k',
@@ -605,7 +605,7 @@ describe('review-orchestrator', () => {
           ...mockConfig,
           review: {
             ...mockConfig.review,
-            agents: ['review/security'],
+            agent: 'review/security',
           },
         },
         source
@@ -643,9 +643,9 @@ describe('review-orchestrator', () => {
       expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 
-    it('should propagate "All review agents failed" errors', async () => {
+    it('should propagate "Review agent failed" errors', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
-      vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('All review agents failed'));
+      vi.mocked(runReviewPipeline).mockRejectedValueOnce(new Error('Review agent failed'));
 
       const source: ReviewSource = {
         name: 'Test review',
@@ -653,7 +653,7 @@ describe('review-orchestrator', () => {
         context: {},
       };
 
-      await expect(executeReview(mockConfig, source)).rejects.toThrow('All review agents failed');
+      await expect(executeReview(mockConfig, source)).rejects.toThrow('Review agent failed');
       expect(mockRuntimeClient.shutdown).toHaveBeenCalled();
     });
 

@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +19,9 @@ describe('DRS project onboarding smoke', () => {
       const initialized = getProjectSetupStatus(repo);
       expect(initialized.initialized).toBe(true);
       expect(initialized.issues).toEqual([]);
+      const config = readFileSync(join(repo, '.drs', 'drs.config.yaml'), 'utf-8');
+      expect(config).toContain('  agent: review/unified-reviewer');
+      expect(config).not.toContain('  agents:');
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }

@@ -89,8 +89,6 @@ export type WorkflowControl = 'loop' | 'switch' | 'end' | 'passThrough';
 export interface WorkflowNodeConfig {
   /** Agent id to run, for example "task/docs-updater". */
   agent?: string;
-  /** Config path resolving to an agent list. Currently supports "review.agents". */
-  agentsFrom?: string;
   /** Built-in workflow control node. */
   control?: WorkflowControl;
   /** Built-in workflow action. */
@@ -335,7 +333,7 @@ export interface DRSConfig {
 
   // Review behavior
   review: {
-    agents: (string | AgentConfig)[];
+    agent: string | AgentConfig;
     ignorePatterns: string[];
     includePatterns?: string[];
     unified?: {
@@ -407,7 +405,7 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
-    agents: ['review/unified-reviewer'],
+    agent: 'review/unified-reviewer',
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -738,6 +736,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   const drsConfigPath = resolve(basePath, '.drs/drs.config.yaml');
   if (existsSync(drsConfigPath)) {
     const fileConfig = yaml.parse(readFileSync(drsConfigPath, 'utf-8')) ?? {};
+    normalizeLegacyReviewAgents(fileConfig, drsConfigPath);
     rejectLegacyAgentConfigKeys(fileConfig, drsConfigPath);
     rejectRemovedReviewPostingConfigKeys(fileConfig, drsConfigPath);
     rejectInlineWorkflowConfig(fileConfig, drsConfigPath);
@@ -748,6 +747,7 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   const gitlabReviewPath = resolve(basePath, '.gitlab-review.yml');
   if (existsSync(gitlabReviewPath)) {
     const fileConfig = yaml.parse(readFileSync(gitlabReviewPath, 'utf-8')) ?? {};
+    normalizeLegacyReviewAgents(fileConfig, gitlabReviewPath);
     rejectLegacyAgentConfigKeys(fileConfig, gitlabReviewPath);
     rejectRemovedReviewPostingConfigKeys(fileConfig, gitlabReviewPath);
     rejectInlineWorkflowConfig(fileConfig, gitlabReviewPath);
@@ -764,9 +764,22 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (process.env.GITHUB_TOKEN) {
     config.github.token = process.env.GITHUB_TOKEN;
   }
-  if (process.env.REVIEW_AGENTS) {
-    // Environment variable is always simple string format (comma-separated)
-    config.review.agents = process.env.REVIEW_AGENTS.split(',').map((a) => a.trim());
+  const hasReviewAgentEnv = process.env.DRS_REVIEW_AGENT !== undefined;
+  const hasLegacyReviewAgentsEnv = process.env.REVIEW_AGENTS !== undefined;
+  if (hasReviewAgentEnv && hasLegacyReviewAgentsEnv) {
+    throw new Error('Specify only DRS_REVIEW_AGENT; do not also set deprecated REVIEW_AGENTS.');
+  }
+  if (hasReviewAgentEnv) {
+    config.review.agent = process.env.DRS_REVIEW_AGENT!.trim();
+  } else if (hasLegacyReviewAgentsEnv) {
+    const agents = process.env.REVIEW_AGENTS!.split(',').map((a) => a.trim());
+    if (agents.length !== 1 || !agents[0]) {
+      throw new Error(
+        'REVIEW_AGENTS must contain exactly one agent. Use DRS_REVIEW_AGENT with a single review/* agent id.'
+      );
+    }
+    console.warn('REVIEW_AGENTS is deprecated; use DRS_REVIEW_AGENT.');
+    config.review.agent = agents[0];
   }
   const defaultModelEnv = getDefaultModelEnv();
   if (defaultModelEnv) {
@@ -804,7 +817,41 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     config = mergeConfig(config, overrides);
   }
 
-  return normalizeRuntimeConfig(config);
+  config = normalizeRuntimeConfig(config);
+  getReviewAgentId(config);
+  return config;
+}
+
+function normalizeLegacyReviewAgents(
+  fileConfig: Record<string, unknown>,
+  sourcePath: string
+): void {
+  if (!isRecord(fileConfig.review) || !('agents' in fileConfig.review)) return;
+  const review = fileConfig.review;
+  if ('agent' in review) {
+    throw new Error(
+      `${sourcePath} must not specify both review.agent and deprecated review.agents.`
+    );
+  }
+  if (!Array.isArray(review.agents) || review.agents.length !== 1) {
+    throw new Error(
+      `${sourcePath} review.agents must contain exactly one entry. Replace it with review.agent: review/<name>.`
+    );
+  }
+  const legacyAgent = review.agents[0];
+  if (
+    !(
+      (typeof legacyAgent === 'string' && legacyAgent.trim()) ||
+      (isRecord(legacyAgent) && typeof legacyAgent.name === 'string' && legacyAgent.name.trim())
+    )
+  ) {
+    throw new Error(
+      `${sourcePath} review.agents must contain one non-empty review agent id or agent object. Replace it with review.agent.`
+    );
+  }
+  console.warn(`${sourcePath}: review.agents is deprecated; use review.agent.`);
+  review.agent = legacyAgent;
+  delete review.agents;
 }
 
 function rejectLegacyAgentConfigKeys(fileConfig: Partial<DRSConfig>, sourcePath: string): void {
@@ -949,9 +996,9 @@ export function getRuntimeConfig(config: DRSConfig): RuntimeConfig {
  */
 function mergeSection<T extends object>(base: T | undefined, override?: Partial<T>): T {
   const safeBase = (base ?? {}) as T;
-  if (!override) return safeBase;
-
   const result = { ...safeBase };
+  if (!override) return result;
+
   for (const key in override) {
     const value = override[key];
     if (value !== undefined) {
@@ -978,9 +1025,7 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
     );
   }
 
-  if (getReviewAgentIds(config).length === 0) {
-    throw new Error('At least one review agent must be configured');
-  }
+  getReviewAgentId(config);
 
   if (!getDefaultModel(config)) {
     throw new Error(
@@ -1023,16 +1068,8 @@ function minimatch(path: string, pattern: string): boolean {
   return regex.test(path);
 }
 
-/**
- * Normalize agent configuration from mixed format to AgentConfig array
- */
-export function normalizeAgentConfig(agents: (string | AgentConfig)[]): AgentConfig[] {
-  return agents.map((agent) => {
-    if (typeof agent === 'string') {
-      return { name: agent };
-    }
-    return agent;
-  });
+export function normalizeSingleAgentConfig(agent: string | AgentConfig): AgentConfig {
+  return typeof agent === 'string' ? { name: agent } : agent;
 }
 
 function dedupeStrings(values: string[]): string[] {
@@ -1129,7 +1166,9 @@ export function resolveAgentSkills(
   const agentOverride = getAgentOverride(config, agentId);
   const reviewAgentConfig =
     precomputedReviewAgentConfig === undefined
-      ? normalizeAgentConfig(config.review.agents).find((agent) => agent.name === agentId)
+      ? getReviewAgentId(config) === agentId
+        ? normalizeSingleAgentConfig(config.review.agent)
+        : undefined
       : precomputedReviewAgentConfig;
 
   return dedupeStrings([
@@ -1203,24 +1242,24 @@ export function resolveAgentRunConfig(config: DRSConfig, agentId: string): Agent
 /**
  * Extract effective review agent ids from configuration.
  */
-export function getReviewAgentIds(config: DRSConfig): string[] {
-  return getReviewAgentIdsFromNormalized(normalizeAgentConfig(config.review.agents));
-}
-
-function getReviewAgentIdsFromNormalized(normalizedAgents: AgentConfig[]): string[] {
-  const configuredAgentIds = normalizedAgents.map((agent) => agent.name);
-  const deduped = dedupeStrings(configuredAgentIds);
-
-  for (const agentId of deduped) {
-    const { namespace } = requireAgentId(agentId);
-    if (namespace !== 'review') {
-      throw new Error(
-        `Invalid review agent "${agentId}". Review agents must be in the "review" namespace.`
-      );
-    }
+export function getReviewAgentId(config: DRSConfig): string {
+  const configuredAgent: unknown = config.review?.agent;
+  const agentId =
+    typeof configuredAgent === 'string'
+      ? configuredAgent.trim()
+      : isRecord(configuredAgent) && typeof configuredAgent.name === 'string'
+        ? configuredAgent.name.trim()
+        : '';
+  if (!agentId) {
+    throw new Error('review.agent must be a non-empty review/* agent id or agent object.');
   }
-
-  return deduped;
+  const { namespace } = requireAgentId(agentId);
+  if (namespace !== 'review') {
+    throw new Error(
+      `Invalid review agent "${agentId}". Review agent must be in the "review" namespace.`
+    );
+  }
+  return agentId;
 }
 
 /**
@@ -1234,16 +1273,11 @@ function getReviewAgentIdsFromNormalized(normalizedAgents: AgentConfig[]): strin
  */
 export function getModelOverrides(config: DRSConfig): ModelOverrides {
   const overrides: ModelOverrides = {};
-  const normalizedAgents = normalizeAgentConfig(config.review.agents);
-  const agentConfigByName = new Map(normalizedAgents.map((agent) => [agent.name, agent]));
-
-  for (const agentId of getReviewAgentIdsFromNormalized(normalizedAgents)) {
-    const configuredAgent = agentConfigByName.get(agentId);
-    const model = resolveAgentModel(config, agentId, configuredAgent?.model);
-
-    if (model) {
-      overrides[agentId] = model;
-    }
+  const configuredAgent = normalizeSingleAgentConfig(config.review.agent);
+  const agentId = getReviewAgentId(config);
+  const model = resolveAgentModel(config, agentId, configuredAgent.model);
+  if (model) {
+    overrides[agentId] = model;
   }
 
   return overrides;

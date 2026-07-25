@@ -1,0 +1,12 @@
+name: development-v1
+cases:
+  - inverted-condition
+  - null-config-fallback
+  - swallowed-async-failure
+  - incomplete-api-migration
+  - deletion-regression
+  - docs-config-drift
+  - corrected-condition
+  - safe-refactor
+  - preexisting-context-defect
+  - complete-api-docs-migration

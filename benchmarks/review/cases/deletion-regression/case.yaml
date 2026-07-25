@@ -1,0 +1,8 @@
+id: deletion-regression
+description: Deletion removes empty input validation.
+expected:
+  - id: DEL-001
+    description: Empty input now silently parses as zero.
+    severity: MEDIUM
+    category: QUALITY
+    file: parse.ts

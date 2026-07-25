@@ -1,0 +1,9 @@
+id: docs-config-drift
+description: Public documentation disagrees with the changed default.
+expected:
+  - id: DOC-001
+    description: Documented retry default remains 3 while runtime default is 0.
+    severity: LOW
+    category: DOCUMENTATION
+    file: options.ts
+    line: 2

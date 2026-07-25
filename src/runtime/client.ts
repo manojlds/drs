@@ -8,7 +8,7 @@
 import type { CustomProvider, DRSConfig } from '../lib/config.js';
 import {
   getRuntimeConfig,
-  normalizeAgentConfig,
+  normalizeSingleAgentConfig,
   resolveAgentSkills,
   resolveAgentTools,
   resolveRuntimeAgentModel,
@@ -117,7 +117,7 @@ function buildAgentSkillConfiguration(
   agents: AgentDefinition[]
 ): Array<{ name: string; skills: string[] }> {
   const reviewAgentConfigByName = new Map(
-    normalizeAgentConfig(config.review.agents).map((agent) => [agent.name, agent])
+    [normalizeSingleAgentConfig(config.review.agent)].map((agent) => [agent.name, agent])
   );
 
   return agents

@@ -1,4 +1,3 @@
-import type { AgentRunResult } from '../agent-result.js';
 import type { AgentWorkspaceChanges } from '../agent-permissions.js';
 import type { AgentUsageSummary } from '../review-usage.js';
 
@@ -31,19 +30,17 @@ export interface WorkflowActivityIdempotencyContext {
 
 export interface WorkflowNodeResult {
   id: string;
-  type: 'agent' | 'agents' | 'action' | 'control' | 'skipped';
+  type: 'agent' | 'action' | 'control' | 'skipped';
   status?: 'success' | 'skipped';
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
   agent?: string;
-  agents?: string[];
   action?: string;
   control?: string;
   decision?: string;
   target?: string;
   response?: string;
-  responses?: AgentRunResult[];
   usage?: AgentUsageSummary;
   workspaceChanges?: AgentWorkspaceChanges;
   output?: unknown;

@@ -1,0 +1,8 @@
+diff --git a/save.ts b/save.ts
+--- a/save.ts
++++ b/save.ts
+@@ -1,3 +1,3 @@
+ export async function save(run: () => Promise<void>): Promise<void> {
+-  await run();
++  await run().catch(() => undefined);
+ }

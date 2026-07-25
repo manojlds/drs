@@ -10,7 +10,7 @@ import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
-  getReviewAgentIds,
+  getReviewAgentId,
   getModelOverrides,
   getDescriberModelOverride,
   getDefaultThinkingLevel,
@@ -38,6 +38,7 @@ import { formatDescribeSummary } from './description-formatter.js';
 import type { ReviewFinding } from './review-artifact.js';
 import type { TraceCollector } from './trace-collector.js';
 import type { AgentPermissions } from './agent-permissions.js';
+import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -49,7 +50,7 @@ export interface ReviewSource {
   files: string[];
   /** Optional: files with their diff patches (if available, passed directly to agents) */
   filesWithDiffs?: Array<{ filename: string; patch: string }>;
-  /** Additional context to pass to review agents */
+  /** Additional context to pass to the review agent */
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
@@ -87,7 +88,7 @@ export interface ReviewVerificationContext {
  * Result of a review execution
  */
 export interface ReviewResult {
-  /** All issues found by review agents */
+  /** All issues found by the review agent */
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
@@ -99,6 +100,7 @@ export interface ReviewResult {
   usage?: ReviewUsageSummary;
   /** Explicit verification verdicts for an existing review artifact. */
   verification?: ReviewVerificationResult;
+  parserDiagnostics?: ReviewIssueParserDiagnostics[];
 }
 
 /**
@@ -113,8 +115,7 @@ export function getReviewBudgetModelIds(
   agentModelOverrides: ModelOverrides,
   unifiedModelOverrides: ModelOverrides
 ): string[] {
-  const selectedAgents = getReviewAgentIds(config);
-  const modelIds = selectedAgents
+  const modelIds = [getReviewAgentId(config)]
     .map((agentId) => {
       if (agentId === 'review/unified-reviewer' && unifiedModelOverrides[agentId]) {
         return unifiedModelOverrides[agentId];
@@ -223,6 +224,7 @@ export async function executeReview(
       summary: calculateSummary(0, []),
       filesReviewed: 0,
       usage: createEmptyReviewUsageSummary(),
+      parserDiagnostics: [],
     };
   }
 
@@ -349,6 +351,7 @@ export async function executeReview(
       filesReviewed: result.filesReviewed,
       usage: result.usage ?? createEmptyReviewUsageSummary(),
       verification: result.verification,
+      parserDiagnostics: result.parserDiagnostics ?? [],
     };
   } finally {
     // Always shut down Pi runtime client

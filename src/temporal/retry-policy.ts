@@ -59,7 +59,7 @@ export function getTemporalNodeRetryMode(node: WorkflowNodeConfig): TemporalNode
   }
 
   if (
-    (node.agent || node.agentsFrom) &&
+    node.agent &&
     (node.writes ||
       node.permissions?.filesystem?.write !== undefined ||
       node.permissions?.filesystem?.delete !== undefined)

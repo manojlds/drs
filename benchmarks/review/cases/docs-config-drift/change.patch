@@ -1,0 +1,7 @@
+diff --git a/options.ts b/options.ts
+--- a/options.ts
++++ b/options.ts
+@@ -1,2 +1,2 @@
+ /** Retry attempts. Default: 3. */
+-export const retries = 3;
++export const retries = 0;

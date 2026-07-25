@@ -23,7 +23,62 @@ import type { ReviewIssue } from './comment-formatter.js';
  * ```
  */
 export function parseReviewIssues(content: string, agentName: string = 'unknown'): ReviewIssue[] {
+  return parseReviewIssuesWithDiagnostics(content, agentName).issues;
+}
+
+export interface ReviewIssueParserDiagnostics {
+  rawResponsePresent: boolean;
+  validJson: boolean;
+  validReviewSchema: boolean;
+  emittedCount: number;
+  validCount: number;
+  invalidCount: number;
+  errors: string[];
+}
+
+export interface ReviewIssueParseResult {
+  issues: ReviewIssue[];
+  diagnostics: ReviewIssueParserDiagnostics;
+}
+
+/** Parse issues while exposing failures which the legacy API intentionally hides. */
+export function parseReviewIssuesWithDiagnostics(
+  content: string,
+  agentName: string = 'unknown'
+): ReviewIssueParseResult {
   const issues: ReviewIssue[] = [];
+  const diagnostics: ReviewIssueParserDiagnostics = {
+    rawResponsePresent: content.trim().length > 0,
+    validJson: false,
+    validReviewSchema: false,
+    emittedCount: 0,
+    validCount: 0,
+    invalidCount: 0,
+    errors: [],
+  };
+  const consumedPayloads = new Set<string>();
+
+  const consume = (parsed: unknown, payload: string): void => {
+    const normalizedPayload = payload.trim();
+    if (consumedPayloads.has(normalizedPayload)) return;
+    consumedPayloads.add(normalizedPayload);
+    diagnostics.validJson = true;
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !Array.isArray((parsed as { issues?: unknown }).issues)
+    ) {
+      diagnostics.errors.push('JSON does not contain an issues array.');
+      return;
+    }
+    diagnostics.validReviewSchema = true;
+    const emitted = (parsed as { issues: unknown[] }).issues;
+    diagnostics.emittedCount += emitted.length;
+    for (const issue of emitted) {
+      if (isValidIssue(issue)) issues.push({ ...issue, agent: issue.agent || agentName });
+      else diagnostics.invalidCount++;
+    }
+  };
 
   try {
     // Try to find JSON blocks in the content
@@ -36,18 +91,9 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
     while ((match = jsonBlockRegex.exec(content)) !== null) {
       try {
         const parsed = JSON.parse(match[1]);
-        if (parsed.issues && Array.isArray(parsed.issues)) {
-          for (const issue of parsed.issues) {
-            if (isValidIssue(issue)) {
-              issues.push({
-                ...issue,
-                agent: issue.agent || agentName,
-              });
-            }
-          }
-        }
+        consume(parsed, match[1]);
       } catch {
-        // Continue to next match
+        diagnostics.errors.push('Invalid JSON code block.');
       }
     }
 
@@ -56,32 +102,14 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
       // Try to parse the entire content as JSON
       try {
         const parsed = JSON.parse(content);
-        if (parsed.issues && Array.isArray(parsed.issues)) {
-          for (const issue of parsed.issues) {
-            if (isValidIssue(issue)) {
-              issues.push({
-                ...issue,
-                agent: issue.agent || agentName,
-              });
-            }
-          }
-        }
+        consume(parsed, content);
       } catch {
         // Not valid JSON, try to find JSON objects with better bracket matching
         const jsonObjects = extractJsonObjects(content);
         for (const jsonStr of jsonObjects) {
           try {
             const parsed = JSON.parse(jsonStr);
-            if (parsed.issues && Array.isArray(parsed.issues)) {
-              for (const issue of parsed.issues) {
-                if (isValidIssue(issue)) {
-                  issues.push({
-                    ...issue,
-                    agent: issue.agent || agentName,
-                  });
-                }
-              }
-            }
+            consume(parsed, jsonStr);
           } catch {
             // Continue to next object
           }
@@ -89,10 +117,13 @@ export function parseReviewIssues(content: string, agentName: string = 'unknown'
       }
     }
   } catch (error) {
-    console.warn('Failed to parse review issues from content:', error);
+    diagnostics.errors.push(error instanceof Error ? error.message : String(error));
   }
 
-  return issues;
+  if (!diagnostics.rawResponsePresent) diagnostics.errors.push('Empty response.');
+  else if (!diagnostics.validJson) diagnostics.errors.push('No valid JSON review response found.');
+  diagnostics.validCount = issues.length;
+  return { issues, diagnostics };
 }
 
 /**

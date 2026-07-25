@@ -51,7 +51,7 @@ The CLI loads `.env` from the working directory (`loadDotenv()`), then loads con
 Workflows are the central abstraction. A workflow is a YAML file that declares `inputs`, `nodes`, and an optional `output`. Nodes can be:
 
 - `agent` — call a single agent.
-- `agentsFrom` — fan out to a configured agent list, currently `review.agents`.
+- Explicit sibling `agent` nodes can run concurrently when their dependencies permit.
 - `action` — call a built-in action (change source, review, git, post, artifact, etc.).
 - `control` — route execution with `loop`, `switch`, `passThrough`, or `end`.
 
@@ -85,7 +85,7 @@ See [Integrations](integrations.md) and [Review workflows](review-workflows.md).
 
 ## Configuration
 
-Configuration is loaded from `.drs/drs.config.yaml` (and the legacy `.gitlab-review.yml` alias) and merged with environment variables and defaults in `src/lib/config.ts`. It defines the Pi runtime, agent defaults/overrides, review agents, workflow files, Temporal settings, and platform tokens.
+Configuration is loaded from `.drs/drs.config.yaml` (and the legacy `.gitlab-review.yml` alias) and merged with environment variables and defaults in `src/lib/config.ts`. It defines the Pi runtime, agent defaults/overrides, review agent, workflow files, Temporal settings, and platform tokens.
 
 See [Configuration](configuration.md).
 

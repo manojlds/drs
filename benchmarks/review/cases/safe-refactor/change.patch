@@ -1,0 +1,6 @@
+diff --git a/name.ts b/name.ts
+--- a/name.ts
++++ b/name.ts
+@@ -1 +1 @@
+-export function display(first: string, last: string): string { return first + ' ' + last; }
++export function display(first: string, last: string): string { return `${first} ${last}`; }
