@@ -17,15 +17,17 @@ vi.mock('./comment-formatter.js', () => ({
 
 vi.mock('./comment-manager.js', () => ({
   BOT_COMMENT_ID: '<!-- DRS-REVIEW-BOT -->',
-  createIssueFingerprint: vi.fn((issue: any) => `fp-${issue.file}-${issue.line}`),
-  extractIssueFingerprints: vi.fn((body: string) => {
-    const fingerprints = new Set<string>();
-    const regex = /<!-- issue-fp: (.*?) -->/g;
-    let match;
-    while ((match = regex.exec(body)) !== null) {
-      fingerprints.add(match[1]);
-    }
-    return fingerprints;
+  createIssueIdentity: vi.fn((issue: any) => ({
+    fingerprint: `fp-${issue.file}-${issue.line}`,
+    stableSignature: `sig-${issue.file}-${issue.title}`,
+    legacyFingerprint: `legacy-${issue.file}-${issue.line}`,
+  })),
+  findStaleIssueComments: vi.fn((issues: any[], comments: any[]) => {
+    const currentFingerprints = new Set(issues.map((issue) => `fp-${issue.file}-${issue.line}`));
+    return comments.filter((comment) => {
+      const match = /<!-- issue-fp: (.*?) -->/.exec(comment.body);
+      return match ? !currentFingerprints.has(match[1]) : false;
+    });
   }),
   findExistingSummaryComment: vi.fn((comments: any[]) => {
     return comments.find((c: any) => c.body.includes('<!-- DRS-REVIEW-BOT -->'));
@@ -655,7 +657,8 @@ describe('comment-poster', () => {
       expect(formatIssueComment).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'SQL injection vulnerability' }),
         expect.any(String),
-        cursorFixLinks
+        cursorFixLinks,
+        expect.any(String)
       );
     });
   });

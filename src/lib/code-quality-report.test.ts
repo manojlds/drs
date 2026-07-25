@@ -35,7 +35,7 @@ describe('code-quality-report', () => {
         },
       });
       expect(result.fingerprint).toBeDefined();
-      expect(result.fingerprint.length).toBeGreaterThan(0);
+      expect(result.fingerprint).toMatch(/^v2:[a-f0-9]{64}$/);
     });
 
     it('should map CRITICAL severity to blocker', () => {

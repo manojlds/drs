@@ -37,7 +37,12 @@ import type {
 } from '../lib/platform-client.js';
 import type { ReviewIssue } from '../lib/comment-formatter.js';
 import { postReviewComments } from '../lib/comment-poster.js';
-import { findExistingCommentById, createIssueFingerprint } from '../lib/comment-manager.js';
+import {
+  findExistingCommentById,
+  createIssueFingerprint,
+  createIssueStableSignature,
+  createLegacyIssueFingerprint,
+} from '../lib/comment-manager.js';
 import { removeErrorComment } from '../lib/error-comment-poster.js';
 import { runDescribeIfEnabled } from '../lib/description-executor.js';
 import type { Description } from '../lib/description-formatter.js';
@@ -3135,14 +3140,14 @@ function reconcileReviewArtifactFindings(
   const verdicts = new Map(
     (reReview.verification?.findings ?? []).map((finding) => [finding.id, finding])
   );
-  const existingFingerprints = new Set(artifact.findings.map((finding) => finding.fingerprint));
-
   const reconciledFindings = artifact.findings.map((finding) => {
     const verdict = verdicts.get(finding.id);
     const disposition = getVerificationDisposition(finding, verdict, thresholdRank);
     const issue = isReviewIssue(verdict?.issue) ? verdict.issue : finding.issue;
     const fingerprint =
       issue === finding.issue ? finding.fingerprint : createIssueFingerprint(issue);
+    const stableSignature =
+      issue === finding.issue ? finding.stableSignature : createIssueStableSignature(issue);
     const shouldVerify = severityRank(finding.issue.severity) >= thresholdRank;
     const verification = shouldVerify
       ? {
@@ -3155,6 +3160,7 @@ function reconcileReviewArtifactFindings(
       ...finding,
       issue,
       fingerprint,
+      stableSignature,
       state: disposition === 'resolved' ? ('resolved' as const) : ('open' as const),
       disposition,
       verification,
@@ -3162,15 +3168,44 @@ function reconcileReviewArtifactFindings(
     };
   });
 
+  const continuityFindings = reconciledFindings.filter(
+    (finding) => finding.disposition !== 'resolved'
+  );
+  const existingFingerprints = new Set(
+    continuityFindings.flatMap((finding) => [
+      finding.fingerprint,
+      createIssueFingerprint(finding.issue),
+      createLegacyIssueFingerprint(finding.issue),
+    ])
+  );
+  const existingSignatureCounts = new Map<string, number>();
+  for (const finding of continuityFindings) {
+    const signature = finding.stableSignature ?? createIssueStableSignature(finding.issue);
+    existingSignatureCounts.set(signature, (existingSignatureCounts.get(signature) ?? 0) + 1);
+  }
+  const regressionSignatureCounts = new Map<string, number>();
+  for (const issue of reReview.issues) {
+    const signature = createIssueStableSignature(issue);
+    regressionSignatureCounts.set(signature, (regressionSignatureCounts.get(signature) ?? 0) + 1);
+  }
+
   for (const issue of reReview.issues) {
     const fingerprint = createIssueFingerprint(issue);
     if (existingFingerprints.has(fingerprint)) {
+      continue;
+    }
+    const stableSignature = createIssueStableSignature(issue);
+    if (
+      existingSignatureCounts.get(stableSignature) === 1 &&
+      regressionSignatureCounts.get(stableSignature) === 1
+    ) {
       continue;
     }
     existingFingerprints.add(fingerprint);
     reconciledFindings.push({
       id: `R${reconciledFindings.length + 1}`,
       fingerprint,
+      stableSignature,
       issue,
       state: 'open',
       disposition: 'regression',

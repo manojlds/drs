@@ -151,11 +151,13 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
  * @param issue The review issue to format.
  * @param fingerprint Optional fingerprint to embed for deduplication.
  * @param cursorFixLinks Optional Cursor link settings. When enabled, a Fix in Cursor link is appended.
+ * @param stableSignature Optional line-insensitive signature for cross-run continuity.
  */
 export function formatIssueComment(
   issue: ReviewIssue,
   fingerprint?: string,
-  cursorFixLinks?: CursorFixLinkOptions
+  cursorFixLinks?: CursorFixLinkOptions,
+  stableSignature?: string
 ): string {
   const emoji = CATEGORY_EMOJI[issue.category];
   const severityEmoji = SEVERITY_EMOJI[issue.severity];
@@ -164,6 +166,9 @@ export function formatIssueComment(
   let comment = '';
   if (fingerprint) {
     comment += `<!-- issue-fp: ${fingerprint} -->\n`;
+  }
+  if (stableSignature) {
+    comment += `<!-- issue-sig: ${stableSignature} -->\n`;
   }
 
   comment += `## ${emoji} ${issue.category} - ${issue.title}\n\n`;
