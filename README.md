@@ -8,6 +8,26 @@
 
 DRS runs agentic workflows for local diffs, GitHub PRs, and GitLab MRs. Review is a first-class packaged workflow, and the same workflow engine can update changelogs, fix review findings, refresh agent guidance, post comments, and compose project-specific maintenance pipelines — all powered by Pi SDK.
 
+## Review calibration benchmark
+
+The frozen `benchmarks/review` fixtures form an end-to-end **DRS calibration suite**, not a
+pure model benchmark: they exercise configuration, diff parsing, the packaged review agent,
+runtime, and output parsing. Live provider calls are deliberately opt-in:
+
+```bash
+drs benchmark review --suite development-v1 --model provider/model --live
+# repeat --model to compare candidates; --repeat defaults to 1
+```
+
+Canonical JSON and derived Markdown are written to `out/review-benchmark` by default; names
+identify the suite, isolated profile, repeat count, and the config/agent/model selection, and
+existing artifacts are never overwritten. The runner pins `medium` thinking, disables the
+describe pass, rejects model-affecting environment overrides, and records requested and actual
+usage models. Runtime/model and structured-output parser failures are separate ineffective
+reviews, never clean passes. Metrics are per model and run-level; recall and precision remain
+`pending-adjudication` until a human makes semantic decisions from the JSON queue. Expected
+answers never enter reviewer workspaces. Traces are not retained in this MVP.
+
 ## Why teams like DRS
 
 - 🧭 **Workflow-first automation**: run packaged or project-defined DAG workflows with `drs workflow run`

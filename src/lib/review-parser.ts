@@ -14,20 +14,36 @@ interface ReviewOutputPointer {
   outputPath?: string;
 }
 
+/** A reviewer produced no accepted raw or canonical JSON output. */
+export class ReviewOutputParseError extends Error {
+  readonly code = 'REVIEW_OUTPUT_PARSE_ERROR';
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'ReviewOutputParseError';
+  }
+}
+
 function isOutputPointer(value: unknown): value is ReviewOutputPointer {
   return !!value && typeof value === 'object' && ('outputType' in value || 'outputPath' in value);
 }
 
 async function readJsonIfExists(workingDir: string, targetPath: string): Promise<JsonValue | null> {
-  const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath, 'read');
   try {
+    const resolvedPath = resolveWithinWorkingDir(workingDir, targetPath, 'read');
     const fileContents = await readFile(resolvedPath, 'utf-8');
     return JSON.parse(fileContents);
   } catch (error) {
+    if (error instanceof ReviewOutputParseError) {
+      throw error;
+    }
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return null;
     }
-    throw error;
+    const detail = error instanceof Error ? ` ${error.message}` : '';
+    throw new ReviewOutputParseError(`Invalid canonical review output at ${targetPath}.${detail}`, {
+      cause: error,
+    });
   }
 }
 
@@ -36,11 +52,16 @@ function resolveReviewOutputPath(pointer: ReviewOutputPointer | null): string | 
     return null;
   }
 
-  if (pointer.outputType) {
-    throw new Error(`Unexpected output type for review output: ${pointer.outputType}`);
+  if (pointer.outputType !== undefined) {
+    throw new ReviewOutputParseError(
+      `Unexpected output type for review output: ${String(pointer.outputType)}`
+    );
   }
 
-  if (pointer.outputPath) {
+  if (pointer.outputPath !== undefined) {
+    if (typeof pointer.outputPath !== 'string' || !pointer.outputPath.trim()) {
+      throw new ReviewOutputParseError('Review outputPath must be a non-empty string.');
+    }
     return pointer.outputPath;
   }
 
@@ -118,5 +139,7 @@ export async function parseReviewOutput(
     };
   }
 
-  throw new Error('Review output not found in raw output or canonical review artifacts.');
+  throw new ReviewOutputParseError(
+    'Review output not found in raw output or canonical review artifacts.'
+  );
 }

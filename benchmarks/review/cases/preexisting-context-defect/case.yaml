@@ -1,0 +1,3 @@
+id: preexisting-context-defect
+description: Defect exists only in unchanged context.
+expected: []

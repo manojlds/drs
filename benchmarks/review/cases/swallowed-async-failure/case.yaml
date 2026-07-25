@@ -1,0 +1,9 @@
+id: swallowed-async-failure
+description: Persistence failures become successful calls.
+expected:
+  - id: ASYNC-001
+    description: The catch handler silently swallows save failures.
+    severity: HIGH
+    category: QUALITY
+    file: save.ts
+    line: 2

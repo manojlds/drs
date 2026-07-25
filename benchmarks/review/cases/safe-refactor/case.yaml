@@ -1,0 +1,3 @@
+id: safe-refactor
+description: Suspicious-looking string refactor preserves behavior.
+expected: []

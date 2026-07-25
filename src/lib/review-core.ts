@@ -13,7 +13,10 @@ import {
   resolveAgentSkills,
 } from './config.js';
 import { buildReviewPrompt } from './context-loader.js';
-import { parseReviewIssues } from './issue-parser.js';
+import {
+  parseReviewIssuesWithDiagnostics,
+  type ReviewIssueParserDiagnostics,
+} from './issue-parser.js';
 import { parseReviewOutput } from './review-parser.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
@@ -65,6 +68,7 @@ export interface AgentReviewResult {
   usage?: ReviewUsageSummary;
   /** Explicit verification verdicts for existing review findings. */
   verification?: ReviewVerificationResult;
+  parserDiagnostics?: ReviewIssueParserDiagnostics[];
 }
 
 export interface AgentResult {
@@ -74,6 +78,22 @@ export interface AgentResult {
   error?: string;
   verification?: ReviewVerificationResult;
   usage?: AgentUsageSummary;
+  parserDiagnostics?: ReviewIssueParserDiagnostics;
+}
+
+export class ReviewAgentExecutionError extends Error {
+  readonly code: 'REVIEW_AGENT_PARSE_ERROR' | 'REVIEW_AGENT_RUNTIME_ERROR';
+
+  constructor(
+    readonly agentResult: AgentResult,
+    readonly reviewUsage: ReviewUsageSummary
+  ) {
+    super(`Review agent failed: ${agentResult.agentType}: ${agentResult.error ?? 'unknown error'}`);
+    this.name = 'ReviewAgentExecutionError';
+    this.code = agentResult.parserDiagnostics
+      ? 'REVIEW_AGENT_PARSE_ERROR'
+      : 'REVIEW_AGENT_RUNTIME_ERROR';
+  }
 }
 
 /**
@@ -376,6 +396,7 @@ async function executeSingleAgent(
   const configuredSkills = getConfiguredSkillsForAgent(config, agentType);
   const modelId = reviewModelOverrides[agentName];
   let sawSkillToolCall = false;
+  let fullResponse = '';
 
   try {
     // Build prompt with global and agent-specific context
@@ -418,7 +439,6 @@ async function executeSingleAgent(
     });
 
     const agentIssues: ReviewIssue[] = [];
-    let fullResponse = '';
 
     // Collect results from this agent
     for await (const message of runtime.streamMessages(session.id)) {
@@ -466,7 +486,8 @@ async function executeSingleAgent(
     await runtime.closeSession(session.id);
 
     const reviewOutput = await parseReviewOutput(workingDir, debug, fullResponse);
-    const parsedIssues = parseReviewIssues(JSON.stringify(reviewOutput), agentType);
+    const parsed = parseReviewIssuesWithDiagnostics(JSON.stringify(reviewOutput), agentType);
+    const parsedIssues = parsed.issues;
     const verification = parseReviewVerification(reviewOutput);
     if (parsedIssues.length > 0) {
       agentIssues.push(...parsedIssues);
@@ -481,6 +502,7 @@ async function executeSingleAgent(
         ...agentUsage,
         success: true,
       },
+      parserDiagnostics: parsed.diagnostics,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -494,6 +516,18 @@ async function executeSingleAgent(
         ...agentUsage,
         success: false,
       },
+      parserDiagnostics:
+        error instanceof Error && 'code' in error && error.code === 'REVIEW_OUTPUT_PARSE_ERROR'
+          ? {
+              rawResponsePresent: fullResponse.trim().length > 0,
+              validJson: false,
+              validReviewSchema: false,
+              emittedCount: 0,
+              validCount: 0,
+              invalidCount: 0,
+              errors: [message],
+            }
+          : undefined,
     };
   }
 }
@@ -545,9 +579,7 @@ export async function runReviewAgent(
 
   // Check agent results
   if (!agentResult.success) {
-    throw new Error(
-      `Review agent failed: ${agentResult.agentType}: ${agentResult.error ?? 'unknown error'}`
-    );
+    throw new ReviewAgentExecutionError(agentResult, summarizeRunUsage(agentResult));
   }
 
   const issues = agentResult.issues;
@@ -561,6 +593,7 @@ export async function runReviewAgent(
     agentResult,
     verification: agentResult.verification,
     usage: summarizeRunUsage(agentResult),
+    parserDiagnostics: agentResult.parserDiagnostics ? [agentResult.parserDiagnostics] : [],
   };
 }
 

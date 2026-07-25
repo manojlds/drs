@@ -1,0 +1,9 @@
+id: null-config-fallback
+description: Required null configuration fallback is removed.
+expected:
+  - id: CFG-001
+    description: Null is returned despite the numeric return contract.
+    severity: MEDIUM
+    category: QUALITY
+    file: config.ts
+    line: 2

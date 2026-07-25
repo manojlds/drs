@@ -1,0 +1,9 @@
+id: incomplete-api-migration
+description: Rename leaves a live reference behind.
+expected:
+  - id: API-001
+    description: handler still references removed oldName and cannot load.
+    severity: HIGH
+    category: QUALITY
+    file: api.ts
+    line: 1

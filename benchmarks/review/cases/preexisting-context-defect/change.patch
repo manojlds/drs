@@ -1,0 +1,7 @@
+diff --git a/context.ts b/context.ts
+--- a/context.ts
++++ b/context.ts
+@@ -1,2 +1,2 @@
+ export function unsafe(value?: string): number { return value!.length; }
+-export const label = 'old';
++export const label = 'new';

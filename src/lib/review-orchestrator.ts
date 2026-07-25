@@ -38,6 +38,7 @@ import { formatDescribeSummary } from './description-formatter.js';
 import type { ReviewFinding } from './review-artifact.js';
 import type { TraceCollector } from './trace-collector.js';
 import type { AgentPermissions } from './agent-permissions.js';
+import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -99,6 +100,7 @@ export interface ReviewResult {
   usage?: ReviewUsageSummary;
   /** Explicit verification verdicts for an existing review artifact. */
   verification?: ReviewVerificationResult;
+  parserDiagnostics?: ReviewIssueParserDiagnostics[];
 }
 
 /**
@@ -222,6 +224,7 @@ export async function executeReview(
       summary: calculateSummary(0, []),
       filesReviewed: 0,
       usage: createEmptyReviewUsageSummary(),
+      parserDiagnostics: [],
     };
   }
 
@@ -348,6 +351,7 @@ export async function executeReview(
       filesReviewed: result.filesReviewed,
       usage: result.usage ?? createEmptyReviewUsageSummary(),
       verification: result.verification,
+      parserDiagnostics: result.parserDiagnostics ?? [],
     };
   } finally {
     // Always shut down Pi runtime client

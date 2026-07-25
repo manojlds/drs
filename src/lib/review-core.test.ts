@@ -28,18 +28,52 @@ vi.mock('./context-loader.js', () => ({
 }));
 
 vi.mock('./issue-parser.js', () => ({
-  parseReviewIssues: vi.fn((content: string, agentName?: string) => {
+  parseReviewIssuesWithDiagnostics: vi.fn((content: string, agentName?: string) => {
     try {
       const parsed = JSON.parse(content);
       if (parsed.issues && Array.isArray(parsed.issues)) {
-        return parsed.issues.map((issue: any) => ({
+        const issues = parsed.issues.map((issue: any) => ({
           ...issue,
           agent: issue.agent ?? agentName ?? 'test',
         }));
+        return {
+          issues,
+          diagnostics: {
+            rawResponsePresent: true,
+            validJson: true,
+            validReviewSchema: true,
+            emittedCount: issues.length,
+            validCount: issues.length,
+            invalidCount: 0,
+            errors: [],
+          },
+        };
       }
-      return [];
+      return {
+        issues: [],
+        diagnostics: {
+          rawResponsePresent: true,
+          validJson: true,
+          validReviewSchema: false,
+          emittedCount: 0,
+          validCount: 0,
+          invalidCount: 0,
+          errors: [],
+        },
+      };
     } catch {
-      return [];
+      return {
+        issues: [],
+        diagnostics: {
+          rawResponsePresent: true,
+          validJson: false,
+          validReviewSchema: false,
+          emittedCount: 0,
+          validCount: 0,
+          invalidCount: 0,
+          errors: [],
+        },
+      };
     }
   }),
 }));
