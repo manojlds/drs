@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
       reload: any;
       getSkills: any;
     }>,
-    modelRegistryInstances: [] as Array<{ registerProvider: any }>,
+    modelRuntimeInstances: [] as Array<{ registerProvider: any }>,
   };
 });
 
@@ -49,16 +49,16 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
     }
   }
 
-  class ModelRegistry {
+  class ModelRuntime {
     registerProvider = vi.fn(() => undefined);
-    find = vi.fn(() => undefined);
+    getModel = vi.fn(() => undefined);
 
     constructor() {
-      mocks.modelRegistryInstances.push({ registerProvider: this.registerProvider });
+      mocks.modelRuntimeInstances.push({ registerProvider: this.registerProvider });
     }
 
-    static create() {
-      return new ModelRegistry();
+    static async create() {
+      return new ModelRuntime();
     }
   }
 
@@ -139,11 +139,8 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
   });
 
   return {
-    AuthStorage: {
-      create: vi.fn(() => ({})),
-    },
     DefaultResourceLoader,
-    ModelRegistry,
+    ModelRuntime,
     SessionManager: {
       inMemory: vi.fn(() => ({ type: 'memory' })),
     },
@@ -170,7 +167,7 @@ describe('pi/sdk', () => {
     mocks.session.messages = [];
     mocks.availableSkills.length = 0;
     mocks.loaderInstances.length = 0;
-    mocks.modelRegistryInstances.length = 0;
+    mocks.modelRuntimeInstances.length = 0;
   });
 
   it('creates in-process runtime client', async () => {
@@ -226,8 +223,8 @@ describe('pi/sdk', () => {
       },
     });
 
-    expect(mocks.modelRegistryInstances).toHaveLength(1);
-    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(mocks.modelRuntimeInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRuntimeInstances[0].registerProvider;
     expect(registerProvider).toHaveBeenCalledWith(
       'opencode',
       expect.objectContaining({
@@ -283,8 +280,8 @@ describe('pi/sdk', () => {
       },
     });
 
-    expect(mocks.modelRegistryInstances).toHaveLength(1);
-    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(mocks.modelRuntimeInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRuntimeInstances[0].registerProvider;
     expect(registerProvider).toHaveBeenCalledWith(
       'custom',
       expect.objectContaining({
@@ -324,8 +321,8 @@ describe('pi/sdk', () => {
       },
     });
 
-    expect(mocks.modelRegistryInstances).toHaveLength(1);
-    const registerProvider = mocks.modelRegistryInstances[0].registerProvider;
+    expect(mocks.modelRuntimeInstances).toHaveLength(1);
+    const registerProvider = mocks.modelRuntimeInstances[0].registerProvider;
     expect(registerProvider).toHaveBeenCalledWith(
       'legacy',
       expect.objectContaining({
@@ -806,12 +803,12 @@ describe('pi/sdk', () => {
     }
   });
 
-  it('rejects runtime validation without scoped write permissions', () => {
-    expect(() =>
+  it('rejects runtime validation without scoped write permissions', async () => {
+    await expect(
       createPiInProcessServer({
         config: { validation: { afterMutation: [{ name: 'okf-document', root: 'wiki' }] } },
       })
-    ).toThrow('validation requires filesystem write or delete permissions');
+    ).rejects.toThrow('validation requires filesystem write or delete permissions');
   });
 
   it('applies mutation validation to custom output writers before writing', async () => {

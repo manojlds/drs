@@ -59,7 +59,7 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.79.10",
+    "@earendil-works/pi-coding-agent": "^0.82.1",
     "@gitbeaker/node": "^35.8.1",
     "@octokit/rest": "^21.0.0",
     "@sinclair/typebox": "^0.34.49",

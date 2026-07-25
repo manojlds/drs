@@ -13,7 +13,6 @@ import { isAbsolute, join, relative, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { Type } from '@sinclair/typebox';
 import {
-  AuthStorage,
   createAgentSession,
   createEditToolDefinition,
   createFindToolDefinition,
@@ -23,7 +22,7 @@ import {
   createWriteToolDefinition,
   DefaultResourceLoader,
   getAgentDir,
-  ModelRegistry,
+  ModelRuntime,
   SettingsManager,
   SessionManager,
   type AgentSession,
@@ -917,8 +916,7 @@ function toSessionMessage(
 
 class PiSessionRuntime {
   private readonly runtimeConfig: PiRuntimeConfig;
-  private readonly authStorage: AuthStorage;
-  private readonly modelRegistry: ModelRegistry;
+  private modelRuntime!: ModelRuntime;
   private readonly sessions = new Map<string, SessionRecord>();
 
   readonly sessionApi: PiSessionApi;
@@ -943,10 +941,6 @@ class PiSessionRuntime {
       retry: asRecord(config.retry),
     };
 
-    this.authStorage = AuthStorage.create();
-    this.modelRegistry = ModelRegistry.create(this.authStorage);
-    this.registerCustomProviders();
-
     this.sessionApi = {
       create: (input) => this.createSession(input),
       prompt: (input) => this.promptSession(input),
@@ -954,6 +948,11 @@ class PiSessionRuntime {
       delete: (input) => this.deleteSession(input),
       sendMessage: (input) => this.sendMessage(input),
     };
+  }
+
+  async initialize(): Promise<void> {
+    this.modelRuntime = await ModelRuntime.create();
+    this.registerCustomProviders();
   }
 
   close(): void {
@@ -1043,7 +1042,7 @@ class PiSessionRuntime {
         providerInput.models = modelEntries;
       }
 
-      this.modelRegistry.registerProvider(providerName, providerInput);
+      this.modelRuntime.registerProvider(providerName, providerInput);
     }
   }
 
@@ -1070,7 +1069,7 @@ class PiSessionRuntime {
       throw new Error(`Failed to resolve model "${modelId}"`);
     }
 
-    const model = this.modelRegistry.find(provider, rest.join('/'));
+    const model = this.modelRuntime.getModel(provider, rest.join('/'));
     if (!model) {
       throw new Error(`Failed to resolve model "${modelId}"`);
     }
@@ -1083,7 +1082,7 @@ class PiSessionRuntime {
     const parts = modelId.split('/');
     if (parts.length < 2) return undefined;
     const [provider, ...rest] = parts;
-    const model = this.modelRegistry.find(provider, rest.join('/'));
+    const model = this.modelRuntime.getModel(provider, rest.join('/'));
     return model?.contextWindow;
   }
 
@@ -1728,8 +1727,7 @@ class PiSessionRuntime {
 
     const { session } = await createAgentSession({
       cwd,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime: this.modelRuntime,
       model: this.resolveModel(settings.model),
       resourceLoader,
       sessionManager: SessionManager.inMemory(),
@@ -1874,12 +1872,13 @@ class PiSessionRuntime {
 /**
  * Pi SDK adapter used by DRS runtime orchestration.
  */
-export function createPiInProcessServer(options: {
+export async function createPiInProcessServer(options: {
   config: Record<string, unknown>;
 }): Promise<PiInProcessServer> {
   const runtime = new PiSessionRuntime(options.config);
+  await runtime.initialize();
 
-  return Promise.resolve({
+  return {
     server: {
       url: 'pi://in-process',
       close: () => runtime.close(),
@@ -1888,5 +1887,5 @@ export function createPiInProcessServer(options: {
       session: runtime.sessionApi,
       getModelContextWindow: (modelId: string) => runtime.getModelContextWindow(modelId),
     },
-  });
+  };
 }
