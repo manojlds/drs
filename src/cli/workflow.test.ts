@@ -1399,7 +1399,8 @@ describe('workflow runner', () => {
       findings: [
         {
           id: 'F001',
-          fingerprint: 'src/github.ts:12:QUALITY:Missing guard',
+          fingerprint: expect.stringMatching(/^v2:/),
+          stableSignature: expect.stringMatching(/^sig1:/),
           state: 'open',
           disposition: 'confirmed',
         },
@@ -1660,14 +1661,8 @@ describe('workflow runner', () => {
       agent: 'unified',
     };
     const regressionIssue = {
-      severity: 'HIGH',
-      category: 'SECURITY',
-      title: 'New regression',
-      file: 'src/app.ts',
+      ...resolvedIssue,
       line: 30,
-      problem: 'Regression problem',
-      solution: 'Undo regression',
-      agent: 'unified',
     };
     mocks.getFilesWithDiffs.mockReturnValue([
       {
@@ -3442,8 +3437,8 @@ describe('workflow runner', () => {
       7,
       [
         expect.objectContaining({
-          body: expect.stringContaining(
-            '<!-- issue-fp: src/github.ts:1:QUALITY:Validate input -->'
+          body: expect.stringMatching(
+            /<!-- issue-fp: v2:[a-f0-9]{64} -->\n<!-- issue-sig: sig1:[a-f0-9]{64} -->/
           ),
           position: {
             path: 'src/github.ts',

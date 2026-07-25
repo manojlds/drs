@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   createIssueFingerprint,
+  createIssueStableSignature,
+  createLegacyIssueFingerprint,
   extractCommentId,
   extractIssueFingerprints,
+  extractIssueSignatures,
   filterCriticalAndHigh,
   filterDuplicateIssues,
+  filterDuplicateIssuesAgainstComments,
+  findStaleIssueComments,
   findExistingSummaryComment,
   findExistingErrorComment,
   collectExistingFingerprints,
@@ -17,55 +22,68 @@ import type { ReviewIssue } from './comment-formatter.js';
 
 describe('comment-manager', () => {
   describe('createIssueFingerprint', () => {
-    it('should create fingerprint with line number', () => {
-      const issue: ReviewIssue = {
-        category: 'SECURITY',
-        severity: 'HIGH',
-        title: 'SQL Injection',
-        file: 'src/db.ts',
-        line: 42,
-        problem: 'Unsafe query',
-        solution: 'Use parameterized queries',
-        agent: 'security',
-      };
+    const issue: ReviewIssue = {
+      category: 'SECURITY',
+      severity: 'HIGH',
+      title: 'SQL Injection',
+      file: 'src/db.ts',
+      line: 42,
+      problem: 'Unsafe query',
+      solution: 'Use parameterized queries',
+      agent: 'security',
+    };
 
+    it('creates a deterministic versioned exact fingerprint', () => {
       const fingerprint = createIssueFingerprint(issue);
-      expect(fingerprint).toBe('src/db.ts:42:SECURITY:SQL Injection');
+
+      expect(fingerprint).toMatch(/^v2:[a-f0-9]{64}$/);
+      expect(createIssueFingerprint({ ...issue })).toBe(fingerprint);
     });
 
-    it('should create fingerprint without line number', () => {
-      const issue: ReviewIssue = {
-        category: 'QUALITY',
-        severity: 'MEDIUM',
-        title: 'Code smell',
-        file: 'src/app.ts',
-        problem: 'Complex function',
-        solution: 'Refactor',
-        agent: 'quality',
-      };
+    it('keeps exact fingerprints line-sensitive and stable signatures line-insensitive', () => {
+      const moved = { ...issue, line: 84 };
 
-      const fingerprint = createIssueFingerprint(issue);
-      expect(fingerprint).toBe('src/app.ts:general:QUALITY:Code smell');
+      expect(createIssueFingerprint(moved)).not.toBe(createIssueFingerprint(issue));
+      expect(createIssueStableSignature(moved)).toBe(createIssueStableSignature(issue));
+      expect(createIssueStableSignature(issue)).toMatch(/^sig1:[a-f0-9]{64}$/);
     });
 
-    it('should create fingerprint with line 0 (treated as general)', () => {
-      const issue: ReviewIssue = {
-        category: 'STYLE',
-        severity: 'LOW',
-        title: 'Missing import',
-        file: 'src/utils.ts',
-        line: 0,
-        problem: 'Missing import',
-        solution: 'Add import',
-        agent: 'style',
+    it('normalizes superficial text and path formatting', () => {
+      const reformatted = {
+        ...issue,
+        file: 'src\\db.ts',
+        title: '  **sql   injection** ',
+        problem: ' unsafe   QUERY ',
       };
 
-      const fingerprint = createIssueFingerprint(issue);
-      expect(fingerprint).toBe('src/utils.ts:general:STYLE:Missing import');
+      expect(createIssueFingerprint(reformatted)).toBe(createIssueFingerprint(issue));
+      expect(createIssueStableSignature(reformatted)).toBe(createIssueStableSignature(issue));
     });
 
-    it('should create unique fingerprints for different issues', () => {
-      const issue1: ReviewIssue = {
+    it('preserves meaningful punctuation while normalizing Markdown wrappers', () => {
+      expect(createIssueFingerprint({ ...issue, title: 'user_id', problem: 'a*b' })).not.toBe(
+        createIssueFingerprint({ ...issue, title: 'userid', problem: 'ab' })
+      );
+      expect(createIssueFingerprint({ ...issue, title: '~flag' })).not.toBe(
+        createIssueFingerprint({ ...issue, title: 'flag' })
+      );
+    });
+
+    it('preserves the legacy fingerprint for existing comments and artifacts', () => {
+      expect(createLegacyIssueFingerprint(issue)).toBe('src/db.ts:42:SECURITY:SQL Injection');
+      expect(createLegacyIssueFingerprint({ ...issue, line: 0 })).toBe(
+        'src/db.ts:general:SECURITY:SQL Injection'
+      );
+    });
+
+    it('creates distinct exact fingerprints for repeated instances on different lines', () => {
+      expect(createIssueFingerprint({ ...issue, line: 43 })).not.toBe(
+        createIssueFingerprint(issue)
+      );
+    });
+
+    it('creates unique fingerprints for different issues', () => {
+      const issue: ReviewIssue = {
         category: 'SECURITY',
         severity: 'HIGH',
         title: 'Issue 1',
@@ -87,7 +105,7 @@ describe('comment-manager', () => {
         agent: 'security',
       };
 
-      const fp1 = createIssueFingerprint(issue1);
+      const fp1 = createIssueFingerprint(issue);
       const fp2 = createIssueFingerprint(issue2);
       expect(fp1).not.toBe(fp2);
     });
@@ -155,6 +173,102 @@ describe('comment-manager', () => {
       `;
       const fingerprints = extractIssueFingerprints(body);
       expect(fingerprints.size).toBe(1);
+    });
+  });
+
+  describe('stable signature matching', () => {
+    const issue: ReviewIssue = {
+      category: 'SECURITY',
+      severity: 'HIGH',
+      title: 'Missing authorization',
+      file: 'src/api.ts',
+      line: 10,
+      problem: 'The endpoint does not verify access.',
+      solution: 'Restore the authorization check.',
+      agent: 'security',
+    };
+
+    it('extracts stable signatures from comments', () => {
+      const signature = createIssueStableSignature(issue);
+      expect(extractIssueSignatures(`<!-- issue-sig: ${signature} -->`)).toEqual(
+        new Set([signature])
+      );
+    });
+
+    it('deduplicates a uniquely moved issue by stable signature', () => {
+      const fingerprint = createIssueFingerprint(issue);
+      const signature = createIssueStableSignature(issue);
+      const moved = { ...issue, line: 40 };
+      const comments = [
+        {
+          id: 1,
+          body: `<!-- issue-fp: ${fingerprint} -->\n<!-- issue-sig: ${signature} -->`,
+        },
+      ];
+
+      expect(filterDuplicateIssuesAgainstComments([moved], comments)).toEqual([]);
+      expect(findStaleIssueComments([moved], comments)).toEqual([]);
+    });
+
+    it('does not collapse repeated current instances with an ambiguous signature', () => {
+      const fingerprint = createIssueFingerprint({ ...issue, line: 30 });
+      const signature = createIssueStableSignature(issue);
+      const repeated = { ...issue, line: 20 };
+      const comments = [
+        {
+          id: 1,
+          body: `<!-- issue-fp: ${fingerprint} -->\n<!-- issue-sig: ${signature} -->`,
+        },
+      ];
+
+      expect(filterDuplicateIssuesAgainstComments([issue, repeated], comments)).toEqual([
+        issue,
+        repeated,
+      ]);
+      expect(findStaleIssueComments([issue, repeated], comments)).toEqual(comments);
+    });
+
+    it('does not treat a signature-only comment as DRS-owned', () => {
+      const signature = createIssueStableSignature(issue);
+      const comments = [{ id: 1, body: `<!-- issue-sig: ${signature} -->` }];
+
+      expect(filterDuplicateIssuesAgainstComments([issue], comments)).toEqual([issue]);
+      expect(findStaleIssueComments([], comments)).toEqual([]);
+    });
+
+    it('does not use signature continuity when existing comments are ambiguous', () => {
+      const signature = createIssueStableSignature(issue);
+      const comments = [
+        {
+          id: 1,
+          body: `<!-- issue-fp: v2:first -->\n<!-- issue-sig: ${signature} -->`,
+        },
+        {
+          id: 2,
+          body: `<!-- issue-fp: v2:second -->\n<!-- issue-sig: ${signature} -->`,
+        },
+      ];
+
+      expect(filterDuplicateIssuesAgainstComments([issue], comments)).toEqual([issue]);
+      expect(findStaleIssueComments([issue], comments)).toEqual(comments);
+    });
+
+    it('matches an existing legacy fingerprint exactly', () => {
+      const comments = [
+        { id: 1, body: `<!-- issue-fp: ${createLegacyIssueFingerprint(issue)} -->` },
+      ];
+
+      expect(filterDuplicateIssuesAgainstComments([issue], comments)).toEqual([]);
+    });
+
+    it('removes comments whose fingerprint and signature are no longer current', () => {
+      const stale = {
+        id: 1,
+        body: '<!-- issue-fp: v2:stale -->\n<!-- issue-sig: sig1:stale -->',
+      };
+      const human = { id: 2, body: 'Human comment' };
+
+      expect(findStaleIssueComments([issue], [stale, human])).toEqual([stale]);
     });
   });
 

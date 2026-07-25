@@ -92,6 +92,24 @@ describe('comment-formatter', () => {
       expect(formatted).toContain(`<!-- issue-fp: ${fingerprint} -->`);
     });
 
+    it('should include a stable signature when provided', () => {
+      const issue: ReviewIssue = {
+        category: 'STYLE',
+        severity: 'LOW',
+        title: 'Missing semicolon',
+        file: 'src/utils.ts',
+        line: 5,
+        problem: 'Inconsistent style',
+        solution: 'Add semicolon',
+        agent: 'style',
+      };
+
+      const formatted = formatIssueComment(issue, 'v2:fingerprint', undefined, 'sig1:signature');
+
+      expect(formatted).toContain('<!-- issue-fp: v2:fingerprint -->');
+      expect(formatted).toContain('<!-- issue-sig: sig1:signature -->');
+    });
+
     it('should include a Fix in Cursor link when enabled', () => {
       const issue: ReviewIssue = {
         category: 'QUALITY',

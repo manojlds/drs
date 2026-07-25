@@ -6,7 +6,11 @@ import {
   type ReviewIssue,
 } from './comment-formatter.js';
 import type { ReviewUsageSummary } from './review-usage.js';
-import { createIssueFingerprint } from './comment-manager.js';
+import {
+  createIssueFingerprint,
+  createIssueStableSignature,
+  createLegacyIssueFingerprint,
+} from './comment-manager.js';
 import { assertSafeArtifactId } from './workflow-artifacts.js';
 
 export type ReviewFindingState = 'open' | 'attempted' | 'resolved';
@@ -29,6 +33,7 @@ export interface ReviewFindingVerification {
 export interface ReviewFinding {
   id: string;
   fingerprint: string;
+  stableSignature?: string;
   issue: ReviewIssue;
   state: ReviewFindingState;
   disposition: ReviewFindingDisposition;
@@ -255,7 +260,7 @@ export function reviewArtifactToReviewResult(
 
   const changedFiles = new Set(target.changedFiles);
   const findingIds = new Set<string>();
-  const fingerprints = new Set<string>();
+  const canonicalFingerprints = new Set<string>();
   const issues = payload.findings.map((finding, index) => {
     if (!isRecord(finding)) {
       throw new Error(`Review artifact finding ${index + 1} is invalid.`);
@@ -283,12 +288,25 @@ export function reviewArtifactToReviewResult(
       `finding ${index + 1} fingerprint`,
       5000
     );
-    if (fingerprint !== createIssueFingerprint(issue) || fingerprints.has(fingerprint)) {
+    const canonicalFingerprint = createIssueFingerprint(issue);
+    const validFingerprint =
+      fingerprint === canonicalFingerprint || fingerprint === createLegacyIssueFingerprint(issue);
+    if (!validFingerprint || canonicalFingerprints.has(canonicalFingerprint)) {
       throw new Error(
         `Review artifact finding ${index + 1} has an invalid or duplicate fingerprint.`
       );
     }
-    fingerprints.add(fingerprint);
+    canonicalFingerprints.add(canonicalFingerprint);
+    if (finding.stableSignature !== undefined) {
+      const stableSignature = requireString(
+        finding.stableSignature,
+        `finding ${index + 1} stable signature`,
+        5000
+      );
+      if (stableSignature !== createIssueStableSignature(issue)) {
+        throw new Error(`Review artifact finding ${index + 1} has an invalid stable signature.`);
+      }
+    }
     return issue;
   });
 
@@ -379,9 +397,15 @@ function selectorMatches(finding: ReviewFinding, selector: ReviewFindingSelector
     return true;
   }
 
+  const fingerprintAliases = new Set([
+    finding.fingerprint,
+    createIssueFingerprint(finding.issue),
+    createLegacyIssueFingerprint(finding.issue),
+  ]);
   return (
     (hasIds && (selector.ids?.includes(finding.id) ?? false)) ||
-    (hasFingerprints && (selector.fingerprints?.includes(finding.fingerprint) ?? false)) ||
+    (hasFingerprints &&
+      (selector.fingerprints?.some((value) => fingerprintAliases.has(value)) ?? false)) ||
     (hasSeverity && finding.issue.severity === selector.severity)
   );
 }
@@ -397,6 +421,7 @@ export function createReviewArtifactPayload(
     (issue, index): ReviewFinding => ({
       id: findingId(index),
       fingerprint: createIssueFingerprint(issue),
+      stableSignature: createIssueStableSignature(issue),
       issue,
       state: 'open',
       disposition: 'confirmed',
@@ -484,6 +509,7 @@ export function addReviewArtifactFinding(
   const finding: ReviewFinding = {
     id: nextFindingId(artifact.findings),
     fingerprint: createIssueFingerprint(issue),
+    stableSignature: createIssueStableSignature(issue),
     issue,
     state: 'open',
     disposition: 'confirmed',

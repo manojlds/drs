@@ -17,8 +17,8 @@ import type { ChangeSummary } from './change-summary.js';
 import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   BOT_COMMENT_ID,
-  createIssueFingerprint,
-  extractIssueFingerprints,
+  createIssueIdentity,
+  findStaleIssueComments,
   findExistingSummaryComment,
   prepareIssuesForPosting,
   type PlatformComment,
@@ -73,8 +73,9 @@ export async function postReviewComments(
   assertPostBodyWithinLimit(summaryComment, 'Review summary');
   for (const issue of issues) {
     if (issue.severity === 'CRITICAL' || issue.severity === 'HIGH') {
+      const identity = createIssueIdentity(issue);
       assertPostBodyWithinLimit(
-        formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
+        formatIssueComment(issue, identity.fingerprint, cursorFixLinks, identity.stableSignature),
         'Inline review comment'
       );
     }
@@ -122,10 +123,18 @@ export async function postReviewComments(
   }
 
   const inlineComments = createInlinePosition
-    ? prepared.inlineIssues.map((issue) => ({
-        body: formatIssueComment(issue, createIssueFingerprint(issue), cursorFixLinks),
-        position: createInlinePosition(issue, platformData),
-      }))
+    ? prepared.inlineIssues.map((issue) => {
+        const identity = createIssueIdentity(issue);
+        return {
+          body: formatIssueComment(
+            issue,
+            identity.fingerprint,
+            cursorFixLinks,
+            identity.stableSignature
+          ),
+          position: createInlinePosition(issue, platformData),
+        };
+      })
     : [];
   if (inlineComments.length > MAX_INLINE_COMMENTS_PER_REVIEW) {
     throw new Error('Review has too many inline comments for one platform request.');
@@ -170,26 +179,13 @@ async function removeStaleInlineIssueComments(
   existingInlineComments: PlatformComment[],
   issues: ReviewIssue[]
 ): Promise<void> {
-  const currentFingerprints = new Set(
-    issues
-      .filter((issue) => issue.severity === 'CRITICAL' || issue.severity === 'HIGH')
-      .map((issue) => createIssueFingerprint(issue))
+  const staleComments = findStaleIssueComments(
+    issues.filter((issue) => issue.severity === 'CRITICAL' || issue.severity === 'HIGH'),
+    existingInlineComments
   );
 
   let removed = 0;
-  for (const comment of existingInlineComments) {
-    const fingerprints = extractIssueFingerprints(comment.body);
-    if (fingerprints.size === 0) {
-      continue;
-    }
-
-    const stillCurrent = [...fingerprints].some((fingerprint) =>
-      currentFingerprints.has(fingerprint)
-    );
-    if (stillCurrent) {
-      continue;
-    }
-
+  for (const comment of staleComments) {
     try {
       await platformClient.deleteComment(projectId, prNumber, comment.id);
       removed += 1;
