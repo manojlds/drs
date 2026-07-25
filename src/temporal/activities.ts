@@ -236,18 +236,6 @@ async function offloadNodeResult(
     offloaded.outputs = newOutputs;
   }
 
-  if (offloaded.responses && Array.isArray(offloaded.responses)) {
-    const offloadedResponses = await Promise.all(
-      offloaded.responses.map(async (entry, index) => {
-        if (entry === null || entry === undefined || isArtifactRef(entry)) return entry;
-        if (shouldInline(serializedSize(entry), policy)) return entry;
-        const ref = await store.put(`${nodeId}-responses-${index}`, entry);
-        return ref;
-      })
-    );
-    (offloaded as unknown as Record<string, unknown>).responses = offloadedResponses;
-  }
-
   return offloaded;
 }
 

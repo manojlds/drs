@@ -212,7 +212,6 @@ Every node must define exactly one execution type:
 | Field | Description |
 |-------|-------------|
 | `agent` | Run one fully qualified agent id, for example `task/docs-updater` |
-| `agentsFrom` | Run a configured agent list. Currently supports `review.agents` |
 | `action` | Run a built-in action. Supported actions are validated from the DRS action registry, including git operations, change sources, review/describe/post actions, artifact actions, fix verification, and change-request creation |
 | `control` | Route workflow execution with `loop`, `switch`, `passThrough`, or `end` |
 
@@ -229,7 +228,7 @@ Common node fields:
 | `permissions` | Runtime-enforced filesystem and shell capabilities for agent nodes and `action: review` |
 | `validation` | Content validators invoked by policy-aware mutation tools |
 
-Workflow files are strictly validated. A node must use exactly one of `agent`, `agentsFrom`, `action`, or `control`; unknown node fields and unknown action options are rejected before execution.
+Workflow files are strictly validated. A node must use exactly one of `agent`, `action`, or `control`; unknown node fields and unknown action options are rejected before execution. Use explicit sibling `agent` nodes to compose concurrent agents.
 
 ### Agent and review permissions
 
@@ -377,7 +376,7 @@ nodes:
     output: review
 ```
 
-The review action reuses existing review configuration, including `review.agents`, ignore patterns, describe settings, context compression, and model overrides.
+The review action runs the single `review.agent` and reuses ignore patterns, describe settings, context compression, and model overrides. Failure of that agent fails the action.
 
 The review action always saves a canonical review artifact. The raw review remains available through `output`, while the persisted review artifact envelope is available as `artifacts.<nodeId>Artifact` by default, such as `artifacts.reviewArtifact` for a node named `review`.
 
@@ -385,7 +384,7 @@ Set `with.artifact` to override that named workflow artifact output. Verificatio
 
 ### `review-context`
 
-Builds and outputs the review instructions/context for a `change-source` artifact without running review agents. This is useful for debugging what DRS will send to agents.
+Builds and outputs the review instructions/context for a `change-source` artifact without running the review agent. This is useful for debugging what DRS will send to the reviewer.
 
 ```yaml
 nodes:
@@ -757,9 +756,9 @@ drs workflow run local-changelog-review
 
 It loads the local unstaged diff, runs `task/changelog-updater` to edit `CHANGELOG.md` in place, reloads the local diff, runs the normal DRS review action on the final changes, then commits only `CHANGELOG.md` with `docs: update changelog`.
 
-## Review Agent Fan-Out
+## Concurrent Agents
 
-Use `agentsFrom: review.agents` to reuse the configured review agent list in a workflow:
+Use explicit sibling agent nodes to compose multiple agents. Nodes without dependencies can execute concurrently:
 
 ```yaml
 name: custom-review
@@ -767,13 +766,16 @@ inputs:
   diff:
     file: .drs/diff.md
 nodes:
-  review:
-    agentsFrom: review.agents
+  security:
+    agent: review/security
     input: |
       Review this diff and report only actionable findings.
 
       {{inputs.diff}}
-    output: reviewResult
-```
+  quality:
+    agent: review/quality
+    input: |
+      Review this diff for quality problems.
 
-The node output is a Markdown string with one section per agent. Detailed per-agent responses are also available at `nodes.review.responses`.
+      {{inputs.diff}}
+```

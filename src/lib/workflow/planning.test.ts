@@ -113,11 +113,6 @@ describe('workflow planning', () => {
         })
       ).toThrow('cannot combine agent permissions with writes');
       expect(() =>
-        getWorkflowExecutionOrder({
-          maintain: node({ agentsFrom: 'review.agents', permissions }),
-        })
-      ).toThrow('cannot grant filesystem write permissions');
-      expect(() =>
         getWorkflowExecutionOrder({ review: node({ action: 'review', permissions }) })
       ).toThrow('cannot grant filesystem write permissions');
       expect(() =>

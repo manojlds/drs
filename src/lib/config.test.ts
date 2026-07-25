@@ -1,46 +1,137 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { loadConfig } from './config.js';
 
 describe('Config', () => {
-  it('should not overwrite default agents when undefined is passed', () => {
+  const originalReviewAgent = process.env.DRS_REVIEW_AGENT;
+  const originalReviewAgents = process.env.REVIEW_AGENTS;
+
+  afterEach(() => {
+    if (originalReviewAgent === undefined) delete process.env.DRS_REVIEW_AGENT;
+    else process.env.DRS_REVIEW_AGENT = originalReviewAgent;
+    if (originalReviewAgents === undefined) delete process.env.REVIEW_AGENTS;
+    else process.env.REVIEW_AGENTS = originalReviewAgents;
+    vi.restoreAllMocks();
+  });
+
+  it('should not overwrite the default agent when undefined is passed', () => {
     const config = loadConfig(process.cwd(), {
       review: {
-        agents: undefined,
+        agent: undefined,
       },
     } as any);
 
-    // Should keep default agents, not overwrite with undefined
-    expect(config.review.agents).toBeDefined();
-    expect(Array.isArray(config.review.agents)).toBe(true);
-    expect(config.review.agents.length).toBeGreaterThan(0);
+    expect(config.review.agent).toBe('review/unified-reviewer');
   });
 
-  it('should override agents when explicitly provided', () => {
+  it('should override the agent when explicitly provided', () => {
     const config = loadConfig(process.cwd(), {
       review: {
-        agents: ['review/security'],
+        agent: 'review/security',
       } as any,
     });
 
-    expect(config.review.agents).toEqual(['review/security']);
+    expect(config.review.agent).toBe('review/security');
   });
 
-  it('should load agents from config file when no override provided', () => {
+  it('should load the agent from the project config', () => {
     const config = loadConfig(process.cwd());
 
-    // Should load whatever is configured in the project's .drs/drs.config.yaml
-    expect(config.review.agents).toBeDefined();
-    expect(Array.isArray(config.review.agents)).toBe(true);
-    expect(config.review.agents.length).toBeGreaterThan(0);
+    expect(config.review.agent).toBeDefined();
+    expect(
+      typeof config.review.agent === 'string' ||
+        (typeof config.review.agent === 'object' && 'name' in config.review.agent)
+    ).toBe(true);
+  });
 
-    // Verify each agent is a string (simple format) or object (detailed format)
-    config.review.agents.forEach((agent) => {
-      const isValid = typeof agent === 'string' || (typeof agent === 'object' && 'name' in agent);
-      expect(isValid).toBe(true);
-    });
+  it('normalizes a one-element legacy review.agents file value with a warning', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-legacy-review-agent-'));
+    mkdirSync(join(projectRoot, '.drs'));
+    writeFileSync(
+      join(projectRoot, '.drs', 'drs.config.yaml'),
+      'review:\n  agents:\n    - review/security\n'
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      expect(loadConfig(projectRoot).review.agent).toBe('review/security');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('review.agents is deprecated'));
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['empty', 'review:\n  agents: []\n', 'exactly one entry'],
+    ['multiple', 'review:\n  agents: [review/security, review/quality]\n', 'exactly one entry'],
+    ['null entry', 'review:\n  agents: [null]\n', 'non-empty review agent'],
+    [
+      'dual',
+      'review:\n  agent: review/security\n  agents: [review/quality]\n',
+      'must not specify both',
+    ],
+  ])('rejects %s legacy review agent file configuration', (_name, yaml, message) => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'drs-invalid-review-agent-'));
+    mkdirSync(join(projectRoot, '.drs'));
+    writeFileSync(join(projectRoot, '.drs', 'drs.config.yaml'), yaml);
+    try {
+      expect(() => loadConfig(projectRoot)).toThrow(message);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers DRS_REVIEW_AGENT and accepts one deprecated REVIEW_AGENTS value with warning', () => {
+    process.env.DRS_REVIEW_AGENT = 'review/security';
+    expect(loadConfig(tmpdir()).review.agent).toBe('review/security');
+
+    delete process.env.DRS_REVIEW_AGENT;
+    process.env.REVIEW_AGENTS = 'review/quality';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(loadConfig(tmpdir()).review.agent).toBe('review/quality');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('REVIEW_AGENTS is deprecated'));
+  });
+
+  it('rejects comma-separated or dual review agent environment values', () => {
+    process.env.REVIEW_AGENTS = 'review/security,review/quality';
+    expect(() => loadConfig(tmpdir())).toThrow('exactly one agent');
+
+    process.env.DRS_REVIEW_AGENT = 'review/security';
+    process.env.REVIEW_AGENTS = 'review/quality';
+    expect(() => loadConfig(tmpdir())).toThrow('do not also set deprecated REVIEW_AGENTS');
+  });
+
+  it.each(['', '   '])('rejects an empty DRS_REVIEW_AGENT value %j', (value) => {
+    process.env.DRS_REVIEW_AGENT = value;
+    expect(() => loadConfig(tmpdir())).toThrow('review.agent must be a non-empty');
+  });
+
+  it.each(['', '   ', 'review/security,'])('rejects invalid REVIEW_AGENTS value %j', (value) => {
+    process.env.REVIEW_AGENTS = value;
+    expect(() => loadConfig(tmpdir())).toThrow('exactly one agent');
+  });
+
+  it('rejects dual review agent environment declarations when one is empty', () => {
+    process.env.DRS_REVIEW_AGENT = '';
+    process.env.REVIEW_AGENTS = 'review/quality';
+    expect(() => loadConfig(tmpdir())).toThrow('do not also set deprecated REVIEW_AGENTS');
+  });
+
+  it.each(['', null, { name: '' }])('rejects malformed review.agent override %j', (agent) => {
+    expect(() =>
+      loadConfig(tmpdir(), {
+        review: { agent },
+      } as any)
+    ).toThrow('review.agent must be a non-empty');
+  });
+
+  it('does not mutate the default reviewer after rejecting an invalid environment override', () => {
+    process.env.DRS_REVIEW_AGENT = '';
+    expect(() => loadConfig(tmpdir())).toThrow('review.agent must be a non-empty');
+    delete process.env.DRS_REVIEW_AGENT;
+    expect(loadConfig(tmpdir()).review.agent).toBe('review/unified-reviewer');
   });
 
   it('should respect skipRepoCheck config option', () => {

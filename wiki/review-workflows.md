@@ -17,7 +17,7 @@ drs_sources:
 
 # Review workflows
 
-Review workflows are the primary reason DRS exists. They collect a set of changed files, run configured review agents through the Pi runtime, and emit findings that can be persisted, posted, or fixed.
+Review workflows are the primary reason DRS exists. They collect a set of changed files, run the configured review agent through the Pi runtime, and emit findings that can be persisted, posted, or fixed.
 
 Packaged review workflows include `local-review`, `github-pr-review`, `gitlab-mr-review`, `github-pr-show-changes`, `gitlab-mr-show-changes`, `github-pr-visual-explain`, and `gitlab-mr-visual-explain`. Project workflows can override or extend them.
 
@@ -38,26 +38,26 @@ The action returns a `ReviewSource` object with the changed file list, optional 
 The `review` action (`src/cli/workflow.ts`) calls `executeReview` in `src/lib/review-orchestrator.ts`, which performs the following steps:
 
 1. Filter files using `review.ignorePatterns` and `review.includePatterns` from `src/lib/config.ts`.
-2. Resolve model ids for all configured review agents and the optional describer.
+2. Resolve model ids for the configured review agent and the optional describer.
 3. Connect to the Pi runtime via `src/runtime/client.ts`.
 4. Compress diffs using `src/lib/context-compression.ts` to stay within model context windows.
 5. Optionally run the describe agent for change context (`src/lib/description-executor.ts`).
 6. Build base instructions (`src/lib/review-core.ts`) containing the diff content and output schema.
-7. Run each configured review agent in parallel (`src/lib/review-core.ts` -> `runReviewAgents`).
+7. Run the selected authoritative review agent (`src/lib/review-core.ts` -> `runReviewAgent`); its failure fails the review.
 8. Parse agent JSON output and collect issues.
 9. Calculate summary statistics and token usage.
 
 The action exposes the raw review result as its node output and also saves a canonical review artifact envelope. By default the artifact is available as `artifacts.<nodeId>Artifact` (for example `artifacts.reviewArtifact`).
 
-Review action nodes may declare runtime `permissions` that apply to every review and optional describe session. The policy rejects filesystem `write`/`delete` rules and mutation validation, and requires `shell: false`. The packaged `github-pr-review` workflow uses repository-wide read access with `shell: false` so review agents cannot execute commands or mutate the checkout.
+Review action nodes may declare runtime `permissions` that apply to every review and optional describe session. The policy rejects filesystem `write`/`delete` rules and mutation validation, and requires `shell: false`. The packaged `github-pr-review` workflow uses repository-wide read access with `shell: false` so the review agent cannot execute commands or mutate the checkout.
 
 The GitHub workflow input `requireCompleteDiff=true` rejects an unstable or incomplete API snapshot. DRS paginates the changed-file list, compares it with GitHub's reported count, checks the head before and after retrieval, requires every file patch, and reconciles patch line counts with GitHub metadata. The external PR wrapper enables this fail-closed mode because only trusted base code is checked out.
 
 ## Agents and prompts
 
-The default review agent is `review/unified-reviewer`. Additional review agents can be added under `.drs/agents/review/<name>/agent.md` and listed in `review.agents`.
+The default review agent is `review/unified-reviewer`. A custom agent can be added under `.drs/agents/review/<name>/agent.md` and selected with `review.agent`.
 
-`src/lib/review-core.ts` builds the prompt that every review agent receives. It includes the diff content, an output JSON schema, and strict rules to report only issues introduced by additions, modifications, or deletions. Deletion-only findings omit `line` unless a relevant added line independently anchors the issue, so they remain file-level findings rather than using invalid old-file coordinates. When the diff is too large, the prompt tells the agent to call `git_diff` for files that were omitted.
+`src/lib/review-core.ts` builds the prompt that the review agent receives. It includes the diff content, an output JSON schema, and strict rules to report only issues introduced by additions, modifications, or deletions. Deletion-only findings omit `line` unless a relevant added line independently anchors the issue, so they remain file-level findings rather than using invalid old-file coordinates. When the diff is too large, the prompt tells the agent to call `git_diff` for files that were omitted.
 
 ## Context compression
 
@@ -123,6 +123,6 @@ The `visual/pr-explainer` agent writes a self-contained HTML artifact (`visualOu
 ## See also
 
 - [Workflow engine](workflow-engine.md) for the DSL and scheduling.
-- [Pi runtime](pi-runtime.md) for the review agents.
+- [Pi runtime](pi-runtime.md) for the review agent.
 - [Configuration](configuration.md) for review and compression settings.
 - [Integrations](integrations.md) for platform adapters and CI wrappers.

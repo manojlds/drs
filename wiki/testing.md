@@ -64,7 +64,7 @@ Most `src/lib/` modules have corresponding `*.test.ts` files. Important areas:
 - `src/temporal/*.test.ts` — Temporal planning, retry policies, workflow ids, and activities.
 - `src/lib/okf-wiki.test.ts` — OKF v0.1 index synchronization and bundle validation.
 - `src/lib/agent-permissions.test.ts` and `src/pi/sdk.test.ts` — generic agent policy validation, repository-root reads, path and symbolic-link rejection, Pi tool enforcement, validator feedback, and post-run mutation guards that report added, modified, and deleted paths.
-- `src/lib/workflow/planning.test.ts` — workflow node shape validation for `permissions` and `validation`, including conflicts with `writes` and `agentsFrom` write restrictions.
+- `src/lib/workflow/planning.test.ts` — workflow node shape validation for `permissions` and `validation`, including conflicts with `writes`.
 - `src/lib/wiki-search.test.ts` and `src/cli/wiki.test.ts` — model-free concept ranking, phrase matching, fenced-code-block-aware heading extraction (including invalid backtick fences), Unicode-normalized code-point-safe snippets, limits, empty-query rejection, unsafe-bundle rejection, and JSON CLI output.
 - `src/lib/wiki-delta.test.ts` — deterministic delta planning, source/wiki fingerprints, state recording, and clean checks.
 - `src/lib/wiki-run-summary.test.ts` — wiki structural and usage summaries, net concept-change classification, no-op reporting, and escaped Markdown output.

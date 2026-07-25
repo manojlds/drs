@@ -30,18 +30,16 @@ agents:
 
 ```yaml
 review:
-  agents:
-    - name: review/unified-reviewer
-      model: anthropic/claude-opus-4-5-20251101
-    - review/api-reviewer
+  agent:
+    name: review/unified-reviewer
+    model: anthropic/claude-opus-4-5-20251101
 ```
 
 ## 4) Unified Reviewer Override
 
 ```yaml
 review:
-  agents:
-    - review/unified-reviewer
+  agent: review/unified-reviewer
   unified:
     model: anthropic/claude-sonnet-4-5-20250929
 ```

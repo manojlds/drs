@@ -108,7 +108,7 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['review/security', 'review/quality'],
+            agent: 'review/security',
           },
           agents: {
             default: {
@@ -151,12 +151,10 @@ describe('RuntimeClient', () => {
           },
         },
         review: {
-          agents: [
-            {
-              name: 'review/security',
-              skills: ['security-audit'],
-            },
-          ],
+          agent: {
+            name: 'review/security',
+            skills: ['security-audit'],
+          },
         },
       } as any;
 
@@ -197,7 +195,7 @@ describe('RuntimeClient', () => {
           },
         },
         review: {
-          agents: ['review/unified-reviewer'],
+          agent: 'review/unified-reviewer',
         },
       } as any;
 
@@ -237,7 +235,7 @@ describe('RuntimeClient', () => {
           },
         },
         review: {
-          agents: ['review/security'],
+          agent: 'review/security',
         },
       } as any;
 
@@ -295,7 +293,7 @@ describe('RuntimeClient', () => {
           },
         },
         review: {
-          agents: [],
+          agent: 'review/unified-reviewer',
         },
       } as any;
 
@@ -376,7 +374,7 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: ['review/security', 'review/quality'],
+            agent: 'review/security',
           },
           agents: {
             default: { skills: [] },
@@ -655,7 +653,7 @@ describe('RuntimeClient', () => {
         directory: process.cwd(),
         config: {
           review: {
-            agents: [],
+            agent: 'review/unified-reviewer',
           },
           agents: {
             default: {

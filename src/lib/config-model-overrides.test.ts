@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   getDescriberModelOverride,
   getModelOverrides,
-  getReviewAgentIds,
+  getReviewAgentId,
   getUnifiedModelOverride,
-  normalizeAgentConfig,
+  normalizeSingleAgentConfig,
   resolveAgentRunConfig,
   resolveAgentSkills,
   resolveAgentThinkingLevel,
@@ -41,7 +41,7 @@ describe('agent model and skill configuration', () => {
       gitlab: { url: '', token: '' },
       github: { token: '' },
       review: {
-        agents: ['review/security', 'review/quality', 'review/style'],
+        agent: 'review/security',
         ignorePatterns: [],
       },
       ...overrides,
@@ -53,8 +53,6 @@ describe('agent model and skill configuration', () => {
 
     expect(overrides).toEqual({
       'review/security': 'provider/default-model',
-      'review/quality': 'provider/default-model',
-      'review/style': 'provider/default-model',
     });
   });
 
@@ -67,14 +65,13 @@ describe('agent model and skill configuration', () => {
         },
       },
       review: {
-        agents: [{ name: 'review/security', model: 'provider/security-model' }, 'review/quality'],
+        agent: { name: 'review/security', model: 'provider/security-model' },
         ignorePatterns: [],
       },
     });
 
     expect(getModelOverrides(config)).toEqual({
       'review/security': 'provider/security-model',
-      'review/quality': 'provider/review-default',
     });
   });
 
@@ -90,7 +87,7 @@ describe('agent model and skill configuration', () => {
         },
       },
       review: {
-        agents: ['review/quality'],
+        agent: 'review/quality',
         ignorePatterns: [],
       },
     });
@@ -105,14 +102,13 @@ describe('agent model and skill configuration', () => {
 
     const config = createConfig({
       review: {
-        agents: ['review/security', 'review/quality'],
+        agent: 'review/security',
         ignorePatterns: [],
       },
     });
 
     expect(getModelOverrides(config)).toEqual({
       'review/security': 'provider/security-env',
-      'review/quality': 'provider/default-model',
     });
   });
 
@@ -123,7 +119,7 @@ describe('agent model and skill configuration', () => {
       getModelOverrides(
         createConfig({
           review: {
-            agents: ['review/security'],
+            agent: 'review/security',
             ignorePatterns: [],
           },
         })
@@ -133,39 +129,40 @@ describe('agent model and skill configuration', () => {
     });
   });
 
-  it('normalizes mixed agent config values without changing ids', () => {
+  it('normalizes a scalar agent config without changing its id', () => {
+    expect(normalizeSingleAgentConfig('review/security')).toEqual({ name: 'review/security' });
     expect(
-      normalizeAgentConfig([
-        'review/security',
-        { name: 'review/quality', model: 'provider/quality' },
-      ])
-    ).toEqual([{ name: 'review/security' }, { name: 'review/quality', model: 'provider/quality' }]);
+      normalizeSingleAgentConfig({ name: 'review/quality', model: 'provider/quality' })
+    ).toEqual({
+      name: 'review/quality',
+      model: 'provider/quality',
+    });
   });
 
-  it('extracts fully qualified review agent ids', () => {
+  it('extracts a fully qualified review agent id', () => {
     const config = createConfig({
       review: {
-        agents: ['review/security', { name: 'review/quality' }, 'review/security'],
+        agent: { name: 'review/security' },
         ignorePatterns: [],
       },
     });
 
-    expect(getReviewAgentIds(config)).toEqual(['review/security', 'review/quality']);
+    expect(getReviewAgentId(config)).toBe('review/security');
   });
 
-  it('rejects short or non-review ids in review.agents', () => {
+  it('rejects short or non-review ids in review.agent', () => {
     expect(() =>
-      getReviewAgentIds(
+      getReviewAgentId(
         createConfig({
-          review: { agents: ['security'], ignorePatterns: [] },
+          review: { agent: 'security', ignorePatterns: [] },
         })
       )
     ).toThrow('review/security');
 
     expect(() =>
-      getReviewAgentIds(
+      getReviewAgentId(
         createConfig({
-          review: { agents: ['task/docs-updater'], ignorePatterns: [] },
+          review: { agent: 'task/docs-updater', ignorePatterns: [] },
         })
       )
     ).toThrow('"review" namespace');
@@ -173,9 +170,9 @@ describe('agent model and skill configuration', () => {
 
   it('rejects unsafe path components in agent ids', () => {
     expect(() =>
-      getReviewAgentIds(
+      getReviewAgentId(
         createConfig({
-          review: { agents: ['review/..'], ignorePatterns: [] },
+          review: { agent: 'review/..', ignorePatterns: [] },
         })
       )
     ).toThrow('path components');
@@ -186,7 +183,7 @@ describe('agent model and skill configuration', () => {
   it('keeps explicit unified reviewer override as an exact id override', () => {
     const config = createConfig({
       review: {
-        agents: ['review/unified-reviewer'],
+        agent: 'review/unified-reviewer',
         ignorePatterns: [],
         unified: { model: 'provider/unified-config' },
       },
@@ -223,7 +220,11 @@ describe('agent model and skill configuration', () => {
         },
       },
       review: {
-        agents: [{ name: 'review/security', skills: ['configured-skill', 'global-skill'] }],
+        agent: {
+          name: 'review/security',
+          model: 'provider/security-model',
+          skills: ['configured-skill', 'global-skill'],
+        },
         ignorePatterns: [],
       },
     });

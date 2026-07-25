@@ -45,8 +45,7 @@ workflow:
   default: local-changelog-review
 
 review:
-  agents:
-    - review/unified-reviewer
+  agent: review/unified-reviewer
   ignorePatterns:
     - "package-lock.json"
     - "yarn.lock"

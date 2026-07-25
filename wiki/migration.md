@@ -66,7 +66,7 @@ Then run representative workflows in a non-production project, generating artifa
 ## See also
 
 - [Quickstart](quickstart.md) for current CLI commands and supported workflows.
-- [Configuration](configuration.md) for `agents.paths.skills`, `review.agents`, and model settings.
+- [Configuration](configuration.md) for `agents.paths.skills`, `review.agent`, and model settings.
 - [Review workflows](review-workflows.md) for review artifacts and fix flows.
 - [Maintenance workflows](maintenance-workflows.md) for changelog and release workflows.
 - [Platform integrations](integrations.md) for GitHub Actions and GitLab CI wrappers.

@@ -53,8 +53,8 @@ interface InitConfig {
     modelDisplayName: string;
   };
   defaultModel: string;
-  agents: string[];
-  agentModels: Record<string, string>;
+  agent: string;
+  agentModel?: string;
 }
 
 interface InitProjectOptions {
@@ -109,24 +109,19 @@ pi:
     skills: []
 
 review:
-
-  # Review agents (execution order)
+  # Canonical review agent
   # Use fully qualified agent ids. review/unified-reviewer is the packaged default.
-  # Add project-specific agents under .drs/agents/review/<name>/agent.md as needed.
-  agents:
+  # Add a project-specific agent under .drs/agents/review/<name>/agent.md as needed.
 `;
 
-  // Add agents with optional model overrides
-  for (const agent of config.agents) {
-    const agentModel = config.agentModels[agent];
-    if (agentModel && agentModel !== config.defaultModel) {
-      yaml += `    - name: ${agent}
-      model: ${agentModel}
+  if (config.agentModel && config.agentModel !== config.defaultModel) {
+    yaml += `  agent:
+    name: ${config.agent}
+    model: ${config.agentModel}
 `;
-    } else {
-      yaml += `    - ${agent}
+  } else {
+    yaml += `  agent: ${config.agent}
 `;
-    }
   }
 
   yaml += `
@@ -251,12 +246,10 @@ You are a reviewer specialized in [your domain].
 Create a new folder for custom agents:
 \`.drs/agents/review/rails-reviewer/agent.md\`
 
-Then add to \`.drs/drs.config.yaml\`:
+Then select it in \`.drs/drs.config.yaml\`:
 \`\`\`yaml
 review:
-  agents:
-    - review/unified-reviewer
-    - review/rails-reviewer  # Your custom agent
+  agent: review/rails-reviewer
 \`\`\`
 
 ## Learn More
@@ -307,8 +300,7 @@ export async function initProject(
     const initConfig: InitConfig = {
       useCustomProvider: false,
       defaultModel: '',
-      agents: [],
-      agentModels: {},
+      agent: 'review/unified-reviewer',
     };
 
     initConfig.useCustomProvider = options.yes
@@ -363,29 +355,22 @@ export async function initProject(
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // STEP 3: Agent Selection
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log(chalk.bold('\n━━━ Review Agents ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+    console.log(chalk.bold('\n━━━ Review Agent ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
 
     const availableAgents = ['review/unified-reviewer'];
 
-    console.log(chalk.gray('Available agents:'));
+    console.log(chalk.gray('Available reviewer:'));
     console.log(chalk.gray('  • review/unified-reviewer - Packaged one-pass reviewer'));
     console.log(
       chalk.gray('  • review/<your-agent>      - Optional custom project reviewer (you define)\n')
     );
 
-    const agentsInput = options.yes
+    initConfig.agent = options.yes
       ? 'review/unified-reviewer'
-      : await prompt.ask('Agents to enable (comma-separated)', 'review/unified-reviewer');
+      : (await prompt.ask('Review agent', 'review/unified-reviewer')).trim().toLowerCase();
 
-    initConfig.agents = agentsInput
-      .split(',')
-      .map((a) => a.trim().toLowerCase())
-      .filter((a) => a.length > 0);
-
-    // Validate agents
-    const invalidAgents = initConfig.agents.filter((a) => !availableAgents.includes(a));
-    if (invalidAgents.length > 0) {
-      console.log(chalk.yellow(`\n⚠ Custom agents detected: ${invalidAgents.join(', ')}`));
+    if (!availableAgents.includes(initConfig.agent)) {
+      console.log(chalk.yellow(`\n⚠ Custom agent detected: ${initConfig.agent}`));
       console.log(
         chalk.gray(
           '  You will need to create agent definitions in .drs/agents/{namespace}/{name}/agent.md'
@@ -394,22 +379,20 @@ export async function initProject(
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // STEP 4: Per-Agent Model Overrides
+    // STEP 4: Review Agent Model Override
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log(chalk.bold('\n━━━ Per-Agent Model Overrides ━━━━━━━━━━━━━━━━━━━━━\n'));
+    console.log(chalk.bold('\n━━━ Review Agent Model Override ━━━━━━━━━━━━━━━━━━━\n'));
 
     const configureOverrides = options.yes
       ? false
-      : await prompt.confirm('Configure different models for specific agents?', false);
+      : await prompt.confirm('Configure a different model for the review agent?', false);
 
     if (configureOverrides) {
       console.log(chalk.gray(`\nPress Enter to use default (${initConfig.defaultModel})\n`));
 
-      for (const agent of initConfig.agents) {
-        const model = await prompt.ask(`Model for ${agent}`);
-        if (model && model !== initConfig.defaultModel) {
-          initConfig.agentModels[agent] = model;
-        }
+      const model = await prompt.ask(`Model for ${initConfig.agent}`);
+      if (model && model !== initConfig.defaultModel) {
+        initConfig.agentModel = model;
       }
     }
 
@@ -442,22 +425,20 @@ export async function initProject(
       mkdirSync(agentsDir, { recursive: true });
     }
 
-    // Create agent context templates for selected agents
-    for (const agentName of initConfig.agents) {
-      const agentDir = join(agentsDir, agentName);
-      if (!existsSync(agentDir)) {
-        mkdirSync(agentDir, { recursive: true });
+    // Create an agent context template for the selected reviewer
+    const agentDir = join(agentsDir, initConfig.agent);
+    if (!existsSync(agentDir)) {
+      mkdirSync(agentDir, { recursive: true });
 
-        const agentContextPath = join(agentDir, 'context.md');
-        const agentLabel = agentName.split('/').pop() ?? agentName;
-        const contextContent = AGENT_CONTEXT_TEMPLATE.replace(
-          '{AGENT}',
-          agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)
-        );
-        writeFileSync(agentContextPath, contextContent, 'utf-8');
-      }
+      const agentContextPath = join(agentDir, 'context.md');
+      const agentLabel = initConfig.agent.split('/').pop() ?? initConfig.agent;
+      const contextContent = AGENT_CONTEXT_TEMPLATE.replace(
+        '{AGENT}',
+        agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)
+      );
+      writeFileSync(agentContextPath, contextContent, 'utf-8');
     }
-    console.log(chalk.green('✓'), 'Created agent context templates in', chalk.cyan('.drs/agents/'));
+    console.log(chalk.green('✓'), 'Created agent context template in', chalk.cyan('.drs/agents/'));
 
     // Create agents README
     const agentsReadmePath = join(agentsDir, 'README.md');
@@ -476,13 +457,10 @@ export async function initProject(
       `  Provider: ${initConfig.useCustomProvider ? initConfig.provider?.name : 'Built-in (Anthropic/OpenAI/etc)'}`
     );
     console.log(`  Default Model: ${initConfig.defaultModel}`);
-    console.log(`  Agents: ${initConfig.agents.join(', ')}`);
+    console.log(`  Review Agent: ${initConfig.agent}`);
 
-    if (Object.keys(initConfig.agentModels).length > 0) {
-      console.log('  Model Overrides:');
-      for (const [agent, model] of Object.entries(initConfig.agentModels)) {
-        console.log(`    • ${agent}: ${model}`);
-      }
+    if (initConfig.agentModel) {
+      console.log(`  Review Agent Model: ${initConfig.agentModel}`);
     }
 
     console.log(chalk.bold('\nNext steps:\n'));

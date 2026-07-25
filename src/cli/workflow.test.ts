@@ -173,7 +173,7 @@ const baseConfig = {
   gitlab: { url: '', token: '' },
   github: { token: '' },
   review: {
-    agents: ['review/security'],
+    agent: 'review/security',
     ignorePatterns: [],
   },
 } as unknown as DRSConfig;
@@ -720,11 +720,11 @@ describe('workflow runner', () => {
     );
   });
 
-  it('runs agentsFrom review.agents as a multi-agent node', async () => {
+  it('rejects removed agentsFrom as an unknown workflow property', async () => {
     const config = {
       ...baseConfig,
       review: {
-        agents: ['review/security', { name: 'review/quality' }],
+        agent: 'review/security',
         ignorePatterns: [],
       },
       workflows: {
@@ -743,27 +743,12 @@ describe('workflow runner', () => {
       },
     } as unknown as DRSConfig;
 
-    const result = await runWorkflow(config, 'review', {
-      workingDir: process.cwd(),
-    });
-
-    expect(mocks.runAgent).toHaveBeenNthCalledWith(
-      1,
-      config,
-      'review/security',
-      expect.objectContaining({ prompt: 'Review Diff text' })
+    await expect(runWorkflow(config, 'review', { workingDir: process.cwd() })).rejects.toThrow(
+      /agentsFrom/
     );
-    expect(mocks.runAgent).toHaveBeenNthCalledWith(
-      2,
-      config,
-      'review/quality',
-      expect.objectContaining({ prompt: 'Review Diff text' })
-    );
-    expect(result.artifacts.reviewResult).toContain('## review/security');
-    expect(result.artifacts.reviewResult).toContain('## review/quality');
   });
 
-  it('runs agentsFrom agents concurrently', async () => {
+  it('runs explicit sibling review agents concurrently', async () => {
     let resolveSecurity: () => void = () => {};
     let resolveQuality: () => void = () => {};
     let resolveBothStarted: () => void = () => {};
@@ -791,7 +776,7 @@ describe('workflow runner', () => {
     const config = {
       ...baseConfig,
       review: {
-        agents: ['review/security', 'review/quality'],
+        agent: 'review/security',
         ignorePatterns: [],
       },
       workflows: {
@@ -800,10 +785,13 @@ describe('workflow runner', () => {
             diff: 'Diff text',
           },
           nodes: {
-            reviewers: {
-              agentsFrom: 'review.agents',
+            security: {
+              agent: 'review/security',
               input: 'Review {{inputs.diff}}',
-              output: 'reviewResult',
+            },
+            quality: {
+              agent: 'review/quality',
+              input: 'Review {{inputs.diff}}',
             },
           },
         },
@@ -815,10 +803,8 @@ describe('workflow runner', () => {
     resolveSecurity();
     resolveQuality();
 
-    const result = await runPromise;
+    await runPromise;
     expect(starts).toEqual(['review/security', 'review/quality']);
-    expect(result.artifacts.reviewResult).toContain('review/security done');
-    expect(result.artifacts.reviewResult).toContain('review/quality done');
   });
 
   it('runs independent workflow nodes concurrently', async () => {
@@ -2474,7 +2460,7 @@ describe('workflow runner', () => {
 
   it('propagates review action failures as workflow errors', async () => {
     mocks.executeReview.mockImplementation(async () => {
-      throw new Error('All review agents failed');
+      throw new Error('Review agent failed');
     });
 
     const config = {
@@ -2496,7 +2482,7 @@ describe('workflow runner', () => {
       },
     } as unknown as DRSConfig;
 
-    await expect(runWorkflow(config, 'localReview')).rejects.toThrow('All review agents failed');
+    await expect(runWorkflow(config, 'localReview')).rejects.toThrow('Review agent failed');
   });
 
   it('loads a GitHub PR change source and reviews it', async () => {

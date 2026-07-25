@@ -349,7 +349,7 @@ describe('isNonRetryableProviderFailure', () => {
     expect(
       isNonRetryableProviderFailure(
         new Error(
-          'All review agents failed: review/unified-reviewer: Failed to get messages: Agent error: "429 Monthly usage limit reached. Enable usage from your available balance."'
+          'Review agent failed: review/unified-reviewer: Failed to get messages: Agent error: "429 Monthly usage limit reached. Enable usage from your available balance."'
         )
       )
     ).toBe(true);
@@ -364,9 +364,7 @@ describe('isNonRetryableProviderFailure', () => {
 
   it('throws Temporal non-retryable failures for quota errors', async () => {
     vi.mocked(runWorkflowNodeLocally).mockRejectedValueOnce(
-      new Error(
-        'All review agents failed: review/unified-reviewer: 429 Monthly usage limit reached'
-      )
+      new Error('Review agent failed: review/unified-reviewer: 429 Monthly usage limit reached')
     );
 
     const input: RunWorkflowNodeActivityInput = {

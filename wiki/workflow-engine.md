@@ -35,7 +35,6 @@ A workflow has:
 Every node must define exactly one execution type:
 
 - `agent` — run a single agent by id.
-- `agentsFrom` — run a configured list, currently only `review.agents`.
 - `action` — run a built-in action.
 - `control` — route execution with `loop`, `switch`, `passThrough`, or `end`.
 
@@ -76,8 +75,7 @@ Agent nodes may also configure an `afterMutation` validator. The `okf-document` 
 
 Permission rules have important restrictions:
 
-- `permissions` and `validation` are allowed on `agent` nodes, single-agent nodes, and `action: review` nodes; they are not allowed on `agentsFrom` nodes.
-- `agentsFrom` nodes cannot grant filesystem `write` or `delete` permissions; use explicit single-agent nodes when mutation is required.
+- `permissions` and `validation` are allowed on `agent` nodes and `action: review` nodes.
 - A node cannot combine `permissions` with the `writes` field; deterministic `write` action nodes should persist output instead.
 - `validation.afterMutation` requires filesystem `write` or `delete` permissions, because validators run inside policy-aware mutation tools.
 
@@ -87,7 +85,7 @@ Permission rules have important restrictions:
 
 `src/lib/workflow/planning.ts` validates the graph:
 
-- Each node must have exactly one of `agent`, `agentsFrom`, `action`, or `control`.
+- Each node must have exactly one of `agent`, `action`, or `control`.
 - `needs` references must resolve to known nodes.
 - There must be no dependency cycles.
 - Control targets (`target`, `exit`, `cases`, `default`) must reference existing nodes.

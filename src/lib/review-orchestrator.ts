@@ -10,7 +10,7 @@ import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
-  getReviewAgentIds,
+  getReviewAgentId,
   getModelOverrides,
   getDescriberModelOverride,
   getDefaultThinkingLevel,
@@ -49,7 +49,7 @@ export interface ReviewSource {
   files: string[];
   /** Optional: files with their diff patches (if available, passed directly to agents) */
   filesWithDiffs?: Array<{ filename: string; patch: string }>;
-  /** Additional context to pass to review agents */
+  /** Additional context to pass to the review agent */
   context: Record<string, unknown>;
   /** Working directory for the review (defaults to process.cwd()) */
   workingDir?: string;
@@ -87,7 +87,7 @@ export interface ReviewVerificationContext {
  * Result of a review execution
  */
 export interface ReviewResult {
-  /** All issues found by review agents */
+  /** All issues found by the review agent */
   issues: ReviewIssue[];
   /** Calculated summary statistics */
   summary: ReturnType<typeof calculateSummary>;
@@ -113,8 +113,7 @@ export function getReviewBudgetModelIds(
   agentModelOverrides: ModelOverrides,
   unifiedModelOverrides: ModelOverrides
 ): string[] {
-  const selectedAgents = getReviewAgentIds(config);
-  const modelIds = selectedAgents
+  const modelIds = [getReviewAgentId(config)]
     .map((agentId) => {
       if (agentId === 'review/unified-reviewer' && unifiedModelOverrides[agentId]) {
         return unifiedModelOverrides[agentId];

@@ -26,7 +26,7 @@ The file `.drs/drs.config.yaml` is the canonical project configuration. Inline `
 
 ## Required settings
 
-At least one review agent must be configured and a default model must be resolvable. The CLI will throw if these are missing:
+One review agent must be configured and a default model must be resolvable. The CLI will throw if these are missing:
 
 ```yaml
 agents:
@@ -34,8 +34,7 @@ agents:
     model: opencode-go/kimi-k2.7-code
 
 review:
-  agents:
-    - review/unified-reviewer
+  agent: review/unified-reviewer
 ```
 
 The default model can also be set with `DRS_DEFAULT_MODEL`.
@@ -122,8 +121,7 @@ The `run` override can supply a prompt, prompt file, output path, and JSON mode.
 
 ```yaml
 review:
-  agents:
-    - review/unified-reviewer
+  agent: review/unified-reviewer
   ignorePatterns:
     - "*.test.ts"
     - "*.spec.ts"
@@ -219,7 +217,8 @@ Allows `drs workflow run` without a name.
 - `DRS_AGENT_<NAMESPACE>_<NAME>_MODEL` / `REVIEW_AGENT_*` — per-agent model.
 - `REVIEW_UNIFIED_MODEL` — unified reviewer model.
 - `REVIEW_THINKING_LEVEL` — default reasoning effort.
-- `REVIEW_AGENTS` — comma-separated review agent ids (legacy alias).
+- `DRS_REVIEW_AGENT` — selected canonical review agent id.
+- `REVIEW_AGENTS` — deprecated alias accepted only when it contains one review agent id.
 - `DRS_RUNTIME_*` — runtime timeout overrides.
 - `DRS_TEMPORAL_*` — Temporal overrides.
 

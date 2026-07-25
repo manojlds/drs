@@ -72,7 +72,7 @@ describe('description-executor', () => {
         },
       },
       review: {
-        agents: ['review/security'],
+        agent: 'review/security',
         ignorePatterns: [],
         mode: 'multi-agent',
       },

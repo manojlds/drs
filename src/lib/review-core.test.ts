@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   buildBaseInstructions,
   runReviewPipeline,
-  runReviewAgents,
+  runReviewAgent,
   displayReviewSummary,
   hasBlockingIssues,
   type FileWithDiff,
@@ -13,10 +13,8 @@ import type { RuntimeClient } from '../runtime/client.js';
 
 // Mock dependencies
 vi.mock('./config.js', () => ({
-  getReviewAgentIds: vi.fn((config: DRSConfig) =>
-    (config.review.agents || []).map((agent: string | { name: string }) =>
-      typeof agent === 'string' ? agent : agent.name
-    )
+  getReviewAgentId: vi.fn((config: DRSConfig) =>
+    typeof config.review.agent === 'string' ? config.review.agent : config.review.agent.name
   ),
   getModelOverrides: vi.fn(() => ({})),
   getUnifiedModelOverride: vi.fn(() => ({})),
@@ -205,7 +203,7 @@ describe('review-core', () => {
     });
   });
 
-  describe('runReviewAgents', () => {
+  describe('runReviewAgent', () => {
     let mockRuntime: RuntimeClient;
     let mockConfig: DRSConfig;
 
@@ -241,13 +239,13 @@ describe('review-core', () => {
 
       mockConfig = {
         review: {
-          agents: ['review/security', 'review/quality'],
+          agent: 'review/security',
         },
       } as DRSConfig;
     });
 
-    it('should run multiple agents successfully', async () => {
-      const result = await runReviewAgents(
+    it('runs the configured agent successfully', async () => {
+      const result = await runReviewAgent(
         mockRuntime,
         mockConfig,
         'Review these files',
@@ -258,44 +256,17 @@ describe('review-core', () => {
         false
       );
 
-      expect(result.issues.length).toBeGreaterThanOrEqual(2);
-      expect(result.agentResults).toHaveLength(2);
-      expect(result.agentResults.every((r) => r.success)).toBe(true);
+      expect(result.issues).toHaveLength(1);
+      expect(result.agentResult).toMatchObject({ agentType: 'review/security', success: true });
     });
 
-    it('should continue if one agent fails', async () => {
-      let callCount = 0;
-      mockRuntime.createSession = vi.fn(async ({ agent }) => {
-        callCount++;
-        if (callCount === 1) {
-          throw new Error('First agent failed');
-        }
-        return { id: `session-${agent}`, agent, createdAt: new Date() };
-      }) as any;
-
-      const result = await runReviewAgents(
-        mockRuntime,
-        mockConfig,
-        'Review these files',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.agentResults).toHaveLength(2);
-      expect(result.agentResults.filter((r) => r.success)).toHaveLength(1);
-      expect(result.agentResults.filter((r) => !r.success)).toHaveLength(1);
-    });
-
-    it('should throw error if all agents fail', async () => {
+    it('fails the review when the selected agent fails', async () => {
       mockRuntime.createSession = vi.fn(async () => {
-        throw new Error('All agents failed');
+        throw new Error('Selected agent failed');
       });
 
       await expect(
-        runReviewAgents(
+        runReviewAgent(
           mockRuntime,
           mockConfig,
           'Review these files',
@@ -305,14 +276,14 @@ describe('review-core', () => {
           '/test/dir',
           false
         )
-      ).rejects.toThrow('All review agents failed');
+      ).rejects.toThrow('Review agent failed: review/security: Selected agent failed');
     });
 
-    it('should handle empty agent list', async () => {
-      mockConfig.review.agents = [];
+    it('fails fast when the configured agent is unknown', async () => {
+      mockConfig.review.agent = 'review/unknown-agent';
 
       await expect(
-        runReviewAgents(
+        runReviewAgent(
           mockRuntime,
           mockConfig,
           'Review these files',
@@ -322,24 +293,7 @@ describe('review-core', () => {
           '/test/dir',
           false
         )
-      ).rejects.toThrow('All review agents failed');
-    });
-
-    it('should fail fast when config includes unknown agents', async () => {
-      mockConfig.review.agents = ['review/security', 'review/unknown-agent'];
-
-      await expect(
-        runReviewAgents(
-          mockRuntime,
-          mockConfig,
-          'Review these files',
-          'PR #123',
-          ['src/app.ts'],
-          {},
-          '/test/dir',
-          false
-        )
-      ).rejects.toThrow('Unknown review agent(s) configured: review/unknown-agent');
+      ).rejects.toThrow('Unknown review agent configured: review/unknown-agent');
     });
   });
 
@@ -380,7 +334,7 @@ describe('review-core', () => {
     it('should run unified mode', async () => {
       mockConfig = {
         review: {
-          agents: ['review/unified-reviewer'],
+          agent: 'review/unified-reviewer',
         },
       } as DRSConfig;
 
@@ -396,142 +350,7 @@ describe('review-core', () => {
       );
 
       expect(result.issues).toHaveLength(1);
-      expect(result.agentResults[0].agentType).toBe('review/unified-reviewer');
-    });
-
-    it('should run multi-agent mode', async () => {
-      mockConfig = {
-        review: {
-          agents: ['review/security', 'review/quality'],
-        },
-      } as DRSConfig;
-
-      const result = await runReviewPipeline(
-        mockRuntime,
-        mockConfig,
-        'Base instructions',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.issues.length).toBeGreaterThan(0);
-      expect(result.agentResults.length).toBeGreaterThan(0);
-    });
-
-    it('should run all configured agents in order even when mode is hybrid', async () => {
-      mockConfig = {
-        review: {
-          agents: ['review/unified-reviewer', 'review/security', 'review/quality'],
-        },
-      } as DRSConfig;
-
-      mockRuntime.streamMessages = vi.fn(async function* () {
-        yield {
-          id: 'msg-1',
-          role: 'assistant',
-          content: JSON.stringify({
-            issues: [
-              {
-                category: 'STYLE',
-                severity: 'LOW',
-                title: 'Style issue',
-                file: 'src/app.ts',
-                line: 10,
-                problem: 'Minor style problem',
-                solution: 'Fix style',
-              },
-            ],
-          }),
-          timestamp: new Date(),
-        };
-      }) as any;
-
-      const result = await runReviewPipeline(
-        mockRuntime,
-        mockConfig,
-        'Base instructions',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.agentResults).toHaveLength(3);
-      expect(result.agentResults.map((entry) => entry.agentType)).toEqual([
-        'review/unified-reviewer',
-        'review/security',
-        'review/quality',
-      ]);
-      expect(result.issues.every((issue) => issue.severity === 'LOW')).toBe(true);
-    });
-
-    it('should run multiple configured agents when mode is hybrid', async () => {
-      mockConfig = {
-        review: {
-          agents: ['review/unified-reviewer', 'review/security'],
-        },
-      } as DRSConfig;
-
-      let callCount = 0;
-      mockRuntime.streamMessages = vi.fn(async function* () {
-        callCount++;
-        yield {
-          id: 'msg-1',
-          role: 'assistant',
-          content: JSON.stringify({
-            issues: [
-              {
-                category: callCount === 1 ? 'SECURITY' : 'QUALITY',
-                severity: 'CRITICAL',
-                title: `Issue ${callCount}`,
-                file: 'src/app.ts',
-                line: 10,
-                problem: 'Critical problem',
-                solution: 'Fix it',
-              },
-            ],
-          }),
-          timestamp: new Date(),
-        };
-      }) as any;
-
-      const result = await runReviewPipeline(
-        mockRuntime,
-        mockConfig,
-        'Base instructions',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.agentResults.length).toBeGreaterThan(1);
-    });
-
-    it('defaults to running all configured agents when no override is set', async () => {
-      mockConfig = {
-        review: {
-          agents: ['review/security', 'review/quality'],
-        },
-      } as DRSConfig;
-
-      const result = await runReviewPipeline(
-        mockRuntime,
-        mockConfig,
-        'Base instructions',
-        'PR #123',
-        ['src/app.ts'],
-        {},
-        '/test/dir',
-        false
-      );
-
-      expect(result.agentResults.length).toBeGreaterThan(0);
+      expect(result.agentResult.agentType).toBe('review/unified-reviewer');
     });
   });
 
@@ -571,7 +390,7 @@ describe('review-core', () => {
           byCategory: { SECURITY: 1, QUALITY: 1, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
         },
         filesReviewed: 2,
-        agentResults: [],
+        agentResult: { agentType: 'review/unified-reviewer', issues: [], success: true },
       };
 
       displayReviewSummary(result);
@@ -591,7 +410,7 @@ describe('review-core', () => {
           byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
         },
         filesReviewed: 5,
-        agentResults: [],
+        agentResult: { agentType: 'review/unified-reviewer', issues: [], success: true },
       };
 
       displayReviewSummary(result);
@@ -610,7 +429,7 @@ describe('review-core', () => {
           byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
         },
         filesReviewed: 2,
-        agentResults: [],
+        agentResult: { agentType: 'review/unified-reviewer', issues: [], success: true },
         changeSummary: {
           description: 'Added authentication',
           type: 'feature',

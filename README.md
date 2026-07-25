@@ -113,7 +113,7 @@ drs wiki serve --source wiki
 # Verify a deployed wiki site, graph, search, raw bundle, and linked assets
 drs wiki check-site https://example.github.io/project/
 
-# To use project-specific agents, configure review.agents in .drs/drs.config.yaml
+# To use a project-specific reviewer, configure review.agent in .drs/drs.config.yaml
 # then run the same workflow.
 ```
 
@@ -475,7 +475,7 @@ Review REST API changes for backward compatibility.
 EOF
 ```
 
-Then add to config: `review.agents: [review/unified-reviewer, review/api-reviewer]`
+Then select it in config: `review.agent: review/api-reviewer`
 
 For non-review work, create agents in any namespace and run them directly:
 
@@ -612,8 +612,7 @@ agents:
         json: true
 
 review:
-  agents:
-    - review/unified-reviewer
+  agent: review/unified-reviewer
   ignorePatterns:
     - "*.test.ts"
     - "*.md"
@@ -641,9 +640,9 @@ Notes:
 - `describe.model` is used by describe workflows and by review-driven descriptions.
 - `contextCompression.thresholdPercent` sets a context-window-aware budget (e.g. `0.15` means 15%).
 - `contextCompression.maxTokens` is the fallback cap when context window metadata is unavailable.
-- `review.agents` controls exactly which review agents run.
+- `review.agent` selects the single authoritative review agent.
 - Packaged built-in review agent ID: `review/unified-reviewer`.
-- Add project-specific review agents under `.drs/agents/review/<name>/agent.md` and include them in `review.agents`.
+- Add a project-specific review agent under `.drs/agents/review/<name>/agent.md` and select it with `review.agent`.
 - Unknown agent names fail fast with a validation error before review execution starts.
 
 ### Model Pricing Overrides (Cost Reporting)
@@ -833,8 +832,8 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 GITLAB_URL=https://gitlab.com
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
-# Configure review agents in .drs/drs.config.yaml via review.agents.
-# Legacy REVIEW_AGENTS is still accepted as a compatibility alias.
+# Configure the reviewer in .drs/drs.config.yaml via review.agent.
+# DRS_REVIEW_AGENT overrides it; single-valued REVIEW_AGENTS is deprecated.
 REVIEW_THINKING_LEVEL=medium              # Reasoning effort: off, minimal, low, medium, high, xhigh
 ```
 

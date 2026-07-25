@@ -86,7 +86,6 @@ export function validateWorkflowPassThroughShape(nodeId: string, node: WorkflowN
 
 export const WORKFLOW_NODE_FIELDS = new Set([
   'agent',
-  'agentsFrom',
   'control',
   'action',
   'with',
@@ -109,7 +108,6 @@ export const WORKFLOW_NODE_FIELDS = new Set([
 
 export const EXECUTABLE_NODE_FIELDS = new Set([
   'agent',
-  'agentsFrom',
   'action',
   'with',
   'needs',
@@ -366,7 +364,7 @@ export function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConf
   );
   if (node.permissions !== undefined || node.validation !== undefined) {
     const isReviewAction = kind === 'action' && node.action === 'review';
-    if (kind !== 'agent' && kind !== 'agents' && !isReviewAction) {
+    if (kind !== 'agent' && !isReviewAction) {
       throw new Error(
         `Workflow node "${nodeId}" can only define permissions or validation for agents and review actions.`
       );
@@ -376,14 +374,6 @@ export function validateWorkflowNodeShape(nodeId: string, node: WorkflowNodeConf
       if (node.writes) {
         throw new Error(
           `Workflow node "${nodeId}" cannot combine agent permissions with writes; use a deterministic action node for output writes.`
-        );
-      }
-      if (
-        kind === 'agents' &&
-        (node.permissions.filesystem?.write || node.permissions.filesystem?.delete)
-      ) {
-        throw new Error(
-          `Workflow agentsFrom node "${nodeId}" cannot grant filesystem write permissions; use single-agent nodes with explicit dependencies.`
         );
       }
       if (
@@ -563,19 +553,16 @@ export function renderTemplate(template: string, context: WorkflowTemplateContex
   });
 }
 
-export function getNodeKind(node: WorkflowNodeConfig): 'agent' | 'agents' | 'action' | 'control' {
-  const configuredKinds = [node.agent, node.agentsFrom, node.action, node.control].filter(
+export function getNodeKind(node: WorkflowNodeConfig): 'agent' | 'action' | 'control' {
+  const configuredKinds = [node.agent, node.action, node.control].filter(
     (value) => value !== undefined
   ).length;
 
   if (configuredKinds !== 1) {
-    throw new Error(
-      'Workflow node must define exactly one of agent, agentsFrom, action, or control.'
-    );
+    throw new Error('Workflow node must define exactly one of agent, action, or control.');
   }
 
   if (node.agent !== undefined) return 'agent';
-  if (node.agentsFrom !== undefined) return 'agents';
   if (node.control !== undefined) return 'control';
   return 'action';
 }

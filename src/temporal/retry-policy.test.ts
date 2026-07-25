@@ -80,9 +80,6 @@ describe('getTemporalNodeRetryMode', () => {
 
   it('keeps non-writing agent nodes retryable', () => {
     expect(getTemporalNodeRetryMode({ agent: 'task/review', input: 'review' })).toBe('retryable');
-    expect(getTemporalNodeRetryMode({ agentsFrom: 'review.agents', input: 'review' })).toBe(
-      'retryable'
-    );
   });
 });
 

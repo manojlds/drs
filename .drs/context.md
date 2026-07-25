@@ -16,7 +16,7 @@ Node/TypeScript CLI for AI code reviews on GitHub PRs and GitLab MRs, powered by
 
 ## Config
 - Main config: `.drs/drs.config.yaml`.
-- Key settings: `agents.default.model`, `review.agents`, `review.ignorePatterns`.
+- Key settings: `agents.default.model`, `review.agent`, `review.ignorePatterns`.
 
 ## Review Focus
 - Review only the diff and its direct impact.

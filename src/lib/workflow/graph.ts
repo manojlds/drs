@@ -6,7 +6,7 @@ import {
   getWorkflowNodes,
 } from './planning.js';
 
-export type WorkflowGraphNodeKind = 'agent' | 'agents' | 'action' | 'control';
+export type WorkflowGraphNodeKind = 'agent' | 'action' | 'control';
 export type WorkflowGraphEdgeKind = 'dependency' | 'control';
 
 export interface WorkflowGraphNode {
@@ -14,7 +14,6 @@ export interface WorkflowGraphNode {
   label: string;
   kind: WorkflowGraphNodeKind;
   agent?: string;
-  agentsFrom?: string;
   action?: string;
   control?: string;
   condition?: string;
@@ -86,7 +85,6 @@ function buildWorkflowGraphNode(nodeId: string, node: WorkflowNodeConfig): Workf
     label: getWorkflowGraphNodeLabel(nodeId, node),
     kind: getNodeKind(node),
     agent: node.agent,
-    agentsFrom: node.agentsFrom,
     action: node.action,
     control: node.control,
     condition: node.if,
@@ -97,7 +95,6 @@ function buildWorkflowGraphNode(nodeId: string, node: WorkflowNodeConfig): Workf
 
 function getWorkflowGraphNodeLabel(nodeId: string, node: WorkflowNodeConfig): string {
   if (node.agent) return `${nodeId}\n${node.agent}`;
-  if (node.agentsFrom) return `${nodeId}\n${node.agentsFrom}`;
   if (node.action) return `${nodeId}\n${node.action}`;
   if (node.control) return `${nodeId}\n${node.control}`;
   return nodeId;
@@ -176,7 +173,7 @@ function mermaidId(id: string): string {
 function mermaidNodeShape(node: WorkflowGraphNode): string {
   const label = escapeMermaidLabel(node.label);
   if (node.kind === 'control') return `{${label}}`;
-  if (node.kind === 'agent' || node.kind === 'agents') return `([${label}])`;
+  if (node.kind === 'agent') return `([${label}])`;
   return `[${label}]`;
 }
 
