@@ -82,8 +82,14 @@ function parseDescribeOutputPointer(raw: string, debug: boolean): DescribeOutput
   return null;
 }
 
+interface JsonCandidate {
+  text: string;
+  start: number;
+  end: number;
+}
+
 function findJsonCandidates(text: string): string[] {
-  const candidates: string[] = [];
+  const candidates: JsonCandidate[] = [];
 
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== '{') {
@@ -128,14 +134,24 @@ function findJsonCandidates(text: string): string[] {
       if (char === '}') {
         depth -= 1;
         if (depth === 0) {
-          candidates.push(text.slice(start, index + 1));
+          candidates.push({ text: text.slice(start, index + 1), start, end: index + 1 });
           break;
         }
       }
     }
   }
 
-  return candidates;
+  return candidates
+    .filter(
+      (candidate) =>
+        !candidates.some(
+          (outer) =>
+            outer.start < candidate.start &&
+            outer.end >= candidate.end &&
+            outer.text !== candidate.text
+        )
+    )
+    .map((candidate) => candidate.text);
 }
 
 export function parseJsonFromAgentOutput(raw: string): unknown {

@@ -46,12 +46,23 @@ describe('describe-parser', () => {
     });
 
     it('should handle nested JSON objects', () => {
-      const raw = `{"type": "feature", "title": "Test"}`;
+      const raw = `{"type":"feature","summary":{"issuesFound":1},"issues":[{"title":"Test"}]}`;
       const result = parseJsonFromAgentOutput(raw);
 
       expect(result).toEqual({
         type: 'feature',
-        title: 'Test',
+        summary: { issuesFound: 1 },
+        issues: [{ title: 'Test' }],
+      });
+    });
+
+    it('returns the enclosing review object from prose instead of its last nested object', () => {
+      const raw =
+        'Review complete. {"summary":{"issuesFound":1,"byCategory":{"QUALITY":1}},"issues":[{"title":"Bug"}]}';
+
+      expect(parseJsonFromAgentOutput(raw)).toEqual({
+        summary: { issuesFound: 1, byCategory: { QUALITY: 1 } },
+        issues: [{ title: 'Bug' }],
       });
     });
 
