@@ -18,6 +18,8 @@ import type { ReviewUsageSummary } from './review-usage.js';
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const MODEL = /^[^/\s]+\/[^/\s]+$/;
+const PR_URL = /^https:\/\/github\.com\/manojlds\/drs\/pull\/[1-9][0-9]*$/;
+const GIT_REVISION = /^[0-9a-f]{7,40}$/;
 const SEVERITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']);
 const CATEGORIES = new Set(['SECURITY', 'QUALITY', 'STYLE', 'PERFORMANCE', 'DOCUMENTATION']);
 const THINKING_LEVEL = 'medium';
@@ -40,8 +42,25 @@ export type ExpectedFinding = {
   line?: number;
   endLine?: number;
 };
-export type BenchmarkCase = { id: string; description: string; expected: ExpectedFinding[] };
-export type BenchmarkSuite = { name: string; cases: string[] };
+export type BenchmarkCase = {
+  id: string;
+  description: string;
+  dimensions?: string[];
+  expected: ExpectedFinding[];
+};
+export type BenchmarkSuite = {
+  name: string;
+  description?: string;
+  focus?: 'drs-review-system';
+  cases: string[];
+};
+export type BenchmarkEvidence = {
+  provenance: 'historical' | 'derived-historical';
+  source: string;
+  proposedRevision: string;
+  confirmingRevision: string;
+  rationale: string;
+};
 export type BenchmarkOptions = {
   projectRoot: string;
   suite: string;
@@ -108,6 +127,8 @@ export async function loadBenchmarkSuite(
   if (
     parsed.name !== value ||
     !SLUG.test(String(parsed.name)) ||
+    ((parsed.description !== undefined || parsed.focus !== undefined) &&
+      (typeof parsed.description !== 'string' || parsed.focus !== 'drs-review-system')) ||
     !Array.isArray(parsed.cases) ||
     parsed.cases.some((x) => typeof x !== 'string' || !SLUG.test(x))
   )
@@ -123,7 +144,16 @@ export async function loadBenchmarkCase(root: string, id: string): Promise<Bench
     await readFile(join(root, 'benchmarks/review/cases', id, 'case.yaml'), 'utf8')
   );
   assertObject(parsed, `Case ${id}`);
-  if (parsed.id !== id || typeof parsed.description !== 'string' || !Array.isArray(parsed.expected))
+  if (
+    parsed.id !== id ||
+    typeof parsed.description !== 'string' ||
+    (parsed.dimensions !== undefined &&
+      (!Array.isArray(parsed.dimensions) ||
+        parsed.dimensions.some(
+          (dimension) => typeof dimension !== 'string' || !SLUG.test(dimension)
+        ))) ||
+    !Array.isArray(parsed.expected)
+  )
     throw new Error(`Invalid case schema: ${id}`);
   const ids = new Set<string>();
   for (const finding of parsed.expected) {
@@ -154,6 +184,25 @@ export async function loadBenchmarkCase(root: string, id: string): Promise<Bench
       throw new Error(`endLine must not precede line in ${id}.`);
   }
   return parsed as BenchmarkCase;
+}
+
+export async function loadBenchmarkEvidence(root: string, id: string): Promise<BenchmarkEvidence> {
+  if (!SLUG.test(id)) throw new Error(`Unsafe case ID: ${id}`);
+  const parsed: unknown = YAML.parse(
+    await readFile(join(root, 'benchmarks/review/cases', id, 'evidence.yaml'), 'utf8')
+  );
+  assertObject(parsed, `Evidence for ${id}`);
+  if (
+    !['historical', 'derived-historical'].includes(String(parsed.provenance)) ||
+    !PR_URL.test(String(parsed.source)) ||
+    !GIT_REVISION.test(String(parsed.proposedRevision)) ||
+    !GIT_REVISION.test(String(parsed.confirmingRevision)) ||
+    !['source', 'proposedRevision', 'confirmingRevision', 'rationale'].every(
+      (key) => typeof parsed[key] === 'string' && parsed[key].length > 0
+    )
+  )
+    throw new Error(`Invalid evidence schema: ${id}`);
+  return parsed as BenchmarkEvidence;
 }
 
 const hash = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex');
@@ -259,6 +308,34 @@ export async function runReviewBenchmark(
   const loaded = await loadBenchmarkSuite(projectRoot, options.suite);
   const agentSource = join(projectRoot, '.pi/agents/review/unified-reviewer.md');
   const agentText = await readFile(agentSource);
+  const captureIdentity = async () => {
+    const git = simpleGit(projectRoot);
+    const agentHash = hash(agentText);
+    return {
+      revision: (await git.revparse(['HEAD'])).trim(),
+      dirty: (await git.status()).files.length > 0,
+      agentHash,
+      sourceSnapshotHash: hash(
+        [
+          await hashTree(join(projectRoot, 'src')),
+          agentHash,
+          hash(await readFile(join(projectRoot, 'package-lock.json'))),
+          hash(await readFile(join(projectRoot, '.drs/drs.config.yaml'))),
+        ].join(':')
+      ),
+      suiteHash: hash(
+        [
+          hash(await readFile(loaded.path)),
+          ...(await Promise.all(
+            loaded.suite.cases.map((id) =>
+              hashTree(join(projectRoot, 'benchmarks/review/cases', id))
+            )
+          )),
+        ].join(':')
+      ),
+    };
+  };
+  const initialIdentity = await captureIdentity();
   const execute = dependencies.executeReview ?? executeReview;
   const runs: BenchmarkRun[] = [];
   for (const requestedModel of options.models)
@@ -267,6 +344,11 @@ export async function runReviewBenchmark(
         const fixture = await loadBenchmarkCase(projectRoot, id);
         const caseRoot = join(projectRoot, 'benchmarks/review/cases', id);
         const caseYaml = await readFile(join(caseRoot, 'case.yaml'));
+        let evidence: Buffer | undefined;
+        if (loaded.suite.focus) {
+          await loadBenchmarkEvidence(projectRoot, id);
+          evidence = await readFile(join(caseRoot, 'evidence.yaml'));
+        }
         const patchText = await readFile(join(caseRoot, 'change.patch'), 'utf8');
         const baseHash = await hashTree(join(caseRoot, 'base'));
         const workspace = await mkdtemp(join(tmpdir(), 'drs-calibration-'));
@@ -365,6 +447,7 @@ export async function runReviewBenchmark(
             hashes: {
               baseTree: baseHash,
               caseYaml: hash(caseYaml),
+              ...(evidence ? { evidence: hash(evidence) } : {}),
               patch: hash(patchText),
               appliedDiff: hash(diffText),
               config: hash(isolatedConfig),
@@ -413,23 +496,59 @@ export async function runReviewBenchmark(
       ];
     })
   );
+  const primaryModel = options.models[0];
+  const primaryRuns = runs.filter((run) => run.requestedModel === primaryModel);
+  const successfulRuns = primaryRuns.filter((run) => run.status === 'success');
+  const negativeRuns = primaryRuns.filter((run) => run.expectedCount === 0);
+  const drsMetrics = {
+    executionModel: primaryModel,
+    runCount: primaryRuns.length,
+    caseCount: new Set(primaryRuns.map((run) => run.caseId)).size,
+    pipelineSuccessRate: successfulRuns.length / primaryRuns.length,
+    cleanCasePassRate: negativeRuns.length
+      ? negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length /
+        negativeRuns.length
+      : null,
+    recall: 'pending-adjudication',
+    precision: 'pending-adjudication',
+    note: 'Primary DRS pipeline metrics. Model breakdowns are secondary diagnostics.',
+  };
+  const finalIdentity = await captureIdentity();
+  if (JSON.stringify(finalIdentity) !== JSON.stringify(initialIdentity))
+    throw new Error('DRS source or benchmark suite changed during execution; discarding report.');
+  const { revision, dirty, agentHash, sourceSnapshotHash, suiteHash } = initialIdentity;
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     suite: loaded.suite.name,
-    suiteHash: hash(await readFile(loaded.path)),
+    suiteHash,
+    systemUnderTest: {
+      name: 'DRS review system',
+      focus: loaded.suite.focus ?? 'drs-review-system',
+      primaryDimensions: [
+        'review-code',
+        'review-prompt',
+        'context-and-tool-use',
+        'structured-output-pipeline',
+      ],
+      revision,
+      dirty,
+      sourceSnapshotHash,
+      agentHash,
+    },
     profile: options.profile,
     models: options.models,
     repeat: options.repeat,
     thinkingLevel: THINKING_LEVEL,
+    drsMetrics,
     metricsByModel: metrics,
     runs,
   };
   const output = resolveWithin(projectRoot, options.output, 'Output');
   await mkdir(output, { recursive: true });
   const configHash = hash(`isolated-v1:${THINKING_LEVEL}`).slice(0, 8);
-  const agentHash = hash(agentText).slice(0, 8);
+  const shortAgentHash = agentHash.slice(0, 8);
   const modelListHash = hash(JSON.stringify(options.models)).slice(0, 8);
-  const base = `${loaded.suite.name}-${options.profile}-r${options.repeat}-c${configHash}-a${agentHash}-m${modelListHash}`;
+  const base = `${loaded.suite.name}-${options.profile}-r${options.repeat}-s${suiteHash.slice(0, 8)}-d${sourceSnapshotHash.slice(0, 8)}-c${configHash}-a${shortAgentHash}-m${modelListHash}`;
   const jsonPath = join(output, `${base}.json`);
   const markdownPath = join(output, `${base}.md`);
   try {
@@ -446,7 +565,7 @@ export async function runReviewBenchmark(
       .join('\n');
     await writeFile(
       markdownPath,
-      `# DRS review calibration: ${loaded.suite.name}\n\nThinking: ${THINKING_LEVEL}  \nRates are run-level and reported per model in JSON. Recall/precision: **pending manual adjudication**.\n\n| Case | Model | Repeat | Status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`,
+      `# DRS review-system regression: ${loaded.suite.name}\n\nPrimary system under test: **DRS review code, prompt, context/tool behavior, and structured-output pipeline**.  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nPinned execution model: \`${primaryModel}\`  \nThinking: ${THINKING_LEVEL}  \nAdditional model breakdowns are secondary diagnostics. Recall/precision: **pending manual adjudication**.\n\n## DRS pipeline\n\n- Pipeline success: ${successfulRuns.length}/${primaryRuns.length}\n- Clean-case passes: ${negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length}/${negativeRuns.length}\n\n| Case | Execution model | Repeat | Pipeline status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`,
       { flag: 'wx' }
     );
   } catch (error) {

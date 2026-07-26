@@ -1,0 +1,7 @@
+nodes:
+  continue-review:
+    agent: task/noop
+    if: true
+  publish:
+    action: write-output
+    needs: [continue-review]

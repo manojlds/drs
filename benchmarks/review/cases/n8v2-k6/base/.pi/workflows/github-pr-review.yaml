@@ -1,0 +1,21 @@
+nodes:
+  internal-commit:
+    action: git-commit
+    needs: [fix-issues]
+    if: inputs.fixMode == internal
+
+  push-internal-fix:
+    action: git-push
+    needs: [internal-commit]
+    if: inputs.fixMode == internal
+
+  fix-diff:
+    action: has-diff
+    needs: [fix-issues]
+    if: inputs.fixMode != internal
+    output: fixDiff
+
+  fix-commit:
+    action: git-commit
+    needs: [fix-diff]
+    if: artifacts.fixDiff.changed == true && inputs.fixCreateChangeRequest == true && inputs.fixMode != internal

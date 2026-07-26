@@ -13,7 +13,12 @@ export function createBenchmarkCommand(run = runReviewBenchmark): Command {
   command
     .command('review')
     .requiredOption('--suite <name-or-path>')
-    .requiredOption('--model <provider/model>', 'candidate model (repeatable)', collect, [])
+    .requiredOption(
+      '--model <provider/model>',
+      'pinned execution model (repeatable for secondary sensitivity analysis)',
+      collect,
+      []
+    )
     .option('--profile <profile>', 'isolation profile', 'isolated')
     .option('--repeat <count>', 'repetitions', positive, 1)
     .option('--output <dir>', 'artifact directory', 'out/review-benchmark')
