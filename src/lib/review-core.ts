@@ -12,7 +12,7 @@ import {
   getUnifiedModelOverride,
   resolveAgentSkills,
 } from './config.js';
-import { buildReviewPrompt } from './context-loader.js';
+import { buildReviewPromptWithSources } from './context-loader.js';
 import {
   parseReviewIssuesWithDiagnostics,
   type ReviewIssueParserDiagnostics,
@@ -400,7 +400,7 @@ async function executeSingleAgent(
 
   try {
     // Build prompt with global and agent-specific context
-    const reviewPrompt = buildReviewPrompt(
+    const builtPrompt = buildReviewPromptWithSources(
       agentType,
       baseInstructions,
       reviewLabel,
@@ -410,6 +410,11 @@ async function executeSingleAgent(
       describeSummary,
       verificationContext
     );
+    const reviewPrompt = builtPrompt.prompt;
+    agentUsage = {
+      ...agentUsage,
+      contextSources: builtPrompt.contextSources,
+    };
 
     logPromptInputBudget({
       runtime,

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { loadGlobalContext, loadAgentContext, buildReviewPrompt } from './context-loader.js';
+import {
+  loadGlobalContext,
+  loadAgentContext,
+  buildReviewPrompt,
+  buildReviewPromptWithSources,
+} from './context-loader.js';
 import { existsSync, readFileSync } from 'fs';
 
 // Mock fs module
@@ -255,7 +260,7 @@ describe('context-loader', () => {
         return '';
       });
 
-      const result = buildReviewPrompt(
+      const result = buildReviewPromptWithSources(
         'review/security',
         'Base security instructions',
         'PR #4',
@@ -263,9 +268,13 @@ describe('context-loader', () => {
         '/test/project'
       );
 
-      expect(result).toContain('Global project context');
-      expect(result).toContain('Security-specific context');
-      expect(result).toContain('Base security instructions');
+      expect(result.prompt).toContain('Global project context');
+      expect(result.prompt).toContain('Security-specific context');
+      expect(result.prompt).toContain('Base security instructions');
+      expect(result.contextSources).toEqual([
+        '.drs/context.md',
+        '.drs/agents/review/security/context.md',
+      ]);
     });
 
     it('should handle empty file list', () => {

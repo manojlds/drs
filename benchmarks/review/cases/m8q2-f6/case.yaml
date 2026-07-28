@@ -1,0 +1,8 @@
+id: m8q2-f6
+description: A serializer gains a new output state.
+comparison: { group: serializer-contract, variant: capability }
+capabilities:
+  contextSources: [.drs/agents/review/unified-reviewer/context.md]
+  requiredInspectionPaths: [contract.ts]
+expected:
+  - { id: M8-1, description: Output violates the unchanged consumer contract., severity: HIGH, category: QUALITY, file: serializer.ts, line: 3 }

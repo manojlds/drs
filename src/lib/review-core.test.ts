@@ -22,9 +22,10 @@ vi.mock('./config.js', () => ({
 }));
 
 vi.mock('./context-loader.js', () => ({
-  buildReviewPrompt: vi.fn((agentType: string, baseInstructions: string) => {
-    return `[PROMPT for ${agentType}]\n${baseInstructions}`;
-  }),
+  buildReviewPromptWithSources: vi.fn((agentType: string, baseInstructions: string) => ({
+    prompt: `[PROMPT for ${agentType}]\n${baseInstructions}`,
+    contextSources: ['.drs/context.md'],
+  })),
 }));
 
 vi.mock('./issue-parser.js', () => ({
@@ -291,7 +292,11 @@ describe('review-core', () => {
       );
 
       expect(result.issues).toHaveLength(1);
-      expect(result.agentResult).toMatchObject({ agentType: 'review/security', success: true });
+      expect(result.agentResult).toMatchObject({
+        agentType: 'review/security',
+        success: true,
+        usage: { contextSources: ['.drs/context.md'] },
+      });
     });
 
     it('fails the review when the selected agent fails', async () => {

@@ -14,6 +14,7 @@ export interface AgentUsageSummary {
   turns: number;
   toolCalls?: Record<string, number>;
   skills?: string[];
+  contextSources?: string[];
   usage: UsageSummary;
 }
 

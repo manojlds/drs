@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 import type { DRSConfig } from './config.js';
 import { requireAgentId } from './agent-id.js';
 import { resolveAgentPaths } from '../runtime/path-config.js';
@@ -83,9 +83,9 @@ export function loadAgentContext(
 }
 
 /**
- * Build review prompt with global and agent-specific context
+ * Build a review prompt and report the exact context branches appended to it.
  */
-export function buildReviewPrompt(
+export function buildReviewPromptWithSources(
   agentId: string,
   basePrompt: string,
   reviewLabel: string,
@@ -94,11 +94,12 @@ export function buildReviewPrompt(
   config?: DRSConfig,
   describeSummary?: string,
   verificationContext?: ReviewVerificationContext
-): string {
+): { prompt: string; contextSources: string[] } {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentId, projectRoot, config);
 
   let prompt = '';
+  const contextSources: string[] = [];
 
   // If agent is fully overridden, use that instead of base prompt
   if (agentContext.source === 'override' && agentContext.agentDefinition) {
@@ -108,7 +109,7 @@ export function buildReviewPrompt(
     prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
     prompt += changedFiles.map((f) => `- ${f}`).join('\n');
 
-    return prompt;
+    return { prompt, contextSources };
   }
 
   // Otherwise, build prompt with contexts + base prompt
@@ -122,6 +123,7 @@ export function buildReviewPrompt(
     } else {
       prompt += `# Project Context\n\n${trimmedContext}\n\n`;
     }
+    contextSources.push('.drs/context.md');
   }
 
   // 1.5 Describe summary (change context from describe agent)
@@ -138,12 +140,27 @@ export function buildReviewPrompt(
     const agentLabel = agentId.split('/').pop() ?? agentId;
     prompt += `# ${agentLabel.charAt(0).toUpperCase() + agentLabel.slice(1)} Agent Context\n\n`;
     prompt += `${agentContext.agentContext}\n\n`;
+    const { namespace, name } = requireAgentId(agentId);
+    const contextPath = join(
+      resolveAgentPaths(projectRoot, config).agentsPath,
+      namespace,
+      name,
+      'context.md'
+    );
+    contextSources.push(relative(projectRoot, contextPath).replaceAll('\\', '/'));
   }
 
   // 3. Base agent instructions
   prompt += basePrompt;
 
-  return prompt;
+  return { prompt, contextSources };
+}
+
+/** Build a review prompt with global and agent-specific context. */
+export function buildReviewPrompt(
+  ...args: Parameters<typeof buildReviewPromptWithSources>
+): string {
+  return buildReviewPromptWithSources(...args).prompt;
 }
 
 function formatVerificationContext(context: ReviewVerificationContext): string {

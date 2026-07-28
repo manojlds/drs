@@ -1,0 +1,5 @@
+id: k4n7-b2
+description: A small policy handler change.
+comparison: { group: policy-context, variant: baseline }
+expected:
+  - { id: K4-1, description: Archived records must remain immutable., severity: HIGH, category: QUALITY, file: policy.ts, line: 7 }

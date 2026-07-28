@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'fs/promises';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { isAbsolute, join, relative, resolve } from 'path';
 import { tmpdir } from 'os';
 import YAML from 'yaml';
@@ -8,6 +9,7 @@ import {
   getDefaultThinkingLevel,
   getUnifiedModelOverride,
   loadConfig,
+  resolveAgentSkills,
   type DRSConfig,
 } from './config.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from './diff-parser.js';
@@ -15,6 +17,9 @@ import { executeReview, type ReviewResult, type ReviewSource } from './review-or
 import { ReviewAgentExecutionError } from './review-core.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 import type { ReviewUsageSummary } from './review-usage.js';
+import { TraceCollector, type AgentTrace } from './trace-collector.js';
+import { loadAgents } from '../runtime/agent-loader.js';
+import { resolveAgentPaths } from '../runtime/path-config.js';
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const MODEL = /^[^/\s]+\/[^/\s]+$/;
@@ -47,6 +52,13 @@ export type BenchmarkCase = {
   description: string;
   dimensions?: string[];
   expected: ExpectedFinding[];
+  comparison?: { group: string; variant: string };
+  capabilities?: {
+    contextSources?: string[];
+    requiredSkills?: string[];
+    expectedNotLoadedSkills?: string[];
+    requiredInspectionPaths?: string[];
+  };
 };
 export type BenchmarkSuite = {
   name: string;
@@ -96,6 +108,23 @@ interface BenchmarkRun {
   hashes: Record<string, string>;
   adjudication: Record<string, unknown>[];
   errors: string[];
+  comparison?: BenchmarkCase['comparison'];
+  capabilities: CapabilityObservation;
+}
+
+export interface CapabilityObservation {
+  configuredSkills: string[];
+  availableSkills: string[];
+  loadedSkills: string[];
+  contextSources: Array<{ path: string; sha256: string; applied: boolean }>;
+  toolCalls: Record<string, number>;
+  inspectedPaths: string[];
+  requiredSkillConfiguration: Record<string, boolean>;
+  requiredSkillAvailability: Record<string, boolean>;
+  requiredSkillActivation: Record<string, boolean>;
+  expectedNotLoadedResults: Record<string, boolean>;
+  expectedNotLoadedViolations: string[];
+  requiredInspectionCoverage: Record<string, boolean>;
 }
 
 function assertObject(value: unknown, label: string): asserts value is Record<string, unknown> {
@@ -155,6 +184,74 @@ export async function loadBenchmarkCase(root: string, id: string): Promise<Bench
     !Array.isArray(parsed.expected)
   )
     throw new Error(`Invalid case schema: ${id}`);
+  if (parsed.comparison !== undefined) {
+    assertObject(parsed.comparison, `Comparison in ${id}`);
+    if (
+      !SLUG.test(String(parsed.comparison.group)) ||
+      !SLUG.test(String(parsed.comparison.variant))
+    )
+      throw new Error(`Invalid comparison in ${id}.`);
+  }
+  if (parsed.capabilities !== undefined) {
+    assertObject(parsed.capabilities, `Capabilities in ${id}`);
+    const base = join(root, 'benchmarks/review/cases', id, 'base');
+    const capability = parsed.capabilities;
+    for (const key of [
+      'contextSources',
+      'requiredSkills',
+      'expectedNotLoadedSkills',
+      'requiredInspectionPaths',
+    ] as const) {
+      const values = capability[key];
+      if (values === undefined) continue;
+      if (
+        !Array.isArray(values) ||
+        values.some((value) => typeof value !== 'string') ||
+        new Set(values).size !== values.length
+      )
+        throw new Error(`Invalid or duplicate ${key} in ${id}.`);
+      for (const value of values) {
+        if (key.includes('Skills')) {
+          if (!SLUG.test(value)) throw new Error(`Unsafe skill in ${id}.`);
+        } else safeRelative(value, `${key} in ${id}`);
+      }
+    }
+    for (const path of (capability.contextSources as string[] | undefined) ?? [])
+      await stat(resolveWithin(base, path, 'Context source'));
+    for (const path of (capability.requiredInspectionPaths as string[] | undefined) ?? [])
+      await stat(resolveWithin(base, path, 'Inspection path'));
+    const skillNames = [
+      ...((capability.requiredSkills as string[] | undefined) ?? []),
+      ...((capability.expectedNotLoadedSkills as string[] | undefined) ?? []),
+    ];
+    let skillDirectories = ['.drs/skills', '.agents/skills', '.pi/skills'];
+    const fixtureConfigPath = join(base, '.drs/drs.config.yaml');
+    if (existsSync(fixtureConfigPath)) {
+      const config = sanitizeFixtureConfig(YAML.parse(await readFile(fixtureConfigPath, 'utf8')));
+      const configuredPath = (
+        (config.agents as Record<string, unknown> | undefined)?.paths as
+          | Record<string, unknown>
+          | undefined
+      )?.skills;
+      if (typeof configuredPath === 'string') skillDirectories = [configuredPath];
+    }
+    for (const skill of skillNames) {
+      const candidates = skillDirectories.map((dir) => join(base, dir, skill, 'SKILL.md'));
+      if (
+        !(
+          await Promise.all(
+            candidates.map(async (path) =>
+              stat(path).then(
+                () => true,
+                () => false
+              )
+            )
+          )
+        ).some(Boolean)
+      )
+        throw new Error(`Declared skill ${skill} does not exist in ${id}.`);
+    }
+  }
   const ids = new Set<string>();
   for (const finding of parsed.expected) {
     assertObject(finding, `Expected finding in ${id}`);
@@ -186,6 +283,156 @@ export async function loadBenchmarkCase(root: string, id: string): Promise<Bench
   return parsed as BenchmarkCase;
 }
 
+function collectAvailableSkills(workspace: string, searchPaths?: string[]): string[] {
+  const names = new Set<string>();
+  const parents =
+    searchPaths ??
+    ['.drs/skills', '.agents/skills', '.pi/skills'].map((path) => join(workspace, path));
+  for (const parent of parents) {
+    try {
+      for (const name of readdirSync(parent))
+        if (existsSync(join(parent, name, 'SKILL.md'))) names.add(name);
+    } catch {
+      /* absent search path */
+    }
+  }
+  return [...names].sort();
+}
+
+export function summarizeBenchmarkCapabilities(
+  fixture: Pick<BenchmarkCase, 'capabilities'>,
+  workspace: string,
+  usage: ReviewUsageSummary | undefined,
+  traces: AgentTrace[],
+  configured: string[] = [],
+  skillSearchPaths?: string[]
+): CapabilityObservation {
+  const declared = fixture.capabilities ?? {};
+  const configuredSkills = [...new Set(configured)].sort();
+  const reviewerTraces = traces.filter(
+    (trace) => trace.agentId === 'review/unified-reviewer' || !trace.agentId
+  );
+  const appliedContextSources = new Set(
+    (usage?.agents ?? [])
+      .filter((agent) => agent.agentType === 'review/unified-reviewer')
+      .flatMap((agent) => agent.contextSources ?? [])
+  );
+  const searchPaths =
+    skillSearchPaths ??
+    ['.drs/skills', '.agents/skills', '.pi/skills'].map((path) => join(workspace, path));
+  const availableSkills = collectAvailableSkills(workspace, searchPaths);
+  const workspaceFile = (value: unknown): { absolute: string; relative: string } | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const absolute = isAbsolute(value) ? resolve(value) : resolve(workspace, value);
+    const rel = relative(resolve(workspace), absolute).replaceAll('\\', '/');
+    if (!rel || rel.startsWith('..') || isAbsolute(rel) || !existsSync(absolute)) return undefined;
+    try {
+      return statSync(absolute).isFile() ? { absolute, relative: rel } : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const loadedSkillNames = new Set<string>();
+  for (const trace of reviewerTraces)
+    for (const turn of trace.turns)
+      for (const call of turn.toolCalls) {
+        if (call.isError || !call.args || typeof call.args !== 'object') continue;
+        const args = call.args as Record<string, unknown>;
+        if (call.toolName.toLowerCase() === 'read') {
+          const file = workspaceFile(args.path ?? args.filePath ?? args.file_path);
+          if (!file) continue;
+          for (const root of searchPaths) {
+            const skillPath = relative(resolve(root), file.absolute).replaceAll('\\', '/');
+            const [skill, filename, ...rest] = skillPath.split('/');
+            if (
+              rest.length === 0 &&
+              filename?.toLowerCase() === 'skill.md' &&
+              configuredSkills.includes(skill) &&
+              availableSkills.includes(skill)
+            )
+              loadedSkillNames.add(skill);
+          }
+        } else if (call.toolName.toLowerCase() === 'skill') {
+          const skill = args.skill ?? args.name ?? args.skillName;
+          if (
+            typeof skill === 'string' &&
+            configuredSkills.includes(skill) &&
+            availableSkills.includes(skill)
+          )
+            loadedSkillNames.add(skill);
+        }
+      }
+  const loadedSkills = [...loadedSkillNames].sort();
+  const toolCalls: Record<string, number> = {};
+  for (const trace of reviewerTraces)
+    for (const turn of trace.turns)
+      for (const call of turn.toolCalls)
+        toolCalls[call.toolName] = (toolCalls[call.toolName] ?? 0) + 1;
+  for (const agent of (usage?.agents ?? []).filter(
+    (candidate) => candidate.agentType === 'review/unified-reviewer'
+  ))
+    for (const [name, count] of Object.entries(agent.toolCalls ?? {}))
+      toolCalls[name] = Math.max(toolCalls[name] ?? 0, count);
+  const requiredPaths = declared.requiredInspectionPaths ?? [];
+  const pathCandidates = new Set<string>();
+  const addInspectionPath = (value: unknown): void => {
+    if (Array.isArray(value)) return value.forEach(addInspectionPath);
+    const file = workspaceFile(value);
+    if (file) pathCandidates.add(file.relative);
+  };
+  for (const trace of reviewerTraces)
+    for (const turn of trace.turns)
+      for (const call of turn.toolCalls) {
+        if (call.isError || !call.args || typeof call.args !== 'object') continue;
+        const args = call.args as Record<string, unknown>;
+        switch (call.toolName.toLowerCase()) {
+          case 'read':
+            addInspectionPath(args.path ?? args.filePath ?? args.file_path);
+            break;
+          case 'grep':
+            addInspectionPath(args.path);
+            break;
+          case 'git_diff':
+            addInspectionPath(args.path ?? args.paths ?? args.file ?? args.files);
+            break;
+        }
+      }
+  const inspectedPaths = [...pathCandidates].sort();
+  return {
+    configuredSkills,
+    availableSkills,
+    loadedSkills,
+    contextSources: (declared.contextSources ?? []).map((path) => ({
+      path,
+      sha256: hash(readFileSync(join(workspace, path))),
+      applied: appliedContextSources.has(path),
+    })),
+    toolCalls: Object.fromEntries(Object.entries(toolCalls).sort()),
+    inspectedPaths,
+    requiredSkillConfiguration: Object.fromEntries(
+      (declared.requiredSkills ?? []).map((skill) => [skill, configuredSkills.includes(skill)])
+    ),
+    requiredSkillAvailability: Object.fromEntries(
+      (declared.requiredSkills ?? []).map((skill) => [skill, availableSkills.includes(skill)])
+    ),
+    requiredSkillActivation: Object.fromEntries(
+      (declared.requiredSkills ?? []).map((skill) => [skill, loadedSkills.includes(skill)])
+    ),
+    expectedNotLoadedResults: Object.fromEntries(
+      (declared.expectedNotLoadedSkills ?? []).map((skill) => [
+        skill,
+        !loadedSkills.includes(skill),
+      ])
+    ),
+    expectedNotLoadedViolations: (declared.expectedNotLoadedSkills ?? []).filter((skill) =>
+      loadedSkills.includes(skill)
+    ),
+    requiredInspectionCoverage: Object.fromEntries(
+      requiredPaths.map((path) => [path, inspectedPaths.includes(path)])
+    ),
+  };
+}
+
 export async function loadBenchmarkEvidence(root: string, id: string): Promise<BenchmarkEvidence> {
   if (!SLUG.test(id)) throw new Error(`Unsafe case ID: ${id}`);
   const parsed: unknown = YAML.parse(
@@ -206,6 +453,116 @@ export async function loadBenchmarkEvidence(root: string, id: string): Promise<B
 }
 
 const hash = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex');
+
+function mergeRecords(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    [...new Set([...Object.keys(base), ...Object.keys(override)])].map((key) => {
+      const left = base[key];
+      const right = override[key];
+      const value =
+        left &&
+        right &&
+        typeof left === 'object' &&
+        typeof right === 'object' &&
+        !Array.isArray(left) &&
+        !Array.isArray(right)
+          ? mergeRecords(left as Record<string, unknown>, right as Record<string, unknown>)
+          : right !== undefined
+            ? right
+            : left;
+      return [key, value];
+    })
+  );
+}
+
+function sanitizeFixtureConfig(value: unknown): Record<string, unknown> {
+  if (value === undefined || value === null) return {};
+  assertObject(value, 'Fixture DRS config');
+  const unexpectedTopLevel = Object.keys(value).filter(
+    (key) => !['agents', 'review'].includes(key)
+  );
+  if (unexpectedTopLevel.length)
+    throw new Error(`Unsupported benchmark fixture config: ${unexpectedTopLevel.join(', ')}.`);
+
+  const result: Record<string, unknown> = {};
+  if (value.agents !== undefined) {
+    assertObject(value.agents, 'Fixture agents config');
+    const agents = value.agents;
+    const unexpected = Object.keys(agents).filter(
+      (key) => !['paths', 'default', 'namespaces', 'overrides'].includes(key)
+    );
+    if (unexpected.length)
+      throw new Error(`Unsupported benchmark fixture agents config: ${unexpected.join(', ')}.`);
+
+    const sanitizeSkillSettings = (settings: unknown, label: string): Record<string, unknown> => {
+      assertObject(settings, label);
+      const invalid = Object.keys(settings).filter(
+        (key) => !['skills', 'skillsPromptFormat'].includes(key)
+      );
+      if (invalid.length) throw new Error(`Unsupported ${label}: ${invalid.join(', ')}.`);
+      if (
+        settings.skills !== undefined &&
+        (!Array.isArray(settings.skills) ||
+          settings.skills.some((skill) => typeof skill !== 'string' || !SLUG.test(skill)))
+      )
+        throw new Error(`${label}.skills must contain safe skill names.`);
+      if (
+        settings.skillsPromptFormat !== undefined &&
+        (typeof settings.skillsPromptFormat !== 'string' ||
+          !['text', 'xml'].includes(settings.skillsPromptFormat))
+      )
+        throw new Error(`${label}.skillsPromptFormat must be text or xml.`);
+      return settings;
+    };
+
+    const sanitizedAgents: Record<string, unknown> = {};
+    if (agents.paths !== undefined) {
+      assertObject(agents.paths, 'Fixture agent paths');
+      if (Object.keys(agents.paths).some((key) => key !== 'skills'))
+        throw new Error('Benchmark fixtures may only customize agents.paths.skills.');
+      if (typeof agents.paths.skills !== 'string')
+        throw new Error('Fixture agents.paths.skills must be a relative path.');
+      safeRelative(agents.paths.skills, 'Fixture agents.paths.skills');
+      sanitizedAgents.paths = { skills: agents.paths.skills };
+    }
+    if (agents.default !== undefined)
+      sanitizedAgents.default = sanitizeSkillSettings(agents.default, 'fixture agents.default');
+    for (const section of ['namespaces', 'overrides'] as const) {
+      if (agents[section] === undefined) continue;
+      assertObject(agents[section], `Fixture agents.${section}`);
+      const allowed = section === 'namespaces' ? 'review' : 'review/unified-reviewer';
+      if (Object.keys(agents[section]).some((key) => key !== allowed))
+        throw new Error(`Fixture agents.${section} may only configure ${allowed}.`);
+      sanitizedAgents[section] = {
+        [allowed]: sanitizeSkillSettings(
+          agents[section][allowed],
+          `fixture agents.${section}.${allowed}`
+        ),
+      };
+    }
+    result.agents = sanitizedAgents;
+  }
+  if (value.review !== undefined) {
+    assertObject(value.review, 'Fixture review config');
+    const invalid = Object.keys(value.review).filter(
+      (key) => !['ignorePatterns', 'includePatterns'].includes(key)
+    );
+    if (invalid.length)
+      throw new Error(`Unsupported fixture review config: ${invalid.join(', ')}.`);
+    for (const key of ['ignorePatterns', 'includePatterns'] as const)
+      if (
+        value.review[key] !== undefined &&
+        (!Array.isArray(value.review[key]) ||
+          value.review[key].some((pattern) => typeof pattern !== 'string'))
+      )
+        throw new Error(`Fixture review.${key} must be a string array.`);
+    result.review = value.review;
+  }
+  return result;
+}
 
 async function hashTree(root: string): Promise<string> {
   const digest = createHash('sha256');
@@ -307,10 +664,9 @@ export async function runReviewBenchmark(
   const projectRoot = resolve(options.projectRoot);
   const loaded = await loadBenchmarkSuite(projectRoot, options.suite);
   const agentSource = join(projectRoot, '.pi/agents/review/unified-reviewer.md');
-  const agentText = await readFile(agentSource);
   const captureIdentity = async () => {
     const git = simpleGit(projectRoot);
-    const agentHash = hash(agentText);
+    const agentHash = hash(await readFile(agentSource));
     return {
       revision: (await git.revparse(['HEAD'])).trim(),
       dirty: (await git.status()).files.length > 0,
@@ -355,9 +711,12 @@ export async function runReviewBenchmark(
         const started = Date.now();
         try {
           await cp(join(caseRoot, 'base'), workspace, { recursive: true });
-          const overridePath = join(workspace, '.drs/agents/review/unified-reviewer');
-          await mkdir(overridePath, { recursive: true });
-          const configObject = {
+          await mkdir(join(workspace, '.drs'), { recursive: true });
+          const fixtureConfigPath = join(workspace, '.drs/drs.config.yaml');
+          const fixtureConfig = existsSync(fixtureConfigPath)
+            ? sanitizeFixtureConfig(YAML.parse(await readFile(fixtureConfigPath, 'utf8')))
+            : {};
+          const forcedConfig = {
             agents: {
               default: { model: requestedModel, thinkingLevel: THINKING_LEVEL },
               overrides: {
@@ -370,9 +729,9 @@ export async function runReviewBenchmark(
               describe: { enabled: false },
             },
           };
+          const configObject = mergeRecords(fixtureConfig, forcedConfig);
           const isolatedConfig = YAML.stringify(configObject);
-          await writeFile(join(overridePath, 'agent.md'), agentText);
-          await writeFile(join(workspace, '.drs/drs.config.yaml'), isolatedConfig);
+          await writeFile(fixtureConfigPath, isolatedConfig);
           const git = simpleGit(workspace);
           await git.init();
           await git.addConfig('user.name', 'Calibration Runner');
@@ -384,14 +743,25 @@ export async function runReviewBenchmark(
           await rm(join(workspace, '.change.patch'));
           const diffText = await git.diff();
           const parsed = parseDiff(diffText);
-          const config = loadConfig(workspace, configObject as unknown as Partial<DRSConfig>);
+          const config = loadConfig(workspace, configObject);
           if (getUnifiedModelOverride(config)['review/unified-reviewer'] !== requestedModel)
             throw new Error('Programmatic model override did not resolve exactly.');
+          const reviewer = loadAgents(workspace, config).find(
+            (agent) => agent.id === 'review/unified-reviewer'
+          );
+          if (
+            !reviewer ||
+            (await realpath(reviewer.path)) !== (await realpath(agentSource)) ||
+            hash(await readFile(reviewer.path)) !== initialIdentity.agentHash
+          )
+            throw new Error('Benchmark reviewer did not resolve to the pinned packaged agent.');
+          const traceCollector = new TraceCollector();
+          traceCollector.setContext('benchmark-review', reviewer.id, '');
           const source: ReviewSource = {
             name: 'Calibration case',
             files: getChangedFiles(parsed),
             filesWithDiffs: getFilesWithDiffs(parsed),
-            context: {},
+            context: { traceCollector },
             workingDir: workspace,
             thinkingLevel: THINKING_LEVEL,
           };
@@ -451,7 +821,7 @@ export async function runReviewBenchmark(
               patch: hash(patchText),
               appliedDiff: hash(diffText),
               config: hash(isolatedConfig),
-              agent: hash(agentText),
+              agent: initialIdentity.agentHash,
             },
             adjudication: adjudicationCandidates(
               fixture.expected,
@@ -466,6 +836,15 @@ export async function runReviewBenchmark(
                   ]
                 : []),
             ],
+            comparison: fixture.comparison,
+            capabilities: summarizeBenchmarkCapabilities(
+              fixture,
+              workspace,
+              usage,
+              traceCollector.getTraces(),
+              resolveAgentSkills(config, reviewer.id, reviewer.skills ?? []),
+              resolveAgentPaths(workspace, config).skillSearchPaths
+            ),
           });
         } finally {
           await rm(workspace, { recursive: true, force: true });
@@ -498,6 +877,35 @@ export async function runReviewBenchmark(
   );
   const primaryModel = options.models[0];
   const primaryRuns = runs.filter((run) => run.requestedModel === primaryModel);
+  const rate = (checks: boolean[]): number | null =>
+    checks.length ? checks.filter(Boolean).length / checks.length : null;
+  const summarizeCapabilityMetrics = (selected: BenchmarkRun[]) => ({
+    contextApplicationRate: rate(
+      selected.flatMap((run) => run.capabilities.contextSources.map((source) => source.applied))
+    ),
+    requiredSkillConfigurationRate: rate(
+      selected.flatMap((run) => Object.values(run.capabilities.requiredSkillConfiguration))
+    ),
+    requiredSkillAvailabilityRate: rate(
+      selected.flatMap((run) => Object.values(run.capabilities.requiredSkillAvailability))
+    ),
+    requiredSkillActivationRate: rate(
+      selected.flatMap((run) => Object.values(run.capabilities.requiredSkillActivation))
+    ),
+    requiredInspectionCoverageRate: rate(
+      selected.flatMap((run) => Object.values(run.capabilities.requiredInspectionCoverage))
+    ),
+    expectedNotLoadedCleanRate: rate(
+      selected.flatMap((run) => Object.values(run.capabilities.expectedNotLoadedResults))
+    ),
+  });
+  const capabilityMetrics = summarizeCapabilityMetrics(primaryRuns);
+  const capabilityMetricsByModel = Object.fromEntries(
+    options.models.map((model) => [
+      model,
+      summarizeCapabilityMetrics(runs.filter((run) => run.requestedModel === model)),
+    ])
+  );
   const successfulRuns = primaryRuns.filter((run) => run.status === 'success');
   const negativeRuns = primaryRuns.filter((run) => run.expectedCount === 0);
   const drsMetrics = {
@@ -518,7 +926,7 @@ export async function runReviewBenchmark(
     throw new Error('DRS source or benchmark suite changed during execution; discarding report.');
   const { revision, dirty, agentHash, sourceSnapshotHash, suiteHash } = initialIdentity;
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     suite: loaded.suite.name,
     suiteHash,
     systemUnderTest: {
@@ -541,6 +949,8 @@ export async function runReviewBenchmark(
     thinkingLevel: THINKING_LEVEL,
     drsMetrics,
     metricsByModel: metrics,
+    capabilityMetrics,
+    capabilityMetricsByModel,
     runs,
   };
   const output = resolveWithin(projectRoot, options.output, 'Output');
@@ -563,9 +973,11 @@ export async function runReviewBenchmark(
           `| ${r.caseId} | ${r.requestedModel} | ${r.repeat} | ${r.status} | ${r.issues.length} |`
       )
       .join('\n');
+    const displayRate = (value: number | null): string =>
+      value === null ? 'n/a' : `${Math.round(value * 100)}%`;
     await writeFile(
       markdownPath,
-      `# DRS review-system regression: ${loaded.suite.name}\n\nPrimary system under test: **DRS review code, prompt, context/tool behavior, and structured-output pipeline**.  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nPinned execution model: \`${primaryModel}\`  \nThinking: ${THINKING_LEVEL}  \nAdditional model breakdowns are secondary diagnostics. Recall/precision: **pending manual adjudication**.\n\n## DRS pipeline\n\n- Pipeline success: ${successfulRuns.length}/${primaryRuns.length}\n- Clean-case passes: ${negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length}/${negativeRuns.length}\n\n| Case | Execution model | Repeat | Pipeline status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`,
+      `# DRS review-system regression: ${loaded.suite.name}\n\nPrimary system under test: **DRS review code, prompt, context/tool behavior, and structured-output pipeline**.  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nPinned execution model: \`${primaryModel}\`  \nThinking: ${THINKING_LEVEL}  \nAdditional model breakdowns are secondary diagnostics. Recall/precision: **pending manual adjudication**.\n\n## DRS pipeline\n\n- Pipeline success: ${successfulRuns.length}/${primaryRuns.length}\n- Clean-case passes: ${negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length}/${negativeRuns.length}\n\n## Capability behavior\n\n- Context application: ${displayRate(capabilityMetrics.contextApplicationRate)}\n- Required skill configuration: ${displayRate(capabilityMetrics.requiredSkillConfigurationRate)}\n- Required skill availability: ${displayRate(capabilityMetrics.requiredSkillAvailabilityRate)}\n- Required skill activation: ${displayRate(capabilityMetrics.requiredSkillActivationRate)}\n- Required inspection coverage: ${displayRate(capabilityMetrics.requiredInspectionCoverageRate)}\n- Irrelevant skill avoidance: ${displayRate(capabilityMetrics.expectedNotLoadedCleanRate)}\n\n| Case | Execution model | Repeat | Pipeline status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`,
       { flag: 'wx' }
     );
   } catch (error) {

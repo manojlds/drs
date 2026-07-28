@@ -1,0 +1,5 @@
+agents:
+  default:
+    skills: [wire-contract, css-layout]
+review:
+  ignorePatterns: [generated/**]

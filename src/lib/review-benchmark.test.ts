@@ -5,11 +5,13 @@ import simpleGit from 'simple-git';
 import { getUnifiedModelOverride } from './config.js';
 import type { ReviewResult } from './review-orchestrator.js';
 import { loadAgents } from '../runtime/agent-loader.js';
+import { buildReviewPromptWithSources } from './context-loader.js';
 import {
   loadBenchmarkSuite,
   loadBenchmarkCase,
   loadBenchmarkEvidence,
   adjudicationCandidates,
+  summarizeBenchmarkCapabilities,
   runReviewBenchmark,
 } from './review-benchmark.js';
 
@@ -124,7 +126,10 @@ describe('review benchmark fixtures', () => {
           expect(getUnifiedModelOverride(config)['review/unified-reviewer']).toMatch(/^test\//);
           expect(
             loadAgents(workspace, config).find((a) => a.id === 'review/unified-reviewer')?.path
-          ).toBe(join(workspace, '.drs/agents/review/unified-reviewer/agent.md'));
+          ).not.toContain(workspace);
+          await expect(
+            readFile(join(workspace, '.drs/agents/review/unified-reviewer/agent.md'))
+          ).rejects.toThrow();
           expect(await simpleGit(workspace).diff()).not.toBe('');
           expect(await readFile(join(workspace, '.drs/drs.config.yaml'), 'utf8')).not.toContain(
             '\\n'
@@ -172,7 +177,7 @@ describe('review benchmark fixtures', () => {
     );
     expect(seen).toHaveLength(20);
     const report = result.report as any;
-    expect(report.schemaVersion).toBe(2);
+    expect(report.schemaVersion).toBe(3);
     expect(report.systemUnderTest).toMatchObject({
       name: 'DRS review system',
       focus: 'drs-review-system',
@@ -193,6 +198,121 @@ describe('review benchmark fixtures', () => {
         .every((run: any) => run.status === 'runtime/model-failure')
     ).toBe(true);
   }, 15_000);
+
+  it('preserves capability fixture context, config, and skills while using the packaged reviewer', async () => {
+    let seen = 0;
+    const result = await runReviewBenchmark(
+      {
+        projectRoot: root,
+        suite: 'capabilities-v1',
+        models: ['test/pinned'],
+        profile: 'isolated',
+        repeat: 1,
+        output,
+        live: true,
+      },
+      {
+        onWorkspaceReady: async (workspace, config) => {
+          if (
+            (await readFile(join(workspace, 'serializer.ts'), 'utf8').catch(() => '')) &&
+            (await readFile(join(workspace, '.drs/skills/wire-contract/SKILL.md'), 'utf8').catch(
+              () => ''
+            ))
+          ) {
+            expect(config.review.ignorePatterns).toContain('generated/**');
+            expect(
+              await readFile(join(workspace, '.drs/skills/wire-contract/SKILL.md'), 'utf8')
+            ).toContain('name: wire-contract');
+            expect(
+              loadAgents(workspace, config).find((agent) => agent.id === 'review/unified-reviewer')
+                ?.path
+            ).not.toContain(workspace);
+            expect(await readFile(join(workspace, '.drs/drs.config.yaml'), 'utf8')).toContain(
+              'css-layout'
+            );
+            seen++;
+          }
+        },
+        executeReview: async (config, source) => {
+          const result = successfulReview('test/pinned');
+          result.usage!.agents[0].contextSources = buildReviewPromptWithSources(
+            'review/unified-reviewer',
+            'Review the change.',
+            'Benchmark case',
+            source.files,
+            source.workingDir ?? root,
+            config
+          ).contextSources;
+          return result;
+        },
+      }
+    );
+    expect(seen).toBe(1);
+    expect((result.report as any).capabilityMetrics).toEqual({
+      contextApplicationRate: 1,
+      requiredSkillConfigurationRate: 1,
+      requiredSkillAvailabilityRate: 1,
+      requiredSkillActivationRate: 0,
+      requiredInspectionCoverageRate: 0,
+      expectedNotLoadedCleanRate: 1,
+    });
+  }, 15_000);
+
+  it('summarizes trace observables without retaining prompts, thinking, results, or arguments', () => {
+    const trace: any = {
+      prompt: 'secret prompt',
+      thinkingContent: 'secret thought',
+      skillsLoaded: ['css-layout'],
+      turns: [
+        {
+          toolCalls: [
+            {
+              toolName: 'read',
+              args: { path: '.drs/skills/wire-contract/SKILL.md' },
+              result: 'secret skill contents',
+              isError: false,
+            },
+            {
+              toolName: 'read',
+              args: { path: 'contract.ts', token: 'secret' },
+              result: '---\nname: css-layout\n---\nsecret result',
+            },
+            {
+              toolName: 'read',
+              args: { path: '.drs/skills/css-layout/SKILL.md' },
+              isError: true,
+            },
+            {
+              toolName: 'grep',
+              args: { pattern: 'serializer.ts' },
+              isError: false,
+            },
+          ],
+        },
+      ],
+    };
+    const summary = summarizeBenchmarkCapabilities(
+      {
+        capabilities: {
+          requiredSkills: ['wire-contract'],
+          expectedNotLoadedSkills: ['css-layout'],
+          requiredInspectionPaths: ['contract.ts'],
+        },
+      },
+      join(root, 'benchmarks/review/cases/m8q2-s7/base'),
+      undefined,
+      [trace],
+      ['wire-contract', 'css-layout']
+    );
+    expect(summary).toMatchObject({
+      loadedSkills: ['wire-contract'],
+      toolCalls: { grep: 1, read: 3 },
+      inspectedPaths: ['.drs/skills/wire-contract/SKILL.md', 'contract.ts'],
+      requiredSkillActivation: { 'wire-contract': true },
+      expectedNotLoadedViolations: [],
+    });
+    expect(JSON.stringify(summary)).not.toContain('secret');
+  });
 
   it('executes every historical fixture without exposing evidence to the reviewer', async () => {
     const seen: string[] = [];

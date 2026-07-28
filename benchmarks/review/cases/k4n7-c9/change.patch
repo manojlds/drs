@@ -1,0 +1,12 @@
+diff --git a/policy.ts b/policy.ts
+index abcd123..def4567 100644
+--- a/policy.ts
++++ b/policy.ts
+@@ -3,3 +3,7 @@ export type Record = { archived: boolean; name: string };
+ export function display(record: Record): string {
+   return record.name;
+ }
++
++export function rename(record: Record, name: string): void {
++  record.name = name;
++}
