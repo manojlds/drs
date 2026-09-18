@@ -25,7 +25,7 @@ describe('compileWorkflowPlan', () => {
 
     it('normalizes inputs to plain objects', () => {
       const p = plan();
-      expect(Object.keys(p.inputs).sort()).toEqual(['staged']);
+      expect(Object.keys(p.inputs).sort()).toEqual(['reviewMode', 'staged']);
       expect(p.inputs.staged).toEqual({
         type: 'boolean',
         value: undefined,
@@ -34,6 +34,15 @@ describe('compileWorkflowPlan', () => {
         required: undefined,
         values: undefined,
         description: 'Review staged changes instead of unstaged changes',
+      });
+      expect(p.inputs.reviewMode).toEqual({
+        type: 'enum',
+        value: undefined,
+        file: undefined,
+        default: 'configured',
+        required: undefined,
+        values: ['configured', 'agent', 'jev', 'combined'],
+        description: 'Review evaluator mode',
       });
     });
 

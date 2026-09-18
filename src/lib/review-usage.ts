@@ -18,6 +18,13 @@ export interface AgentUsageSummary {
   usage: UsageSummary;
 }
 
+export interface EvaluatorUsageOptions {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+  success?: boolean;
+}
+
 export interface ReviewUsageSummary {
   total: UsageSummary;
   agents: AgentUsageSummary[];
@@ -75,6 +82,26 @@ export function createAgentUsageSummary(agentType: string): AgentUsageSummary {
     toolCalls: {},
     skills: [],
     usage: createEmptyUsageSummary(),
+  };
+}
+
+export function createEvaluatorUsageSummary(
+  evaluatorType: string,
+  options: EvaluatorUsageOptions
+): AgentUsageSummary {
+  return {
+    agentType: evaluatorType,
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.success !== undefined ? { success: options.success } : {}),
+    turns: 1,
+    usage: {
+      input: options.inputTokens,
+      output: options.outputTokens,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: options.inputTokens + options.outputTokens,
+      cost: 0,
+    },
   };
 }
 

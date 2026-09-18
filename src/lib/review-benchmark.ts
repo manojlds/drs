@@ -11,15 +11,22 @@ import {
   loadConfig,
   resolveAgentSkills,
   type DRSConfig,
+  type ReviewMode,
 } from './config.js';
 import { parseDiff, getChangedFiles, getFilesWithDiffs } from './diff-parser.js';
-import { executeReview, type ReviewResult, type ReviewSource } from './review-orchestrator.js';
+import {
+  executeReview,
+  type ExecuteReviewOptions,
+  type ReviewResult,
+  type ReviewSource,
+} from './review-orchestrator.js';
 import { ReviewAgentExecutionError } from './review-core.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 import { TraceCollector, type AgentTrace } from './trace-collector.js';
 import { loadAgents } from '../runtime/agent-loader.js';
 import { resolveAgentPaths } from '../runtime/path-config.js';
+import { metricKeys, type JevEvaluation, type MetricKey } from './jev/types.js';
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const MODEL = /^[^/\s]+\/[^/\s]+$/;
@@ -76,6 +83,7 @@ export type BenchmarkEvidence = {
 export type BenchmarkOptions = {
   projectRoot: string;
   suite: string;
+  reviewMode?: ReviewMode;
   models: string[];
   profile: 'isolated';
   repeat: number;
@@ -83,7 +91,11 @@ export type BenchmarkOptions = {
   live: boolean;
 };
 export type BenchmarkDependencies = {
-  executeReview?: (config: DRSConfig, source: ReviewSource) => Promise<ReviewResult>;
+  executeReview?: (
+    config: DRSConfig,
+    source: ReviewSource,
+    options?: ExecuteReviewOptions
+  ) => Promise<ReviewResult>;
   onWorkspaceReady?: (
     workspace: string,
     config: DRSConfig,
@@ -95,9 +107,10 @@ type BenchmarkStatus = 'success' | 'parser-failure' | 'runtime/model-failure';
 
 interface BenchmarkRun {
   caseId: string;
-  requestedModel: string;
+  requestedMode: ReviewMode;
+  requestedModel: string | null;
   actualModel: string | null;
-  thinkingLevel: string;
+  thinkingLevel: string | null;
   repeat: number;
   expectedCount: number;
   status: BenchmarkStatus;
@@ -110,6 +123,10 @@ interface BenchmarkRun {
   errors: string[];
   comparison?: BenchmarkCase['comparison'];
   capabilities: CapabilityObservation;
+  components: {
+    agent: Record<string, unknown>;
+    jev: Record<string, unknown>;
+  };
 }
 
 export interface CapabilityObservation {
@@ -624,18 +641,116 @@ export function adjudicationCandidates(
   return candidates;
 }
 
+export type JevPairRun = {
+  caseId: string;
+  repeat: number;
+  comparison?: BenchmarkCase['comparison'];
+  evaluation?: JevEvaluation;
+};
+
+export type JevPairDimensionAnalysis = {
+  direction: 'improved' | 'regressed' | 'unchanged' | 'inconclusive';
+  medianDelta: number | null;
+  applicabilityConsistency: number;
+  confidence: number | null;
+  pairCount: number;
+};
+
+const rounded = (value: number): number => Number(value.toFixed(6));
+const median = (values: number[]): number | null => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+export function analyzeJevPairs(runs: JevPairRun[]) {
+  const groups = [
+    ...new Set(runs.flatMap((run) => (run.comparison ? [run.comparison.group] : []))),
+  ].sort();
+  return groups.flatMap((group) => {
+    const selected = runs.filter((run) => run.comparison?.group === group && run.evaluation);
+    const variants = new Set(selected.map((run) => run.comparison!.variant));
+    const variantPair =
+      variants.has('defect') && variants.has('fixed')
+        ? (['defect', 'fixed'] as const)
+        : variants.has('baseline') && variants.has('capability')
+          ? (['baseline', 'capability'] as const)
+          : undefined;
+    if (!variantPair) return [];
+    const [fromVariant, toVariant] = variantPair;
+    const dimensions = Object.fromEntries(
+      metricKeys.map((metric) => {
+        const paired = selected.flatMap((from) => {
+          if (from.comparison?.variant !== fromVariant) return [];
+          const to = selected.find(
+            (candidate) =>
+              candidate.comparison?.variant === toVariant && candidate.repeat === from.repeat
+          );
+          return to
+            ? [[from.evaluation!.metrics[metric], to.evaluation!.metrics[metric]] as const]
+            : [];
+        });
+        const matchingApplicability = paired.filter(
+          ([from, to]) => from.applicable === to.applicable
+        ).length;
+        const applicable = paired.filter(
+          (
+            pair
+          ): pair is readonly [
+            Extract<(typeof pair)[0], { applicable: true }>,
+            Extract<(typeof pair)[1], { applicable: true }>,
+          ] => pair[0].applicable && pair[1].applicable
+        );
+        const medianDelta = median(applicable.map(([from, to]) => to.score - from.score));
+        const confidences = applicable.flatMap(([from, to]) => [from.confidence, to.confidence]);
+        const confidence = median(confidences);
+        const direction =
+          medianDelta === null
+            ? 'inconclusive'
+            : medianDelta > 0
+              ? 'improved'
+              : medianDelta < 0
+                ? 'regressed'
+                : 'unchanged';
+        return [
+          metric,
+          {
+            direction,
+            medianDelta: medianDelta === null ? null : rounded(medianDelta),
+            applicabilityConsistency: paired.length
+              ? rounded(matchingApplicability / paired.length)
+              : 0,
+            confidence: confidence === null ? null : rounded(confidence),
+            pairCount: paired.length,
+          } satisfies JevPairDimensionAnalysis,
+        ];
+      })
+    ) as Record<MetricKey, JevPairDimensionAnalysis>;
+    return [{ group, fromVariant, toVariant, dimensions }];
+  });
+}
+
 function validateOptions(options: BenchmarkOptions): void {
+  const mode = options.reviewMode ?? 'agent';
+  const includesAgent = mode === 'agent' || mode === 'combined';
+  const includesJev = mode === 'jev' || mode === 'combined';
   if (!options.live)
     throw new Error('Live provider execution requires explicit --live acknowledgement.');
+  if (includesJev && !process.env.JEV_API_KEY)
+    throw new Error('JEV_API_KEY is required for Jev-containing benchmark modes.');
   if (options.profile !== 'isolated') throw new Error('Only --profile isolated is supported.');
   if (!Number.isInteger(options.repeat) || options.repeat < 1)
     throw new Error('--repeat must be a positive integer.');
-  if (!options.models.length) throw new Error('At least one explicit --model is required.');
+  if (includesAgent && !options.models.length)
+    throw new Error('At least one explicit --model is required for agent-containing modes.');
   if (options.models.some((model) => !MODEL.test(model)))
     throw new Error('Models must use provider/model form.');
   if (new Set(options.models).size !== options.models.length)
     throw new Error('Duplicate models are not allowed.');
-  const active = MODEL_ENV_VARS.filter((name) => process.env[name] !== undefined);
+  const active = includesAgent
+    ? MODEL_ENV_VARS.filter((name) => process.env[name] !== undefined)
+    : [];
   if (active.length)
     throw new Error(`Unset model-affecting environment variables: ${active.join(', ')}.`);
 }
@@ -661,6 +776,9 @@ export async function runReviewBenchmark(
   dependencies: BenchmarkDependencies = {}
 ): Promise<{ jsonPath: string; markdownPath: string; report: Record<string, unknown> }> {
   validateOptions(options);
+  const reviewMode = options.reviewMode ?? 'agent';
+  const includesAgent = reviewMode === 'agent' || reviewMode === 'combined';
+  const includesJev = reviewMode === 'jev' || reviewMode === 'combined';
   const projectRoot = resolve(options.projectRoot);
   const loaded = await loadBenchmarkSuite(projectRoot, options.suite);
   const agentSource = join(projectRoot, '.pi/agents/review/unified-reviewer.md');
@@ -694,7 +812,9 @@ export async function runReviewBenchmark(
   const initialIdentity = await captureIdentity();
   const execute = dependencies.executeReview ?? executeReview;
   const runs: BenchmarkRun[] = [];
-  for (const requestedModel of options.models)
+  const jevPairRuns: JevPairRun[] = [];
+  const executionModels: Array<string | null> = includesAgent ? options.models : [null];
+  for (const requestedModel of executionModels)
     for (let repeat = 1; repeat <= options.repeat; repeat++)
       for (const id of loaded.suite.cases) {
         const fixture = await loadBenchmarkCase(projectRoot, id);
@@ -717,15 +837,24 @@ export async function runReviewBenchmark(
             ? sanitizeFixtureConfig(YAML.parse(await readFile(fixtureConfigPath, 'utf8')))
             : {};
           const forcedConfig = {
-            agents: {
-              default: { model: requestedModel, thinkingLevel: THINKING_LEVEL },
-              overrides: {
-                'review/unified-reviewer': { model: requestedModel, thinkingLevel: THINKING_LEVEL },
-              },
-            },
+            ...(includesAgent && requestedModel
+              ? {
+                  agents: {
+                    default: { model: requestedModel, thinkingLevel: THINKING_LEVEL },
+                    overrides: {
+                      'review/unified-reviewer': {
+                        model: requestedModel,
+                        thinkingLevel: THINKING_LEVEL,
+                      },
+                    },
+                  },
+                }
+              : {}),
             review: {
-              agent: 'review/unified-reviewer',
-              unified: { model: requestedModel },
+              ...(reviewMode !== 'agent' ? { mode: reviewMode } : {}),
+              ...(includesAgent && requestedModel
+                ? { agent: 'review/unified-reviewer', unified: { model: requestedModel } }
+                : {}),
               describe: { enabled: false },
             },
           };
@@ -744,19 +873,24 @@ export async function runReviewBenchmark(
           const diffText = await git.diff();
           const parsed = parseDiff(diffText);
           const config = loadConfig(workspace, configObject);
-          if (getUnifiedModelOverride(config)['review/unified-reviewer'] !== requestedModel)
-            throw new Error('Programmatic model override did not resolve exactly.');
-          const reviewer = loadAgents(workspace, config).find(
-            (agent) => agent.id === 'review/unified-reviewer'
-          );
           if (
-            !reviewer ||
-            (await realpath(reviewer.path)) !== (await realpath(agentSource)) ||
-            hash(await readFile(reviewer.path)) !== initialIdentity.agentHash
+            includesAgent &&
+            getUnifiedModelOverride(config)['review/unified-reviewer'] !== requestedModel
           )
-            throw new Error('Benchmark reviewer did not resolve to the pinned packaged agent.');
+            throw new Error('Programmatic model override did not resolve exactly.');
+          const reviewer = includesAgent
+            ? loadAgents(workspace, config).find((agent) => agent.id === 'review/unified-reviewer')
+            : undefined;
+          if (includesAgent) {
+            if (
+              !reviewer ||
+              (await realpath(reviewer.path)) !== (await realpath(agentSource)) ||
+              hash(await readFile(reviewer.path)) !== initialIdentity.agentHash
+            )
+              throw new Error('Benchmark reviewer did not resolve to the pinned packaged agent.');
+          }
           const traceCollector = new TraceCollector();
-          traceCollector.setContext('benchmark-review', reviewer.id, '');
+          if (reviewer) traceCollector.setContext('benchmark-review', reviewer.id, '');
           const source: ReviewSource = {
             name: 'Calibration case',
             files: getChangedFiles(parsed),
@@ -772,7 +906,7 @@ export async function runReviewBenchmark(
           let failedUsage: ReviewUsageSummary | undefined;
           let failedDiagnostics: ReviewIssueParserDiagnostics[] = [];
           try {
-            result = await execute(config, source);
+            result = await execute(config, source, { mode: reviewMode });
           } catch (cause) {
             runtimeError = cause instanceof Error ? cause.message : String(cause);
             if (cause instanceof ReviewAgentExecutionError) {
@@ -793,26 +927,61 @@ export async function runReviewBenchmark(
             ),
           ];
           const actualModel = actualModels.length === 1 ? actualModels[0] : null;
-          const modelFailure = actualModel !== requestedModel;
-          const parserFailure = parserError || (!runtimeError && !structuredSuccess(result));
+          const modelFailure = includesAgent && actualModel !== requestedModel;
+          const parserFailure =
+            includesAgent && (parserError || (!runtimeError && !structuredSuccess(result)));
+          const jevResult = result?.evaluations?.jev;
+          const jevEvaluation =
+            jevResult?.status === 'completed' ? jevResult.evaluation : undefined;
+          if (jevEvaluation)
+            jevPairRuns.push({
+              caseId: id,
+              repeat,
+              comparison: fixture.comparison,
+              evaluation: jevEvaluation,
+            });
+          const jevFailure = includesJev && (!jevResult || jevResult.status === 'failed');
           const status: BenchmarkStatus =
-            modelFailure || (runtimeError && !parserError)
+            modelFailure || (runtimeError && !parserError) || (reviewMode === 'jev' && jevFailure)
               ? 'runtime/model-failure'
               : parserFailure
                 ? 'parser-failure'
                 : 'success';
           const ineffective = status !== 'success';
+          const durationMs = Date.now() - started;
+          const usageFor = (
+            predicate: (agent: NonNullable<typeof usage>['agents'][number]) => boolean
+          ) => {
+            const agents = (usage?.agents ?? []).filter(predicate);
+            if (!agents.length) return null;
+            return agents.reduce(
+              (total, agent) => ({
+                input: total.input + agent.usage.input,
+                output: total.output + agent.usage.output,
+                cacheRead: total.cacheRead + agent.usage.cacheRead,
+                cacheWrite: total.cacheWrite + agent.usage.cacheWrite,
+                totalTokens: total.totalTokens + agent.usage.totalTokens,
+                cost: total.cost + agent.usage.cost,
+              }),
+              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0 }
+            );
+          };
+          const agentUsage = usageFor((agent) => !agent.agentType.startsWith('evaluator/'));
+          const jevUsage = usageFor((agent) => agent.agentType === 'evaluator/jev');
           runs.push({
             caseId: id,
+            requestedMode: reviewMode,
             requestedModel,
             actualModel,
-            thinkingLevel: getDefaultThinkingLevel(config) ?? THINKING_LEVEL,
+            thinkingLevel: includesAgent
+              ? (getDefaultThinkingLevel(config) ?? THINKING_LEVEL)
+              : null,
             repeat,
             expectedCount: fixture.expected.length,
             status,
             issues: result?.issues ?? [],
             usage: usage ?? null,
-            durationMs: Date.now() - started,
+            durationMs,
             parserDiagnostics: result?.parserDiagnostics ?? failedDiagnostics,
             hashes: {
               baseTree: baseHash,
@@ -823,11 +992,9 @@ export async function runReviewBenchmark(
               config: hash(isolatedConfig),
               agent: initialIdentity.agentHash,
             },
-            adjudication: adjudicationCandidates(
-              fixture.expected,
-              result?.issues ?? [],
-              ineffective
-            ),
+            adjudication: includesAgent
+              ? adjudicationCandidates(fixture.expected, result?.issues ?? [], ineffective)
+              : [],
             errors: [
               ...(runtimeError ? [runtimeError] : []),
               ...(modelFailure
@@ -842,9 +1009,54 @@ export async function runReviewBenchmark(
               workspace,
               usage,
               traceCollector.getTraces(),
-              resolveAgentSkills(config, reviewer.id, reviewer.skills ?? []),
+              reviewer ? resolveAgentSkills(config, reviewer.id, reviewer.skills ?? []) : [],
               resolveAgentPaths(workspace, config).skillSearchPaths
             ),
+            components: {
+              agent: includesAgent
+                ? {
+                    status:
+                      modelFailure || (runtimeError && !parserError)
+                        ? 'runtime/model-failure'
+                        : parserFailure
+                          ? 'parser-failure'
+                          : 'success',
+                    model: actualModel,
+                    latencyMs: durationMs,
+                    usage: agentUsage,
+                  }
+                : { status: 'not-requested', model: null, latencyMs: null, usage: null },
+              jev: includesJev
+                ? {
+                    status: jevEvaluation ? 'success' : 'failure',
+                    model: jevEvaluation?.model ?? null,
+                    latencyMs: durationMs,
+                    usage:
+                      jevUsage ??
+                      (jevEvaluation
+                        ? {
+                            input: jevEvaluation.usage.inputTokens,
+                            output: jevEvaluation.usage.outputTokens,
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                            totalTokens:
+                              jevEvaluation.usage.inputTokens + jevEvaluation.usage.outputTokens,
+                            cost: 0,
+                          }
+                        : null),
+                    metrics: jevEvaluation?.metrics ?? null,
+                    priorities: jevEvaluation?.priorities ?? [],
+                    ...(jevResult?.status === 'failed' ? { error: jevResult.error } : {}),
+                  }
+                : {
+                    status: 'not-requested',
+                    model: null,
+                    latencyMs: null,
+                    usage: null,
+                    metrics: null,
+                    priorities: [],
+                  },
+            },
           });
         } finally {
           await rm(workspace, { recursive: true, force: true });
@@ -875,7 +1087,7 @@ export async function runReviewBenchmark(
       ];
     })
   );
-  const primaryModel = options.models[0];
+  const primaryModel = options.models[0] ?? null;
   const primaryRuns = runs.filter((run) => run.requestedModel === primaryModel);
   const rate = (checks: boolean[]): number | null =>
     checks.length ? checks.filter(Boolean).length / checks.length : null;
@@ -912,7 +1124,7 @@ export async function runReviewBenchmark(
     executionModel: primaryModel,
     runCount: primaryRuns.length,
     caseCount: new Set(primaryRuns.map((run) => run.caseId)).size,
-    pipelineSuccessRate: successfulRuns.length / primaryRuns.length,
+    pipelineSuccessRate: primaryRuns.length ? successfulRuns.length / primaryRuns.length : null,
     cleanCasePassRate: negativeRuns.length
       ? negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length /
         negativeRuns.length
@@ -925,6 +1137,18 @@ export async function runReviewBenchmark(
   if (JSON.stringify(finalIdentity) !== JSON.stringify(initialIdentity))
     throw new Error('DRS source or benchmark suite changed during execution; discarding report.');
   const { revision, dirty, agentHash, sourceSnapshotHash, suiteHash } = initialIdentity;
+  const jevPairAnalysis = includesJev ? analyzeJevPairs(jevPairRuns) : [];
+  const combinedMetrics =
+    reviewMode === 'combined'
+      ? {
+          medianLatencyMs: median(runs.map((run) => run.durationMs)),
+          medianTotalTokens: median(
+            runs.flatMap((run) => (run.usage ? [run.usage.total.totalTokens] : []))
+          ),
+          medianCost: median(runs.flatMap((run) => (run.usage ? [run.usage.total.cost] : []))),
+          note: 'Combined wall-clock and aggregate agent-plus-Jev usage; not a composite quality score.',
+        }
+      : undefined;
   const report = {
     schemaVersion: 3,
     suite: loaded.suite.name,
@@ -944,20 +1168,24 @@ export async function runReviewBenchmark(
       agentHash,
     },
     profile: options.profile,
+    reviewMode,
     models: options.models,
     repeat: options.repeat,
-    thinkingLevel: THINKING_LEVEL,
-    drsMetrics,
-    metricsByModel: metrics,
-    capabilityMetrics,
-    capabilityMetricsByModel,
+    thinkingLevel: includesAgent ? THINKING_LEVEL : null,
+    ...(includesAgent
+      ? { drsMetrics, metricsByModel: metrics, capabilityMetrics, capabilityMetricsByModel }
+      : {}),
+    ...(includesJev ? { jevPairAnalysis } : {}),
+    ...(combinedMetrics ? { combinedMetrics } : {}),
     runs,
   };
   const output = resolveWithin(projectRoot, options.output, 'Output');
   await mkdir(output, { recursive: true });
   const configHash = hash(`isolated-v1:${THINKING_LEVEL}`).slice(0, 8);
   const shortAgentHash = agentHash.slice(0, 8);
-  const modelListHash = hash(JSON.stringify(options.models)).slice(0, 8);
+  const modelListHash = hash(
+    JSON.stringify(reviewMode === 'agent' ? options.models : { reviewMode, models: options.models })
+  ).slice(0, 8);
   const base = `${loaded.suite.name}-${options.profile}-r${options.repeat}-s${suiteHash.slice(0, 8)}-d${sourceSnapshotHash.slice(0, 8)}-c${configHash}-a${shortAgentHash}-m${modelListHash}`;
   const jsonPath = join(output, `${base}.json`);
   const markdownPath = join(output, `${base}.md`);
@@ -975,11 +1203,22 @@ export async function runReviewBenchmark(
       .join('\n');
     const displayRate = (value: number | null): string =>
       value === null ? 'n/a' : `${Math.round(value * 100)}%`;
-    await writeFile(
-      markdownPath,
-      `# DRS review-system regression: ${loaded.suite.name}\n\nPrimary system under test: **DRS review code, prompt, context/tool behavior, and structured-output pipeline**.  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nPinned execution model: \`${primaryModel}\`  \nThinking: ${THINKING_LEVEL}  \nAdditional model breakdowns are secondary diagnostics. Recall/precision: **pending manual adjudication**.\n\n## DRS pipeline\n\n- Pipeline success: ${successfulRuns.length}/${primaryRuns.length}\n- Clean-case passes: ${negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length}/${negativeRuns.length}\n\n## Capability behavior\n\n- Context application: ${displayRate(capabilityMetrics.contextApplicationRate)}\n- Required skill configuration: ${displayRate(capabilityMetrics.requiredSkillConfigurationRate)}\n- Required skill availability: ${displayRate(capabilityMetrics.requiredSkillAvailabilityRate)}\n- Required skill activation: ${displayRate(capabilityMetrics.requiredSkillActivationRate)}\n- Required inspection coverage: ${displayRate(capabilityMetrics.requiredInspectionCoverageRate)}\n- Irrelevant skill avoidance: ${displayRate(capabilityMetrics.expectedNotLoadedCleanRate)}\n\n| Case | Execution model | Repeat | Pipeline status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`,
-      { flag: 'wx' }
-    );
+    const agentMarkdown = `# DRS review-system regression: ${loaded.suite.name}\n\nPrimary system under test: **DRS review code, prompt, context/tool behavior, and structured-output pipeline**.  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nPinned execution model: \`${primaryModel}\`  \nThinking: ${THINKING_LEVEL}  \nAdditional model breakdowns are secondary diagnostics. Recall/precision: **pending manual adjudication**.\n\n## DRS pipeline\n\n- Pipeline success: ${successfulRuns.length}/${primaryRuns.length}\n- Clean-case passes: ${negativeRuns.filter((run) => run.status === 'success' && run.issues.length === 0).length}/${negativeRuns.length}\n\n## Capability behavior\n\n- Context application: ${displayRate(capabilityMetrics.contextApplicationRate)}\n- Required skill configuration: ${displayRate(capabilityMetrics.requiredSkillConfigurationRate)}\n- Required skill availability: ${displayRate(capabilityMetrics.requiredSkillAvailabilityRate)}\n- Required skill activation: ${displayRate(capabilityMetrics.requiredSkillActivationRate)}\n- Required inspection coverage: ${displayRate(capabilityMetrics.requiredInspectionCoverageRate)}\n- Irrelevant skill avoidance: ${displayRate(capabilityMetrics.expectedNotLoadedCleanRate)}\n\n| Case | Execution model | Repeat | Pipeline status | Issues |\n|---|---|---:|---|---:|\n${rows}\n`;
+    const jevRows = runs
+      .map((run) => {
+        const jev = run.components.jev;
+        const applicable =
+          jev.metrics && typeof jev.metrics === 'object'
+            ? Object.values(jev.metrics as JevEvaluation['metrics']).filter(
+                (metric) => metric.applicable
+              ).length
+            : 0;
+        const jevModel = typeof jev.model === 'string' ? jev.model : 'n/a';
+        return `| ${run.caseId} | ${run.repeat} | ${String(jev.status)} | ${jevModel} | ${applicable} |`;
+      })
+      .join('\n');
+    const jevMarkdown = `# Review evaluator benchmark: ${loaded.suite.name}\n\nReview mode: \`${reviewMode}\`  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nAgent issue findings: ${includesAgent ? 'reported separately; adjudication applies only to these findings' : 'not requested'}  \nNo overall quality score is calculated.\n\n## Jev dimension signals\n\nApplicable and non-applicable dimensions, score confidence, priorities, status, latency, and usage are recorded per run in the JSON report. Paired analysis reports per-dimension direction, median delta, applicability consistency, and confidence; inconclusive dimensions remain explicit.\n\n| Case | Repeat | Jev status | Jev model | Applicable dimensions |\n|---|---:|---|---|---:|\n${jevRows}\n${combinedMetrics ? `\n## Combined overhead\n\n- Median wall-clock latency: ${combinedMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${combinedMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${combinedMetrics.medianCost ?? 'n/a'}\n` : ''}`;
+    await writeFile(markdownPath, includesJev ? jevMarkdown : agentMarkdown, { flag: 'wx' });
   } catch (error) {
     await rm(jsonPath, { force: true });
     throw new Error(`Refusing to overwrite benchmark output: ${markdownPath}`, { cause: error });

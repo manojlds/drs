@@ -109,6 +109,10 @@ pi:
     skills: []
 
 review:
+  # Review mode: agent (default), jev (scalar evaluator only), or combined.
+  # Jev sends focused code context to TypeSafe's remote API and requires JEV_API_KEY at runtime.
+  mode: agent
+
   # Canonical review agent
   # Use fully qualified agent ids. review/unified-reviewer is the packaged default.
   # Add a project-specific agent under .drs/agents/review/<name>/agent.md as needed.
@@ -125,6 +129,13 @@ review:
   }
 
   yaml += `
+  # Optional Jev evaluator settings. Do not write API keys here; set JEV_API_KEY in the environment.
+  # jev:
+  #   timeoutMs: 30000
+  #   maxRetries: 2
+  #   contextWindow: 32768
+  #   failurePolicy: fail
+
   # Files to ignore during review
   ignorePatterns:
     - "*.test.ts"

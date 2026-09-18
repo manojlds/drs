@@ -10,6 +10,35 @@ import {
 } from './comment-formatter.js';
 import type { ChangeSummary } from './change-summary.js';
 import type { ReviewUsageSummary } from './review-usage.js';
+import { metricKeys, type JevEvaluation } from './jev/types.js';
+
+const JEV_EVALUATION = {
+  model: 'jev-latest',
+  metrics: Object.fromEntries(
+    metricKeys.map((metric) => [
+      metric,
+      {
+        applicable: true,
+        score: metric === 'correctness' ? 7.5 : 7,
+        confidence: 0.8,
+        summary: `${metric} signal.`,
+      },
+    ])
+  ),
+  priorities: [
+    { metric: 'correctness', severity: 'low', reason: 'Boundary checks need attention.' },
+  ],
+  comparison: [
+    {
+      metric: 'correctness',
+      previousScore: 6.5,
+      currentScore: 7.5,
+      delta: 1,
+      direction: 'improved',
+    },
+  ],
+  usage: { inputTokens: 10, outputTokens: 5 },
+} as unknown as JevEvaluation;
 
 describe('comment-formatter', () => {
   describe('formatIssueComment', () => {
@@ -200,6 +229,88 @@ describe('comment-formatter', () => {
       expect(formatted).toContain('Total Issues**: 0');
       expect(formatted).toContain('✅ **No issues found!**');
       expect(formatted).toContain('DRS');
+    });
+
+    it('renders truthful Jev-only output without claiming the code looks good', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { mode: 'jev', evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } } }
+      );
+
+      expect(formatted).toContain('Jev quality signals');
+      expect(formatted).toContain('Correctness');
+      expect(formatted).toContain('Observability');
+      expect(formatted).toContain('7.5');
+      expect(formatted).toContain('Boundary checks need attention');
+      expect(formatted).toContain('6.5 -> 7.5');
+      expect(formatted).toContain('no file-level issue-producing reviewer ran');
+      expect(formatted).not.toContain('The code looks good');
+    });
+
+    it('does not claim Jev produced signals when no files remained to evaluate', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 0,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { mode: 'jev' }
+      );
+
+      expect(formatted).toContain('No files remained after filtering');
+      expect(formatted).not.toContain('produced scalar quality signals');
+      expect(formatted).not.toContain('The code looks good');
+    });
+
+    it('renders failed optional Jev status without raw upstream details', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: {
+            jev: { status: 'failed', error: { code: 'rate_limit', message: 'Try again shortly.' } },
+          },
+        }
+      );
+
+      expect(formatted).toContain('Jev quality signals');
+      expect(formatted).toContain('rate_limit');
+      expect(formatted).toContain('Try again shortly');
     });
 
     it('should format summary with issues', () => {

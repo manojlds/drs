@@ -6,6 +6,7 @@ import {
   type ReviewIssue,
 } from './comment-formatter.js';
 import type { ReviewUsageSummary } from './review-usage.js';
+import { metricKeys, type JevEvaluation, type MetricKey } from './jev/types.js';
 import {
   createIssueFingerprint,
   createIssueStableSignature,
@@ -51,6 +52,8 @@ export interface ReviewArtifactPayload {
   baseBranch?: string;
   headBranch?: string;
   summary: ReviewResult['summary'];
+  mode?: ReviewResult['mode'];
+  evaluations?: ReviewResult['evaluations'];
   findings: ReviewFinding[];
   usage?: ReviewUsageSummary;
   metadata?: {
@@ -117,6 +120,7 @@ const FINDING_SOURCES = new Set<ReviewFindingSource>(['agent', 'manual', 'extern
 const REVIEW_ID_PATTERN = /^rev_[0-9]+_[a-z0-9]+$/;
 const MAX_FINDINGS = 1000;
 const MAX_ISSUE_TEXT_LENGTH = 20_000;
+const JEV_PRIORITY_SEVERITIES = new Set(['low', 'medium', 'high']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -214,6 +218,214 @@ function validateReviewUsage(value: unknown): ReviewUsageSummary | undefined {
     }
   }
   return value as unknown as ReviewUsageSummary;
+}
+
+function assertOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  field: string
+): void {
+  const allowedKeys = new Set(allowed);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    throw new Error(`Review artifact ${field} contains unsupported fields.`);
+  }
+}
+
+function validateStringArray(value: unknown, field: string): void {
+  if (
+    value !== undefined &&
+    (!Array.isArray(value) ||
+      value.length > metricKeys.length ||
+      value.some((entry) => typeof entry !== 'string' || entry.length === 0 || entry.length > 2000))
+  ) {
+    throw new Error(`Review artifact ${field} is invalid.`);
+  }
+}
+
+function validateJevEvaluation(value: unknown): JevEvaluation {
+  if (!isRecord(value)) {
+    throw new Error('Review artifact Jev evaluation is invalid.');
+  }
+  assertOnlyKeys(
+    value,
+    ['model', 'metrics', 'priorities', 'usage', 'improvements', 'regressions', 'comparison'],
+    'Jev evaluation'
+  );
+  requireString(value.model, 'evaluations.jev.evaluation.model', 200);
+  if (!isRecord(value.metrics)) {
+    throw new Error('Review artifact Jev metrics are invalid.');
+  }
+  const metrics = value.metrics;
+  const metricKeySet = new Set<string>(metricKeys);
+  if (
+    Object.keys(metrics).length !== metricKeys.length ||
+    Object.keys(metrics).some((key) => !metricKeySet.has(key))
+  ) {
+    throw new Error('Review artifact Jev metrics must contain exactly the supported metrics.');
+  }
+  for (const key of metricKeys) {
+    const metric = metrics[key];
+    if (!isRecord(metric) || typeof metric.applicable !== 'boolean') {
+      throw new Error(`Review artifact Jev metric ${key} is invalid.`);
+    }
+    if (!metric.applicable) {
+      assertOnlyKeys(metric, ['applicable'], `Jev metric ${key}`);
+      continue;
+    }
+    assertOnlyKeys(
+      metric,
+      ['applicable', 'score', 'confidence', 'summary', 'issues'],
+      `Jev metric ${key}`
+    );
+    const score = requireNonNegativeNumber(metric.score, `evaluations.jev.metrics.${key}.score`);
+    const confidence = requireNonNegativeNumber(
+      metric.confidence,
+      `evaluations.jev.metrics.${key}.confidence`
+    );
+    requireString(metric.summary, `evaluations.jev.metrics.${key}.summary`, 2000);
+    if (score < 1 || score > 10 || confidence > 1) {
+      throw new Error(`Review artifact Jev metric ${key} is out of range.`);
+    }
+    if (metric.issues !== undefined) {
+      if (!Array.isArray(metric.issues) || metric.issues.length > 20) {
+        throw new Error(`Review artifact Jev metric ${key} issues are invalid.`);
+      }
+      for (const [index, issue] of metric.issues.entries()) {
+        if (!isRecord(issue)) {
+          throw new Error(`Review artifact Jev metric ${key} issue ${index + 1} is invalid.`);
+        }
+        assertOnlyKeys(issue, ['severity', 'description', 'suggestion'], `Jev metric ${key} issue`);
+        if (!JEV_PRIORITY_SEVERITIES.has(String(issue.severity))) {
+          throw new Error(
+            `Review artifact Jev metric ${key} issue ${index + 1} has invalid severity.`
+          );
+        }
+        requireString(
+          issue.description,
+          `evaluations.jev.metrics.${key}.issues.${index + 1}.description`,
+          2000
+        );
+        if (issue.suggestion !== undefined) {
+          requireString(
+            issue.suggestion,
+            `evaluations.jev.metrics.${key}.issues.${index + 1}.suggestion`,
+            2000
+          );
+        }
+      }
+    }
+  }
+  if (!Array.isArray(value.priorities) || value.priorities.length > 5) {
+    throw new Error('Review artifact Jev priorities are invalid.');
+  }
+  const priorityMetrics = new Set<string>();
+  for (const [index, priority] of value.priorities.entries()) {
+    if (!isRecord(priority) || !metricKeys.includes(priority.metric as MetricKey)) {
+      throw new Error(`Review artifact Jev priority ${index + 1} is invalid.`);
+    }
+    assertOnlyKeys(priority, ['metric', 'severity', 'reason'], `Jev priority ${index + 1}`);
+    if (priorityMetrics.has(String(priority.metric))) {
+      throw new Error(`Review artifact Jev priority ${index + 1} duplicates a metric.`);
+    }
+    priorityMetrics.add(String(priority.metric));
+    if (!JEV_PRIORITY_SEVERITIES.has(String(priority.severity))) {
+      throw new Error(`Review artifact Jev priority ${index + 1} has invalid severity.`);
+    }
+    requireString(priority.reason, `evaluations.jev.priorities.${index + 1}.reason`, 2000);
+  }
+  if (!isRecord(value.usage)) {
+    throw new Error('Review artifact Jev usage is invalid.');
+  }
+  assertOnlyKeys(value.usage, ['inputTokens', 'outputTokens'], 'Jev usage');
+  const inputTokens = requireNonNegativeNumber(
+    value.usage.inputTokens,
+    'evaluations.jev.usage.inputTokens'
+  );
+  const outputTokens = requireNonNegativeNumber(
+    value.usage.outputTokens,
+    'evaluations.jev.usage.outputTokens'
+  );
+  if (!Number.isInteger(inputTokens) || !Number.isInteger(outputTokens)) {
+    throw new Error('Review artifact Jev usage token counts must be integers.');
+  }
+  validateStringArray(value.improvements, 'Jev improvements');
+  validateStringArray(value.regressions, 'Jev regressions');
+  if (value.comparison !== undefined) {
+    if (!Array.isArray(value.comparison) || value.comparison.length > metricKeys.length) {
+      throw new Error('Review artifact Jev comparison is invalid.');
+    }
+    const comparisonMetrics = new Set<string>();
+    for (const [index, entry] of value.comparison.entries()) {
+      if (!isRecord(entry) || !metricKeys.includes(entry.metric as MetricKey)) {
+        throw new Error(`Review artifact Jev comparison ${index + 1} is invalid.`);
+      }
+      assertOnlyKeys(
+        entry,
+        ['metric', 'previousScore', 'currentScore', 'delta', 'direction'],
+        `Jev comparison ${index + 1}`
+      );
+      if (comparisonMetrics.has(String(entry.metric))) {
+        throw new Error(`Review artifact Jev comparison ${index + 1} duplicates a metric.`);
+      }
+      comparisonMetrics.add(String(entry.metric));
+      const previousScore = requireNonNegativeNumber(
+        entry.previousScore,
+        `evaluations.jev.comparison.${index + 1}.previousScore`
+      );
+      const currentScore = requireNonNegativeNumber(
+        entry.currentScore,
+        `evaluations.jev.comparison.${index + 1}.currentScore`
+      );
+      if (
+        previousScore < 1 ||
+        previousScore > 10 ||
+        currentScore < 1 ||
+        currentScore > 10 ||
+        typeof entry.delta !== 'number' ||
+        !Number.isFinite(entry.delta)
+      ) {
+        throw new Error(`Review artifact Jev comparison ${index + 1} is out of range.`);
+      }
+      const expectedDelta = Math.round((currentScore - previousScore) * 10) / 10;
+      const expectedDirection =
+        expectedDelta >= 0.75 ? 'improved' : expectedDelta <= -0.75 ? 'regressed' : 'unchanged';
+      if (entry.delta !== expectedDelta || entry.direction !== expectedDirection) {
+        throw new Error(`Review artifact Jev comparison ${index + 1} is inconsistent.`);
+      }
+    }
+  }
+  return value as unknown as JevEvaluation;
+}
+
+function validateEvaluations(value: unknown): ReviewResult['evaluations'] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    throw new Error('Review artifact evaluations are invalid.');
+  }
+  assertOnlyKeys(value, ['jev'], 'evaluations');
+  const jev = value.jev;
+  if (jev === undefined) return {};
+  if (!isRecord(jev) || (jev.status !== 'completed' && jev.status !== 'failed')) {
+    throw new Error('Review artifact Jev evaluation status is invalid.');
+  }
+  if (jev.status === 'completed') {
+    assertOnlyKeys(jev, ['status', 'evaluation'], 'completed Jev evaluation');
+    return { jev: { status: 'completed', evaluation: validateJevEvaluation(jev.evaluation) } };
+  }
+  assertOnlyKeys(jev, ['status', 'error'], 'failed Jev evaluation');
+  if (!isRecord(jev.error)) {
+    throw new Error('Review artifact Jev failure is invalid.');
+  }
+  assertOnlyKeys(jev.error, ['code', 'message'], 'Jev failure');
+  return {
+    jev: {
+      status: 'failed',
+      error: {
+        code: requireString(jev.error.code, 'evaluations.jev.error.code', 100),
+        message: requireString(jev.error.message, 'evaluations.jev.error.message', 2000),
+      },
+    },
+  };
 }
 
 export function reviewArtifactToReviewResult(
@@ -336,11 +548,24 @@ export function reviewArtifactToReviewResult(
     throw new Error('Review artifact summary does not match its findings.');
   }
 
+  if (
+    payload.mode !== undefined &&
+    payload.mode !== 'agent' &&
+    payload.mode !== 'jev' &&
+    payload.mode !== 'combined'
+  ) {
+    throw new Error('Review artifact mode is invalid.');
+  }
+
   return {
     issues,
     summary: expectedSummary,
     filesReviewed,
     usage: validateReviewUsage(payload.usage),
+    ...(payload.mode ? { mode: payload.mode } : {}),
+    ...(payload.evaluations !== undefined
+      ? { evaluations: validateEvaluations(payload.evaluations) }
+      : {}),
   };
 }
 
@@ -439,6 +664,8 @@ export function createReviewArtifactPayload(
     baseBranch: pullRequest.targetBranch,
     headBranch: pullRequest.sourceBranch,
     summary: review.summary,
+    ...(review.mode ? { mode: review.mode } : {}),
+    ...(review.evaluations ? { evaluations: review.evaluations } : {}),
     findings,
     usage: review.usage,
     metadata: {

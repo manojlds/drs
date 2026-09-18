@@ -20,6 +20,8 @@ describe('DRS project onboarding smoke', () => {
       expect(initialized.initialized).toBe(true);
       expect(initialized.issues).toEqual([]);
       const config = readFileSync(join(repo, '.drs', 'drs.config.yaml'), 'utf-8');
+      expect(config).toContain('  mode: agent');
+      expect(config).toContain('  # jev:');
       expect(config).toContain('  agent: review/unified-reviewer');
       expect(config).not.toContain('  agents:');
     } finally {

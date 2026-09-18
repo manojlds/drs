@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { formatReviewJson, writeReviewJson, printReviewJson } from './json-output.js';
 import type { ReviewIssue, ReviewSummary } from './comment-formatter.js';
+import type { JevEvaluation } from './jev/types.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────
 
@@ -35,6 +36,15 @@ const ISSUES: ReviewIssue[] = [
     agent: 'quality',
   },
 ];
+
+const JEV_EVALUATION = {
+  model: 'jev-latest',
+  metrics: {
+    correctness: { applicable: true, score: 7.5, confidence: 0.8, summary: 'Correctness signal.' },
+  },
+  priorities: [{ metric: 'correctness', severity: 'low', reason: 'Boundary checks.' }],
+  usage: { inputTokens: 10, outputTokens: 5 },
+} as unknown as JevEvaluation;
 
 // ── formatReviewJson ─────────────────────────────────────────────
 
@@ -75,6 +85,23 @@ describe('formatReviewJson', () => {
     const result = formatReviewJson(SUMMARY, ISSUES, undefined, usage);
 
     expect(result.usage).toEqual(usage);
+  });
+
+  it('omits mode and evaluations by default but includes them when Jev participates', () => {
+    const legacy = formatReviewJson(SUMMARY, ISSUES);
+    expect(legacy).not.toHaveProperty('mode');
+    expect(legacy).not.toHaveProperty('evaluations');
+
+    const withJev = formatReviewJson(SUMMARY, [], undefined, undefined, {
+      mode: 'jev',
+      evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+    });
+
+    expect(withJev).toMatchObject({
+      mode: 'jev',
+      issues: [],
+      evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+    });
   });
 
   it('handles empty issues array', () => {

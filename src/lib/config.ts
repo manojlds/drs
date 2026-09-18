@@ -177,6 +177,17 @@ export interface AgentsConfig {
  */
 export type ModelOverrides = Record<string, string>;
 
+export type ReviewMode = 'agent' | 'jev' | 'combined';
+export type ReviewModeOverride = ReviewMode | 'configured';
+export type JevFailurePolicy = 'fail' | 'continue-agent';
+
+export interface JevReviewConfig {
+  timeoutMs: number;
+  maxRetries: number;
+  contextWindow: number;
+  failurePolicy: JevFailurePolicy;
+}
+
 /**
  * Token pricing in USD per 1M tokens.
  */
@@ -333,7 +344,9 @@ export interface DRSConfig {
 
   // Review behavior
   review: {
+    mode?: ReviewMode;
     agent: string | AgentConfig;
+    jev?: Partial<JevReviewConfig>;
     ignorePatterns: string[];
     includePatterns?: string[];
     unified?: {
@@ -405,7 +418,14 @@ const DEFAULT_CONFIG: DRSConfig = {
     token: process.env.GITHUB_TOKEN ?? '',
   },
   review: {
+    mode: 'agent',
     agent: 'review/unified-reviewer',
+    jev: {
+      timeoutMs: 30000,
+      maxRetries: 2,
+      contextWindow: 32768,
+      failurePolicy: 'fail',
+    },
     ignorePatterns: [
       '*.test.ts',
       '*.spec.ts',
@@ -438,6 +458,94 @@ const DEFAULT_CONFIG: DRSConfig = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const REVIEW_MODES: ReadonlySet<string> = new Set(['agent', 'jev', 'combined']);
+const REVIEW_MODE_OVERRIDES: ReadonlySet<string> = new Set([
+  'agent',
+  'jev',
+  'combined',
+  'configured',
+]);
+
+function parseReviewMode(value: unknown, fieldName: string): ReviewMode {
+  if (typeof value !== 'string' || !REVIEW_MODES.has(value)) {
+    throw new Error(`${fieldName} must be one of: agent, jev, combined.`);
+  }
+  return value as ReviewMode;
+}
+
+function parseReviewModeOverride(value: unknown, fieldName: string): ReviewModeOverride {
+  if (typeof value !== 'string' || !REVIEW_MODE_OVERRIDES.has(value)) {
+    throw new Error(`${fieldName} must be one of: agent, jev, combined, configured.`);
+  }
+  return value as ReviewModeOverride;
+}
+
+function validatePositiveInteger(value: unknown, fieldName: string): void {
+  if (
+    value !== undefined &&
+    (!Number.isInteger(value) || typeof value !== 'number' || value <= 0)
+  ) {
+    throw new Error(`${fieldName} must be a positive integer.`);
+  }
+}
+
+function validateNonNegativeInteger(value: unknown, fieldName: string): void {
+  if (value !== undefined && (!Number.isInteger(value) || typeof value !== 'number' || value < 0)) {
+    throw new Error(`${fieldName} must be a non-negative integer.`);
+  }
+}
+
+function validateReviewConfig(config: DRSConfig): void {
+  config.review.mode = parseReviewMode(config.review.mode ?? 'agent', 'review.mode');
+
+  if (config.review.jev !== undefined) {
+    const allowedJevKeys = new Set(['timeoutMs', 'maxRetries', 'contextWindow', 'failurePolicy']);
+    for (const key of Object.keys(config.review.jev)) {
+      if (!allowedJevKeys.has(key)) {
+        throw new Error(`review.jev.${key} is not a supported setting.`);
+      }
+    }
+    validatePositiveInteger(config.review.jev.timeoutMs, 'review.jev.timeoutMs');
+    validateNonNegativeInteger(config.review.jev.maxRetries, 'review.jev.maxRetries');
+    validatePositiveInteger(config.review.jev.contextWindow, 'review.jev.contextWindow');
+    const failurePolicy = config.review.jev.failurePolicy;
+    if (
+      failurePolicy !== undefined &&
+      failurePolicy !== 'fail' &&
+      failurePolicy !== 'continue-agent'
+    ) {
+      throw new Error('review.jev.failurePolicy must be one of: fail, continue-agent.');
+    }
+    if (failurePolicy === 'continue-agent' && config.review.mode !== 'combined') {
+      throw new Error('review.jev.failurePolicy continue-agent requires combined mode.');
+    }
+  }
+}
+
+export function resolveReviewMode(config: DRSConfig, override?: unknown): ReviewMode {
+  if (override === undefined || override === 'configured') {
+    return parseReviewMode(config.review.mode ?? 'agent', 'review.mode');
+  }
+  return parseReviewModeOverride(override, 'review mode override') as ReviewMode;
+}
+
+export function getJevReviewConfig(config: DRSConfig): JevReviewConfig {
+  const merged = {
+    timeoutMs: 30000,
+    maxRetries: 2,
+    contextWindow: 32768,
+    failurePolicy: 'fail' as JevFailurePolicy,
+    ...(config.review.jev ?? {}),
+  };
+  validatePositiveInteger(merged.timeoutMs, 'review.jev.timeoutMs');
+  validateNonNegativeInteger(merged.maxRetries, 'review.jev.maxRetries');
+  validatePositiveInteger(merged.contextWindow, 'review.jev.contextWindow');
+  if (merged.failurePolicy !== 'fail' && merged.failurePolicy !== 'continue-agent') {
+    throw new Error('review.jev.failurePolicy must be one of: fail, continue-agent.');
+  }
+  return merged;
 }
 
 function isWorkflowFileName(fileName: string): boolean {
@@ -781,6 +889,9 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
     console.warn('REVIEW_AGENTS is deprecated; use DRS_REVIEW_AGENT.');
     config.review.agent = agents[0];
   }
+  if (process.env.DRS_REVIEW_MODE !== undefined) {
+    config.review.mode = parseReviewMode(process.env.DRS_REVIEW_MODE, 'DRS_REVIEW_MODE');
+  }
   const defaultModelEnv = getDefaultModelEnv();
   if (defaultModelEnv) {
     config.agents.default = mergeSection(config.agents.default, {
@@ -804,20 +915,13 @@ export function loadConfig(projectPath?: string, overrides?: Partial<DRSConfig>)
   if (process.env.REVIEW_SKIP_BRANCH_CHECK === 'true') {
     config.review.skipBranchCheck = true;
   }
-  // Validate required fields
-  if (!getDefaultModel(config)) {
-    throw new Error(
-      'Default model is required. Set agents.default.model in .drs/drs.config.yaml or DRS_DEFAULT_MODEL environment variable.\n' +
-        'Run "drs init" to configure your project.'
-    );
-  }
-
   // Apply CLI overrides
   if (overrides) {
     config = mergeConfig(config, overrides);
   }
 
   config = normalizeRuntimeConfig(config);
+  validateReviewConfig(config);
   getReviewAgentId(config);
   return config;
 }
@@ -1026,8 +1130,9 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
   }
 
   getReviewAgentId(config);
+  validateReviewConfig(config);
 
-  if (!getDefaultModel(config)) {
+  if (resolveReviewMode(config) !== 'jev' && !getDefaultModel(config)) {
     throw new Error(
       'Default model is required. Run "drs init" to configure agents.default.model or set DRS_DEFAULT_MODEL environment variable.'
     );

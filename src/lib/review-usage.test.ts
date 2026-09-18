@@ -6,6 +6,7 @@ import {
   applyToolCall,
   applyUsageMessage,
   createAgentUsageSummary,
+  createEvaluatorUsageSummary,
   createEmptyUsageSummary,
   formatModelIdentifier,
 } from './review-usage.js';
@@ -107,5 +108,29 @@ describe('review-usage', () => {
     expect(formatModelIdentifier('opencode', 'glm-5-free')).toBe('opencode/glm-5-free');
     expect(formatModelIdentifier(undefined, 'gpt-4o')).toBe('gpt-4o');
     expect(formatModelIdentifier(undefined, undefined)).toBeUndefined();
+  });
+
+  it('records Jev as an evaluator without tool or skill fields', () => {
+    const usage = createEvaluatorUsageSummary('evaluator/jev', {
+      inputTokens: 123,
+      outputTokens: 45,
+      model: 'jev-latest',
+      success: true,
+    });
+
+    expect(usage).toEqual({
+      agentType: 'evaluator/jev',
+      model: 'jev-latest',
+      success: true,
+      turns: 1,
+      usage: {
+        input: 123,
+        output: 45,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 168,
+        cost: 0,
+      },
+    });
   });
 });

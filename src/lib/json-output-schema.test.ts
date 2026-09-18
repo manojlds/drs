@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Ajv from 'ajv';
 import { describeOutputSchema, reviewOutputSchema } from './json-output-schema.js';
+import { metricKeys } from './jev/types.js';
 
 const ajv = new Ajv({ allErrors: true });
 const validateDescribe = ajv.compile(describeOutputSchema);
@@ -86,6 +87,103 @@ describe('json-output schemas', () => {
     const isValid = validateReview(payload);
     expect(isValid).toBe(true);
     expect(validateReview.errors).toBeNull();
+  });
+
+  it('validates review output with a Jev scorecard and no findings', () => {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      mode: 'jev',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      issues: [],
+      evaluations: {
+        jev: {
+          status: 'completed',
+          evaluation: {
+            model: 'jev-latest',
+            metrics: Object.fromEntries(
+              metricKeys.map((metric) => [
+                metric,
+                metric === 'security'
+                  ? { applicable: false }
+                  : {
+                      applicable: true,
+                      score: 8,
+                      confidence: 0.9,
+                      summary: `${metric} is strong.`,
+                    },
+              ])
+            ),
+            priorities: [{ metric: 'correctness', severity: 'low', reason: 'Boundary behavior.' }],
+            usage: { inputTokens: 100, outputTokens: 20 },
+          },
+        },
+      },
+    };
+
+    expect(validateReview(payload)).toBe(true);
+    expect(validateReview.errors).toBeNull();
+  });
+
+  it('rejects incomplete, extra, and internally inconsistent Jev metrics', () => {
+    const validMetrics = Object.fromEntries(
+      metricKeys.map((metric) => [
+        metric,
+        { applicable: true, score: 8, confidence: 0.9, summary: `${metric} is strong.` },
+      ])
+    );
+    const base = {
+      timestamp: new Date().toISOString(),
+      mode: 'jev',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      issues: [],
+      evaluations: {
+        jev: {
+          status: 'completed',
+          evaluation: {
+            model: 'jev-latest',
+            metrics: validMetrics,
+            priorities: [],
+            usage: { inputTokens: 100, outputTokens: 20 },
+          },
+        },
+      },
+    };
+
+    const missing = structuredClone(base);
+    delete missing.evaluations.jev.evaluation.metrics.correctness;
+    expect(validateReview(missing)).toBe(false);
+
+    const extra = structuredClone(base);
+    extra.evaluations.jev.evaluation.metrics.unknownMetric = {
+      applicable: true,
+      score: 8,
+      confidence: 0.9,
+      summary: 'Unknown.',
+    };
+    expect(validateReview(extra)).toBe(false);
+
+    const inconsistent = structuredClone(base);
+    inconsistent.evaluations.jev.evaluation.metrics.security = {
+      applicable: false,
+      score: 8,
+      confidence: 0.9,
+      summary: 'Must be absent.',
+    };
+    expect(validateReview(inconsistent)).toBe(false);
+
+    const outOfRange = structuredClone(base);
+    outOfRange.evaluations.jev.evaluation.metrics.correctness.score = 0;
+    expect(validateReview(outOfRange)).toBe(false);
   });
 
   it('rejects review output with missing summary', () => {

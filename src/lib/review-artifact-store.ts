@@ -84,6 +84,8 @@ export function reviewArtifactToJsonOutput(
   return {
     timestamp: artifact.reviewedAt,
     summary: artifact.summary,
+    ...(artifact.mode ? { mode: artifact.mode } : {}),
+    ...(artifact.evaluations ? { evaluations: artifact.evaluations } : {}),
     issues: artifact.findings.map((finding) => ({
       ...finding.issue,
       findingId: finding.id,

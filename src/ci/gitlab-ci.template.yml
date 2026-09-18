@@ -11,7 +11,7 @@
     - merge_requests
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input describe=true --input post=true
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input reviewMode=agent --input describe=true --input post=true
     # For GitLab Code Quality artifacts, use:
     # - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input codeQuality=true
   variables:
@@ -39,6 +39,18 @@
   #     codequality: gl-code-quality-report.json
   #   when: always
   #   expire_in: 1 week
+
+# Optional Jev-enabled trusted generation template. JEV_API_KEY must be a
+# masked/protected GitLab CI/CD variable. Apply protected environment/branch
+# rules so this job never executes untrusted merge-request code with the key.
+# Posting-only jobs should consume the canonical artifact without this secret.
+.drs_review_jev:
+  extends: .drs_review
+  script:
+    - npm install -g @diff-review-system/drs
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input reviewMode=combined --input describe=true --input post=true
+  variables:
+    JEV_API_KEY: "${JEV_API_KEY}"
 
 # Full review (runs in review stage)
 ai_review_full:

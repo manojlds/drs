@@ -13,7 +13,9 @@ import {
   getDescriberModelOverride,
   getReviewAgentId,
   loadWorkflowSourceInfo,
+  resolveReviewMode,
   resolveAgentRunConfig,
+  type ReviewModeOverride,
   type WorkflowSource,
 } from '../lib/config.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
@@ -3003,6 +3005,9 @@ async function runPostReviewCommentsWorkflowNode(
               target.prNumber,
               assertCurrentHead
             )
+        : undefined,
+      reviewResult.evaluations || reviewResult.mode
+        ? { mode: reviewResult.mode, evaluations: reviewResult.evaluations }
         : undefined
     );
   });
@@ -3431,6 +3436,15 @@ async function runReviewWorkflowNode(
       ? (reviewArtifactEnvelope as { path?: string }).path
       : undefined;
   const severity = getStringActionOption(node, 'severity', context)?.toUpperCase();
+  const modeOverride = getStringActionOption(node, 'mode', context) as
+    | ReviewModeOverride
+    | undefined;
+  const effectiveMode = resolveReviewMode(config, modeOverride);
+  if (reviewArtifact && effectiveMode === 'jev') {
+    throw new Error(
+      `Workflow review node "${nodeId}" cannot verify existing DRS findings in Jev-only mode. Use agent or combined mode.`
+    );
+  }
   const traceCollector = executionContext.traceCollector;
   const sourceForReview: ReviewSource = reviewArtifact
     ? {
@@ -3441,6 +3455,7 @@ async function runReviewWorkflowNode(
             artifact: {
               reviewId: reviewArtifact.reviewId,
               findings: reviewArtifact.findings,
+              evaluations: reviewArtifact.evaluations,
             },
             artifactPath: reviewArtifactPath,
             severity,
@@ -3476,13 +3491,18 @@ async function runReviewWorkflowNode(
         debug: options.debug,
         thinkingLevel: options.thinkingLevel,
       };
-      if (!node.permissions) {
+      if (!node.permissions && modeOverride === undefined) {
         return await executeReview(config, reviewSource);
       }
       return await executeReview(config, reviewSource, {
-        permissions: renderAgentPermissions(node.permissions, (value) =>
-          renderTemplate(value, context)
-        ),
+        ...(modeOverride !== undefined ? { mode: effectiveMode } : {}),
+        ...(node.permissions
+          ? {
+              permissions: renderAgentPermissions(node.permissions, (value) =>
+                renderTemplate(value, context)
+              ),
+            }
+          : {}),
       });
     } finally {
       if (options.jsonOutput) {

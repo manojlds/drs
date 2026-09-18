@@ -33,6 +33,25 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
+## Optional Jev mode
+
+For a trusted same-repository job, run Jev-only or combined evaluation by passing an explicit
+workflow input and adding the repository secret only to that generation step:
+
+```yaml
+- run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input reviewMode=combined
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+```
+
+Jev sends focused diff/task/context data to TypeSafe's remote API. Do not provide
+`JEV_API_KEY` to an untrusted fork checkout, a job that executes PR-controlled code, or a
+posting-only job. In a `pull_request_target` design, select Jev mode from trusted repository
+configuration or variables—not from PR-controlled files—and retain the split trusted-generation
+and deterministic-posting architecture. See [Jev quality evaluation](JEV_INTEGRATION.md).
+
 ## Runtime Mode
 
 DRS uses Pi in-process runtime only. No runtime endpoint environment variables are required.
@@ -54,6 +73,9 @@ Set one provider API key:
 - `OPENAI_API_KEY`
 - `ZHIPU_API_KEY`
 - or another supported provider key
+
+For `jev` or `combined` mode, also set `JEV_API_KEY`. It is not needed in the default `agent`
+mode.
 
 ## Troubleshooting
 

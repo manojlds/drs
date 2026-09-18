@@ -28,6 +28,11 @@ inputs:
     type: boolean
     default: false
     description: Post DRS review comments to the PR
+  reviewMode:
+    type: enum
+    values: [configured, agent, jev, combined]
+    default: configured
+    description: Review evaluator mode
   requireCompleteDiff:
     type: boolean
     default: false
@@ -104,6 +109,7 @@ nodes:
       - change
     with:
       source: change
+      mode: '{{inputs.reviewMode}}'
     permissions:
       filesystem:
         read:

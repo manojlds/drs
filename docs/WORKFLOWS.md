@@ -13,6 +13,8 @@ drs workflow run release-notes --json -o .drs/workflow-result.json
 # Built-in local review workflows
 drs workflow run local-review
 drs workflow run local-review --input staged=true --json -o .drs/local-review.json
+drs workflow run local-jev-review
+drs workflow run local-review --input reviewMode=combined
 
 # Built-in local maintenance workflows
 drs workflow run local-changelog-update
@@ -28,14 +30,31 @@ drs workflow run local-changelog-review
 
 # Built-in platform review workflows
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-jev-review --input owner=octocat --input repo=hello-world --input pr=456
+drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input reviewMode=combined
 drs workflow run github-pr-review --input owner=octocat --input repo=hello-world --input pr=456 --input describe=true --input post=true
 drs workflow run github-pr-show-changes --input owner=octocat --input repo=hello-world --input pr=456
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-jev-review --input project=group/repo --input mr=123
+drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input reviewMode=combined
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true
 drs workflow run gitlab-mr-show-changes --input project=group/repo --input mr=123
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input codeQuality=true
 drs workflow run gitlab-mr-review --input project=group/repo --input mr=123 --input describe=true --input post=true --input codeQuality=true
 ```
+
+### Optional Jev evaluator
+
+Review workflows accept `reviewMode=configured|agent|jev|combined`. `configured` (the default)
+uses `review.mode` from `.drs/drs.config.yaml`; when no mode is configured, DRS preserves its
+existing `agent` behavior. Jev-containing modes require `JEV_API_KEY` and send a focused,
+compressed review state to TypeSafe's remote API.
+
+Jev-only workflows produce a scalar quality scorecard and a canonical review artifact. They do
+not create file-level findings, inline comments, or automated fixes. Combined mode keeps the
+normal DRS findings and appends an independent Jev scorecard. See
+[Jev quality evaluation](JEV_INTEGRATION.md) for configuration, privacy, and CI trust-boundary
+details.
 
 ## Resume Failed Workflows
 

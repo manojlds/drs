@@ -2,18 +2,109 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { loadConfig } from './config.js';
+import { getJevReviewConfig, loadConfig, resolveReviewMode } from './config.js';
 
 describe('Config', () => {
   const originalReviewAgent = process.env.DRS_REVIEW_AGENT;
   const originalReviewAgents = process.env.REVIEW_AGENTS;
+  const originalReviewMode = process.env.DRS_REVIEW_MODE;
 
   afterEach(() => {
     if (originalReviewAgent === undefined) delete process.env.DRS_REVIEW_AGENT;
     else process.env.DRS_REVIEW_AGENT = originalReviewAgent;
     if (originalReviewAgents === undefined) delete process.env.REVIEW_AGENTS;
     else process.env.REVIEW_AGENTS = originalReviewAgents;
+    if (originalReviewMode === undefined) delete process.env.DRS_REVIEW_MODE;
+    else process.env.DRS_REVIEW_MODE = originalReviewMode;
     vi.restoreAllMocks();
+  });
+
+  it('defaults review.mode to agent', () => {
+    const config = loadConfig(tmpdir());
+
+    expect(config.review.mode).toBe('agent');
+    expect(resolveReviewMode(config)).toBe('agent');
+  });
+
+  it('accepts jev review mode from project config', () => {
+    const config = loadConfig(tmpdir(), {
+      review: {
+        mode: 'jev',
+      },
+      agents: {
+        default: {},
+      },
+    } as any);
+
+    expect(config.review.mode).toBe('jev');
+    expect(resolveReviewMode(config)).toBe('jev');
+  });
+
+  it('resolves workflow mode overrides and configured sentinel', () => {
+    const config = loadConfig(tmpdir(), { review: { mode: 'combined' } } as any);
+
+    expect(resolveReviewMode(config, 'jev')).toBe('jev');
+    expect(resolveReviewMode(config, 'configured')).toBe('combined');
+  });
+
+  it('rejects unknown review modes from config and environment', () => {
+    expect(() => loadConfig(tmpdir(), { review: { mode: 'robot' } } as any)).toThrow('review.mode');
+
+    process.env.DRS_REVIEW_MODE = 'robot';
+    expect(() => loadConfig(tmpdir())).toThrow('DRS_REVIEW_MODE');
+  });
+
+  it('validates jev timeout and retry ranges', () => {
+    expect(() => loadConfig(tmpdir(), { review: { jev: { timeoutMs: 0 } } } as any)).toThrow(
+      'review.jev.timeoutMs'
+    );
+
+    expect(() => loadConfig(tmpdir(), { review: { jev: { maxRetries: -1 } } } as any)).toThrow(
+      'review.jev.maxRetries'
+    );
+  });
+
+  it('rejects unknown Jev settings so repositories cannot configure secret or endpoint fields', () => {
+    expect(() =>
+      loadConfig(tmpdir(), {
+        review: { jev: { endpoint: 'https://example.invalid' } },
+      } as any)
+    ).toThrow('review.jev.endpoint');
+
+    expect(() =>
+      loadConfig(tmpdir(), {
+        review: { jev: { apiKeyEnv: 'UNTRUSTED_REPOSITORY_KEY' } },
+      } as any)
+    ).toThrow('review.jev.apiKeyEnv');
+  });
+
+  it('allows continue-agent only when the configured review mode is combined', () => {
+    expect(() =>
+      loadConfig(tmpdir(), {
+        review: { mode: 'agent', jev: { failurePolicy: 'continue-agent' } },
+      } as any)
+    ).toThrow(/combined mode/);
+
+    expect(
+      loadConfig(tmpdir(), {
+        review: { mode: 'combined', jev: { failurePolicy: 'continue-agent' } },
+      } as any).review.jev?.failurePolicy
+    ).toBe('continue-agent');
+  });
+
+  it('allows jev-only config without an agent model', () => {
+    const config = loadConfig(tmpdir(), {
+      review: { mode: 'jev' },
+      agents: { default: { model: undefined } },
+    } as any);
+
+    expect(config.agents.default?.model).toBeUndefined();
+    expect(getJevReviewConfig(config)).toMatchObject({
+      timeoutMs: 30000,
+      maxRetries: 2,
+      contextWindow: 32768,
+      failurePolicy: 'fail',
+    });
   });
 
   it('should not overwrite the default agent when undefined is passed', () => {

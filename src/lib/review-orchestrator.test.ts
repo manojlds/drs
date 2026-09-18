@@ -7,6 +7,9 @@ import {
 } from './review-orchestrator.js';
 import type { DRSConfig } from './config.js';
 import type { AgentPermissions } from './agent-permissions.js';
+import type * as JevClientModule from './jev/client.js';
+import type * as JevReviewModule from './jev/review.js';
+import { metricKeys, type JevEvaluation } from './jev/types.js';
 
 // Mock dependencies
 vi.mock('./config.js', async () => {
@@ -29,6 +32,7 @@ vi.mock('./config.js', async () => {
     }),
     getModelOverrides: vi.fn(() => ({})),
     getUnifiedModelOverride: vi.fn(() => ({})),
+    getDefaultModel: vi.fn((config: DRSConfig) => config.agents?.default?.model),
   };
 });
 
@@ -149,8 +153,78 @@ vi.mock('./description-formatter.js', () => ({
   formatDescribeSummary: vi.fn(() => 'Mocked describe summary'),
 }));
 
+vi.mock('./jev/client.js', async () => {
+  const actual = await vi.importActual<typeof JevClientModule>('./jev/client.js');
+  return {
+    ...actual,
+    createJevClientFromEnvironment: vi.fn(() => ({
+      evaluate: vi.fn(async () => ({
+        model: 'jev-latest',
+        usage: { input_tokens: 12, output_tokens: 8 },
+        answers: Object.fromEntries(
+          (
+            [
+              'correctness',
+              'cognitiveComplexity',
+              'readability',
+              'modularity',
+              'coupling',
+              'changeability',
+              'abstractionQuality',
+              'projectStructure',
+              'duplication',
+              'maintainability',
+              'testQuality',
+              'reliability',
+              'security',
+              'consistency',
+              'documentation',
+              'performance',
+              'scalability',
+              'compatibility',
+              'observability',
+            ] as const
+          ).flatMap((key) => [
+            [`${key}_applicable`, { type: 'noul', noul: 1 }],
+            [
+              `${key}_score`,
+              { type: 'score', score: 8, confidence: 0.9, legend: {}, probabilities: {} },
+            ],
+            [
+              `${key}_weakness`,
+              {
+                type: 'choice',
+                choice: 'no_material_issue',
+                confidence: 0.9,
+                probabilities: {},
+              },
+            ],
+          ])
+        ),
+      })),
+    })),
+  };
+});
+
+vi.mock('./jev/questions.js', async () => {
+  const actual = await vi.importActual('./jev/questions.js');
+  return {
+    ...actual,
+    buildJevQuestions: vi.fn(() => []),
+  };
+});
+
+vi.mock('./jev/review.js', async () => {
+  const actual = await vi.importActual<typeof JevReviewModule>('./jev/review.js');
+  return {
+    ...actual,
+    buildJevReviewState: vi.fn(actual.buildJevReviewState),
+  };
+});
+
 describe('review-orchestrator', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -373,6 +447,198 @@ describe('review-orchestrator', () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
 
+    it('runs Jev-only review without creating a runtime or agent session', async () => {
+      const { createRuntimeClientInstance } = await import('../runtime/client.js');
+      const { runReviewPipeline } = await import('./review-core.js');
+      vi.mocked(createRuntimeClientInstance).mockClear();
+      vi.mocked(runReviewPipeline).mockClear();
+
+      const result = await executeReview(
+        {
+          ...mockConfig,
+          agents: { default: { skills: [] } },
+          review: {
+            ...mockConfig.review,
+            mode: 'jev',
+            jev: { timeoutMs: 1000, maxRetries: 0, contextWindow: 12000, failurePolicy: 'fail' },
+          },
+        },
+        {
+          name: 'Local diff',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ new code' }],
+          context: {},
+        }
+      );
+
+      expect(createRuntimeClientInstance).not.toHaveBeenCalled();
+      expect(runReviewPipeline).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        mode: 'jev',
+        issues: [],
+        filesReviewed: 1,
+        summary: { issuesFound: 0 },
+        evaluations: { jev: { status: 'completed' } },
+      });
+    });
+
+    it('runs independent agent and Jev components over the same compressed slice', async () => {
+      const { runReviewPipeline, buildBaseInstructions } = await import('./review-core.js');
+      const { buildJevReviewState } = await import('./jev/review.js');
+      const { createJevClientFromEnvironment } = await import('./jev/client.js');
+      const { prepareDiffsForAgent } = await import('./context-compression.js');
+      const compressed = [{ filename: 'src/app.ts', patch: '+ compressed code' }];
+      vi.mocked(prepareDiffsForAgent).mockReturnValueOnce({
+        mode: 'partial',
+        files: compressed,
+        stats: { changedFiles: 1, filesWithDiffs: 1, inlineFiles: 1, estimatedTokens: 4 },
+        omitted: { dueToBudget: [], generated: [] },
+      });
+
+      const result = await executeReview(
+        { ...mockConfig, review: { ...mockConfig.review, mode: 'combined' } },
+        {
+          name: 'Combined review',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ full code' }],
+          context: {},
+        }
+      );
+
+      expect(runReviewPipeline).toHaveBeenCalledTimes(1);
+      expect(createJevClientFromEnvironment).toHaveBeenCalledTimes(1);
+      expect(buildBaseInstructions).toHaveBeenCalledWith(
+        'Combined review',
+        compressed,
+        expect.any(String),
+        undefined,
+        undefined
+      );
+      expect(buildJevReviewState).toHaveBeenCalledWith(
+        expect.objectContaining({ files: compressed })
+      );
+      expect(result).toMatchObject({
+        mode: 'combined',
+        evaluations: { jev: { status: 'completed' } },
+      });
+      expect(result.issues).toHaveLength(1);
+    });
+
+    it('continues the agent only in combined mode with a sanitized Jev failure', async () => {
+      const { createJevClientFromEnvironment } = await import('./jev/client.js');
+      vi.mocked(createJevClientFromEnvironment).mockReturnValueOnce({
+        evaluate: vi.fn().mockRejectedValue(new Error('upstream body included secret-token')),
+      } as unknown as ReturnType<typeof createJevClientFromEnvironment>);
+
+      const result = await executeReview(
+        {
+          ...mockConfig,
+          review: {
+            ...mockConfig.review,
+            mode: 'combined',
+            jev: {
+              timeoutMs: 1000,
+              maxRetries: 0,
+              contextWindow: 12000,
+              failurePolicy: 'continue-agent',
+            },
+          },
+        },
+        {
+          name: 'Combined review',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ code' }],
+          context: {},
+        }
+      );
+
+      expect(result.issues).toHaveLength(1);
+      expect(result.evaluations?.jev).toEqual({
+        status: 'failed',
+        error: { code: 'api_error', message: 'Jev evaluation failed.' },
+      });
+      expect(JSON.stringify(result)).not.toContain('secret-token');
+    });
+
+    it('fails combined review when Jev fails under the default policy', async () => {
+      const { createJevClientFromEnvironment } = await import('./jev/client.js');
+      vi.mocked(createJevClientFromEnvironment).mockReturnValueOnce({
+        evaluate: vi.fn().mockRejectedValue(new Error('Jev unavailable')),
+      } as unknown as ReturnType<typeof createJevClientFromEnvironment>);
+
+      await expect(
+        executeReview(
+          { ...mockConfig, review: { ...mockConfig.review, mode: 'combined' } },
+          {
+            name: 'Combined review',
+            files: ['src/app.ts'],
+            filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ code' }],
+            context: {},
+          }
+        )
+      ).rejects.toThrow('Jev unavailable');
+    });
+
+    it('compares Jev scores only with an explicitly supplied completed prior evaluation', async () => {
+      const previous: JevEvaluation = {
+        model: 'jev-latest',
+        metrics: Object.fromEntries(
+          metricKeys.map((metric) => [
+            metric,
+            { applicable: true, score: 7, confidence: 0.8, summary: 'Previous signal.' },
+          ])
+        ) as JevEvaluation['metrics'],
+        priorities: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+
+      const result = await executeReview(
+        { ...mockConfig, review: { ...mockConfig.review, mode: 'combined' } },
+        {
+          name: 'Verification review',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ code' }],
+          context: {
+            verification: {
+              artifact: {
+                reviewId: 'rev_1_x',
+                findings: [],
+                evaluations: { jev: { status: 'completed', evaluation: previous } },
+              },
+            },
+          },
+        }
+      );
+
+      expect(result.evaluations?.jev?.status).toBe('completed');
+      if (result.evaluations?.jev?.status !== 'completed') throw new Error('Expected Jev result');
+      expect(result.evaluations.jev.evaluation.comparison).toContainEqual(
+        expect.objectContaining({
+          metric: 'correctness',
+          previousScore: 7,
+          currentScore: 9,
+          direction: 'improved',
+        })
+      );
+    });
+
+    it('requires a default model before an agent-backed review execution', async () => {
+      await expect(
+        executeReview(
+          {
+            ...mockConfig,
+            agents: { default: { skills: [] } },
+            review: { ...mockConfig.review, mode: 'agent' },
+          },
+          {
+            name: 'Local diff',
+            files: ['src/app.ts'],
+            context: {},
+          }
+        )
+      ).rejects.toThrow('Default model is required');
+    });
+
     it('should filter ignored files before executing review agents', async () => {
       const source: ReviewSource = {
         name: 'Local diff',
@@ -434,7 +700,7 @@ describe('review-orchestrator', () => {
         'Staged changes',
         expect.anything(),
         'git diff --cached -- <file>',
-        null,
+        undefined,
         undefined
       );
     });
@@ -455,7 +721,7 @@ describe('review-orchestrator', () => {
         'Unstaged changes',
         expect.anything(),
         'git diff -- <file>',
-        null,
+        undefined,
         undefined
       );
     });

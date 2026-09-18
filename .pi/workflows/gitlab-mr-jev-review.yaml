@@ -1,0 +1,55 @@
+name: gitlab-mr-jev-review
+description: Run a Jev-only quality scorecard for a GitLab merge request
+metadata:
+  kind: review
+  tags: [review, gitlab, merge-request, jev]
+  review:
+    source: gitlab-mr
+    diff: true
+    issues: false
+inputs:
+  project:
+    type: string
+    required: true
+    description: GitLab project path or id
+  mr:
+    type: number
+    required: true
+    description: Merge request IID
+  post:
+    type: boolean
+    default: false
+    description: Post a summary scorecard to the MR
+  requireCompleteDiff:
+    type: boolean
+    default: false
+    description: Fail when GitLab cannot provide a stable, complete file and patch snapshot
+output: review
+nodes:
+  change:
+    action: change-source
+    with:
+      type: gitlab-mr
+      project: '{{inputs.project}}'
+      mr: '{{inputs.mr}}'
+      requireCompleteDiff: '{{inputs.requireCompleteDiff}}'
+    output: change
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+      mode: jev
+    output: review
+
+  post-comments:
+    action: post-review-comments
+    needs:
+      - review
+    if: inputs.post == true
+    with:
+      source: change
+      review: review
+    output: postedReview

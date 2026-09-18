@@ -10,6 +10,7 @@ import type { calculateSummary } from './comment-formatter.js';
 import {
   formatSummaryComment,
   formatIssueComment,
+  type ReviewEvaluationRenderOptions,
   type ReviewIssue,
   type ReviewMetadata,
 } from './comment-formatter.js';
@@ -59,17 +60,29 @@ export async function postReviewComments(
   cursorFixLinks?: CursorFixLinkOptions,
   reviewMetadata?: ReviewMetadata,
   assertCurrentHead?: () => Promise<void>,
-  beforeLabel?: () => Promise<void>
+  beforeLabel?: () => Promise<void>,
+  evaluationOptions?: ReviewEvaluationRenderOptions
 ): Promise<void> {
-  const summaryComment = formatSummaryComment(
-    summary,
-    issues,
-    BOT_COMMENT_ID,
-    changeSummary,
-    reviewUsage,
-    cursorFixLinks,
-    reviewMetadata
-  );
+  const summaryComment = evaluationOptions
+    ? formatSummaryComment(
+        summary,
+        issues,
+        BOT_COMMENT_ID,
+        changeSummary,
+        reviewUsage,
+        cursorFixLinks,
+        reviewMetadata,
+        evaluationOptions
+      )
+    : formatSummaryComment(
+        summary,
+        issues,
+        BOT_COMMENT_ID,
+        changeSummary,
+        reviewUsage,
+        cursorFixLinks,
+        reviewMetadata
+      );
   assertPostBodyWithinLimit(summaryComment, 'Review summary');
   for (const issue of issues) {
     if (issue.severity === 'CRITICAL' || issue.severity === 'HIGH') {
