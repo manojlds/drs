@@ -153,4 +153,17 @@ describe('buildJevReviewState', () => {
     expect(repositoryContext.title).toHaveLength(300);
     expect(repositoryContext.body).toHaveLength(4000);
   });
+
+  it('includes a bounded agent-generated change summary as untrusted orientation', () => {
+    const state = buildJevReviewState({
+      label: 'PR #4',
+      files: [{ filename: 'src/a.ts', patch: '+ok' }],
+      changeSummary: `  ${'summary '.repeat(1000)}  `,
+      sourceDescription: {},
+    });
+
+    expect(state.changeSummary).toHaveLength(6000);
+    expect(state.task).toContain('agent-generated change summary');
+    expect(state.task).toContain('diff is authoritative');
+  });
 });

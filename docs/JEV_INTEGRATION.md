@@ -53,6 +53,7 @@ Jev evaluation is remote. When `jev`, `parallel`, or `combined` mode runs, DRS s
 - the review task/label;
 - filtered, context-window-compressed diff patches;
 - a bounded compression summary;
+- in combined mode, a bounded agent-generated change summary labeled as untrusted orientation, with the diff remaining authoritative;
 - allow-listed, bounded repository/change metadata such as platform, repository, title, body, and refs.
 
 DRS deliberately excludes:

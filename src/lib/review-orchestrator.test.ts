@@ -527,6 +527,7 @@ describe('review-orchestrator', () => {
     it('runs Jev before the agent and supplies bounded guidance in combined mode', async () => {
       const { runReviewPipeline } = await import('./review-core.js');
       const { createJevClientFromEnvironment } = await import('./jev/client.js');
+      const { buildJevReviewState } = await import('./jev/review.js');
       const defaultClient = vi.mocked(createJevClientFromEnvironment)();
       const response = await defaultClient.evaluate({}, []);
       response.model = 'jev-1.13.0';
@@ -556,7 +557,7 @@ describe('review-orchestrator', () => {
       const result = await executeReview(
         {
           ...mockConfig,
-          review: { ...mockConfig.review, mode: 'combined' },
+          review: { ...mockConfig.review, mode: 'combined', describe: { enabled: true } },
           pricing: { models: { 'jev-latest': { input: 0.042, output: 0 } } },
         },
         {
@@ -571,6 +572,9 @@ describe('review-orchestrator', () => {
         mode: 'combined',
         evaluations: { jev: { status: 'completed' } },
       });
+      expect(buildJevReviewState).toHaveBeenCalledWith(
+        expect.objectContaining({ changeSummary: 'Mocked describe summary' })
+      );
       const usage = result.usage!;
       expect(usage.agents).toContainEqual(
         expect.objectContaining({

@@ -388,6 +388,7 @@ export async function executeReview(
       source,
       compressionFiles: compression.files,
       compressionSummary,
+      describeSummary: mode === 'combined' ? describeSummary : undefined,
       previousEvaluation: getPreviousJevEvaluation(verificationContext),
     };
 
@@ -497,6 +498,7 @@ async function runJevReviewComponent(args: {
   source: ReviewSource;
   compressionFiles: FileWithDiff[];
   compressionSummary: string | null;
+  describeSummary?: string;
   previousEvaluation?: JevEvaluation;
 }): Promise<{
   evaluation: JevEvaluation;
@@ -511,6 +513,7 @@ async function runJevReviewComponent(args: {
     label: args.source.name,
     files: args.compressionFiles,
     compressionSummary: args.compressionSummary ?? undefined,
+    changeSummary: args.describeSummary,
     sourceDescription: args.source.context,
   });
   const evaluation = toJevEvaluation(
