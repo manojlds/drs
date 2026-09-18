@@ -24,8 +24,12 @@ review:
 A workflow review node can override the configured mode with `with.mode`. The precedence is:
 
 1. workflow `with.mode` (`agent`, `jev`, or `combined`);
-2. `review.mode` when the node uses `configured` or omits an override;
-3. the default `agent` mode.
+2. `DRS_REVIEW_MODE` (`agent`, `jev`, or `combined`) when the node uses `configured` or omits an override;
+3. `review.mode` from project configuration;
+4. the default `agent` mode.
+
+`DRS_REVIEW_MODE` is useful for trusted CI configuration that must select a mode without changing
+the repository config. A concrete workflow `with.mode` still takes precedence.
 
 `continue-agent` is valid only in `combined` mode. It preserves a successful agent review when Jev fails and records a sanitized failed-evaluator status. Jev-only evaluation always fails when Jev cannot return a valid scorecard.
 

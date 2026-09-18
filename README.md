@@ -864,6 +864,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 GITLAB_URL=https://gitlab.com
 JEV_API_KEY=xxx                     # Only for optional remote Jev evaluation
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_REVIEW_MODE=agent               # agent | jev | combined; overrides review.mode
 DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
 # Configure the reviewer in .drs/drs.config.yaml via review.agent.
 # DRS_REVIEW_AGENT overrides it; single-valued REVIEW_AGENTS is deprecated.

@@ -184,6 +184,45 @@ describe('review benchmark fixtures', () => {
     });
   });
 
+  it('pairs combined Jev calibration runs within the same requested model', () => {
+    const analysis = analyzeJevPairs([
+      {
+        caseId: 'bad-a',
+        repeat: 1,
+        model: 'provider/a',
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(4, 0.8),
+      },
+      {
+        caseId: 'fixed-a',
+        repeat: 1,
+        model: 'provider/a',
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(5, 0.8),
+      },
+      {
+        caseId: 'bad-b',
+        repeat: 1,
+        model: 'provider/b',
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(8, 0.8),
+      },
+      {
+        caseId: 'fixed-b',
+        repeat: 1,
+        model: 'provider/b',
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(9, 0.8),
+      },
+    ]);
+
+    expect(analysis[0].dimensions.correctness).toMatchObject({
+      direction: 'improved',
+      medianDelta: 1,
+      pairCount: 2,
+    });
+  });
+
   it('requires live execution and a Jev key before any Jev-containing run', async () => {
     const previous = process.env.JEV_API_KEY;
     delete process.env.JEV_API_KEY;

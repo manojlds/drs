@@ -644,6 +644,7 @@ export function adjudicationCandidates(
 export type JevPairRun = {
   caseId: string;
   repeat: number;
+  model?: string | null;
   comparison?: BenchmarkCase['comparison'];
   evaluation?: JevEvaluation;
 };
@@ -685,7 +686,9 @@ export function analyzeJevPairs(runs: JevPairRun[]) {
           if (from.comparison?.variant !== fromVariant) return [];
           const to = selected.find(
             (candidate) =>
-              candidate.comparison?.variant === toVariant && candidate.repeat === from.repeat
+              candidate.comparison?.variant === toVariant &&
+              candidate.repeat === from.repeat &&
+              candidate.model === from.model
           );
           return to
             ? [[from.evaluation!.metrics[metric], to.evaluation!.metrics[metric]] as const]
@@ -937,6 +940,7 @@ export async function runReviewBenchmark(
             jevPairRuns.push({
               caseId: id,
               repeat,
+              model: requestedModel,
               comparison: fixture.comparison,
               evaluation: jevEvaluation,
             });
