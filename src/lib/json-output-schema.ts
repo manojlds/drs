@@ -43,6 +43,49 @@ export const describeOutputSchema = {
   },
 } as const;
 
+const usageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens', 'cost'],
+  properties: {
+    input: { type: 'number', minimum: 0 },
+    output: { type: 'number', minimum: 0 },
+    cacheRead: { type: 'number', minimum: 0 },
+    cacheWrite: { type: 'number', minimum: 0 },
+    totalTokens: { type: 'number', minimum: 0 },
+    cost: { type: 'number', minimum: 0 },
+  },
+} as const;
+
+const agentUsageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['agentType', 'turns', 'usage'],
+  properties: {
+    agentType: { type: 'string', minLength: 1 },
+    model: { type: 'string', minLength: 1 },
+    success: { type: 'boolean' },
+    turns: { type: 'integer', minimum: 0 },
+    toolCalls: {
+      type: 'object',
+      additionalProperties: { type: 'integer', minimum: 0 },
+    },
+    skills: { type: 'array', items: { type: 'string', minLength: 1 } },
+    contextSources: { type: 'array', items: { type: 'string', minLength: 1 } },
+    usage: usageSummarySchema,
+  },
+} as const;
+
+const reviewUsageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['total', 'agents'],
+  properties: {
+    total: usageSummarySchema,
+    agents: { type: 'array', items: agentUsageSummarySchema },
+  },
+} as const;
+
 const jevMetricSchema = {
   oneOf: [
     {
@@ -145,6 +188,16 @@ export const reviewOutputSchema = {
   properties: {
     timestamp: { type: 'string', minLength: 1 },
     mode: { type: 'string', enum: ['agent', 'jev', 'combined'] },
+    usage: reviewUsageSummarySchema,
+    artifact: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['reviewId'],
+      properties: {
+        reviewId: { type: 'string', minLength: 1 },
+        path: { type: 'string', minLength: 1 },
+      },
+    },
     summary: {
       type: 'object',
       additionalProperties: false,
@@ -199,6 +252,23 @@ export const reviewOutputSchema = {
           solution: { type: 'string', minLength: 1 },
           references: { type: 'array', items: { type: 'string' } },
           agent: { type: 'string', minLength: 1 },
+          findingId: { type: 'string', minLength: 1 },
+          findingState: {
+            type: 'string',
+            enum: ['open', 'attempted', 'resolved'],
+          },
+          findingDisposition: {
+            type: 'string',
+            enum: [
+              'confirmed',
+              'uncertain',
+              'pre_existing',
+              'partial',
+              'still_open',
+              'regression',
+              'resolved',
+            ],
+          },
         },
       },
     },

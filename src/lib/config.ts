@@ -1131,12 +1131,6 @@ export function validateConfig(config: DRSConfig, platform?: 'gitlab' | 'github'
 
   getReviewAgentId(config);
   validateReviewConfig(config);
-
-  if (resolveReviewMode(config) !== 'jev' && !getDefaultModel(config)) {
-    throw new Error(
-      'Default model is required. Run "drs init" to configure agents.default.model or set DRS_DEFAULT_MODEL environment variable.'
-    );
-  }
 }
 
 /**

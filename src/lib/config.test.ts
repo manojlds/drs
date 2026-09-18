@@ -1,13 +1,17 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, describe, it, expect, vi } from 'vitest';
-import { getJevReviewConfig, loadConfig, resolveReviewMode } from './config.js';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { getJevReviewConfig, loadConfig, resolveReviewMode, validateConfig } from './config.js';
 
 describe('Config', () => {
   const originalReviewAgent = process.env.DRS_REVIEW_AGENT;
   const originalReviewAgents = process.env.REVIEW_AGENTS;
   const originalReviewMode = process.env.DRS_REVIEW_MODE;
+
+  beforeEach(() => {
+    delete process.env.DRS_REVIEW_MODE;
+  });
 
   afterEach(() => {
     if (originalReviewAgent === undefined) delete process.env.DRS_REVIEW_AGENT;
@@ -105,6 +109,15 @@ describe('Config', () => {
       contextWindow: 32768,
       failurePolicy: 'fail',
     });
+  });
+
+  it('does not require a default model for jev-only validation', () => {
+    const config = loadConfig(tmpdir(), {
+      review: { mode: 'jev' },
+      agents: { default: { model: undefined } },
+    } as any);
+
+    expect(() => validateConfig(config)).not.toThrow();
   });
 
   it('should not overwrite the default agent when undefined is passed', () => {
