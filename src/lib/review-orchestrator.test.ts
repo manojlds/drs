@@ -482,7 +482,7 @@ describe('review-orchestrator', () => {
       });
     });
 
-    it('runs independent agent and Jev components over the same compressed slice', async () => {
+    it('runs independent parallel agent and Jev components over the same compressed slice', async () => {
       const { runReviewPipeline, buildBaseInstructions } = await import('./review-core.js');
       const { buildJevReviewState } = await import('./jev/review.js');
       const { createJevClientFromEnvironment } = await import('./jev/client.js');
@@ -496,9 +496,9 @@ describe('review-orchestrator', () => {
       });
 
       const result = await executeReview(
-        { ...mockConfig, review: { ...mockConfig.review, mode: 'combined' } },
+        { ...mockConfig, review: { ...mockConfig.review, mode: 'parallel' } },
         {
-          name: 'Combined review',
+          name: 'Parallel review',
           files: ['src/app.ts'],
           filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ full code' }],
           context: {},
@@ -508,7 +508,7 @@ describe('review-orchestrator', () => {
       expect(runReviewPipeline).toHaveBeenCalledTimes(1);
       expect(createJevClientFromEnvironment).toHaveBeenCalledTimes(1);
       expect(buildBaseInstructions).toHaveBeenCalledWith(
-        'Combined review',
+        'Parallel review',
         compressed,
         expect.any(String),
         undefined,
@@ -518,13 +518,57 @@ describe('review-orchestrator', () => {
         expect.objectContaining({ files: compressed })
       );
       expect(result).toMatchObject({
-        mode: 'combined',
+        mode: 'parallel',
         evaluations: { jev: { status: 'completed' } },
       });
       expect(result.issues).toHaveLength(1);
     });
 
-    it('continues the agent only in combined mode with a sanitized Jev failure', async () => {
+    it('runs Jev before the agent and supplies bounded guidance in combined mode', async () => {
+      const { runReviewPipeline } = await import('./review-core.js');
+      const { createJevClientFromEnvironment } = await import('./jev/client.js');
+      const defaultClient = vi.mocked(createJevClientFromEnvironment)();
+      const response = await defaultClient.evaluate({}, []);
+      let jevFinished = false;
+      vi.mocked(createJevClientFromEnvironment).mockReturnValueOnce({
+        evaluate: vi.fn(async () => {
+          jevFinished = true;
+          return response;
+        }),
+      } as unknown as ReturnType<typeof createJevClientFromEnvironment>);
+      vi.mocked(runReviewPipeline).mockImplementationOnce(async (...args) => {
+        const additionalContext = args[5] as Record<string, unknown>;
+        expect(jevFinished).toBe(true);
+        expect(additionalContext).toMatchObject({
+          reviewGuidance: expect.stringContaining('BEGIN_JEV_GUIDANCE_JSON'),
+        });
+        expect(String(additionalContext.reviewGuidance)).toContain('"model":"jev-latest"');
+        return {
+          issues: [],
+          summary: {} as never,
+          filesReviewed: 1,
+          usage: { agents: [], total: {} as never },
+          parserDiagnostics: [],
+        } as never;
+      });
+
+      const result = await executeReview(
+        { ...mockConfig, review: { ...mockConfig.review, mode: 'combined' } },
+        {
+          name: 'Combined review',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ code' }],
+          context: {},
+        }
+      );
+
+      expect(result).toMatchObject({
+        mode: 'combined',
+        evaluations: { jev: { status: 'completed' } },
+      });
+    });
+
+    it('continues the agent in parallel mode with a sanitized Jev failure', async () => {
       const { createJevClientFromEnvironment } = await import('./jev/client.js');
       vi.mocked(createJevClientFromEnvironment).mockReturnValueOnce({
         evaluate: vi.fn().mockRejectedValue(new Error('upstream body included secret-token')),
@@ -535,7 +579,7 @@ describe('review-orchestrator', () => {
           ...mockConfig,
           review: {
             ...mockConfig.review,
-            mode: 'combined',
+            mode: 'parallel',
             jev: {
               timeoutMs: 1000,
               maxRetries: 0,

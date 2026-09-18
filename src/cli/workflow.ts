@@ -3442,7 +3442,7 @@ async function runReviewWorkflowNode(
   const effectiveMode = resolveReviewMode(config, modeOverride);
   if (reviewArtifact && effectiveMode === 'jev') {
     throw new Error(
-      `Workflow review node "${nodeId}" cannot verify existing DRS findings in Jev-only mode. Use agent or combined mode.`
+      `Workflow review node "${nodeId}" cannot verify existing DRS findings in Jev-only mode. Use agent, parallel, or combined mode.`
     );
   }
   const traceCollector = executionContext.traceCollector;

@@ -30,9 +30,9 @@ inputs:
     description: Post DRS review comments to the PR
   reviewMode:
     type: enum
-    values: [configured, agent, jev, combined]
+    values: [configured, agent, jev, parallel, combined]
     default: configured
-    description: Review evaluator mode
+    description: Agent-only, Jev-only, independent parallel, or Jev-guided combined review
   requireCompleteDiff:
     type: boolean
     default: false

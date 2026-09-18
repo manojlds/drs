@@ -169,7 +169,7 @@ describe('review benchmark fixtures', () => {
     expect(analysis).toHaveLength(1);
     expect(analysis[0]).not.toHaveProperty('overallScore');
     expect(analysis[0].dimensions.correctness).toEqual({
-      direction: 'improved',
+      direction: 'unchanged',
       medianDelta: 0.4,
       applicabilityConsistency: 1,
       confidence: 0.85,
@@ -220,6 +220,31 @@ describe('review benchmark fixtures', () => {
       direction: 'improved',
       medianDelta: 1,
       pairCount: 2,
+    });
+  });
+
+  it('does not pair runs from different resolved Jev models', () => {
+    const defect = jevEvaluation(4);
+    const fixed = { ...jevEvaluation(6), model: 'jev-next' };
+    const analysis = analyzeJevPairs([
+      {
+        caseId: 'bad',
+        repeat: 1,
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: defect,
+      },
+      {
+        caseId: 'fixed',
+        repeat: 1,
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: fixed,
+      },
+    ]);
+
+    expect(analysis[0].dimensions.correctness).toMatchObject({
+      direction: 'inconclusive',
+      medianDelta: null,
+      pairCount: 0,
     });
   });
 

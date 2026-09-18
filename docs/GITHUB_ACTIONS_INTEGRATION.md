@@ -36,11 +36,11 @@ jobs:
 
 ## Optional Jev mode
 
-For a trusted same-repository job, run Jev-only or combined evaluation by passing an explicit
+For a trusted same-repository job, run Jev-only or independent parallel evaluation by passing an explicit
 workflow input and adding the repository secret only to that generation step:
 
 ```yaml
-- run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input reviewMode=combined
+- run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input reviewMode=parallel
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
@@ -81,7 +81,7 @@ Set one provider API key:
 - `ZHIPU_API_KEY`
 - or another supported provider key
 
-For `jev` or `combined` mode, also set `JEV_API_KEY`. It is not needed in the default `agent`
+For `jev`, `parallel`, or `combined` mode, also set `JEV_API_KEY`. It is not needed in the default `agent`
 mode.
 
 ## Troubleshooting

@@ -8,7 +8,7 @@ Configure the default under `review.mode`:
 
 ```yaml
 review:
-  mode: agent # agent | jev | combined
+  mode: agent # agent | jev | parallel | combined
   agent: review/unified-reviewer
   jev:
     timeoutMs: 30000
@@ -19,19 +19,20 @@ review:
 
 - `agent` is the default and preserves the existing DRS review behavior.
 - `jev` runs only Jev. It does not start Pi or require an agent model. Its result has no file-level findings or automated fixes.
-- `combined` runs the normal DRS reviewer and Jev independently over the same focused diff. Agent findings and the Jev scorecard remain separate.
+- `parallel` runs the normal DRS reviewer and Jev independently over the same focused diff. Agent findings and the Jev scorecard remain separate.
+- `combined` runs Jev first, then gives the DRS reviewer up to five bounded, advisory priorities from the scorecard. The reviewer validates those signals against repository evidence and still performs an independent review.
 
 A workflow review node can override the configured mode with `with.mode`. The precedence is:
 
-1. workflow `with.mode` (`agent`, `jev`, or `combined`);
-2. `DRS_REVIEW_MODE` (`agent`, `jev`, or `combined`) when the node uses `configured` or omits an override;
+1. workflow `with.mode` (`agent`, `jev`, `parallel`, or `combined`);
+2. `DRS_REVIEW_MODE` (`agent`, `jev`, `parallel`, or `combined`) when the node uses `configured` or omits an override;
 3. `review.mode` from project configuration;
 4. the default `agent` mode.
 
 `DRS_REVIEW_MODE` is useful for trusted CI configuration that must select a mode without changing
 the repository config. A concrete workflow `with.mode` still takes precedence.
 
-`continue-agent` is valid only in `combined` mode. It preserves a successful agent review when Jev fails and records a sanitized failed-evaluator status. Jev-only evaluation always fails when Jev cannot return a valid scorecard.
+`continue-agent` is valid only in `parallel` mode, where the agent can run without Jev guidance. It preserves a successful agent review when Jev fails and records a sanitized failed-evaluator status. Jev-only and combined evaluation fail when Jev cannot return a valid scorecard.
 
 ## Credentials
 
@@ -47,7 +48,7 @@ Agent-only mode does not read or require `JEV_API_KEY`.
 
 ## Privacy and remote processing
 
-Jev evaluation is remote. When `jev` or `combined` mode runs, DRS sends focused review state directly to TypeSafe's API. This may include:
+Jev evaluation is remote. When `jev`, `parallel`, or `combined` mode runs, DRS sends focused review state directly to TypeSafe's API. This may include:
 
 - the review task/label;
 - filtered, context-window-compressed diff patches;
@@ -77,10 +78,10 @@ drs workflow run github-pr-jev-review --input owner=manojlds --input repo=drs --
 drs workflow run gitlab-mr-jev-review --input project=group/project --input mr=123
 ```
 
-Override an existing review workflow:
+Override an existing review workflow for either independent or guided evaluation:
 
 ```bash
-drs workflow run local-review --input reviewMode=combined
+drs workflow run local-review --input reviewMode=parallel
 drs workflow run github-pr-review \
   --input owner=manojlds --input repo=drs --input pr=204 \
   --input reviewMode=combined
@@ -120,7 +121,7 @@ Local workflows do not have a canonical provider comment, so they do not automat
 
 DRS retries documented transient HTTP failures (`429`, `529`, and `5xx`) with bounded backoff and honors bounded `Retry-After` values. `timeoutMs` and `maxRetries` control the request bounds.
 
-If Jev reports that its token limit was exceeded, reduce the selected context or split the change. DRS does not retry by blindly dropping contracts or tests after a failed request. `contextWindow` controls proactive diff compression; in combined mode DRS uses the tighter of the agent and Jev context budgets.
+If Jev reports that its token limit was exceeded, reduce the selected context or split the change. DRS does not retry by blindly dropping contracts or tests after a failed request. `contextWindow` controls proactive diff compression; in `parallel` and `combined` modes DRS uses the tighter of the agent and Jev context budgets.
 
 Errors saved in artifacts or rendered in comments use stable, sanitized codes and messages. Raw upstream response bodies and credentials are not included.
 

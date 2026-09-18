@@ -208,6 +208,13 @@ function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
   let markdown = `## Jev quality signals\n\n`;
   markdown +=
     'Jev produced scalar quality signals only. Weakness text is a rubric hint; the coding/review agent must diagnose actual causes before changing code.\n\n';
+  if (options?.mode === 'parallel') {
+    markdown +=
+      'Jev and the review agent ran independently in parallel; these signals did not influence the agent findings.\n\n';
+  } else if (options?.mode === 'combined') {
+    markdown +=
+      'Jev ran first, and its bounded priority signals guided the review agent investigation. The agent still performed an independent review and only agent-validated issues appear as findings.\n\n';
+  }
 
   if (jev.status === 'failed') {
     markdown += `- **Status**: failed (${formatMarkdownCodeSpan(jev.error.code)})\n`;
@@ -353,7 +360,7 @@ export function formatSummaryComment(
 
   comment += `## 📊 Statistics\n\n`;
   comment += `- **Files Reviewed**: ${summary.filesReviewed}\n`;
-  comment += `- **Total Issues**: ${summary.issuesFound}\n\n`;
+  comment += `- **Agent Findings**: ${summary.issuesFound}\n\n`;
 
   if (reviewUsage) {
     comment += formatReviewUsageSection(reviewUsage);

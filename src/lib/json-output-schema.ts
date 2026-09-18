@@ -187,7 +187,7 @@ export const reviewOutputSchema = {
   required: ['timestamp', 'summary', 'issues'],
   properties: {
     timestamp: { type: 'string', minLength: 1 },
-    mode: { type: 'string', enum: ['agent', 'jev', 'combined'] },
+    mode: { type: 'string', enum: ['agent', 'jev', 'parallel', 'combined'] },
     usage: reviewUsageSummarySchema,
     artifact: {
       type: 'object',

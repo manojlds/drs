@@ -21,7 +21,7 @@ export function createBenchmarkCommand(run = runReviewBenchmark): Command {
     )
     .addOption(
       new Option('--review-mode <mode>', 'review evaluator mode')
-        .choices(['agent', 'jev', 'combined'])
+        .choices(['agent', 'jev', 'parallel', 'combined'])
         .default('agent')
     )
     .option('--profile <profile>', 'isolation profile', 'isolated')

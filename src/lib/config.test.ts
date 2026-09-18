@@ -44,6 +44,13 @@ describe('Config', () => {
     expect(resolveReviewMode(config)).toBe('jev');
   });
 
+  it('accepts independent parallel review mode', () => {
+    const config = loadConfig(tmpdir(), { review: { mode: 'parallel' } } as any);
+
+    expect(config.review.mode).toBe('parallel');
+    expect(resolveReviewMode(config)).toBe('parallel');
+  });
+
   it('resolves workflow mode overrides and configured sentinel', () => {
     const config = loadConfig(tmpdir(), { review: { mode: 'combined' } } as any);
 
@@ -82,16 +89,22 @@ describe('Config', () => {
     ).toThrow('review.jev.apiKeyEnv');
   });
 
-  it('allows continue-agent only when the configured review mode is combined', () => {
+  it('allows continue-agent only for independent parallel review', () => {
     expect(() =>
       loadConfig(tmpdir(), {
         review: { mode: 'agent', jev: { failurePolicy: 'continue-agent' } },
       } as any)
-    ).toThrow(/combined mode/);
+    ).toThrow(/parallel mode/);
+
+    expect(() =>
+      loadConfig(tmpdir(), {
+        review: { mode: 'combined', jev: { failurePolicy: 'continue-agent' } },
+      } as any)
+    ).toThrow(/parallel mode/);
 
     expect(
       loadConfig(tmpdir(), {
-        review: { mode: 'combined', jev: { failurePolicy: 'continue-agent' } },
+        review: { mode: 'parallel', jev: { failurePolicy: 'continue-agent' } },
       } as any).review.jev?.failurePolicy
     ).toBe('continue-agent');
   });

@@ -177,7 +177,7 @@ export interface AgentsConfig {
  */
 export type ModelOverrides = Record<string, string>;
 
-export type ReviewMode = 'agent' | 'jev' | 'combined';
+export type ReviewMode = 'agent' | 'jev' | 'parallel' | 'combined';
 export type ReviewModeOverride = ReviewMode | 'configured';
 export type JevFailurePolicy = 'fail' | 'continue-agent';
 
@@ -460,24 +460,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const REVIEW_MODES: ReadonlySet<string> = new Set(['agent', 'jev', 'combined']);
+const REVIEW_MODES: ReadonlySet<string> = new Set(['agent', 'jev', 'parallel', 'combined']);
 const REVIEW_MODE_OVERRIDES: ReadonlySet<string> = new Set([
   'agent',
   'jev',
+  'parallel',
   'combined',
   'configured',
 ]);
 
 function parseReviewMode(value: unknown, fieldName: string): ReviewMode {
   if (typeof value !== 'string' || !REVIEW_MODES.has(value)) {
-    throw new Error(`${fieldName} must be one of: agent, jev, combined.`);
+    throw new Error(`${fieldName} must be one of: agent, jev, parallel, combined.`);
   }
   return value as ReviewMode;
 }
 
 function parseReviewModeOverride(value: unknown, fieldName: string): ReviewModeOverride {
   if (typeof value !== 'string' || !REVIEW_MODE_OVERRIDES.has(value)) {
-    throw new Error(`${fieldName} must be one of: agent, jev, combined, configured.`);
+    throw new Error(`${fieldName} must be one of: agent, jev, parallel, combined, configured.`);
   }
   return value as ReviewModeOverride;
 }
@@ -518,8 +519,8 @@ function validateReviewConfig(config: DRSConfig): void {
     ) {
       throw new Error('review.jev.failurePolicy must be one of: fail, continue-agent.');
     }
-    if (failurePolicy === 'continue-agent' && config.review.mode !== 'combined') {
-      throw new Error('review.jev.failurePolicy continue-agent requires combined mode.');
+    if (failurePolicy === 'continue-agent' && config.review.mode !== 'parallel') {
+      throw new Error('review.jev.failurePolicy continue-agent requires parallel mode.');
     }
   }
 }

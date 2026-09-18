@@ -14,9 +14,9 @@ inputs:
     description: Review staged changes instead of unstaged changes
   reviewMode:
     type: enum
-    values: [configured, agent, jev, combined]
+    values: [configured, agent, jev, parallel, combined]
     default: configured
-    description: Review evaluator mode
+    description: Agent-only, Jev-only, independent parallel, or Jev-guided combined review
 output: review
 nodes:
   change:

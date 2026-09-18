@@ -2152,7 +2152,7 @@ describe('workflow runner', () => {
           inputs: {
             reviewMode: {
               type: 'enum',
-              values: ['configured', 'agent', 'jev', 'combined'],
+              values: ['configured', 'agent', 'jev', 'parallel', 'combined'],
               default: 'configured',
             },
           },

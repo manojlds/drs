@@ -41,8 +41,8 @@ describe('compileWorkflowPlan', () => {
         file: undefined,
         default: 'configured',
         required: undefined,
-        values: ['configured', 'agent', 'jev', 'combined'],
-        description: 'Review evaluator mode',
+        values: ['configured', 'agent', 'jev', 'parallel', 'combined'],
+        description: 'Agent-only, Jev-only, independent parallel, or Jev-guided combined review',
       });
     });
 

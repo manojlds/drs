@@ -226,7 +226,7 @@ describe('comment-formatter', () => {
 
       expect(formatted).toContain('📋 Code Review Analysis');
       expect(formatted).toContain('Files Reviewed**: 5');
-      expect(formatted).toContain('Total Issues**: 0');
+      expect(formatted).toContain('Agent Findings**: 0');
       expect(formatted).toContain('✅ **No issues found!**');
       expect(formatted).toContain('DRS');
     });
@@ -511,7 +511,7 @@ describe('comment-formatter', () => {
       const formatted = formatSummaryComment(summary, issues);
 
       expect(formatted).toContain('Files Reviewed**: 2');
-      expect(formatted).toContain('Total Issues**: 2');
+      expect(formatted).toContain('Agent Findings**: 2');
       expect(formatted).toContain('Critical**: 1');
       expect(formatted).toContain('High**: 1');
       expect(formatted).toContain('Security**: 1');

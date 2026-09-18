@@ -18,6 +18,6 @@ describe('Jev CI secret boundaries', () => {
     expect(defaultReview.variables).not.toHaveProperty('JEV_API_KEY');
     expect(defaultReview.script?.join('\n')).toContain('--input reviewMode=agent');
     expect(jevReview.variables?.JEV_API_KEY).toBe('${JEV_API_KEY}');
-    expect(jevReview.script?.join('\n')).toContain('--input reviewMode=combined');
+    expect(jevReview.script?.join('\n')).toContain('--input reviewMode=parallel');
   });
 });

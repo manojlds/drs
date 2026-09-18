@@ -93,7 +93,8 @@ export function buildReviewPromptWithSources(
   projectRoot: string = process.cwd(),
   config?: DRSConfig,
   describeSummary?: string,
-  verificationContext?: ReviewVerificationContext
+  verificationContext?: ReviewVerificationContext,
+  reviewGuidance?: string
 ): { prompt: string; contextSources: string[] } {
   const globalContext = loadGlobalContext(projectRoot);
   const agentContext = loadAgentContext(agentId, projectRoot, config);
@@ -108,6 +109,10 @@ export function buildReviewPromptWithSources(
     // Add task details
     prompt += `\n\nReview the following files from ${reviewLabel}:\n\n`;
     prompt += changedFiles.map((f) => `- ${f}`).join('\n');
+
+    if (reviewGuidance) {
+      prompt += `\n\n${reviewGuidance}`;
+    }
 
     return { prompt, contextSources };
   }
@@ -133,6 +138,10 @@ export function buildReviewPromptWithSources(
 
   if (verificationContext) {
     prompt += formatVerificationContext(verificationContext);
+  }
+
+  if (reviewGuidance) {
+    prompt += `${reviewGuidance}\n\n`;
   }
 
   // 2. Agent-specific context (if available)

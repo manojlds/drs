@@ -48,7 +48,7 @@
   extends: .drs_review
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input reviewMode=combined --input describe=true --input post=true
+    - drs workflow run gitlab-mr-review --input project=$CI_PROJECT_ID --input mr=$CI_MERGE_REQUEST_IID --input reviewMode=parallel --input describe=true --input post=true
   variables:
     JEV_API_KEY: "${JEV_API_KEY}"
 

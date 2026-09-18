@@ -116,7 +116,7 @@ jobs:
         env:
           DRS_REVIEW_MODE: ${{ vars.DRS_REVIEW_MODE || 'agent' }}
           FIX_ENABLED: ${{ vars.DRS_REVIEW_MODE == 'jev' && 'false' || steps.internal-fix.outputs.enabled }}
-          JEV_API_KEY: ${{ (vars.DRS_REVIEW_MODE == 'jev' || vars.DRS_REVIEW_MODE == 'combined') && secrets.JEV_API_KEY || '' }}
+          JEV_API_KEY: ${{ (vars.DRS_REVIEW_MODE == 'jev' || vars.DRS_REVIEW_MODE == 'parallel' || vars.DRS_REVIEW_MODE == 'combined') && secrets.JEV_API_KEY || '' }}
           DRS_RUNTIME_OPERATION_TIMEOUT_MS: "300000"
           DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"
@@ -275,7 +275,7 @@ jobs:
       - name: Review Pull Request (External Contributor)
         env:
           DRS_REVIEW_MODE: ${{ vars.DRS_REVIEW_MODE || 'agent' }}
-          JEV_API_KEY: ${{ (vars.DRS_REVIEW_MODE == 'jev' || vars.DRS_REVIEW_MODE == 'combined') && secrets.JEV_API_KEY || '' }}
+          JEV_API_KEY: ${{ (vars.DRS_REVIEW_MODE == 'jev' || vars.DRS_REVIEW_MODE == 'parallel' || vars.DRS_REVIEW_MODE == 'combined') && secrets.JEV_API_KEY || '' }}
           DRS_RUNTIME_OPERATION_TIMEOUT_MS: "300000"
           DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"

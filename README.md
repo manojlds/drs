@@ -90,7 +90,7 @@ touch .env
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
 #   - OPENAI_API_KEY for OpenAI models (e.g., openai/gpt-4)
-# - JEV_API_KEY only when using optional jev or combined review mode
+# - JEV_API_KEY only when using optional jev, parallel, or combined review mode
 #   (focused review context is sent to TypeSafe's remote API)
 # - See .env.example for all supported providers
 ```
@@ -112,6 +112,9 @@ drs workflow run local-review --input staged=true
 drs workflow run local-jev-review
 
 # Keep normal file-level findings and add an independent Jev scorecard
+drs workflow run local-review --input reviewMode=parallel
+
+# Guide the normal reviewer with bounded advisory signals from Jev
 drs workflow run local-review --input reviewMode=combined
 
 # Update CHANGELOG.md from local changes
@@ -154,7 +157,8 @@ drs wiki check-site https://example.github.io/project/
 | Review local unstaged changes | `drs workflow run local-review` |
 | Review local staged changes | `drs workflow run local-review --input staged=true` |
 | Run a Jev-only quality scorecard | `drs workflow run local-jev-review` |
-| Run agent review plus Jev | `drs workflow run local-review --input reviewMode=combined` |
+| Run independent agent and Jev review | `drs workflow run local-review --input reviewMode=parallel` |
+| Run Jev-guided agent review | `drs workflow run local-review --input reviewMode=combined` |
 | Update changelog from local changes | `drs workflow run local-changelog-update` |
 | Update changelog from tag range | `drs workflow run tag-changelog-update` |
 | Fix issues from latest saved local review artifact | `drs workflow run local-fix-review-issues` |
@@ -864,7 +868,7 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 GITLAB_URL=https://gitlab.com
 JEV_API_KEY=xxx                     # Only for optional remote Jev evaluation
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
-DRS_REVIEW_MODE=agent               # agent | jev | combined; overrides review.mode
+DRS_REVIEW_MODE=agent               # agent | jev | parallel | combined; overrides review.mode
 DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
 # Configure the reviewer in .drs/drs.config.yaml via review.agent.
 # DRS_REVIEW_AGENT overrides it; single-valued REVIEW_AGENTS is deprecated.
