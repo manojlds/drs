@@ -529,6 +529,7 @@ describe('review-orchestrator', () => {
       const { createJevClientFromEnvironment } = await import('./jev/client.js');
       const defaultClient = vi.mocked(createJevClientFromEnvironment)();
       const response = await defaultClient.evaluate({}, []);
+      response.model = 'jev-1.13.0';
       let jevFinished = false;
       vi.mocked(createJevClientFromEnvironment).mockReturnValueOnce({
         evaluate: vi.fn(async () => {
@@ -542,7 +543,7 @@ describe('review-orchestrator', () => {
         expect(additionalContext).toMatchObject({
           reviewGuidance: expect.stringContaining('BEGIN_JEV_GUIDANCE_JSON'),
         });
-        expect(String(additionalContext.reviewGuidance)).toContain('"model":"jev-latest"');
+        expect(String(additionalContext.reviewGuidance)).toContain('"model":"jev-1.13.0"');
         return {
           issues: [],
           summary: {} as never,
@@ -574,7 +575,7 @@ describe('review-orchestrator', () => {
       expect(usage.agents).toContainEqual(
         expect.objectContaining({
           agentType: 'evaluator/jev',
-          model: 'jev-latest',
+          model: 'jev-1.13.0',
           usage: expect.objectContaining({ cost: 0.000000504 }),
         })
       );

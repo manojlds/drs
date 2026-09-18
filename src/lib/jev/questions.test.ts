@@ -25,4 +25,13 @@ describe('Jev questions', () => {
     expect(weakness.instructions).toContain('Do not speculate');
     expect(weakness.criteria.no_material_issue).toContain('No material issue');
   });
+
+  it('distinguishes core dimensions from conditionally relevant dimensions', () => {
+    const questions = buildJevQuestions();
+    const correctness = questions.correctness_applicable;
+    const performance = questions.performance_applicable;
+
+    expect(correctness.instructions).toContain('core software-change dimension');
+    expect(performance.instructions).toContain('Answer yes only when');
+  });
 });

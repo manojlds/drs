@@ -54,6 +54,19 @@ describe('Jev evaluation transform', () => {
     expect(evaluation.metrics.performance).toEqual({ applicable: false });
   });
 
+  it('keeps core dimensions applicable when implementation evidence is supplied', () => {
+    const response = responseWithScores({ correctness: 6 });
+    response.answers.correctness_applicable = { type: 'noul', noul: 0 };
+
+    const evaluation = toJevEvaluation(response);
+
+    expect(evaluation.metrics.correctness).toMatchObject({
+      applicable: true,
+      score: 6,
+      confidence: 0.81,
+    });
+  });
+
   it('ranks at most five weak priorities with correctness/security/changeability weighting', () => {
     const evaluation = toJevEvaluation(
       responseWithScores({

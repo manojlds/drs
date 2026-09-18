@@ -50,7 +50,7 @@ import type { AgentPermissions } from './agent-permissions.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 import { buildJevReviewState } from './jev/review.js';
 import { buildJevAgentGuidance } from './jev/guidance.js';
-import { createJevClientFromEnvironment, JevClientError } from './jev/client.js';
+import { createJevClientFromEnvironment, JEV_MODEL, JevClientError } from './jev/client.js';
 import { buildJevQuestions } from './jev/questions.js';
 import { toJevEvaluation } from './jev/transform.js';
 import type { JevEvaluation } from './jev/types.js';
@@ -517,7 +517,8 @@ async function runJevReviewComponent(args: {
     await client.evaluate(state, buildJevQuestions()),
     args.previousEvaluation
   );
-  const pricing = args.config.pricing?.models?.[evaluation.model];
+  const pricing =
+    args.config.pricing?.models?.[evaluation.model] ?? args.config.pricing?.models?.[JEV_MODEL];
   return {
     evaluation,
     usage: createEvaluatorUsageSummary('evaluator/jev', {
