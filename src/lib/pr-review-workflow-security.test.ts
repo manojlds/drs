@@ -35,7 +35,7 @@ describe('external PR review workflow security', () => {
       'persist-credentials': false,
     });
     expect(review.run).toContain('--input post=false');
-    expect(review.run).toContain('--input describe=false');
+    expect(review.run).toContain('--input describe=true');
     expect(review.run).toContain('--input visual=false');
     expect(review.run).toContain('--input requireCompleteDiff=true');
     expect(review.run).not.toContain('--trace');
