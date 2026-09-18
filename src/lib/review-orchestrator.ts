@@ -517,6 +517,7 @@ async function runJevReviewComponent(args: {
     await client.evaluate(state, buildJevQuestions()),
     args.previousEvaluation
   );
+  const pricing = args.config.pricing?.models?.[evaluation.model];
   return {
     evaluation,
     usage: createEvaluatorUsageSummary('evaluator/jev', {
@@ -524,6 +525,7 @@ async function runJevReviewComponent(args: {
       outputTokens: evaluation.usage.outputTokens,
       model: evaluation.model,
       success: true,
+      pricing,
     }),
   };
 }
