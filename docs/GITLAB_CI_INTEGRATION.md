@@ -37,7 +37,7 @@ jev_review:
   image: node:22.19.0-alpine
   script:
     - npm install -g @diff-review-system/drs
-    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input reviewMode=combined
+    - drs workflow run gitlab-mr-review --input project="$CI_PROJECT_PATH" --input mr="$CI_MERGE_REQUEST_IID" --input reviewMode=parallel
   variables:
     GITLAB_TOKEN: "$CI_JOB_TOKEN"
     ANTHROPIC_API_KEY: "$ANTHROPIC_API_KEY"
@@ -81,7 +81,7 @@ Set one model provider API key in GitLab CI/CD variables (masked/protected):
 - `ZHIPU_API_KEY`
 - or another supported provider key
 
-For `jev` or `combined` mode, also set `JEV_API_KEY` as a masked/protected variable. It is not
+For `jev`, `parallel`, or `combined` mode, also set `JEV_API_KEY` as a masked/protected variable. It is not
 needed in the default `agent` mode.
 
 ## Troubleshooting

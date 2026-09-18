@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatIssueComment,
+  formatJevReportComment,
   formatSummaryComment,
   formatTerminalIssue,
   formatErrorComment,
@@ -226,7 +227,7 @@ describe('comment-formatter', () => {
 
       expect(formatted).toContain('📋 Code Review Analysis');
       expect(formatted).toContain('Files Reviewed**: 5');
-      expect(formatted).toContain('Total Issues**: 0');
+      expect(formatted).toContain('Agent Findings**: 0');
       expect(formatted).toContain('✅ **No issues found!**');
       expect(formatted).toContain('DRS');
     });
@@ -250,14 +251,72 @@ describe('comment-formatter', () => {
         { mode: 'jev', evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } } }
       );
 
-      expect(formatted).toContain('Jev quality signals');
+      expect(formatted).toContain('Jev quality review');
+      expect(formatted).toContain('Model**: `jev-latest`');
+      expect(formatted).toContain('Priority areas');
+      expect(formatted).toContain('Quality dimensions');
       expect(formatted).toContain('Correctness');
       expect(formatted).toContain('Observability');
       expect(formatted).toContain('7.5');
       expect(formatted).toContain('Boundary checks need attention');
+      expect(formatted).toContain('Address the concrete requirement');
       expect(formatted).toContain('6.5 -> 7.5');
       expect(formatted).toContain('no file-level issue-producing reviewer ran');
       expect(formatted).not.toContain('The code looks good');
+    });
+
+    it('formats a standalone canonical Jev report with reviewed-head metadata', () => {
+      const formatted = formatJevReportComment(
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+        },
+        undefined,
+        { headSha: 'abcdef1234567890' }
+      );
+
+      expect(formatted).toContain('<!-- drs-comment-id: drs-jev-review -->');
+      expect(formatted).toContain('<!-- drs-reviewed-head-sha: abcdef1234567890 -->');
+      expect(formatted).toContain('# Jev Quality Review');
+      expect(formatted).toContain('Priority areas');
+      expect(formatted).toContain('Evaluated by **Jev** via **DRS**');
+    });
+
+    it('renders strengths and dimensions that were not assessable', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+      const evaluation: JevEvaluation = {
+        ...JEV_EVALUATION,
+        metrics: {
+          ...JEV_EVALUATION.metrics,
+          security: {
+            applicable: true,
+            score: 9,
+            confidence: 0.9,
+            summary: 'Security controls are strong.',
+          },
+          scalability: { applicable: false },
+        },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { mode: 'combined', evaluations: { jev: { status: 'completed', evaluation } } }
+      );
+
+      expect(formatted).toContain('### Strengths');
+      expect(formatted).toContain('Security** (9.0/10)');
+      expect(formatted).toContain('| Scalability and flexibility | N/A | - | Not assessable');
     });
 
     it('renders first-run to current PR score trends without an overall score', () => {
@@ -472,7 +531,7 @@ describe('comment-formatter', () => {
         }
       );
 
-      expect(formatted).toContain('Jev quality signals');
+      expect(formatted).toContain('Jev quality review');
       expect(formatted).toContain('rate_limit');
       expect(formatted).toContain('Try again shortly');
     });
@@ -511,7 +570,7 @@ describe('comment-formatter', () => {
       const formatted = formatSummaryComment(summary, issues);
 
       expect(formatted).toContain('Files Reviewed**: 2');
-      expect(formatted).toContain('Total Issues**: 2');
+      expect(formatted).toContain('Agent Findings**: 2');
       expect(formatted).toContain('Critical**: 1');
       expect(formatted).toContain('High**: 1');
       expect(formatted).toContain('Security**: 1');

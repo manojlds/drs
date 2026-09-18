@@ -388,7 +388,8 @@ async function executeSingleAgent(
   agentType: string,
   reviewModelOverrides: Record<string, string>,
   describeSummary: string | undefined,
-  verificationContext: ReviewVerificationContext | undefined
+  verificationContext: ReviewVerificationContext | undefined,
+  reviewGuidance: string | undefined
 ): Promise<AgentResult> {
   const agentName = agentType;
   console.log(chalk.gray(`Running ${agentType} review...\n`));
@@ -408,7 +409,8 @@ async function executeSingleAgent(
       workingDir,
       config,
       describeSummary,
-      verificationContext
+      verificationContext,
+      reviewGuidance
     );
     const reviewPrompt = builtPrompt.prompt;
     agentUsage = {
@@ -567,6 +569,10 @@ export async function runReviewAgent(
   const verificationContext = isReviewVerificationContext(additionalContext.verificationContext)
     ? additionalContext.verificationContext
     : undefined;
+  const reviewGuidance =
+    typeof additionalContext.reviewGuidance === 'string'
+      ? additionalContext.reviewGuidance
+      : undefined;
 
   const agentResult = await executeSingleAgent(
     runtime,
@@ -579,7 +585,8 @@ export async function runReviewAgent(
     agentName,
     reviewModelOverrides,
     describeSummary,
-    verificationContext
+    verificationContext,
+    reviewGuidance
   );
 
   // Check agent results

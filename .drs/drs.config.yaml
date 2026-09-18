@@ -33,6 +33,12 @@ contextCompression:
   hardBufferTokens: 1000
   tokenEstimateDivisor: 4
 
+pricing:
+  models:
+    jev-latest:
+      input: 0.042
+      output: 0
+
 fix:
   checks:
     - name: typecheck

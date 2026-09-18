@@ -46,7 +46,7 @@ export function buildJevQuestions(): JevQuestions {
   for (const definition of metricDefinitions) {
     const applicabilityInstruction = definition.conditional
       ? `Is ${definition.label} actually relevant and assessable from the supplied software-change state? Answer yes only when the state contains concrete evidence that this dimension matters; do not invent concerns. ${definition.guidance}`
-      : `Does the supplied software-change state contain enough relevant evidence to assess ${definition.label}? Answer no when the context is too thin for a defensible score. ${definition.guidance}`;
+      : `${definition.label} is a core software-change dimension. Answer yes when the state contains implementation evidence; answer no only when no implementation content is available. ${definition.guidance}`;
 
     questions[questionId(definition.key, 'applicable')] = {
       type: 'noul',

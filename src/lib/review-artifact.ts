@@ -552,6 +552,7 @@ export function reviewArtifactToReviewResult(
     payload.mode !== undefined &&
     payload.mode !== 'agent' &&
     payload.mode !== 'jev' &&
+    payload.mode !== 'parallel' &&
     payload.mode !== 'combined'
   ) {
     throw new Error('Review artifact mode is invalid.');

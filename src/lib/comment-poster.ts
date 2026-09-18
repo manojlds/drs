@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import type { calculateSummary } from './comment-formatter.js';
 import {
   formatSummaryComment,
+  formatJevReportComment,
   formatIssueComment,
   type ReviewEvaluationRenderOptions,
   type ReviewIssue,
@@ -18,14 +19,17 @@ import type { ChangeSummary } from './change-summary.js';
 import type { CursorFixLinkOptions } from './cursor-fix-link.js';
 import {
   BOT_COMMENT_ID,
+  JEV_COMMENT_ID,
   createIssueIdentity,
   findStaleIssueComments,
   findExistingSummaryComment,
+  findExistingCommentById,
   prepareIssuesForPosting,
   type PlatformComment,
 } from './comment-manager.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import type { ReviewUsageSummary } from './review-usage.js';
+import { aggregateAgentUsage } from './review-usage.js';
 import {
   createJevPrBaseline,
   createJevPrTrend,
@@ -69,20 +73,27 @@ export async function postReviewComments(
   beforeLabel?: () => Promise<void>,
   evaluationOptions?: ReviewEvaluationRenderOptions
 ): Promise<void> {
+  const jevAgents =
+    reviewUsage?.agents.filter((agent) => agent.agentType === 'evaluator/jev') ?? [];
+  const agentAgents =
+    reviewUsage?.agents.filter((agent) => agent.agentType !== 'evaluator/jev') ?? [];
+  const jevUsage = jevAgents.length > 0 ? aggregateAgentUsage(jevAgents) : undefined;
+  const agentUsage = agentAgents.length > 0 ? aggregateAgentUsage(agentAgents) : undefined;
+  const hasJev = evaluationOptions?.evaluations?.jev !== undefined;
   const summaryArgs = [
     summary,
     issues,
     BOT_COMMENT_ID,
     changeSummary,
-    reviewUsage,
+    hasJev ? agentUsage : reviewUsage,
     cursorFixLinks,
     reviewMetadata,
   ] as const;
-  const renderSummary = (renderOptions = evaluationOptions) =>
-    renderOptions
-      ? formatSummaryComment(...summaryArgs, renderOptions)
-      : formatSummaryComment(...summaryArgs);
-  let summaryComment = renderSummary();
+  let summaryComment = formatSummaryComment(...summaryArgs);
+  if (hasJev) {
+    summaryComment +=
+      '\n## Jev evaluation\n\nThe Jev quality scorecard is posted in a separate canonical **Jev Quality Review** comment.\n';
+  }
   assertPostBodyWithinLimit(summaryComment, 'Review summary');
   for (const issue of issues) {
     if (issue.severity === 'CRITICAL' || issue.severity === 'HIGH') {
@@ -113,26 +124,42 @@ export async function postReviewComments(
       .filter((comment) => comment.authoredByCurrentUser === true)
       .map((comment) => ({ id: comment.id, body: comment.body }))
   );
+  const authoredComments = existingComments
+    .filter((comment) => comment.authoredByCurrentUser === true)
+    .map((comment) => ({ id: comment.id, body: comment.body }));
+  const existingJev = findExistingCommentById(authoredComments, JEV_COMMENT_ID);
 
   const currentJev = evaluationOptions?.evaluations?.jev;
   const currentEvaluation = currentJev?.status === 'completed' ? currentJev.evaluation : undefined;
-  const existingBaseline = existingSummary ? extractJevPrBaseline(existingSummary.body) : undefined;
+  const existingBaseline =
+    (existingJev ? extractJevPrBaseline(existingJev.body) : undefined) ??
+    (existingSummary ? extractJevPrBaseline(existingSummary.body) : undefined);
   const baseline =
     existingBaseline ??
     (currentEvaluation
       ? createJevPrBaseline(currentEvaluation, reviewMetadata?.headSha)
       : undefined);
-  if (baseline) {
+  let jevComment = hasJev
+    ? formatJevReportComment(evaluationOptions, jevUsage, reviewMetadata, JEV_COMMENT_ID)
+    : undefined;
+  if (baseline && jevComment) {
     const baselineCaptured = existingBaseline === undefined && currentEvaluation !== undefined;
     const jevTrend = currentEvaluation
       ? createJevPrTrend(baseline, currentEvaluation, reviewMetadata?.headSha, baselineCaptured)
       : undefined;
-    summaryComment = renderSummary(
-      jevTrend ? { ...evaluationOptions, jevTrend } : evaluationOptions
+    jevComment = formatJevReportComment(
+      jevTrend ? { ...evaluationOptions, jevTrend } : evaluationOptions!,
+      jevUsage,
+      reviewMetadata,
+      JEV_COMMENT_ID
     );
+    jevComment += `\n${encodeJevPrBaselineMarker(baseline)}\n`;
+  } else if (baseline) {
+    // Preserve a legacy baseline until a later Jev run can migrate it to its own comment.
     summaryComment += `\n${encodeJevPrBaselineMarker(baseline)}\n`;
-    assertPostBodyWithinLimit(summaryComment, 'Review summary');
   }
+  assertPostBodyWithinLimit(summaryComment, 'Review summary');
+  if (jevComment) assertPostBodyWithinLimit(jevComment, 'Jev review');
 
   // Prepare issues for posting: filter to CRITICAL/HIGH, deduplicate, validate lines
   const criticalHighCount = issues.filter(
@@ -175,14 +202,26 @@ export async function postReviewComments(
     throw new Error('Review has too many inline comments for one platform request.');
   }
 
-  await assertCurrentHead?.();
-  console.log(chalk.gray('Posting review summary...\n'));
-  if (existingSummary) {
-    await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);
-    console.log(chalk.green('✓ Updated existing review summary'));
-  } else {
-    await platformClient.createComment(projectId, prNumber, summaryComment);
-    console.log(chalk.green('✓ Posted new review summary'));
+  if (jevComment) {
+    await assertCurrentHead?.();
+    console.log(chalk.gray('Posting Jev quality review...\n'));
+    if (existingJev) {
+      await platformClient.updateComment(projectId, prNumber, existingJev.id, jevComment);
+    } else {
+      await platformClient.createComment(projectId, prNumber, jevComment);
+    }
+  }
+
+  if (evaluationOptions?.mode !== 'jev') {
+    await assertCurrentHead?.();
+    console.log(chalk.gray('Posting review summary...\n'));
+    if (existingSummary) {
+      await platformClient.updateComment(projectId, prNumber, existingSummary.id, summaryComment);
+      console.log(chalk.green('✓ Updated existing review summary'));
+    } else {
+      await platformClient.createComment(projectId, prNumber, summaryComment);
+      console.log(chalk.green('✓ Posted new review summary'));
+    }
   }
 
   await assertCurrentHead?.();

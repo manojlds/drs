@@ -80,11 +80,11 @@ function transformMetric(response: JevResponse, definition: MetricDefinition): J
     );
   }
 
-  const applicable = applicability.noul >= 0.5;
+  const applicable = definition.conditional ? applicability.noul >= 0.5 : true;
   if (!applicable) return { applicable: false };
 
   const score = round(scoreAnswer.score + 1, 1);
-  const applicabilityCertainty = 0.5 + Math.abs(applicability.noul - 0.5);
+  const applicabilityCertainty = definition.conditional ? applicability.noul : 1;
   const confidence = round(Math.min(scoreAnswer.confidence, applicabilityCertainty), 2);
   const summary = `${definition.label} is ${scoreBand(score)} based on the supplied change context.`;
   const hasIssue = score < 8 && weakness.choice !== 'no_material_issue';

@@ -49,7 +49,8 @@ import type { TraceCollector } from './trace-collector.js';
 import type { AgentPermissions } from './agent-permissions.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
 import { buildJevReviewState } from './jev/review.js';
-import { createJevClientFromEnvironment, JevClientError } from './jev/client.js';
+import { buildJevAgentGuidance } from './jev/guidance.js';
+import { createJevClientFromEnvironment, JEV_MODEL, JevClientError } from './jev/client.js';
 import { buildJevQuestions } from './jev/questions.js';
 import { toJevEvaluation } from './jev/transform.js';
 import type { JevEvaluation } from './jev/types.js';
@@ -230,8 +231,8 @@ export async function executeReview(
   options: ExecuteReviewOptions = {}
 ): Promise<ReviewResult> {
   const mode = resolveReviewMode(config, options.mode);
-  const includesAgent = mode === 'agent' || mode === 'combined';
-  const includesJev = mode === 'jev' || mode === 'combined';
+  const includesAgent = mode === 'agent' || mode === 'parallel' || mode === 'combined';
+  const includesJev = mode === 'jev' || mode === 'parallel' || mode === 'combined';
   const jevConfig = getJevReviewConfig(config);
 
   if (includesAgent && !getDefaultModel(config)) {
@@ -371,33 +372,28 @@ export async function executeReview(
     }
 
     // ── Review pass ──────────────────────────────────────────────────────
-    const agentPromise =
-      includesAgent && runtimeClient
-        ? runAgentReviewComponent({
-            runtimeClient,
-            config,
-            source,
-            filteredFiles,
-            compressionFiles: compression.files,
-            compressionSummary,
-            diffCommand,
-            describeSummary,
-            verificationContext,
-          })
-        : undefined;
-
-    const jevPromise = includesJev
-      ? runJevReviewComponent({
-          config,
-          source,
-          compressionFiles: compression.files,
-          compressionSummary,
-          previousEvaluation: getPreviousJevEvaluation(verificationContext),
-        })
-      : undefined;
+    const agentArgs = {
+      runtimeClient: runtimeClient!,
+      config,
+      source,
+      filteredFiles,
+      compressionFiles: compression.files,
+      compressionSummary,
+      diffCommand,
+      describeSummary,
+      verificationContext,
+    };
+    const jevArgs = {
+      config,
+      source,
+      compressionFiles: compression.files,
+      compressionSummary,
+      describeSummary: mode === 'combined' ? describeSummary : undefined,
+      previousEvaluation: getPreviousJevEvaluation(verificationContext),
+    };
 
     if (mode === 'jev') {
-      const jev = await jevPromise!;
+      const jev = await runJevReviewComponent(jevArgs);
       return {
         issues: [],
         summary: calculateSummary(filteredFiles.length, []),
@@ -409,11 +405,14 @@ export async function executeReview(
       };
     }
 
-    let agent: Awaited<ReturnType<typeof runAgentReviewComponent>>;
+    let agent!: Awaited<ReturnType<typeof runAgentReviewComponent>>;
     let jevEvaluation: ReviewResult['evaluations'];
-    let usage: ReviewUsageSummary;
-    if (mode === 'combined' && jevPromise) {
-      const [agentOutcome, jevOutcome] = await Promise.allSettled([agentPromise!, jevPromise]);
+    let usage!: ReviewUsageSummary;
+    if (mode === 'parallel') {
+      const [agentOutcome, jevOutcome] = await Promise.allSettled([
+        runAgentReviewComponent(agentArgs),
+        runJevReviewComponent(jevArgs),
+      ]);
       if (agentOutcome.status === 'rejected') throw agentOutcome.reason;
       agent = agentOutcome.value;
       usage = agent.usage ?? createEmptyReviewUsageSummary();
@@ -427,8 +426,16 @@ export async function executeReview(
           jev: { status: 'failed', error: sanitizeJevError(jevOutcome.reason) },
         };
       }
+    } else if (mode === 'combined') {
+      const jev = await runJevReviewComponent(jevArgs);
+      agent = await runAgentReviewComponent({
+        ...agentArgs,
+        reviewGuidance: buildJevAgentGuidance(jev.evaluation),
+      });
+      jevEvaluation = { jev: { status: 'completed', evaluation: jev.evaluation } };
+      usage = aggregateAgentUsage([...(agent.usage?.agents ?? []), jev.usage]);
     } else {
-      agent = await agentPromise!;
+      agent = await runAgentReviewComponent(agentArgs);
       usage = agent.usage ?? createEmptyReviewUsageSummary();
     }
 
@@ -459,6 +466,7 @@ async function runAgentReviewComponent(args: {
   diffCommand: string;
   describeSummary?: string;
   verificationContext?: ReviewVerificationContext;
+  reviewGuidance?: string;
 }): Promise<Awaited<ReturnType<typeof runReviewPipeline>>> {
   const baseInstructions = buildBaseInstructions(
     args.source.name,
@@ -478,6 +486,7 @@ async function runAgentReviewComponent(args: {
       ...args.source.context,
       describeSummary: args.describeSummary,
       verificationContext: args.verificationContext,
+      reviewGuidance: args.reviewGuidance,
     },
     args.source.workingDir ?? process.cwd(),
     args.source.debug ?? false
@@ -489,6 +498,7 @@ async function runJevReviewComponent(args: {
   source: ReviewSource;
   compressionFiles: FileWithDiff[];
   compressionSummary: string | null;
+  describeSummary?: string;
   previousEvaluation?: JevEvaluation;
 }): Promise<{
   evaluation: JevEvaluation;
@@ -503,12 +513,15 @@ async function runJevReviewComponent(args: {
     label: args.source.name,
     files: args.compressionFiles,
     compressionSummary: args.compressionSummary ?? undefined,
+    changeSummary: args.describeSummary,
     sourceDescription: args.source.context,
   });
   const evaluation = toJevEvaluation(
     await client.evaluate(state, buildJevQuestions()),
     args.previousEvaluation
   );
+  const pricing =
+    args.config.pricing?.models?.[evaluation.model] ?? args.config.pricing?.models?.[JEV_MODEL];
   return {
     evaluation,
     usage: createEvaluatorUsageSummary('evaluator/jev', {
@@ -516,6 +529,7 @@ async function runJevReviewComponent(args: {
       outputTokens: evaluation.usage.outputTokens,
       model: evaluation.model,
       success: true,
+      pricing,
     }),
   };
 }

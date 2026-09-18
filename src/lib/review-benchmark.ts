@@ -657,6 +657,7 @@ export type JevPairDimensionAnalysis = {
   pairCount: number;
 };
 
+const MEANINGFUL_JEV_DELTA = 0.75;
 const rounded = (value: number): number => Number(value.toFixed(6));
 const median = (values: number[]): number | null => {
   if (!values.length) return null;
@@ -688,7 +689,8 @@ export function analyzeJevPairs(runs: JevPairRun[]) {
             (candidate) =>
               candidate.comparison?.variant === toVariant &&
               candidate.repeat === from.repeat &&
-              candidate.model === from.model
+              candidate.model === from.model &&
+              candidate.evaluation?.model === from.evaluation?.model
           );
           return to
             ? [[from.evaluation!.metrics[metric], to.evaluation!.metrics[metric]] as const]
@@ -711,9 +713,9 @@ export function analyzeJevPairs(runs: JevPairRun[]) {
         const direction =
           medianDelta === null
             ? 'inconclusive'
-            : medianDelta > 0
+            : medianDelta >= MEANINGFUL_JEV_DELTA
               ? 'improved'
-              : medianDelta < 0
+              : medianDelta <= -MEANINGFUL_JEV_DELTA
                 ? 'regressed'
                 : 'unchanged';
         return [
@@ -736,8 +738,8 @@ export function analyzeJevPairs(runs: JevPairRun[]) {
 
 function validateOptions(options: BenchmarkOptions): void {
   const mode = options.reviewMode ?? 'agent';
-  const includesAgent = mode === 'agent' || mode === 'combined';
-  const includesJev = mode === 'jev' || mode === 'combined';
+  const includesAgent = mode === 'agent' || mode === 'parallel' || mode === 'combined';
+  const includesJev = mode === 'jev' || mode === 'parallel' || mode === 'combined';
   if (!options.live)
     throw new Error('Live provider execution requires explicit --live acknowledgement.');
   if (includesJev && !process.env.JEV_API_KEY)
@@ -780,8 +782,10 @@ export async function runReviewBenchmark(
 ): Promise<{ jsonPath: string; markdownPath: string; report: Record<string, unknown> }> {
   validateOptions(options);
   const reviewMode = options.reviewMode ?? 'agent';
-  const includesAgent = reviewMode === 'agent' || reviewMode === 'combined';
-  const includesJev = reviewMode === 'jev' || reviewMode === 'combined';
+  const includesAgent =
+    reviewMode === 'agent' || reviewMode === 'parallel' || reviewMode === 'combined';
+  const includesJev =
+    reviewMode === 'jev' || reviewMode === 'parallel' || reviewMode === 'combined';
   const projectRoot = resolve(options.projectRoot);
   const loaded = await loadBenchmarkSuite(projectRoot, options.suite);
   const agentSource = join(projectRoot, '.pi/agents/review/unified-reviewer.md');
@@ -1150,7 +1154,20 @@ export async function runReviewBenchmark(
             runs.flatMap((run) => (run.usage ? [run.usage.total.totalTokens] : []))
           ),
           medianCost: median(runs.flatMap((run) => (run.usage ? [run.usage.total.cost] : []))),
-          note: 'Combined wall-clock and aggregate agent-plus-Jev usage; not a composite quality score.',
+          execution: 'sequential-jev-guided',
+          note: 'Jev-guided wall-clock and aggregate usage; not a composite quality score.',
+        }
+      : undefined;
+  const parallelMetrics =
+    reviewMode === 'parallel'
+      ? {
+          medianLatencyMs: median(runs.map((run) => run.durationMs)),
+          medianTotalTokens: median(
+            runs.flatMap((run) => (run.usage ? [run.usage.total.totalTokens] : []))
+          ),
+          medianCost: median(runs.flatMap((run) => (run.usage ? [run.usage.total.cost] : []))),
+          execution: 'concurrent-independent',
+          note: 'Independent parallel wall-clock and aggregate usage; not a composite quality score.',
         }
       : undefined;
   const report = {
@@ -1180,6 +1197,7 @@ export async function runReviewBenchmark(
       ? { drsMetrics, metricsByModel: metrics, capabilityMetrics, capabilityMetricsByModel }
       : {}),
     ...(includesJev ? { jevPairAnalysis } : {}),
+    ...(parallelMetrics ? { parallelMetrics } : {}),
     ...(combinedMetrics ? { combinedMetrics } : {}),
     runs,
   };
@@ -1221,7 +1239,7 @@ export async function runReviewBenchmark(
         return `| ${run.caseId} | ${run.repeat} | ${String(jev.status)} | ${jevModel} | ${applicable} |`;
       })
       .join('\n');
-    const jevMarkdown = `# Review evaluator benchmark: ${loaded.suite.name}\n\nReview mode: \`${reviewMode}\`  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nAgent issue findings: ${includesAgent ? 'reported separately; adjudication applies only to these findings' : 'not requested'}  \nNo overall quality score is calculated.\n\n## Jev dimension signals\n\nApplicable and non-applicable dimensions, score confidence, priorities, status, latency, and usage are recorded per run in the JSON report. Paired analysis reports per-dimension direction, median delta, applicability consistency, and confidence; inconclusive dimensions remain explicit.\n\n| Case | Repeat | Jev status | Jev model | Applicable dimensions |\n|---|---:|---|---|---:|\n${jevRows}\n${combinedMetrics ? `\n## Combined overhead\n\n- Median wall-clock latency: ${combinedMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${combinedMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${combinedMetrics.medianCost ?? 'n/a'}\n` : ''}`;
+    const jevMarkdown = `# Review evaluator benchmark: ${loaded.suite.name}\n\nReview mode: \`${reviewMode}\`  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nAgent issue findings: ${includesAgent ? 'reported separately; adjudication applies only to these findings' : 'not requested'}  \nNo overall quality score is calculated.\n\n## Jev dimension signals\n\nApplicable and non-applicable dimensions, score confidence, priorities, status, latency, and usage are recorded per run in the JSON report. Paired analysis reports per-dimension direction, median delta, applicability consistency, and confidence; inconclusive dimensions remain explicit.\n\n| Case | Repeat | Jev status | Jev model | Applicable dimensions |\n|---|---:|---|---|---:|\n${jevRows}\n${parallelMetrics ? `\n## Parallel overhead\n\nExecution: concurrent and independent\n\n- Median wall-clock latency: ${parallelMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${parallelMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${parallelMetrics.medianCost ?? 'n/a'}\n` : ''}${combinedMetrics ? `\n## Combined overhead\n\nExecution: sequential Jev-guided agent review\n\n- Median wall-clock latency: ${combinedMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${combinedMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${combinedMetrics.medianCost ?? 'n/a'}\n` : ''}`;
     await writeFile(markdownPath, includesJev ? jevMarkdown : agentMarkdown, { flag: 'wx' });
   } catch (error) {
     await rm(jsonPath, { force: true });

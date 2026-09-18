@@ -23,6 +23,12 @@ export interface EvaluatorUsageOptions {
   outputTokens: number;
   model?: string;
   success?: boolean;
+  pricing?: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
 }
 
 export interface ReviewUsageSummary {
@@ -89,6 +95,11 @@ export function createEvaluatorUsageSummary(
   evaluatorType: string,
   options: EvaluatorUsageOptions
 ): AgentUsageSummary {
+  const cost = options.pricing
+    ? (options.pricing.input * options.inputTokens +
+        options.pricing.output * options.outputTokens) /
+      1_000_000
+    : 0;
   return {
     agentType: evaluatorType,
     ...(options.model ? { model: options.model } : {}),
@@ -100,7 +111,7 @@ export function createEvaluatorUsageSummary(
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens: options.inputTokens + options.outputTokens,
-      cost: 0,
+      cost,
     },
   };
 }

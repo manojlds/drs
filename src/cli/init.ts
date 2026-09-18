@@ -109,7 +109,7 @@ pi:
     skills: []
 
 review:
-  # Review mode: agent (default), jev (scalar evaluator only), or combined.
+  # Review mode: agent (default), jev, parallel (independent), or combined (Jev-guided agent).
   # Jev sends focused code context to TypeSafe's remote API and requires JEV_API_KEY at runtime.
   mode: agent
 
@@ -168,6 +168,10 @@ contextCompression:
 #       output: 0.00
 #       cacheRead: 0.00
 #       cacheWrite: 0.00
+#     # Use the resolved model shown in the Jev report to include evaluator cost.
+#     # jev-latest:
+#     #   input: 0.042
+#     #   output: 0
 `;
 
   return yaml;

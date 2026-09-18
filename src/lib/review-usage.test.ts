@@ -133,4 +133,15 @@ describe('review-usage', () => {
       },
     });
   });
+
+  it('applies configured input and output pricing to evaluator usage', () => {
+    const usage = createEvaluatorUsageSummary('evaluator/jev', {
+      inputTokens: 2_000_000,
+      outputTokens: 500_000,
+      model: 'jev-latest',
+      pricing: { input: 0.042, output: 0 },
+    });
+
+    expect(usage.usage.cost).toBe(0.084);
+  });
 });

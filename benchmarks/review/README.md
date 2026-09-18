@@ -41,6 +41,21 @@ drs benchmark review \
 Use repeatable `--model` only when checking whether a DRS result is overly dependent on one model.
 Live runs are intentionally opt-in because they use provider credentials and incur cost.
 
+Use `--review-mode agent|jev|parallel|combined` to compare evaluator strategies. `parallel`
+runs the agent and Jev independently and concurrently; `combined` runs Jev first and supplies
+up to five bounded advisory priorities to the agent. Reports keep agent findings, Jev dimension
+signals, cost, token usage, and wall-clock latency separate. They do not infer semantic quality
+from file or line matches, and Jev pair analysis compares only runs resolved to the same model.
+
+For example:
+
+```bash
+drs benchmark review --suite historical-v1 --model opencode-go/glm-5.2 \
+  --profile isolated --repeat 3 --review-mode parallel --output out/review-parallel --live
+drs benchmark review --suite historical-v1 --model opencode-go/glm-5.2 \
+  --profile isolated --repeat 3 --review-mode combined --output out/review-combined --live
+```
+
 Run the capability suite live with:
 
 ```bash

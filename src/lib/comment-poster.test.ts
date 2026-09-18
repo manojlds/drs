@@ -4,7 +4,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { postReviewComments } from './comment-poster.js';
-import { formatSummaryComment, type ReviewIssue } from './comment-formatter.js';
+import {
+  formatJevReportComment,
+  formatSummaryComment,
+  type ReviewIssue,
+} from './comment-formatter.js';
 import type { PlatformClient } from './platform-client.js';
 import { metricKeys, type JevEvaluation } from './jev/types.js';
 import {
@@ -39,11 +43,13 @@ vi.mock('./comment-formatter.js', () => ({
   formatSummaryComment: vi.fn(
     (_summary, _issues, _botId, _changeSummary, _reviewUsage) => 'formatted summary'
   ),
+  formatJevReportComment: vi.fn(() => 'formatted jev'),
   formatIssueComment: vi.fn((issue, _fingerprint) => `formatted issue: ${issue.title}`),
 }));
 
 vi.mock('./comment-manager.js', () => ({
   BOT_COMMENT_ID: '<!-- DRS-REVIEW-BOT -->',
+  JEV_COMMENT_ID: 'drs-jev-review',
   createIssueIdentity: vi.fn((issue: any) => ({
     fingerprint: `fp-${issue.file}-${issue.line}`,
     stableSignature: `sig-${issue.file}-${issue.title}`,
@@ -58,6 +64,9 @@ vi.mock('./comment-manager.js', () => ({
   }),
   findExistingSummaryComment: vi.fn((comments: any[]) => {
     return comments.find((c: any) => c.body.includes('<!-- DRS-REVIEW-BOT -->'));
+  }),
+  findExistingCommentById: vi.fn((comments: any[], id: string) => {
+    return comments.find((c: any) => c.body.includes(`<!-- drs-comment-id: ${id} -->`)) ?? null;
   }),
   prepareIssuesForPosting: vi.fn((issues: any[], allComments: any[], lineValidator: any) => {
     const criticalHigh = issues.filter(
@@ -246,6 +255,131 @@ describe('comment-poster', () => {
       expect(mockPlatformClient.createComment).not.toHaveBeenCalled();
     });
 
+    it('posts Jev and agent results as separate canonical comments', async () => {
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      const bodies = vi.mocked(mockPlatformClient.createComment).mock.calls.map((call) => call[2]);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[0]).toContain('formatted jev');
+      expect(bodies[0]).toContain('drs-jev-pr-baseline-v1');
+      expect(bodies[1]).toContain('formatted summary');
+      expect(bodies[1]).toContain('separate canonical **Jev Quality Review** comment');
+      expect(bodies[1]).not.toContain('drs-jev-pr-baseline-v1');
+    });
+
+    it('updates only the canonical Jev comment in Jev-only mode', async () => {
+      mockPlatformClient.getComments = vi.fn().mockResolvedValue([
+        {
+          id: 'summary-id',
+          body: '<!-- DRS-REVIEW-BOT --> old summary',
+          authoredByCurrentUser: true,
+        },
+        {
+          id: 'jev-id',
+          body: '<!-- drs-comment-id: drs-jev-review --> old Jev report',
+          authoredByCurrentUser: true,
+        },
+      ]);
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'jev',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      expect(mockPlatformClient.updateComment).toHaveBeenCalledWith(
+        'owner/repo',
+        123,
+        'jev-id',
+        expect.stringContaining('formatted jev')
+      );
+      expect(mockPlatformClient.deleteComment).not.toHaveBeenCalledWith(
+        'owner/repo',
+        123,
+        'summary-id'
+      );
+      expect(mockPlatformClient.createComment).not.toHaveBeenCalled();
+    });
+
+    it('migrates a legacy summary baseline when an existing Jev comment has no baseline', async () => {
+      const baseline = createJevPrBaseline(jevEvaluation(6), 'first-head');
+      const marker = encodeJevPrBaselineMarker(baseline);
+      mockPlatformClient.getComments = vi.fn().mockResolvedValue([
+        {
+          id: 'summary-id',
+          body: `<!-- DRS-REVIEW-BOT -->\n${marker}`,
+          authoredByCurrentUser: true,
+        },
+        {
+          id: 'jev-id',
+          body: '<!-- drs-comment-id: drs-jev-review --> incomplete report',
+          authoredByCurrentUser: true,
+        },
+      ]);
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      expect(mockPlatformClient.updateComment).toHaveBeenCalledWith(
+        'owner/repo',
+        123,
+        'jev-id',
+        expect.stringContaining(marker)
+      );
+    });
+
     it('preserves the first Jev baseline and passes its trend to summary rendering', async () => {
       const baseline = createJevPrBaseline(jevEvaluation(6), 'first-head');
       const marker = encodeJevPrBaselineMarker(baseline);
@@ -278,26 +412,21 @@ describe('comment-poster', () => {
         }
       );
 
-      expect(formatSummaryComment).toHaveBeenLastCalledWith(
-        mockSummary,
-        [],
-        expect.any(String),
-        undefined,
-        undefined,
-        undefined,
-        { headSha: 'current-head' },
+      expect(formatJevReportComment).toHaveBeenLastCalledWith(
         expect.objectContaining({
           jevTrend: expect.objectContaining({
             baselineHeadSha: 'first-head',
             currentHeadSha: 'current-head',
             comparable: true,
           }),
-        })
+        }),
+        undefined,
+        { headSha: 'current-head' },
+        'drs-jev-review'
       );
-      expect(mockPlatformClient.updateComment).toHaveBeenCalledWith(
+      expect(mockPlatformClient.createComment).toHaveBeenCalledWith(
         'owner/repo',
         123,
-        '999',
         expect.stringContaining(marker)
       );
     });
@@ -347,9 +476,12 @@ describe('comment-poster', () => {
           evaluationOptions
         );
 
-        const updatedBody = vi.mocked(mockPlatformClient.updateComment).mock.calls[0]?.[3] ?? '';
-        expect(updatedBody).toContain(marker);
-        expect(extractJevPrBaseline(updatedBody)).toEqual(baseline);
+        const bodies = [
+          ...vi.mocked(mockPlatformClient.createComment).mock.calls.map((call) => call[2]),
+          ...vi.mocked(mockPlatformClient.updateComment).mock.calls.map((call) => call[3]),
+        ];
+        const baselineBody = bodies.find((body) => body.includes(marker)) ?? '';
+        expect(extractJevPrBaseline(baselineBody)).toEqual(baseline);
       }
     );
 
@@ -786,6 +918,83 @@ describe('comment-poster', () => {
         usage,
         undefined,
         undefined
+      );
+    });
+
+    it('separates agent and Jev usage between their canonical comments', async () => {
+      const agent = {
+        agentType: 'review/unified-reviewer',
+        model: 'provider/reviewer',
+        turns: 1,
+        usage: {
+          input: 100,
+          output: 20,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 120,
+          cost: 0.01,
+        },
+      };
+      const evaluator = {
+        agentType: 'evaluator/jev',
+        model: 'jev-1.13.0',
+        turns: 1,
+        usage: {
+          input: 50,
+          output: 10,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 60,
+          cost: 0.0000021,
+        },
+      };
+      const usage = {
+        total: {
+          input: 150,
+          output: 30,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 180,
+          cost: 0.0100021,
+        },
+        agents: [agent, evaluator],
+      };
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        usage,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      expect(formatSummaryComment).toHaveBeenCalledWith(
+        mockSummary,
+        [],
+        expect.any(String),
+        undefined,
+        expect.objectContaining({ agents: [agent] }),
+        undefined,
+        undefined
+      );
+      expect(formatJevReportComment).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ agents: [evaluator] }),
+        undefined,
+        'drs-jev-review'
       );
     });
 

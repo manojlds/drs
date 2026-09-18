@@ -139,6 +139,26 @@ describe('context-loader', () => {
       expect(result).not.toContain('Default base prompt');
     });
 
+    it('appends Jev guidance to a full agent override', () => {
+      vi.mocked(existsSync).mockImplementation((path) => path.toString().includes('agent.md'));
+      vi.mocked(readFileSync).mockReturnValue('# Custom Agent');
+
+      const result = buildReviewPromptWithSources(
+        'review/security',
+        'Default base prompt',
+        'PR #123',
+        ['src/app.ts'],
+        '/test/project',
+        undefined,
+        undefined,
+        undefined,
+        '# Jev Advisory Signals\n\nGuidance'
+      );
+
+      expect(result.prompt).toContain('# Custom Agent');
+      expect(result.prompt).toContain('# Jev Advisory Signals');
+    });
+
     it('should build prompt with global context and base prompt', () => {
       // Mock global context exists, no agent override
       vi.mocked(existsSync).mockImplementation((path) => {
@@ -164,6 +184,25 @@ describe('context-loader', () => {
       expect(result).toContain('# Project Context');
       expect(result).toContain('This is our project');
       expect(result).toContain('Review code quality');
+    });
+
+    it('includes Jev guidance without replacing the normal review prompt', () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      const result = buildReviewPromptWithSources(
+        'review/quality',
+        'Review every changed file',
+        'MR !456',
+        ['lib/index.ts'],
+        '/test/project',
+        undefined,
+        undefined,
+        undefined,
+        '# Jev Advisory Signals\n\nGuidance'
+      );
+
+      expect(result.prompt).toContain('# Jev Advisory Signals');
+      expect(result.prompt).toContain('Review every changed file');
     });
 
     it('should add Project Context header when not present in global context', () => {
