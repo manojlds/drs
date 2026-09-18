@@ -138,7 +138,7 @@ jobs:
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
             --input reviewMode="$DRS_REVIEW_MODE" \
-            --input describe=false \
+            --input describe=true \
             --input post=true \
             --input visual=false \
             --input fix="$FIX_ENABLED" \
@@ -297,7 +297,7 @@ jobs:
             --input repo="${{ github.event.repository.name }}" \
             --input pr="${{ github.event.pull_request.number }}" \
             --input reviewMode="$DRS_REVIEW_MODE" \
-            --input describe=false \
+            --input describe=true \
             --input post=false \
             --input visual=false \
             --input requireCompleteDiff=true \
