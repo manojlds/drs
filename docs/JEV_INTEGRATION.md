@@ -91,7 +91,9 @@ Dedicated Jev workflows are read-only by default. Jev priorities are never conve
 
 ## Scorecard semantics
 
-Jev evaluates 19 engineering dimensions. Each applicable dimension includes an independent 1–10 score and 0–1 confidence. Conditional dimensions may be marked not applicable when the supplied state lacks evidence. DRS also shows up to five weak priorities and labels weakness text as a rubric hint rather than a root-cause diagnosis.
+Jev evaluates 19 engineering dimensions. Each applicable dimension includes an independent 1–10 score and 0–1 confidence. Conditional dimensions may be marked not applicable when the supplied state lacks evidence. The human-facing report shows the resolved model, detailed priority assessments and investigation suggestions, every applicable or non-applicable dimension, strengths, and trend data. DRS labels weakness text as a rubric hint rather than a root-cause diagnosis.
+
+In combined mode, the review agent does not receive this full report. It receives only up to five bounded priority signals containing the metric, score, confidence, rubric hint, and investigation hint. Raw Jev answers, the complete dimension table, usage, and trend data remain outside the agent prompt.
 
 DRS does not calculate an overall quality grade. A high Jev score does not override failing tests, unresolved agent findings, or project requirements. Jev scores are not merge gates in v1.
 

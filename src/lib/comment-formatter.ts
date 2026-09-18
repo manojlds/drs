@@ -18,7 +18,7 @@ import { buildCursorFixLink, type CursorFixLinkOptions } from './cursor-fix-link
 import { formatCost, formatCount } from './format-utils.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 import type { ReviewMode } from './config.js';
-import type { JevEvaluation, MetricKey } from './jev/types.js';
+import { metricKeys, type JevEvaluation, type MetricKey } from './jev/types.js';
 import type { JevPrTrend } from './jev/pr-trend.js';
 import { getMetricDefinition } from './jev/transform.js';
 
@@ -205,7 +205,7 @@ function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
   const jev = options?.evaluations?.jev;
   if (!jev) return '';
 
-  let markdown = `## Jev quality signals\n\n`;
+  let markdown = `## Jev quality review\n\n`;
   markdown +=
     'Jev produced scalar quality signals only. Weakness text is a rubric hint; the coding/review agent must diagnose actual causes before changing code.\n\n';
   if (options?.mode === 'parallel') {
@@ -222,26 +222,49 @@ function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
     return markdown;
   }
 
-  const applicable = Object.entries(jev.evaluation.metrics).filter(
-    (
-      entry
-    ): entry is [MetricKey, Extract<JevEvaluation['metrics'][MetricKey], { applicable: true }>] =>
-      entry[1].applicable
-  );
-
-  if (applicable.length > 0) {
-    markdown += `| Metric | Score | Confidence |\n`;
-    markdown += `| --- | ---: | ---: |\n`;
-    for (const [metric, value] of applicable) {
-      markdown += `| ${escapeMarkdown(metricLabel(metric))} | ${value.score.toFixed(1)} | ${Math.round(value.confidence * 100)}% |\n`;
-    }
-    markdown += `\n`;
-  }
+  markdown += `- **Model**: ${formatMarkdownCodeSpan(jev.evaluation.model)}\n`;
+  markdown += `\n`;
 
   if (jev.evaluation.priorities.length > 0) {
-    markdown += `### Top rubric priorities\n\n`;
-    for (const priority of jev.evaluation.priorities) {
-      markdown += `- **${escapeMarkdown(metricLabel(priority.metric))}** (${priority.severity}): ${escapeMarkdown(priority.reason)}\n`;
+    markdown += `### Priority areas\n\n`;
+    for (const [index, priority] of jev.evaluation.priorities.entries()) {
+      const metric = jev.evaluation.metrics[priority.metric];
+      const definition = getMetricDefinition(priority.metric);
+      markdown += `#### ${index + 1}. ${escapeMarkdown(definition.label)}\n\n`;
+      markdown += `- **Severity**: ${priority.severity}\n`;
+      if (metric.applicable) {
+        markdown += `- **Score**: ${metric.score.toFixed(1)}/10\n`;
+        markdown += `- **Confidence**: ${Math.round(metric.confidence * 100)}%\n`;
+        markdown += `- **Assessment**: ${escapeMarkdown(metric.summary)}\n`;
+      }
+      markdown += `- **Weakness signal**: ${escapeMarkdown(priority.reason)}\n`;
+      markdown += `- **Suggested investigation**: ${escapeMarkdown(metric.applicable ? (metric.issues?.[0]?.suggestion ?? definition.suggestion) : definition.suggestion)}\n\n`;
+    }
+  }
+
+  markdown += `### Quality dimensions\n\n`;
+  markdown += `| Dimension | Score | Confidence | Assessment |\n`;
+  markdown += `| --- | ---: | ---: | --- |\n`;
+  for (const metricKey of metricKeys) {
+    const metric = jev.evaluation.metrics[metricKey];
+    if (metric.applicable) {
+      markdown += `| ${escapeMarkdown(metricLabel(metricKey))} | ${metric.score.toFixed(1)}/10 | ${Math.round(metric.confidence * 100)}% | ${escapeMarkdown(metric.summary)} |\n`;
+    } else {
+      markdown += `| ${escapeMarkdown(metricLabel(metricKey))} | N/A | - | Not assessable from the supplied change context. |\n`;
+    }
+  }
+  markdown += `\n`;
+
+  const strengths = metricKeys.filter((metricKey) => {
+    const metric = jev.evaluation.metrics[metricKey];
+    return metric.applicable && metric.score >= 8;
+  });
+  if (strengths.length > 0) {
+    markdown += `### Strengths\n\n`;
+    for (const metricKey of strengths) {
+      const metric = jev.evaluation.metrics[metricKey];
+      if (!metric.applicable) continue;
+      markdown += `- **${escapeMarkdown(metricLabel(metricKey))}** (${metric.score.toFixed(1)}/10): ${escapeMarkdown(metric.summary)}\n`;
     }
     markdown += `\n`;
   }
