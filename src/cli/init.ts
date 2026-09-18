@@ -170,8 +170,8 @@ contextCompression:
 #       cacheWrite: 0.00
 #     # Use the resolved model shown in the Jev report to include evaluator cost.
 #     # jev-latest:
-#     #   input: 0.00
-#     #   output: 0.00
+#     #   input: 0.042
+#     #   output: 0
 `;
 
   return yaml;

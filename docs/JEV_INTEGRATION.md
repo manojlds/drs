@@ -95,17 +95,17 @@ Jev evaluates 19 engineering dimensions. Each applicable dimension includes an i
 
 In combined mode, the review agent does not receive this full report. It receives only up to five bounded priority signals containing the metric, score, confidence, rubric hint, and investigation hint. Raw Jev answers, the complete dimension table, usage, and trend data remain outside the agent prompt.
 
-Jev token usage appears as `evaluator/jev` in the report's model-usage table. To include its estimated cost in evaluator and run totals, add the resolved model shown in the Jev report to `pricing.models` using TypeSafe's current USD-per-million-token rates:
+Jev token usage appears as `evaluator/jev` in the report's model-usage table. To include its estimated cost in evaluator and run totals, add the resolved model shown in the Jev report to `pricing.models`. TypeSafe currently publishes a price of $0.042 per million input tokens with free output:
 
 ```yaml
 pricing:
   models:
     jev-latest:
-      input: 0.00
-      output: 0.00
+      input: 0.042
+      output: 0
 ```
 
-DRS does not embed a default Jev price. Without an explicit matching entry, it reports the tokens and a zero estimated cost, consistent with other models whose pricing is unknown.
+See [Introducing System One Models & Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) for the published price. DRS does not embed the rate in code because provider pricing can change. Without an explicit matching entry, it reports the tokens and a zero estimated cost, consistent with other models whose pricing is unknown.
 
 DRS does not calculate an overall quality grade. A high Jev score does not override failing tests, unresolved agent findings, or project requirements. Jev scores are not merge gates in v1.
 

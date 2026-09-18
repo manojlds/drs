@@ -556,7 +556,7 @@ describe('review-orchestrator', () => {
         {
           ...mockConfig,
           review: { ...mockConfig.review, mode: 'combined' },
-          pricing: { models: { 'jev-latest': { input: 1_000_000, output: 2_000_000 } } },
+          pricing: { models: { 'jev-latest': { input: 0.042, output: 0 } } },
         },
         {
           name: 'Combined review',
@@ -575,10 +575,10 @@ describe('review-orchestrator', () => {
         expect.objectContaining({
           agentType: 'evaluator/jev',
           model: 'jev-latest',
-          usage: expect.objectContaining({ cost: 28 }),
+          usage: expect.objectContaining({ cost: 0.000000504 }),
         })
       );
-      expect(usage.total.cost).toBe(28);
+      expect(usage.total.cost).toBe(0.000000504);
     });
 
     it('continues the agent in parallel mode with a sanitized Jev failure', async () => {

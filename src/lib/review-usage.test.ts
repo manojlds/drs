@@ -139,9 +139,9 @@ describe('review-usage', () => {
       inputTokens: 2_000_000,
       outputTokens: 500_000,
       model: 'jev-latest',
-      pricing: { input: 1.5, output: 4 },
+      pricing: { input: 0.042, output: 0 },
     });
 
-    expect(usage.usage.cost).toBe(5);
+    expect(usage.usage.cost).toBe(0.084);
   });
 });
