@@ -8,6 +8,9 @@ import type { ReviewIssue } from './comment-formatter.js';
 // Bot identifier for tracking our comments
 export const BOT_COMMENT_ID = 'drs-review-summary';
 
+// Jev scorecard identifier, kept separate from agent findings.
+export const JEV_COMMENT_ID = 'drs-jev-review';
+
 // Error comment identifier for tracking error notifications
 export const ERROR_COMMENT_ID = 'drs-error';
 

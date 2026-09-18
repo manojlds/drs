@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatIssueComment,
+  formatJevReportComment,
   formatSummaryComment,
   formatTerminalIssue,
   formatErrorComment,
@@ -262,6 +263,23 @@ describe('comment-formatter', () => {
       expect(formatted).toContain('6.5 -> 7.5');
       expect(formatted).toContain('no file-level issue-producing reviewer ran');
       expect(formatted).not.toContain('The code looks good');
+    });
+
+    it('formats a standalone canonical Jev report with reviewed-head metadata', () => {
+      const formatted = formatJevReportComment(
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+        },
+        undefined,
+        { headSha: 'abcdef1234567890' }
+      );
+
+      expect(formatted).toContain('<!-- drs-comment-id: drs-jev-review -->');
+      expect(formatted).toContain('<!-- drs-reviewed-head-sha: abcdef1234567890 -->');
+      expect(formatted).toContain('# Jev Quality Review');
+      expect(formatted).toContain('Priority areas');
+      expect(formatted).toContain('Evaluated by **Jev** via **DRS**');
     });
 
     it('renders strengths and dimensions that were not assessable', () => {

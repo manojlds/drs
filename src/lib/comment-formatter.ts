@@ -201,11 +201,14 @@ function formatJevPrTrend(trend?: JevPrTrend): string {
   return markdown;
 }
 
-function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
+function formatJevScorecard(
+  options?: ReviewEvaluationRenderOptions,
+  includeHeading = true
+): string {
   const jev = options?.evaluations?.jev;
   if (!jev) return '';
 
-  let markdown = `## Jev quality review\n\n`;
+  let markdown = includeHeading ? `## Jev quality review\n\n` : '';
   markdown +=
     'Jev produced scalar quality signals only. Weakness text is a rubric hint; the coding/review agent must diagnose actual causes before changing code.\n\n';
   if (options?.mode === 'parallel') {
@@ -283,6 +286,25 @@ function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
   }
 
   return markdown;
+}
+
+export function formatJevReportComment(
+  evaluationOptions: ReviewEvaluationRenderOptions,
+  reviewUsage?: ReviewUsageSummary,
+  reviewMetadata?: ReviewMetadata,
+  commentId = 'drs-jev-review'
+): string {
+  let comment = `<!-- drs-comment-id: ${commentId} -->\n`;
+  const headSha = cleanMetadataValue(reviewMetadata?.headSha);
+  if (headSha) {
+    comment += `<!-- drs-reviewed-head-sha: ${escapeHtmlCommentValue(headSha)} -->\n`;
+  }
+  comment += `# Jev Quality Review\n\n`;
+  if (reviewMetadata) comment += formatReviewMetadataSection(reviewMetadata);
+  if (reviewUsage) comment += formatReviewUsageSection(reviewUsage);
+  comment += formatJevScorecard(evaluationOptions, false);
+  comment += `---\n\n*Evaluated by **Jev** via **DRS***\n`;
+  return comment;
 }
 
 /**

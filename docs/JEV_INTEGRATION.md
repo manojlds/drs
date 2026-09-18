@@ -90,6 +90,8 @@ drs workflow run github-pr-review \
 
 Dedicated Jev workflows are read-only by default. Jev priorities are never converted into inline comments because they do not identify a trustworthy source location.
 
+Hosted reviews keep evaluator output separate from agent findings. `parallel` and `combined` modes update two canonical comments: the normal DRS review contains agent-validated findings and agent usage, while `Jev Quality Review` contains the scorecard, Jev usage and cost, and trend baseline. Jev-only mode posts only the Jev comment. Both comments identify the reviewed commit and are updated in place on later runs.
+
 ## Scorecard semantics
 
 Jev evaluates 19 engineering dimensions. The 15 core dimensions receive an independent 1–10 score and 0–1 confidence whenever implementation content is available. Performance, scalability, compatibility, and observability are conditional and may be marked not applicable when the supplied state lacks relevant evidence. The human-facing report shows the resolved model, detailed priority assessments and investigation suggestions, every applicable or non-applicable dimension, strengths, and trend data. DRS labels weakness text as a rubric hint rather than a root-cause diagnosis.
