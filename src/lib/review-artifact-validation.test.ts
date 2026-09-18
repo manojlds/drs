@@ -12,6 +12,7 @@ import {
 } from './review-artifact.js';
 import { createWorkflowArtifact } from './workflow-artifacts.js';
 import type { ReviewResult, ReviewSource } from './review-orchestrator.js';
+import type { JevEvaluation } from './jev/types.js';
 
 const issue: ReviewIssue = {
   category: 'QUALITY',
@@ -55,6 +56,40 @@ const target = {
   changedFiles: ['src/app.ts'],
 };
 
+const jevEvaluation: JevEvaluation = {
+  model: 'jev-latest',
+  metrics: Object.fromEntries(
+    (
+      [
+        'correctness',
+        'cognitiveComplexity',
+        'readability',
+        'modularity',
+        'coupling',
+        'changeability',
+        'abstractionQuality',
+        'projectStructure',
+        'duplication',
+        'maintainability',
+        'testQuality',
+        'reliability',
+        'security',
+        'consistency',
+        'documentation',
+        'performance',
+        'scalability',
+        'compatibility',
+        'observability',
+      ] as const
+    ).map((key) => [
+      key,
+      { applicable: true, score: 8.2, confidence: 0.9, summary: `${key} is strong.` },
+    ])
+  ) as JevEvaluation['metrics'],
+  priorities: [{ metric: 'security', severity: 'medium', reason: 'Escaping needs review.' }],
+  usage: { inputTokens: 111, outputTokens: 22 },
+};
+
 function createEnvelope() {
   return createWorkflowArtifact({
     kind: 'review',
@@ -65,6 +100,28 @@ function createEnvelope() {
       changeNumber: 7,
     },
     payload: createReviewArtifactPayload(structuredClone(review), source),
+  });
+}
+
+function createJevEnvelope() {
+  return createWorkflowArtifact({
+    kind: 'review',
+    scope: {
+      platform: 'github',
+      projectId: 'owner/repo',
+      changeKind: 'pr',
+      changeNumber: 7,
+    },
+    payload: createReviewArtifactPayload(
+      {
+        issues: [],
+        summary: calculateSummary(1, []),
+        filesReviewed: 1,
+        mode: 'jev',
+        evaluations: { jev: { status: 'completed', evaluation: structuredClone(jevEvaluation) } },
+      },
+      source
+    ),
   });
 }
 
@@ -80,6 +137,79 @@ describe('review artifact posting validation', () => {
       filesReviewed: 1,
       usage: undefined,
     });
+  });
+
+  it('round-trips Jev scorecards without turning priorities into findings', () => {
+    const envelope = createJevEnvelope();
+
+    expect(envelope.payload.findings).toEqual([]);
+    expect(envelope.payload.evaluations).toEqual({
+      jev: { status: 'completed', evaluation: jevEvaluation },
+    });
+    expect(reviewArtifactToReviewResult(envelope, target)).toMatchObject({
+      issues: [],
+      mode: 'jev',
+      evaluations: { jev: { status: 'completed', evaluation: jevEvaluation } },
+    });
+  });
+
+  it('rejects malformed Jev metrics, comparisons, and review modes', () => {
+    const extraMetric = createJevEnvelope();
+    const extraEvaluation = (
+      extraMetric.payload.evaluations?.jev as { status: 'completed'; evaluation: JevEvaluation }
+    ).evaluation as unknown as { metrics: Record<string, unknown> };
+    extraEvaluation.metrics.unrecognized = { applicable: false };
+    expect(() => reviewArtifactToReviewResult(extraMetric, target)).toThrow(/metrics/i);
+
+    const inconsistentMetric = createJevEnvelope();
+    const inconsistentEvaluation = (
+      inconsistentMetric.payload.evaluations?.jev as {
+        status: 'completed';
+        evaluation: JevEvaluation;
+      }
+    ).evaluation as unknown as { metrics: Record<string, unknown> };
+    inconsistentEvaluation.metrics.security = {
+      applicable: false,
+      score: 9,
+      confidence: 1,
+      summary: 'Invalid extra fields.',
+    };
+    expect(() => reviewArtifactToReviewResult(inconsistentMetric, target)).toThrow(
+      /metric security/i
+    );
+
+    const outOfRangeMetric = createJevEnvelope();
+    const outOfRangeEvaluation = (
+      outOfRangeMetric.payload.evaluations?.jev as {
+        status: 'completed';
+        evaluation: JevEvaluation;
+      }
+    ).evaluation;
+    const correctness = outOfRangeEvaluation.metrics.correctness;
+    if (correctness.applicable) correctness.score = 0;
+    expect(() => reviewArtifactToReviewResult(outOfRangeMetric, target)).toThrow(/out of range/i);
+
+    const invalidComparison = createJevEnvelope();
+    const comparisonEvaluation = (
+      invalidComparison.payload.evaluations?.jev as {
+        status: 'completed';
+        evaluation: JevEvaluation;
+      }
+    ).evaluation;
+    comparisonEvaluation.comparison = [
+      {
+        metric: 'correctness',
+        previousScore: 7,
+        currentScore: 8,
+        delta: 99,
+        direction: 'improved',
+      },
+    ];
+    expect(() => reviewArtifactToReviewResult(invalidComparison, target)).toThrow(/comparison/i);
+
+    const invalidMode = createJevEnvelope();
+    (invalidMode.payload as unknown as Record<string, unknown>).mode = 'unsupported';
+    expect(() => reviewArtifactToReviewResult(invalidMode, target)).toThrow(/mode/i);
   });
 
   it('accepts an existing artifact with a valid legacy fingerprint and no signature', () => {

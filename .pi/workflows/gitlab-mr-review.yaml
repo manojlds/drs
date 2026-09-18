@@ -22,6 +22,11 @@ inputs:
   post:
     type: boolean
     default: false
+  reviewMode:
+    type: enum
+    values: [configured, agent, jev, combined]
+    default: configured
+    description: Review evaluator mode
   requireCompleteDiff:
     type: boolean
     default: false
@@ -98,6 +103,7 @@ nodes:
       - change
     with:
       source: change
+      mode: '{{inputs.reviewMode}}'
     permissions:
       filesystem:
         read:

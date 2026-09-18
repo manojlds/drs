@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { GitHubClient } from './client.js';
 
 // Mock types matching GitHub API responses
 interface MockPRFile {
@@ -240,5 +241,29 @@ describe('GitHub Patch Format Edge Cases', () => {
 
     expect(file.patch).toBeUndefined();
     expect(file.filename).toBe('assets/logo.png');
+  });
+});
+
+describe('GitHubClient comment pagination', () => {
+  it('loads all issue-comment pages so an older canonical summary remains discoverable', async () => {
+    const client = new GitHubClient({ token: 'test-token' });
+    const comments = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1,
+      body: index === 100 ? '<!-- drs-comment-id: drs-review-summary -->' : `comment ${index}`,
+    }));
+    const listComments = vi.fn();
+    const paginate = vi.fn().mockResolvedValue(comments);
+    (client as unknown as { octokit: unknown }).octokit = {
+      paginate,
+      issues: { listComments },
+    };
+
+    await expect(client.listPRComments('owner', 'repo', 7)).resolves.toEqual(comments);
+    expect(paginate).toHaveBeenCalledWith(listComments, {
+      owner: 'owner',
+      repo: 'repo',
+      issue_number: 7,
+      per_page: 100,
+    });
   });
 });

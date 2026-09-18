@@ -1,5 +1,6 @@
 id: incomplete-api-migration
 description: Rename leaves a live reference behind.
+comparison: { group: api-migration, variant: defect }
 expected:
   - id: API-001
     description: handler still references removed oldName and cannot load.

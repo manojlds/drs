@@ -61,6 +61,8 @@ export interface Comment {
   id: number | string;
   /** Comment body/content */
   body: string;
+  /** Whether the provider confirms this comment belongs to the authenticated DRS identity */
+  authoredByCurrentUser?: boolean;
 }
 
 export interface ChangeRequestInput {

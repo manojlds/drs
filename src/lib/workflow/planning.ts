@@ -273,7 +273,7 @@ export const ACTION_OPTION_FIELDS: Partial<
     'fixChange',
     'requireCompleteDiff',
   ]),
-  review: new Set(['source', 'reviewArtifact', 'severity', 'artifact']),
+  review: new Set(['source', 'reviewArtifact', 'severity', 'artifact', 'mode']),
   'review-context': new Set(['source', 'file', 'baseBranch']),
   describe: new Set(['source', 'post', 'postDescription']),
   'code-quality-report': new Set(['review', 'path']),

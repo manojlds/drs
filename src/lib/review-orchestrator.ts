@@ -10,13 +10,17 @@ import type { DRSConfig } from './config.js';
 import type { ChangeSummary } from './change-summary.js';
 import {
   shouldIgnoreFile,
+  getDefaultModel,
   getReviewAgentId,
   getModelOverrides,
   getDescriberModelOverride,
   getDefaultThinkingLevel,
   getRuntimeConfig,
   getUnifiedModelOverride,
+  getJevReviewConfig,
+  resolveReviewMode,
   type ModelOverrides,
+  type ReviewMode,
 } from './config.js';
 import { createRuntimeClientInstance, type RuntimeClient } from '../runtime/client.js';
 import { calculateSummary, type ReviewIssue } from './comment-formatter.js';
@@ -32,13 +36,23 @@ import {
   formatCompressionSummary,
   resolveCompressionBudget,
 } from './context-compression.js';
-import { createEmptyReviewUsageSummary, type ReviewUsageSummary } from './review-usage.js';
+import {
+  aggregateAgentUsage,
+  createEmptyReviewUsageSummary,
+  createEvaluatorUsageSummary,
+  type ReviewUsageSummary,
+} from './review-usage.js';
 import { runDescribeAgent, type PreCompressedDiffs } from './description-executor.js';
 import { formatDescribeSummary } from './description-formatter.js';
 import type { ReviewFinding } from './review-artifact.js';
 import type { TraceCollector } from './trace-collector.js';
 import type { AgentPermissions } from './agent-permissions.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
+import { buildJevReviewState } from './jev/review.js';
+import { createJevClientFromEnvironment, JevClientError } from './jev/client.js';
+import { buildJevQuestions } from './jev/questions.js';
+import { toJevEvaluation } from './jev/transform.js';
+import type { JevEvaluation } from './jev/types.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -79,6 +93,7 @@ export interface ReviewVerificationContext {
   artifact: {
     reviewId: string;
     findings: ReviewFinding[];
+    evaluations?: ReviewResult['evaluations'];
   };
   artifactPath?: string;
   severity?: string;
@@ -98,6 +113,12 @@ export interface ReviewResult {
   filesReviewed: number;
   /** Token usage and cost details for the review run */
   usage?: ReviewUsageSummary;
+  mode?: ReviewMode;
+  evaluations?: {
+    jev?:
+      | { status: 'completed'; evaluation: JevEvaluation }
+      | { status: 'failed'; error: { code: string; message: string } };
+  };
   /** Explicit verification verdicts for an existing review artifact. */
   verification?: ReviewVerificationResult;
   parserDiagnostics?: ReviewIssueParserDiagnostics[];
@@ -140,6 +161,7 @@ export interface ConnectOptions {
 
 export interface ExecuteReviewOptions {
   permissions?: AgentPermissions;
+  mode?: ReviewMode | 'configured';
 }
 
 /**
@@ -207,6 +229,17 @@ export async function executeReview(
   source: ReviewSource,
   options: ExecuteReviewOptions = {}
 ): Promise<ReviewResult> {
+  const mode = resolveReviewMode(config, options.mode);
+  const includesAgent = mode === 'agent' || mode === 'combined';
+  const includesJev = mode === 'jev' || mode === 'combined';
+  const jevConfig = getJevReviewConfig(config);
+
+  if (includesAgent && !getDefaultModel(config)) {
+    throw new Error(
+      'Default model is required before running an agent-backed review. Configure agents.default.model or set DRS_DEFAULT_MODEL.'
+    );
+  }
+
   console.log(chalk.gray(`Found ${source.files.length} changed file(s)\n`));
 
   // Filter files based on ignore patterns
@@ -224,6 +257,7 @@ export async function executeReview(
       summary: calculateSummary(0, []),
       filesReviewed: 0,
       usage: createEmptyReviewUsageSummary(),
+      ...(mode !== 'agent' ? { mode } : {}),
       parserDiagnostics: [],
     };
   }
@@ -241,16 +275,18 @@ export async function executeReview(
     ...describeOverrides,
   };
 
-  // Connect to Pi runtime
-  const runtimeClient = await connectToRuntime(config, source.workingDir, {
-    debug: source.debug,
-    modelOverrides: reviewOverrides,
-    thinkingLevel: source.thinkingLevel,
-    traceCollector: source.context.traceCollector as TraceCollector | undefined,
-    permissions: options.permissions,
-  });
-
+  let runtimeClient: RuntimeClient | undefined;
   try {
+    if (includesAgent) {
+      runtimeClient = await connectToRuntime(config, source.workingDir, {
+        debug: source.debug,
+        modelOverrides: reviewOverrides,
+        thinkingLevel: source.thinkingLevel,
+        traceCollector: source.context.traceCollector as TraceCollector | undefined,
+        permissions: options.permissions,
+      });
+    }
+
     // Build instructions - use provided diffs if available, otherwise fall back to git command
     const diffCommand = source.staged ? 'git diff --cached -- <file>' : 'git diff -- <file>';
 
@@ -281,7 +317,13 @@ export async function executeReview(
         )
       : [];
     const allModelIds = [...reviewModelIds, ...describeModelIds];
-    const contextWindow = runtimeClient.getMinContextWindow(allModelIds);
+    const runtimeContextWindow = runtimeClient?.getMinContextWindow(allModelIds);
+    const contextWindow =
+      includesJev && runtimeContextWindow !== undefined
+        ? Math.min(runtimeContextWindow, jevConfig.contextWindow)
+        : includesJev
+          ? jevConfig.contextWindow
+          : runtimeContextWindow;
     const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
 
     const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
@@ -297,7 +339,13 @@ export async function executeReview(
 
     // ── Describe pass (optional, skipped in verification mode) ──────────
     let describeSummary: string | undefined;
-    if (describeEnabled && !verificationContext && filesForInstructions.some((f) => f.patch)) {
+    if (
+      includesAgent &&
+      runtimeClient &&
+      describeEnabled &&
+      !verificationContext &&
+      filesForInstructions.some((f) => f.patch)
+    ) {
       try {
         console.log(chalk.bold.blue('🔍 Running describe pass for change context\n'));
         const preCompressed: PreCompressedDiffs = {
@@ -324,39 +372,170 @@ export async function executeReview(
     }
 
     // ── Review pass ──────────────────────────────────────────────────────
-    const baseInstructions = buildBaseInstructions(
-      source.name,
-      compression.files,
-      diffCommand,
-      compressionSummary,
-      verificationContext
-    );
+    const agentPromise =
+      includesAgent && runtimeClient
+        ? runAgentReviewComponent({
+            runtimeClient,
+            config,
+            source,
+            filteredFiles,
+            compressionFiles: compression.files,
+            compressionSummary,
+            diffCommand,
+            describeSummary,
+            verificationContext,
+          })
+        : undefined;
 
-    // Run agents using shared core logic
-    const result = await runReviewPipeline(
-      runtimeClient,
-      config,
-      baseInstructions,
-      source.name,
-      filteredFiles,
-      { ...source.context, describeSummary, verificationContext },
-      source.workingDir ?? process.cwd(),
-      source.debug ?? false
-    );
+    const jevPromise = includesJev
+      ? runJevReviewComponent({
+          config,
+          source,
+          compressionFiles: compression.files,
+          compressionSummary,
+          previousEvaluation: getPreviousJevEvaluation(verificationContext),
+        })
+      : undefined;
+
+    if (mode === 'jev') {
+      const jev = await jevPromise!;
+      return {
+        issues: [],
+        summary: calculateSummary(filteredFiles.length, []),
+        filesReviewed: filteredFiles.length,
+        usage: aggregateAgentUsage([jev.usage]),
+        mode,
+        evaluations: { jev: { status: 'completed', evaluation: jev.evaluation } },
+        parserDiagnostics: [],
+      };
+    }
+
+    let agent: Awaited<ReturnType<typeof runAgentReviewComponent>>;
+    let jevEvaluation: ReviewResult['evaluations'];
+    let usage: ReviewUsageSummary;
+    if (mode === 'combined' && jevPromise) {
+      const [agentOutcome, jevOutcome] = await Promise.allSettled([agentPromise!, jevPromise]);
+      if (agentOutcome.status === 'rejected') throw agentOutcome.reason;
+      agent = agentOutcome.value;
+      usage = agent.usage ?? createEmptyReviewUsageSummary();
+      if (jevOutcome.status === 'fulfilled') {
+        const jev = jevOutcome.value;
+        jevEvaluation = { jev: { status: 'completed', evaluation: jev.evaluation } };
+        usage = aggregateAgentUsage([...(usage.agents ?? []), jev.usage]);
+      } else {
+        if (jevConfig.failurePolicy !== 'continue-agent') throw jevOutcome.reason;
+        jevEvaluation = {
+          jev: { status: 'failed', error: sanitizeJevError(jevOutcome.reason) },
+        };
+      }
+    } else {
+      agent = await agentPromise!;
+      usage = agent.usage ?? createEmptyReviewUsageSummary();
+    }
 
     return {
-      issues: result.issues,
-      summary: result.summary,
-      changeSummary: result.changeSummary,
-      filesReviewed: result.filesReviewed,
-      usage: result.usage ?? createEmptyReviewUsageSummary(),
-      verification: result.verification,
-      parserDiagnostics: result.parserDiagnostics ?? [],
+      issues: agent.issues,
+      summary: agent.summary,
+      changeSummary: agent.changeSummary,
+      filesReviewed: agent.filesReviewed,
+      usage,
+      ...(mode !== 'agent' ? { mode } : {}),
+      ...(jevEvaluation ? { evaluations: jevEvaluation } : {}),
+      verification: agent.verification,
+      parserDiagnostics: agent.parserDiagnostics ?? [],
     };
   } finally {
     // Always shut down Pi runtime client
-    await runtimeClient.shutdown();
+    await runtimeClient?.shutdown();
   }
+}
+
+async function runAgentReviewComponent(args: {
+  runtimeClient: RuntimeClient;
+  config: DRSConfig;
+  source: ReviewSource;
+  filteredFiles: string[];
+  compressionFiles: FileWithDiff[];
+  compressionSummary: string | null;
+  diffCommand: string;
+  describeSummary?: string;
+  verificationContext?: ReviewVerificationContext;
+}): Promise<Awaited<ReturnType<typeof runReviewPipeline>>> {
+  const baseInstructions = buildBaseInstructions(
+    args.source.name,
+    args.compressionFiles,
+    args.diffCommand,
+    args.compressionSummary ?? undefined,
+    args.verificationContext
+  );
+
+  return runReviewPipeline(
+    args.runtimeClient,
+    args.config,
+    baseInstructions,
+    args.source.name,
+    args.filteredFiles,
+    {
+      ...args.source.context,
+      describeSummary: args.describeSummary,
+      verificationContext: args.verificationContext,
+    },
+    args.source.workingDir ?? process.cwd(),
+    args.source.debug ?? false
+  );
+}
+
+async function runJevReviewComponent(args: {
+  config: DRSConfig;
+  source: ReviewSource;
+  compressionFiles: FileWithDiff[];
+  compressionSummary: string | null;
+  previousEvaluation?: JevEvaluation;
+}): Promise<{
+  evaluation: JevEvaluation;
+  usage: ReturnType<typeof createEvaluatorUsageSummary>;
+}> {
+  const jevConfig = getJevReviewConfig(args.config);
+  const client = createJevClientFromEnvironment({
+    timeoutMs: jevConfig.timeoutMs,
+    maxRetries: jevConfig.maxRetries,
+  });
+  const state = buildJevReviewState({
+    label: args.source.name,
+    files: args.compressionFiles,
+    compressionSummary: args.compressionSummary ?? undefined,
+    sourceDescription: args.source.context,
+  });
+  const evaluation = toJevEvaluation(
+    await client.evaluate(state, buildJevQuestions()),
+    args.previousEvaluation
+  );
+  return {
+    evaluation,
+    usage: createEvaluatorUsageSummary('evaluator/jev', {
+      inputTokens: evaluation.usage.inputTokens,
+      outputTokens: evaluation.usage.outputTokens,
+      model: evaluation.model,
+      success: true,
+    }),
+  };
+}
+
+function sanitizeJevError(error: unknown): { code: string; message: string } {
+  if (error instanceof JevClientError) {
+    return { code: error.code, message: error.message };
+  }
+  return {
+    code: 'api_error',
+    message: 'Jev evaluation failed.',
+  };
+}
+
+function getPreviousJevEvaluation(
+  verificationContext: ReviewVerificationContext | undefined
+): JevEvaluation | undefined {
+  const jev = verificationContext?.artifact.evaluations?.jev;
+  return jev?.status === 'completed' ? jev.evaluation : undefined;
 }
 
 function isReviewVerificationContext(value: unknown): value is ReviewVerificationContext {

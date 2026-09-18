@@ -32,6 +32,7 @@ describe('benchmark command', () => {
     );
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
+        reviewMode: 'agent',
         models: ['a/one', 'b/two'],
         repeat: 2,
         live: true,
@@ -39,6 +40,39 @@ describe('benchmark command', () => {
       })
     );
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('allows Jev-only review benchmarks without a Pi model', async () => {
+    const run = vi.fn(async () => ({
+      jsonPath: 'result.json',
+      markdownPath: 'result.md',
+      report: {},
+    }));
+    const command = createBenchmarkCommand(run);
+    command.exitOverride();
+
+    await command.parseAsync(
+      ['review', '--suite', 'jev-calibration-v1', '--review-mode', 'jev', '--live'],
+      { from: 'user' }
+    );
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ reviewMode: 'jev', models: [], live: true })
+    );
+  });
+
+  it('rejects an unknown review mode before running', async () => {
+    const run = vi.fn();
+    const command = createBenchmarkCommand(run);
+    command.exitOverride();
+
+    await expect(
+      command.parseAsync(
+        ['review', '--suite', 'development-v1', '--review-mode', 'other', '--live'],
+        { from: 'user' }
+      )
+    ).rejects.toThrow();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('rejects a non-positive repeat before running', async () => {

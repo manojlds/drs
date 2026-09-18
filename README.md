@@ -32,6 +32,7 @@ answers never enter reviewer workspaces. Traces are not retained in this MVP.
 
 - 🧭 **Workflow-first automation**: run packaged or project-defined DAG workflows with `drs workflow run`
 - 🎯 **First-class review workflows**: `local-review`, `github-pr-review`, and `gitlab-mr-review` are included out of the box
+- 📊 **Optional Jev evaluation**: add a remote, independent 19-dimension quality scorecard without replacing actionable DRS findings
 - 🧠 **Flexible agent pipelines**: add your own project-specific `review/*` and `task/*` agents
 - 📦 **Pi-native runtime**: in-process execution by default, no separate runtime service required
 - ✍️ **Maintenance workflows**: update changelogs, fix review issues, refresh AGENTS.md-style guidance, and generate PR/MR descriptions
@@ -46,6 +47,7 @@ answers never enter reviewer workspaces. Traces are not retained in this MVP.
 - [Quick Start](#quick-start)
 - [Upgrading From 4.1 To 5.0](https://github.com/manojlds/drs/blob/main/docs/MIGRATING_TO_5.md)
 - [Deployment Modes](#deployment-modes)
+- [Optional Jev Evaluation](docs/JEV_INTEGRATION.md)
 - [Customization](#customization)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
@@ -88,7 +90,9 @@ touch .env
 #   - ANTHROPIC_API_KEY for Claude models (e.g., anthropic/claude-opus-4-5-20251101)
 #   - ZHIPU_API_KEY for GLM models (e.g., zhipuai/glm-4.7)
 #   - OPENAI_API_KEY for OpenAI models (e.g., openai/gpt-4)
-#   - See .env.example for all supported providers
+# - JEV_API_KEY only when using optional jev or combined review mode
+#   (focused review context is sent to TypeSafe's remote API)
+# - See .env.example for all supported providers
 ```
 
 DRS CLI now loads `.env` automatically from your current working directory.
@@ -103,6 +107,12 @@ drs workflow run local-review
 
 # Review staged changes
 drs workflow run local-review --input staged=true
+
+# Run Jev's scalar quality evaluation only (requires JEV_API_KEY)
+drs workflow run local-jev-review
+
+# Keep normal file-level findings and add an independent Jev scorecard
+drs workflow run local-review --input reviewMode=combined
 
 # Update CHANGELOG.md from local changes
 drs workflow run local-changelog-update
@@ -143,6 +153,8 @@ drs wiki check-site https://example.github.io/project/
 |---|---|
 | Review local unstaged changes | `drs workflow run local-review` |
 | Review local staged changes | `drs workflow run local-review --input staged=true` |
+| Run a Jev-only quality scorecard | `drs workflow run local-jev-review` |
+| Run agent review plus Jev | `drs workflow run local-review --input reviewMode=combined` |
 | Update changelog from local changes | `drs workflow run local-changelog-update` |
 | Update changelog from tag range | `drs workflow run tag-changelog-update` |
 | Fix issues from latest saved local review artifact | `drs workflow run local-fix-review-issues` |
@@ -850,7 +862,9 @@ OPENAI_API_KEY=sk-xxx               # For OpenAI models
 
 # Optional
 GITLAB_URL=https://gitlab.com
+JEV_API_KEY=xxx                     # Only for optional remote Jev evaluation
 DRS_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+DRS_REVIEW_MODE=agent               # agent | jev | combined; overrides review.mode
 DRS_AGENT_REVIEW_UNIFIED_REVIEWER_MODEL=anthropic/claude-opus-4-5-20251101
 # Configure the reviewer in .drs/drs.config.yaml via review.agent.
 # DRS_REVIEW_AGENT overrides it; single-valued REVIEW_AGENTS is deprecated.
@@ -900,6 +914,7 @@ Apache-2.0
 
 ## Documentation
 
+- [Jev Quality Evaluation](docs/JEV_INTEGRATION.md) - Modes, privacy, credentials, scorecards, and CI boundaries
 - [5.0 Migration Guide](https://github.com/manojlds/drs/blob/main/docs/MIGRATING_TO_5.md) - Required changes when upgrading from DRS 4.1
 - [GitLab CI Integration Guide](docs/GITLAB_CI_INTEGRATION.md) - Complete guide for GitLab CI/CD setup
 - [GitHub Actions Integration Guide](docs/GITHUB_ACTIONS_INTEGRATION.md) - GitHub Actions workflow setup

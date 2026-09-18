@@ -1,3 +1,5 @@
+import { metricKeys } from './jev/types.js';
+
 export const describeOutputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -41,12 +43,161 @@ export const describeOutputSchema = {
   },
 } as const;
 
+const usageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens', 'cost'],
+  properties: {
+    input: { type: 'number', minimum: 0 },
+    output: { type: 'number', minimum: 0 },
+    cacheRead: { type: 'number', minimum: 0 },
+    cacheWrite: { type: 'number', minimum: 0 },
+    totalTokens: { type: 'number', minimum: 0 },
+    cost: { type: 'number', minimum: 0 },
+  },
+} as const;
+
+const agentUsageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['agentType', 'turns', 'usage'],
+  properties: {
+    agentType: { type: 'string', minLength: 1 },
+    model: { type: 'string', minLength: 1 },
+    success: { type: 'boolean' },
+    turns: { type: 'integer', minimum: 0 },
+    toolCalls: {
+      type: 'object',
+      additionalProperties: { type: 'integer', minimum: 0 },
+    },
+    skills: { type: 'array', items: { type: 'string', minLength: 1 } },
+    contextSources: { type: 'array', items: { type: 'string', minLength: 1 } },
+    usage: usageSummarySchema,
+  },
+} as const;
+
+const reviewUsageSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['total', 'agents'],
+  properties: {
+    total: usageSummarySchema,
+    agents: { type: 'array', items: agentUsageSummarySchema },
+  },
+} as const;
+
+const jevMetricSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['applicable'],
+      properties: { applicable: { const: false } },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['applicable', 'score', 'confidence', 'summary'],
+      properties: {
+        applicable: { const: true },
+        score: { type: 'number', minimum: 1, maximum: 10 },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+        summary: { type: 'string', minLength: 1 },
+        issues: {
+          type: 'array',
+          maxItems: 20,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['severity', 'description'],
+            properties: {
+              severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+              description: { type: 'string', minLength: 1 },
+              suggestion: { type: 'string', minLength: 1 },
+            },
+          },
+        },
+      },
+    },
+  ],
+} as const;
+
+const jevMetricProperties = Object.fromEntries(
+  metricKeys.map((metric) => [metric, jevMetricSchema])
+);
+
+const jevEvaluationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['model', 'metrics', 'priorities', 'usage'],
+  properties: {
+    model: { type: 'string', minLength: 1 },
+    metrics: {
+      type: 'object',
+      additionalProperties: false,
+      required: metricKeys,
+      properties: jevMetricProperties,
+    },
+    priorities: {
+      type: 'array',
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['metric', 'severity', 'reason'],
+        properties: {
+          metric: { type: 'string', enum: metricKeys },
+          severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+          reason: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+    usage: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['inputTokens', 'outputTokens'],
+      properties: {
+        inputTokens: { type: 'integer', minimum: 0 },
+        outputTokens: { type: 'integer', minimum: 0 },
+      },
+    },
+    improvements: { type: 'array', items: { type: 'string' } },
+    regressions: { type: 'array', items: { type: 'string' } },
+    comparison: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['metric', 'previousScore', 'currentScore', 'delta', 'direction'],
+        properties: {
+          metric: { type: 'string', enum: metricKeys },
+          previousScore: { type: 'number', minimum: 1, maximum: 10 },
+          currentScore: { type: 'number', minimum: 1, maximum: 10 },
+          delta: { type: 'number', minimum: -9, maximum: 9 },
+          direction: { type: 'string', enum: ['improved', 'regressed', 'unchanged'] },
+        },
+      },
+    },
+  },
+} as const;
+
 export const reviewOutputSchema = {
   type: 'object',
   additionalProperties: false,
   required: ['timestamp', 'summary', 'issues'],
   properties: {
     timestamp: { type: 'string', minLength: 1 },
+    mode: { type: 'string', enum: ['agent', 'jev', 'combined'] },
+    usage: reviewUsageSummarySchema,
+    artifact: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['reviewId'],
+      properties: {
+        reviewId: { type: 'string', minLength: 1 },
+        path: { type: 'string', minLength: 1 },
+      },
+    },
     summary: {
       type: 'object',
       additionalProperties: false,
@@ -101,6 +252,59 @@ export const reviewOutputSchema = {
           solution: { type: 'string', minLength: 1 },
           references: { type: 'array', items: { type: 'string' } },
           agent: { type: 'string', minLength: 1 },
+          findingId: { type: 'string', minLength: 1 },
+          findingState: {
+            type: 'string',
+            enum: ['open', 'attempted', 'resolved'],
+          },
+          findingDisposition: {
+            type: 'string',
+            enum: [
+              'confirmed',
+              'uncertain',
+              'pre_existing',
+              'partial',
+              'still_open',
+              'regression',
+              'resolved',
+            ],
+          },
+        },
+      },
+    },
+    evaluations: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        jev: {
+          oneOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['status', 'evaluation'],
+              properties: {
+                status: { type: 'string', enum: ['completed'] },
+                evaluation: jevEvaluationSchema,
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['status', 'error'],
+              properties: {
+                status: { type: 'string', enum: ['failed'] },
+                error: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['code', 'message'],
+                  properties: {
+                    code: { type: 'string', minLength: 1 },
+                    message: { type: 'string', minLength: 1 },
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     },

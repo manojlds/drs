@@ -5,6 +5,7 @@ import {
   getRuntimeConfig,
   resolveAgentRunConfig,
   resolveAgentThinkingLevel,
+  resolveRuntimeAgentModel,
 } from '../lib/config.js';
 import { requireAgentId } from '../lib/agent-id.js';
 import { resolveWithinWorkingDir } from '../lib/path-utils.js';
@@ -103,6 +104,13 @@ export async function runAgent(
   const agent = getAgent(workingDir, agentId, config);
   if (!agent) {
     throw new Error(`Unknown agent "${agentId}". Run "drs list-agents" to see available agents.`);
+  }
+
+  const resolvedModel = options.model ?? resolveRuntimeAgentModel(config, agentId, agent.model);
+  if (!resolvedModel) {
+    throw new Error(
+      'Default model is required. Set agents.default.model in .drs/drs.config.yaml or set DRS_DEFAULT_MODEL environment variable. Run "drs init" to configure your project.'
+    );
   }
 
   const configuredRun = resolveAgentRunConfig(config, agentId);

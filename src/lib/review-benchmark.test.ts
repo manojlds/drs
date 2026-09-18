@@ -7,6 +7,7 @@ import type { ReviewResult } from './review-orchestrator.js';
 import { loadAgents } from '../runtime/agent-loader.js';
 import { buildReviewPromptWithSources } from './context-loader.js';
 import {
+  analyzeJevPairs,
   loadBenchmarkSuite,
   loadBenchmarkCase,
   loadBenchmarkEvidence,
@@ -14,6 +15,7 @@ import {
   summarizeBenchmarkCapabilities,
   runReviewBenchmark,
 } from './review-benchmark.js';
+import { metricKeys, type JevEvaluation } from './jev/types.js';
 
 const root = process.cwd();
 const output = 'out/review-benchmark-test';
@@ -50,6 +52,19 @@ const successfulReview = (model: string): ReviewResult => ({
       errors: [],
     },
   ],
+});
+const jevEvaluation = (score: number, confidence = 0.8): JevEvaluation => ({
+  model: 'jev-test',
+  metrics: Object.fromEntries(
+    metricKeys.map((metric) => [
+      metric,
+      metric === 'correctness'
+        ? { applicable: true, score, confidence, summary: 'Synthetic benchmark signal.' }
+        : { applicable: false },
+    ])
+  ) as JevEvaluation['metrics'],
+  priorities: [],
+  usage: { inputTokens: 11, outputTokens: 7 },
 });
 afterEach(() => rm(join(root, output), { recursive: true, force: true }));
 describe('review benchmark fixtures', () => {
@@ -104,6 +119,290 @@ describe('review benchmark fixtures', () => {
       },
     ]);
   });
+
+  it('loads the Jev calibration suite with paired and control cases', async () => {
+    const loaded = await loadBenchmarkSuite(root, 'jev-calibration-v1');
+    expect(loaded.suite.cases).toEqual(
+      expect.arrayContaining([
+        'inverted-condition',
+        'corrected-condition',
+        'incomplete-api-migration',
+        'complete-api-docs-migration',
+        'q7m4-x2',
+        'x5j1-r7',
+      ])
+    );
+    expect((await loadBenchmarkCase(root, 'inverted-condition')).comparison).toEqual({
+      group: 'authorization-condition',
+      variant: 'defect',
+    });
+  });
+
+  it('computes paired per-dimension medians, direction, applicability, and confidence only', () => {
+    const analysis = analyzeJevPairs([
+      {
+        caseId: 'bad',
+        repeat: 1,
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(0.2, 0.7),
+      },
+      {
+        caseId: 'bad',
+        repeat: 2,
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(0.4, 0.9),
+      },
+      {
+        caseId: 'fixed',
+        repeat: 1,
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(0.8, 0.8),
+      },
+      {
+        caseId: 'fixed',
+        repeat: 2,
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(0.6, 1),
+      },
+    ]);
+
+    expect(analysis).toHaveLength(1);
+    expect(analysis[0]).not.toHaveProperty('overallScore');
+    expect(analysis[0].dimensions.correctness).toEqual({
+      direction: 'improved',
+      medianDelta: 0.4,
+      applicabilityConsistency: 1,
+      confidence: 0.85,
+      pairCount: 2,
+    });
+    expect(analysis[0].dimensions.security).toMatchObject({
+      direction: 'inconclusive',
+      medianDelta: null,
+      applicabilityConsistency: 1,
+      confidence: null,
+      pairCount: 2,
+    });
+  });
+
+  it('pairs combined Jev calibration runs within the same requested model', () => {
+    const analysis = analyzeJevPairs([
+      {
+        caseId: 'bad-a',
+        repeat: 1,
+        model: 'provider/a',
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(4, 0.8),
+      },
+      {
+        caseId: 'fixed-a',
+        repeat: 1,
+        model: 'provider/a',
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(5, 0.8),
+      },
+      {
+        caseId: 'bad-b',
+        repeat: 1,
+        model: 'provider/b',
+        comparison: { group: 'pair', variant: 'defect' },
+        evaluation: jevEvaluation(8, 0.8),
+      },
+      {
+        caseId: 'fixed-b',
+        repeat: 1,
+        model: 'provider/b',
+        comparison: { group: 'pair', variant: 'fixed' },
+        evaluation: jevEvaluation(9, 0.8),
+      },
+    ]);
+
+    expect(analysis[0].dimensions.correctness).toMatchObject({
+      direction: 'improved',
+      medianDelta: 1,
+      pairCount: 2,
+    });
+  });
+
+  it('requires live execution and a Jev key before any Jev-containing run', async () => {
+    const previous = process.env.JEV_API_KEY;
+    delete process.env.JEV_API_KEY;
+    let calls = 0;
+    const executeReview = async () => {
+      calls++;
+      return {} as ReviewResult;
+    };
+    const base = {
+      projectRoot: root,
+      suite: 'jev-calibration-v1',
+      models: [],
+      reviewMode: 'jev' as const,
+      profile: 'isolated' as const,
+      repeat: 1,
+      output,
+    };
+    try {
+      await expect(runReviewBenchmark({ ...base, live: false }, { executeReview })).rejects.toThrow(
+        /--live/
+      );
+      await expect(runReviewBenchmark({ ...base, live: true }, { executeReview })).rejects.toThrow(
+        /JEV_API_KEY/
+      );
+      expect(calls).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.JEV_API_KEY;
+      else process.env.JEV_API_KEY = previous;
+    }
+  });
+
+  it('runs Jev-only without a model or agent reviewer and separates Jev output', async () => {
+    const previous = process.env.JEV_API_KEY;
+    process.env.JEV_API_KEY = 'test-key';
+    let calls = 0;
+    try {
+      const result = await runReviewBenchmark(
+        {
+          projectRoot: root,
+          suite: 'jev-calibration-v1',
+          models: [],
+          reviewMode: 'jev',
+          profile: 'isolated',
+          repeat: 1,
+          output,
+          live: true,
+        },
+        {
+          onWorkspaceReady: (_workspace, config) => {
+            expect(getUnifiedModelOverride(config)['review/unified-reviewer']).toBeUndefined();
+          },
+          executeReview: async (_config, _source, options) => {
+            calls++;
+            expect(options).toEqual({ mode: 'jev' });
+            return {
+              issues: [],
+              summary: {} as never,
+              filesReviewed: 1,
+              mode: 'jev',
+              evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(0.75) } },
+              usage: {
+                total: {
+                  input: 11,
+                  output: 7,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 18,
+                  cost: 0,
+                },
+                agents: [
+                  {
+                    agentType: 'evaluator/jev',
+                    model: 'jev-test',
+                    success: true,
+                    turns: 1,
+                    usage: {
+                      input: 11,
+                      output: 7,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      totalTokens: 18,
+                      cost: 0,
+                    },
+                  },
+                ],
+              },
+              parserDiagnostics: [],
+            };
+          },
+        }
+      );
+      const report = result.report as any;
+      expect(calls).toBe(6);
+      expect(report.reviewMode).toBe('jev');
+      expect(report.models).toEqual([]);
+      expect(report.runs[0]).toMatchObject({
+        requestedMode: 'jev',
+        requestedModel: null,
+        issues: [],
+        adjudication: [],
+        components: {
+          agent: { status: 'not-requested', usage: null },
+          jev: {
+            status: 'success',
+            model: 'jev-test',
+            metrics: { correctness: { applicable: true, score: 0.75, confidence: 0.8 } },
+            usage: { input: 11, output: 7, totalTokens: 18 },
+          },
+        },
+      });
+      expect(report).not.toHaveProperty('drsMetrics');
+      expect(report).toHaveProperty('jevPairAnalysis');
+      const markdown = await readFile(result.markdownPath, 'utf8');
+      expect(markdown).toContain('Review mode: `jev`');
+      expect(markdown).toContain('Agent issue findings: not requested');
+      expect(markdown).toContain('## Jev dimension signals');
+      expect(markdown).not.toContain('Recall/precision');
+    } finally {
+      if (previous === undefined) delete process.env.JEV_API_KEY;
+      else process.env.JEV_API_KEY = previous;
+    }
+  }, 15_000);
+
+  it('keeps combined agent adjudication and Jev signals and overhead separate', async () => {
+    const previous = process.env.JEV_API_KEY;
+    process.env.JEV_API_KEY = 'test-key';
+    try {
+      const result = await runReviewBenchmark(
+        {
+          projectRoot: root,
+          suite: 'jev-calibration-v1',
+          models: ['test/pinned'],
+          reviewMode: 'combined',
+          profile: 'isolated',
+          repeat: 1,
+          output,
+          live: true,
+        },
+        {
+          executeReview: async (_config, _source, options) => {
+            expect(options).toEqual({ mode: 'combined' });
+            const agent = successfulReview('test/pinned');
+            const evaluatorUsage = {
+              agentType: 'evaluator/jev',
+              model: 'jev-test',
+              success: true,
+              turns: 1,
+              usage: {
+                input: 11,
+                output: 7,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 18,
+                cost: 0,
+              },
+            };
+            agent.mode = 'combined';
+            agent.evaluations = { jev: { status: 'completed', evaluation: jevEvaluation(0.75) } };
+            agent.usage!.agents.push(evaluatorUsage);
+            agent.usage!.total = evaluatorUsage.usage;
+            return agent;
+          },
+        }
+      );
+      const report = result.report as any;
+      const positive = report.runs.find((run: any) => run.caseId === 'inverted-condition');
+      expect(positive.adjudication).toHaveLength(1);
+      expect(positive.components.agent.usage.totalTokens).toBe(0);
+      expect(positive.components.jev.usage.totalTokens).toBe(18);
+      expect(report.combinedMetrics).toMatchObject({
+        medianTotalTokens: 18,
+        medianCost: 0,
+      });
+      expect(report.combinedMetrics).not.toHaveProperty('overallScore');
+      expect(report.drsMetrics.recall).toBe('pending-adjudication');
+    } finally {
+      if (previous === undefined) delete process.env.JEV_API_KEY;
+      else process.env.JEV_API_KEY = previous;
+    }
+  }, 15_000);
 
   it('runs provider-free with isolated config, opaque workspace, agent pinning and model checks', async () => {
     const seen: string[] = [];

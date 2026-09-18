@@ -61,6 +61,28 @@ describe('external PR review workflow security', () => {
     expect(post.run).toContain('--input expectedHeadSha=');
     expect(serialized).not.toContain('secrets.DRS_PROVIDER_API_KEY');
     expect(serialized).not.toContain('secrets.OPENCODE_API_KEY');
+    expect(serialized).not.toContain('secrets.JEV_API_KEY');
+    expect(post.env?.JEV_API_KEY).toBe('');
+    expect(post.env?.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN).toBe('true');
     expect(serialized).not.toContain('workflow run github-pr-review \\');
+  });
+
+  it('exposes the Jev secret only to generation jobs when a trusted variable enables Jev', () => {
+    const jobs = loadReviewJobs();
+    for (const jobName of ['review-trusted', 'review-external']) {
+      const review = jobs[jobName].steps.find((step) =>
+        step.name?.startsWith('Review Pull Request')
+      )!;
+      expect(review.env?.DRS_REVIEW_MODE).toContain("vars.DRS_REVIEW_MODE || 'agent'");
+      expect(review.env?.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN).toBe('true');
+      expect(review.env?.JEV_API_KEY).toContain('secrets.JEV_API_KEY');
+      expect(review.env?.JEV_API_KEY).toContain("vars.DRS_REVIEW_MODE == 'jev'");
+      expect(review.env?.JEV_API_KEY).toContain("vars.DRS_REVIEW_MODE == 'combined'");
+      expect(review.run).toContain('--input reviewMode="$DRS_REVIEW_MODE"');
+    }
+
+    expect(JSON.stringify(jobs['verify-contributor'])).not.toContain('secrets.JEV_API_KEY');
+    expect(JSON.stringify(jobs['post-external-review'])).not.toContain('secrets.JEV_API_KEY');
+    expect(JSON.stringify(jobs['notify-external'])).not.toContain('secrets.JEV_API_KEY');
   });
 });

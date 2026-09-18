@@ -1,0 +1,31 @@
+name: local-jev-review
+description: Run a Jev-only quality scorecard for local git diff
+metadata:
+  kind: review
+  tags: [review, local, jev]
+  review:
+    source: local
+    diff: true
+    issues: false
+inputs:
+  staged:
+    type: boolean
+    default: false
+    description: Review staged changes instead of unstaged changes
+output: review
+nodes:
+  change:
+    action: change-source
+    with:
+      type: local
+      staged: '{{inputs.staged}}'
+    output: change
+
+  review:
+    action: review
+    needs:
+      - change
+    with:
+      source: change
+      mode: jev
+    output: review

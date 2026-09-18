@@ -2143,6 +2143,73 @@ describe('workflow runner', () => {
     expect(latest.payload?.findings?.[0]?.issue?.title).toBe('Default artifact');
   });
 
+  it('passes review mode overrides from workflow review nodes', async () => {
+    const projectRoot = createTempDir('drs-workflow-review-mode-');
+    const config = {
+      ...baseConfig,
+      workflows: {
+        modeOverride: {
+          inputs: {
+            reviewMode: {
+              type: 'enum',
+              values: ['configured', 'agent', 'jev', 'combined'],
+              default: 'configured',
+            },
+          },
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change', mode: '{{inputs.reviewMode}}' },
+              output: 'review',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'modeOverride', {
+      inputs: { reviewMode: 'jev' },
+      workingDir: projectRoot,
+    });
+
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({ name: 'Local unstaged diff' }),
+      expect.objectContaining({ mode: 'jev' })
+    );
+  });
+
+  it('resolves configured workflow mode to the configured review mode before execution', async () => {
+    const projectRoot = createTempDir('drs-workflow-configured-review-mode-');
+    const config = {
+      ...baseConfig,
+      review: { ...baseConfig.review, mode: 'combined' },
+      workflows: {
+        configuredMode: {
+          nodes: {
+            change: { action: 'change-source', output: 'change' },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change', mode: 'configured' },
+              output: 'review',
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'configuredMode', { workingDir: projectRoot });
+
+    expect(mocks.executeReview).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({ name: 'Local unstaged diff' }),
+      expect.objectContaining({ mode: 'combined' })
+    );
+  });
+
   it('does not re-run upstream change-source or load-artifact when a fix loop iterates', async () => {
     const projectRoot = createTempDir('drs-workflow-local-fix-loop-cache-');
     const config = loadConfig(projectRoot);

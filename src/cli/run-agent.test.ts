@@ -366,4 +366,41 @@ describe('run-agent', () => {
       })
     ).rejects.toThrow('Agent prompt cannot be empty');
   });
+
+  it('rejects agent runs when no model is configured', async () => {
+    const configWithoutModel = {
+      ...baseConfig,
+      agents: { default: { skills: [] } },
+    } as unknown as DRSConfig;
+
+    await expect(
+      runAgent(configWithoutModel, 'task/docs-updater', {
+        prompt: 'Hello',
+        workingDir: process.cwd(),
+      })
+    ).rejects.toThrow('Default model is required');
+
+    expect(mocks.createRuntimeClientInstance).not.toHaveBeenCalled();
+  });
+
+  it('allows per-run model override without a configured default model', async () => {
+    const configWithoutModel = {
+      ...baseConfig,
+      agents: { default: { skills: [] } },
+    } as unknown as DRSConfig;
+
+    await runAgent(configWithoutModel, 'task/docs-updater', {
+      prompt: 'Use a specific model',
+      model: 'provider/special-model',
+      workingDir: process.cwd(),
+    });
+
+    expect(mocks.createRuntimeClientInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOverrides: {
+          'task/docs-updater': 'provider/special-model',
+        },
+      })
+    );
+  });
 });

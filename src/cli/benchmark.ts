@@ -1,4 +1,4 @@
-import { Command, InvalidArgumentError } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { runReviewBenchmark } from '../lib/review-benchmark.js';
 
 const collect = (value: string, values: string[]): string[] => [...values, value];
@@ -13,11 +13,16 @@ export function createBenchmarkCommand(run = runReviewBenchmark): Command {
   command
     .command('review')
     .requiredOption('--suite <name-or-path>')
-    .requiredOption(
+    .option(
       '--model <provider/model>',
       'pinned execution model (repeatable for secondary sensitivity analysis)',
       collect,
       []
+    )
+    .addOption(
+      new Option('--review-mode <mode>', 'review evaluator mode')
+        .choices(['agent', 'jev', 'combined'])
+        .default('agent')
     )
     .option('--profile <profile>', 'isolation profile', 'isolated')
     .option('--repeat <count>', 'repetitions', positive, 1)
@@ -28,6 +33,7 @@ export function createBenchmarkCommand(run = runReviewBenchmark): Command {
         const result = await run({
           projectRoot: process.cwd(),
           suite: options.suite,
+          reviewMode: options.reviewMode,
           models: options.model,
           profile: options.profile,
           repeat: options.repeat,

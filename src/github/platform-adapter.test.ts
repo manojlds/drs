@@ -110,22 +110,81 @@ describe('GitHubPlatformAdapter', () => {
 
   it('retries transient GitHub comment list failures', async () => {
     const client = {
+      getAuthenticatedUser: vi.fn().mockResolvedValue({ id: 7, login: 'drs-bot' }),
       listPRComments: vi
         .fn()
         .mockRejectedValueOnce({
           status: 503,
           message: 'upstream connect error: remote connection failure',
         })
-        .mockResolvedValueOnce([{ id: 123, body: 'Existing comment' }]),
+        .mockResolvedValueOnce([
+          { id: 123, body: 'Existing comment', user: { id: 7 } },
+          { id: 124, body: 'Forged marker', user: { id: 8, login: 'drs-bot' } },
+        ]),
     };
 
     const adapter = new GitHubPlatformAdapter(client as any);
 
     await expect(adapter.getComments('octocat/hello', 7)).resolves.toEqual([
-      { id: 123, body: 'Existing comment' },
+      { id: 123, body: 'Existing comment', authoredByCurrentUser: true },
+      { id: 124, body: 'Forged marker', authoredByCurrentUser: false },
     ]);
     expect(client.listPRComments).toHaveBeenCalledTimes(2);
     expect(client.listPRComments).toHaveBeenCalledWith('octocat', 'hello', 7);
+    expect(client.getAuthenticatedUser).toHaveBeenCalledOnce();
+  });
+
+  it('uses the fixed Actions bot identity when the installation token cannot call GET /user', async () => {
+    vi.stubEnv('DRS_GITHUB_DEFAULT_ACTIONS_TOKEN', 'true');
+    try {
+      const client = {
+        getAuthenticatedUser: vi.fn().mockRejectedValue({ status: 403, message: 'Forbidden' }),
+        listPRComments: vi.fn().mockResolvedValue([
+          {
+            id: 123,
+            body: 'Existing comment',
+            user: { id: 41898282, login: 'github-actions[bot]' },
+          },
+          { id: 124, body: 'Forged marker', user: { id: 8, login: 'other-bot[bot]' } },
+        ]),
+      };
+      const adapter = new GitHubPlatformAdapter(client as any);
+
+      await expect(adapter.getComments('octocat/hello', 7)).resolves.toEqual([
+        { id: 123, body: 'Existing comment', authoredByCurrentUser: true },
+        { id: 124, body: 'Forged marker', authoredByCurrentUser: false },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('does not use the Actions bot fallback for unmarked tokens or non-403 failures', async () => {
+    const makeAdapter = (status: number) =>
+      new GitHubPlatformAdapter({
+        getAuthenticatedUser: vi.fn().mockRejectedValue({ status, message: 'Denied' }),
+        listPRComments: vi.fn().mockResolvedValue([]),
+      } as any);
+
+    vi.stubEnv('DRS_GITHUB_DEFAULT_ACTIONS_TOKEN', '');
+    try {
+      await expect(makeAdapter(403).getComments('octocat/hello', 7)).rejects.toThrow(
+        'GitHub rejected GET /user for this token, so DRS cannot identify its own comments. ' +
+          'If GITHUB_TOKEN is the default Actions installation token, set DRS_GITHUB_DEFAULT_ACTIONS_TOKEN=true; ' +
+          'otherwise use a PAT or GitHub App token that can resolve its authenticated identity.'
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    vi.stubEnv('DRS_GITHUB_DEFAULT_ACTIONS_TOKEN', 'true');
+    try {
+      await expect(makeAdapter(401).getComments('octocat/hello', 7)).rejects.toMatchObject({
+        status: 401,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('finds an open pull request by source and target branches', async () => {

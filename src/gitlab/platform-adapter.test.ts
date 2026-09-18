@@ -2,6 +2,22 @@ import { describe, it, expect, vi } from 'vitest';
 import { GitLabPlatformAdapter } from './platform-adapter.js';
 
 describe('GitLabPlatformAdapter', () => {
+  it('marks only comments authored by the authenticated GitLab user as trusted', async () => {
+    const client = {
+      getAuthenticatedUser: vi.fn().mockResolvedValue({ id: 7 }),
+      getMRNotes: vi.fn().mockResolvedValue([
+        { id: 1, body: 'DRS summary', author: { id: 7 } },
+        { id: 2, body: 'Forged summary', author: { id: 8 } },
+      ]),
+    };
+    const adapter = new GitLabPlatformAdapter(client as any);
+
+    await expect(adapter.getComments('group/repo', 8)).resolves.toEqual([
+      { id: 1, body: 'DRS summary', authoredByCurrentUser: true },
+      { id: 2, body: 'Forged summary', authoredByCurrentUser: false },
+    ]);
+  });
+
   it('maps merge request creator identity with a GitLab no-reply fallback', async () => {
     const client = {
       getCommitEmailDomain: vi.fn().mockReturnValue('users.noreply.gitlab.com'),

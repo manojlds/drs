@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Ajv from 'ajv';
 import { describeOutputSchema, reviewOutputSchema } from './json-output-schema.js';
+import { metricKeys } from './jev/types.js';
 
 const ajv = new Ajv({ allErrors: true });
 const validateDescribe = ajv.compile(describeOutputSchema);
@@ -86,6 +87,190 @@ describe('json-output schemas', () => {
     const isValid = validateReview(payload);
     expect(isValid).toBe(true);
     expect(validateReview.errors).toBeNull();
+  });
+
+  it('validates review output with a Jev scorecard and no findings', () => {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      mode: 'jev',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      issues: [],
+      evaluations: {
+        jev: {
+          status: 'completed',
+          evaluation: {
+            model: 'jev-latest',
+            metrics: Object.fromEntries(
+              metricKeys.map((metric) => [
+                metric,
+                metric === 'security'
+                  ? { applicable: false }
+                  : {
+                      applicable: true,
+                      score: 8,
+                      confidence: 0.9,
+                      summary: `${metric} is strong.`,
+                    },
+              ])
+            ),
+            priorities: [{ metric: 'correctness', severity: 'low', reason: 'Boundary behavior.' }],
+            usage: { inputTokens: 100, outputTokens: 20 },
+          },
+        },
+      },
+    };
+
+    expect(validateReview(payload)).toBe(true);
+    expect(validateReview.errors).toBeNull();
+  });
+
+  it('validates review output with usage, artifact, and finding metadata', () => {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      mode: 'combined',
+      summary: {
+        filesReviewed: 2,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 1, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      usage: {
+        total: {
+          input: 1000,
+          output: 200,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 1200,
+          cost: 0.01,
+        },
+        agents: [
+          {
+            agentType: 'review/unified-reviewer',
+            model: 'anthropic/claude-sonnet-4-5-20250929',
+            success: true,
+            turns: 1,
+            usage: {
+              input: 1000,
+              output: 200,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 1200,
+              cost: 0.01,
+            },
+          },
+        ],
+      },
+      artifact: {
+        reviewId: 'rev_20260918082645916_nemuur',
+        path: '.drs/artifacts/github/manojlds-drs/pr-205/review/latest.json',
+      },
+      issues: [
+        {
+          category: 'SECURITY',
+          severity: 'HIGH',
+          title: 'Missing authorization check',
+          file: 'src/auth.ts',
+          line: 42,
+          problem: 'The endpoint does not verify the caller identity.',
+          solution: 'Add an authorization middleware.',
+          agent: 'review/security',
+          findingId: 'F001',
+          findingState: 'open',
+          findingDisposition: 'confirmed',
+        },
+      ],
+    };
+
+    expect(validateReview(payload)).toBe(true);
+    expect(validateReview.errors).toBeNull();
+  });
+
+  it('rejects review output with invalid finding metadata', () => {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 1,
+        bySeverity: { CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 1, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      issues: [
+        {
+          category: 'SECURITY',
+          severity: 'HIGH',
+          title: 'Missing authorization check',
+          file: 'src/auth.ts',
+          problem: 'The endpoint does not verify the caller identity.',
+          solution: 'Add an authorization middleware.',
+          agent: 'review/security',
+          findingState: 'dismissed',
+        },
+      ],
+    };
+
+    expect(validateReview(payload)).toBe(false);
+  });
+
+  it('rejects incomplete, extra, and internally inconsistent Jev metrics', () => {
+    const validMetrics = Object.fromEntries(
+      metricKeys.map((metric) => [
+        metric,
+        { applicable: true, score: 8, confidence: 0.9, summary: `${metric} is strong.` },
+      ])
+    );
+    const base = {
+      timestamp: new Date().toISOString(),
+      mode: 'jev',
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      issues: [],
+      evaluations: {
+        jev: {
+          status: 'completed',
+          evaluation: {
+            model: 'jev-latest',
+            metrics: validMetrics,
+            priorities: [],
+            usage: { inputTokens: 100, outputTokens: 20 },
+          },
+        },
+      },
+    };
+
+    const missing = structuredClone(base);
+    delete missing.evaluations.jev.evaluation.metrics.correctness;
+    expect(validateReview(missing)).toBe(false);
+
+    const extra = structuredClone(base);
+    extra.evaluations.jev.evaluation.metrics.unknownMetric = {
+      applicable: true,
+      score: 8,
+      confidence: 0.9,
+      summary: 'Unknown.',
+    };
+    expect(validateReview(extra)).toBe(false);
+
+    const inconsistent = structuredClone(base);
+    inconsistent.evaluations.jev.evaluation.metrics.security = {
+      applicable: false,
+      score: 8,
+      confidence: 0.9,
+      summary: 'Must be absent.',
+    };
+    expect(validateReview(inconsistent)).toBe(false);
+
+    const outOfRange = structuredClone(base);
+    outOfRange.evaluations.jev.evaluation.metrics.correctness.score = 0;
+    expect(validateReview(outOfRange)).toBe(false);
   });
 
   it('rejects review output with missing summary', () => {

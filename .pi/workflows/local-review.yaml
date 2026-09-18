@@ -12,6 +12,11 @@ inputs:
     type: boolean
     default: false
     description: Review staged changes instead of unstaged changes
+  reviewMode:
+    type: enum
+    values: [configured, agent, jev, combined]
+    default: configured
+    description: Review evaluator mode
 output: review
 nodes:
   change:
@@ -27,4 +32,5 @@ nodes:
       - change
     with:
       source: change
+      mode: '{{inputs.reviewMode}}'
     output: review

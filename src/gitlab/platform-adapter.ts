@@ -53,6 +53,7 @@ interface GitLabMergeRequest {
  * Adapter that wraps GitLabClient to implement PlatformClient interface
  */
 export class GitLabPlatformAdapter implements PlatformClient {
+  private authenticatedUserId?: Promise<number>;
   private readonly positionValidator = new GitLabPositionValidator();
 
   constructor(private client: GitLabClient) {}
@@ -126,12 +127,21 @@ export class GitLabPlatformAdapter implements PlatformClient {
   }
 
   async getComments(projectId: string, prNumber: number): Promise<Comment[]> {
-    const notes = await this.client.getMRNotes(projectId, prNumber);
+    const [notes, authenticatedUserId] = await Promise.all([
+      this.client.getMRNotes(projectId, prNumber),
+      this.getAuthenticatedUserId(),
+    ]);
 
     return notes.map((n) => ({
       id: n.id,
       body: n.body,
+      authoredByCurrentUser: n.author?.id === authenticatedUserId,
     }));
+  }
+
+  private getAuthenticatedUserId(): Promise<number> {
+    this.authenticatedUserId ??= this.client.getAuthenticatedUser().then((user) => Number(user.id));
+    return this.authenticatedUserId;
   }
 
   async getInlineComments(projectId: string, prNumber: number): Promise<Comment[]> {

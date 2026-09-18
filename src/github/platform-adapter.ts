@@ -28,6 +28,7 @@ function nonEmptyIdentityValue(value: string | null | undefined): string | undef
  */
 export class GitHubPlatformAdapter implements PlatformClient {
   private readonly positionValidator = new GitHubPositionValidator();
+  private authenticatedCommentAuthor?: Promise<{ id?: number; login?: string }>;
 
   constructor(private client: GitHubClient) {}
 
@@ -74,14 +75,49 @@ export class GitHubPlatformAdapter implements PlatformClient {
 
   async getComments(projectId: string, prNumber: number): Promise<Comment[]> {
     const [owner, repo] = this.parseProjectId(projectId);
-    const comments = await this.withTransientRetry('list PR comments', () =>
-      this.client.listPRComments(owner, repo, prNumber)
-    );
+    const [comments, authenticatedAuthor] = await Promise.all([
+      this.withTransientRetry('list PR comments', () =>
+        this.client.listPRComments(owner, repo, prNumber)
+      ),
+      this.getAuthenticatedCommentAuthor(),
+    ]);
 
     return comments.map((c) => ({
       id: c.id,
       body: c.body ?? '',
+      authoredByCurrentUser:
+        authenticatedAuthor.id !== undefined
+          ? c.user?.id === authenticatedAuthor.id
+          : authenticatedAuthor.login !== undefined &&
+            c.user?.login?.toLowerCase() === authenticatedAuthor.login.toLowerCase(),
     }));
+  }
+
+  private getAuthenticatedCommentAuthor(): Promise<{ id?: number; login?: string }> {
+    this.authenticatedCommentAuthor ??= this.withTransientRetry(
+      'get authenticated GitHub user',
+      () => this.client.getAuthenticatedUser()
+    )
+      .then((user) => ({ id: user.id, login: user.login }))
+      .catch((error: unknown) => {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'status' in error &&
+          error.status === 403
+        ) {
+          if (process.env.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN === 'true') {
+            return { login: 'github-actions[bot]' };
+          }
+          throw new Error(
+            'GitHub rejected GET /user for this token, so DRS cannot identify its own comments. ' +
+              'If GITHUB_TOKEN is the default Actions installation token, set DRS_GITHUB_DEFAULT_ACTIONS_TOKEN=true; ' +
+              'otherwise use a PAT or GitHub App token that can resolve its authenticated identity.'
+          );
+        }
+        throw error;
+      });
+    return this.authenticatedCommentAuthor;
   }
 
   async getInlineComments(projectId: string, prNumber: number): Promise<Comment[]> {
