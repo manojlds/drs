@@ -101,13 +101,19 @@ export class GitHubPlatformAdapter implements PlatformClient {
       .then((user) => ({ id: user.id, login: user.login }))
       .catch((error: unknown) => {
         if (
-          process.env.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN === 'true' &&
           typeof error === 'object' &&
           error !== null &&
           'status' in error &&
           error.status === 403
         ) {
-          return { login: 'github-actions[bot]' };
+          if (process.env.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN === 'true') {
+            return { login: 'github-actions[bot]' };
+          }
+          throw new Error(
+            'GitHub rejected GET /user for this token, so DRS cannot identify its own comments. ' +
+              'If GITHUB_TOKEN is the default Actions installation token, set DRS_GITHUB_DEFAULT_ACTIONS_TOKEN=true; ' +
+              'otherwise use a PAT or GitHub App token that can resolve its authenticated identity.'
+          );
         }
         throw error;
       });

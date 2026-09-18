@@ -166,9 +166,17 @@ describe('GitHubPlatformAdapter', () => {
         listPRComments: vi.fn().mockResolvedValue([]),
       } as any);
 
-    await expect(makeAdapter(403).getComments('octocat/hello', 7)).rejects.toMatchObject({
-      status: 403,
-    });
+    vi.stubEnv('DRS_GITHUB_DEFAULT_ACTIONS_TOKEN', '');
+    try {
+      await expect(makeAdapter(403).getComments('octocat/hello', 7)).rejects.toThrow(
+        'GitHub rejected GET /user for this token, so DRS cannot identify its own comments. ' +
+          'If GITHUB_TOKEN is the default Actions installation token, set DRS_GITHUB_DEFAULT_ACTIONS_TOKEN=true; ' +
+          'otherwise use a PAT or GitHub App token that can resolve its authenticated identity.'
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
     vi.stubEnv('DRS_GITHUB_DEFAULT_ACTIONS_TOKEN', 'true');
     try {
       await expect(makeAdapter(401).getComments('octocat/hello', 7)).rejects.toMatchObject({
