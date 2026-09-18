@@ -63,6 +63,7 @@ describe('external PR review workflow security', () => {
     expect(serialized).not.toContain('secrets.OPENCODE_API_KEY');
     expect(serialized).not.toContain('secrets.JEV_API_KEY');
     expect(post.env?.JEV_API_KEY).toBe('');
+    expect(post.env?.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN).toBe('true');
     expect(serialized).not.toContain('workflow run github-pr-review \\');
   });
 
@@ -73,6 +74,7 @@ describe('external PR review workflow security', () => {
         step.name?.startsWith('Review Pull Request')
       )!;
       expect(review.env?.DRS_REVIEW_MODE).toContain("vars.DRS_REVIEW_MODE || 'agent'");
+      expect(review.env?.DRS_GITHUB_DEFAULT_ACTIONS_TOKEN).toBe('true');
       expect(review.env?.JEV_API_KEY).toContain('secrets.JEV_API_KEY');
       expect(review.env?.JEV_API_KEY).toContain("vars.DRS_REVIEW_MODE == 'jev'");
       expect(review.env?.JEV_API_KEY).toContain("vars.DRS_REVIEW_MODE == 'combined'");

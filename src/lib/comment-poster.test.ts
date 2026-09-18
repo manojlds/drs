@@ -6,6 +6,33 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { postReviewComments } from './comment-poster.js';
 import { formatSummaryComment, type ReviewIssue } from './comment-formatter.js';
 import type { PlatformClient } from './platform-client.js';
+import { metricKeys, type JevEvaluation } from './jev/types.js';
+import {
+  createJevPrBaseline,
+  encodeJevPrBaselineMarker,
+  extractJevPrBaseline,
+} from './jev/pr-trend.js';
+
+function jevEvaluation(correctness: number): JevEvaluation {
+  return {
+    model: 'jev-1.13.0',
+    metrics: Object.fromEntries(
+      metricKeys.map((metric) => [
+        metric,
+        metric === 'correctness'
+          ? {
+              applicable: true,
+              score: correctness,
+              confidence: 0.8,
+              summary: 'Correctness summary',
+            }
+          : { applicable: false },
+      ])
+    ) as JevEvaluation['metrics'],
+    priorities: [],
+    usage: { inputTokens: 10, outputTokens: 5 },
+  };
+}
 
 // Mock dependencies
 vi.mock('./comment-formatter.js', () => ({
@@ -192,6 +219,7 @@ describe('comment-poster', () => {
       const existingComment = {
         id: '999',
         body: '<!-- DRS-REVIEW-BOT --> Old summary',
+        authoredByCurrentUser: true,
       };
 
       mockPlatformClient.getComments = vi.fn().mockResolvedValue([existingComment]);
@@ -216,6 +244,184 @@ describe('comment-poster', () => {
         'formatted summary'
       );
       expect(mockPlatformClient.createComment).not.toHaveBeenCalled();
+    });
+
+    it('preserves the first Jev baseline and passes its trend to summary rendering', async () => {
+      const baseline = createJevPrBaseline(jevEvaluation(6), 'first-head');
+      const marker = encodeJevPrBaselineMarker(baseline);
+      mockPlatformClient.getComments = vi.fn().mockResolvedValue([
+        {
+          id: '999',
+          body: `<!-- DRS-REVIEW-BOT -->\n${marker}`,
+          authoredByCurrentUser: true,
+        },
+      ]);
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      expect(formatSummaryComment).toHaveBeenLastCalledWith(
+        mockSummary,
+        [],
+        expect.any(String),
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        expect.objectContaining({
+          jevTrend: expect.objectContaining({
+            baselineHeadSha: 'first-head',
+            currentHeadSha: 'current-head',
+            comparable: true,
+          }),
+        })
+      );
+      expect(mockPlatformClient.updateComment).toHaveBeenCalledWith(
+        'owner/repo',
+        123,
+        '999',
+        expect.stringContaining(marker)
+      );
+    });
+
+    it.each([
+      {
+        label: 'failed',
+        evaluationOptions: {
+          mode: 'combined' as const,
+          evaluations: {
+            jev: {
+              status: 'failed' as const,
+              error: { code: 'upstream-error', message: 'Jev failed.' },
+            },
+          },
+        },
+      },
+      { label: 'missing', evaluationOptions: { mode: 'agent' as const } },
+    ])(
+      'preserves the exact baseline when the current Jev evaluation is $label',
+      async ({ evaluationOptions }) => {
+        const baseline = createJevPrBaseline(jevEvaluation(6), 'first-head');
+        const marker = encodeJevPrBaselineMarker(baseline);
+        mockPlatformClient.getComments = vi.fn().mockResolvedValue([
+          {
+            id: '999',
+            body: `<!-- DRS-REVIEW-BOT -->\n${marker}`,
+            authoredByCurrentUser: true,
+          },
+        ]);
+
+        await postReviewComments(
+          mockPlatformClient,
+          'owner/repo',
+          123,
+          mockSummary,
+          [],
+          undefined,
+          undefined,
+          {},
+          undefined,
+          undefined,
+          undefined,
+          { headSha: 'later-head' },
+          undefined,
+          undefined,
+          evaluationOptions
+        );
+
+        const updatedBody = vi.mocked(mockPlatformClient.updateComment).mock.calls[0]?.[3] ?? '';
+        expect(updatedBody).toContain(marker);
+        expect(extractJevPrBaseline(updatedBody)).toEqual(baseline);
+      }
+    );
+
+    it('captures the first successful Jev evaluation as hidden score-only state', async () => {
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'first-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'jev',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(6) } },
+        }
+      );
+
+      const postedBody = vi.mocked(mockPlatformClient.createComment).mock.calls[0]?.[2];
+      expect(postedBody).toBeDefined();
+      expect(extractJevPrBaseline(postedBody ?? '')).toMatchObject({
+        headSha: 'first-head',
+        model: 'jev-1.13.0',
+        metrics: { correctness: { applicable: true, score: 6 } },
+      });
+      expect(postedBody).not.toContain('Correctness summary');
+    });
+
+    it('ignores a forged summary marker from another commenter', async () => {
+      const forgedBaseline = createJevPrBaseline(jevEvaluation(1), 'attacker-head');
+      mockPlatformClient.getComments = vi.fn().mockResolvedValue([
+        {
+          id: 'attacker-comment',
+          body: `<!-- DRS-REVIEW-BOT -->\n${encodeJevPrBaselineMarker(forgedBaseline)}`,
+          authoredByCurrentUser: false,
+        },
+      ]);
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'real-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'jev',
+          evaluations: { jev: { status: 'completed', evaluation: jevEvaluation(8) } },
+        }
+      );
+
+      expect(mockPlatformClient.updateComment).not.toHaveBeenCalled();
+      const postedBody = vi.mocked(mockPlatformClient.createComment).mock.calls[0]?.[2] ?? '';
+      expect(extractJevPrBaseline(postedBody)).toMatchObject({
+        headSha: 'real-head',
+        metrics: { correctness: { applicable: true, score: 8 } },
+      });
     });
 
     it('should post inline comments for CRITICAL/HIGH issues', async () => {

@@ -183,13 +183,12 @@ export class GitHubClient {
    * List all issue comments on a PR
    */
   async listPRComments(owner: string, repo: string, prNumber: number) {
-    const response = await this.octokit.issues.listComments({
+    return await this.octokit.paginate(this.octokit.issues.listComments, {
       owner,
       repo,
       issue_number: prNumber,
       per_page: 100,
     });
-    return response.data;
   }
 
   /**

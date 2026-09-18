@@ -121,6 +121,7 @@ jobs:
           DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
           ZHIPU_API_KEY: ""
@@ -279,6 +280,7 @@ jobs:
           DRS_RUNTIME_STREAM_TIMEOUT_MS: "900000"
           DRS_RUNTIME_STREAM_POLL_INTERVAL_MS: "2000"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
           ZHIPU_API_KEY: ""
@@ -364,6 +366,7 @@ jobs:
       - name: Validate and post external review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
           ANTHROPIC_API_KEY: ""
           OPENAI_API_KEY: ""
           OPENCODE_API_KEY: ""

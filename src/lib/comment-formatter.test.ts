@@ -260,6 +260,170 @@ describe('comment-formatter', () => {
       expect(formatted).not.toContain('The code looks good');
     });
 
+    it('renders first-run to current PR score trends without an overall score', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 2,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+          jevTrend: {
+            comparable: true,
+            baselineCaptured: false,
+            baselineHeadSha: '111111111111',
+            currentHeadSha: '222222222222',
+            baselineModel: 'jev-latest',
+            currentModel: 'jev-latest',
+            entries: [
+              {
+                metric: 'correctness',
+                baselineScore: 6,
+                currentScore: 8,
+                delta: 2,
+                direction: 'improved',
+              },
+              {
+                metric: 'readability',
+                currentScore: 7,
+                direction: 'newly-applicable',
+              },
+            ],
+          },
+        }
+      );
+
+      expect(formatted).toContain('Jev quality trend');
+      expect(formatted).toContain('First run');
+      expect(formatted).toContain('6.0');
+      expect(formatted).toContain('8.0');
+      expect(formatted).toContain('+2.0');
+      expect(formatted).toContain('newly applicable');
+      expect(formatted).not.toContain('Overall score');
+    });
+
+    it('labels the first successful Jev result as the PR trend baseline', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+          jevTrend: {
+            comparable: true,
+            baselineCaptured: true,
+            baselineHeadSha: '111111111111',
+            currentHeadSha: '111111111111',
+            baselineModel: 'jev-latest',
+            currentModel: 'jev-latest',
+            entries: [],
+          },
+        }
+      );
+
+      expect(formatted).toContain('PR trend baseline captured');
+    });
+
+    it('renders a same-head rerun as a comparison rather than a new baseline', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+          jevTrend: {
+            comparable: true,
+            baselineCaptured: false,
+            baselineHeadSha: '111111111111',
+            currentHeadSha: '111111111111',
+            baselineModel: 'jev-latest',
+            currentModel: 'jev-latest',
+            entries: [
+              {
+                metric: 'correctness',
+                baselineScore: 7.5,
+                currentScore: 7.5,
+                delta: 0,
+                direction: 'unchanged',
+              },
+            ],
+          },
+        }
+      );
+
+      expect(formatted).toContain('| Metric | First run | Current | Delta | Trend |');
+      expect(formatted).not.toContain('baseline captured');
+    });
+
+    it('reports a same-head model change instead of claiming baseline capture', () => {
+      const summary: ReviewSummary = {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      };
+      const formatted = formatSummaryComment(
+        summary,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mode: 'combined',
+          evaluations: { jev: { status: 'completed', evaluation: JEV_EVALUATION } },
+          jevTrend: {
+            comparable: false,
+            baselineCaptured: false,
+            reason: 'model-changed',
+            baselineHeadSha: '111111111111',
+            currentHeadSha: '111111111111',
+            baselineModel: 'jev-1.12.0',
+            currentModel: 'jev-1.13.0',
+            entries: [],
+          },
+        }
+      );
+
+      expect(formatted).toContain('model changed');
+      expect(formatted).not.toContain('baseline captured');
+    });
+
     it('does not claim Jev produced signals when no files remained to evaluate', () => {
       const summary: ReviewSummary = {
         filesReviewed: 0,

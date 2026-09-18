@@ -30,6 +30,7 @@ jobs:
       - run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input describe=true --input post=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
@@ -42,9 +43,15 @@ workflow input and adding the repository secret only to that generation step:
 - run: drs workflow run github-pr-review --input owner="${{ github.repository_owner }}" --input repo="${{ github.event.repository.name }}" --input pr="${{ github.event.pull_request.number }}" --input reviewMode=combined
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
 ```
+
+Set `DRS_GITHUB_DEFAULT_ACTIONS_TOKEN=true` only when `GITHUB_TOKEN` is GitHub's default
+`${{ secrets.GITHUB_TOKEN }}` installation token. It lets DRS verify canonical comments as
+`github-actions[bot]` when GitHub correctly rejects `GET /user` for that token type. Do not set it
+for a PAT or custom GitHub App token; those must resolve their own authenticated identity.
 
 Jev sends focused diff/task/context data to TypeSafe's remote API. Do not provide
 `JEV_API_KEY` to an untrusted fork checkout, a job that executes PR-controlled code, or a

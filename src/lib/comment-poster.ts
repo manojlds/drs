@@ -26,6 +26,12 @@ import {
 } from './comment-manager.js';
 import type { PlatformClient, LineValidator, InlineCommentPosition } from './platform-client.js';
 import type { ReviewUsageSummary } from './review-usage.js';
+import {
+  createJevPrBaseline,
+  createJevPrTrend,
+  encodeJevPrBaselineMarker,
+  extractJevPrBaseline,
+} from './jev/pr-trend.js';
 
 const MAX_PLATFORM_COMMENT_LENGTH = 60_000;
 const MAX_INLINE_COMMENTS_PER_REVIEW = 100;
@@ -63,26 +69,20 @@ export async function postReviewComments(
   beforeLabel?: () => Promise<void>,
   evaluationOptions?: ReviewEvaluationRenderOptions
 ): Promise<void> {
-  const summaryComment = evaluationOptions
-    ? formatSummaryComment(
-        summary,
-        issues,
-        BOT_COMMENT_ID,
-        changeSummary,
-        reviewUsage,
-        cursorFixLinks,
-        reviewMetadata,
-        evaluationOptions
-      )
-    : formatSummaryComment(
-        summary,
-        issues,
-        BOT_COMMENT_ID,
-        changeSummary,
-        reviewUsage,
-        cursorFixLinks,
-        reviewMetadata
-      );
+  const summaryArgs = [
+    summary,
+    issues,
+    BOT_COMMENT_ID,
+    changeSummary,
+    reviewUsage,
+    cursorFixLinks,
+    reviewMetadata,
+  ] as const;
+  const renderSummary = (renderOptions = evaluationOptions) =>
+    renderOptions
+      ? formatSummaryComment(...summaryArgs, renderOptions)
+      : formatSummaryComment(...summaryArgs);
+  let summaryComment = renderSummary();
   assertPostBodyWithinLimit(summaryComment, 'Review summary');
   for (const issue of issues) {
     if (issue.severity === 'CRITICAL' || issue.severity === 'HIGH') {
@@ -109,8 +109,30 @@ export async function postReviewComments(
   ];
 
   const existingSummary = findExistingSummaryComment(
-    existingComments.map((c) => ({ id: c.id, body: c.body }))
+    existingComments
+      .filter((comment) => comment.authoredByCurrentUser === true)
+      .map((comment) => ({ id: comment.id, body: comment.body }))
   );
+
+  const currentJev = evaluationOptions?.evaluations?.jev;
+  const currentEvaluation = currentJev?.status === 'completed' ? currentJev.evaluation : undefined;
+  const existingBaseline = existingSummary ? extractJevPrBaseline(existingSummary.body) : undefined;
+  const baseline =
+    existingBaseline ??
+    (currentEvaluation
+      ? createJevPrBaseline(currentEvaluation, reviewMetadata?.headSha)
+      : undefined);
+  if (baseline) {
+    const baselineCaptured = existingBaseline === undefined && currentEvaluation !== undefined;
+    const jevTrend = currentEvaluation
+      ? createJevPrTrend(baseline, currentEvaluation, reviewMetadata?.headSha, baselineCaptured)
+      : undefined;
+    summaryComment = renderSummary(
+      jevTrend ? { ...evaluationOptions, jevTrend } : evaluationOptions
+    );
+    summaryComment += `\n${encodeJevPrBaselineMarker(baseline)}\n`;
+    assertPostBodyWithinLimit(summaryComment, 'Review summary');
+  }
 
   // Prepare issues for posting: filter to CRITICAL/HIGH, deduplicate, validate lines
   const criticalHighCount = issues.filter(

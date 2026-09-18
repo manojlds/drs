@@ -19,6 +19,7 @@ import { formatCost, formatCount } from './format-utils.js';
 import type { ReviewUsageSummary } from './review-usage.js';
 import type { ReviewMode } from './config.js';
 import type { JevEvaluation, MetricKey } from './jev/types.js';
+import type { JevPrTrend } from './jev/pr-trend.js';
 import { getMetricDefinition } from './jev/transform.js';
 
 export interface ReviewSummary {
@@ -157,6 +158,7 @@ function formatReviewUsageSection(usage: ReviewUsageSummary): string {
 
 export interface ReviewEvaluationRenderOptions {
   mode?: ReviewMode;
+  jevTrend?: JevPrTrend;
   evaluations?: {
     jev?:
       | { status: 'completed'; evaluation: JevEvaluation }
@@ -166,6 +168,37 @@ export interface ReviewEvaluationRenderOptions {
 
 function metricLabel(metric: MetricKey): string {
   return getMetricDefinition(metric).label;
+}
+
+function formatJevPrTrend(trend?: JevPrTrend): string {
+  if (!trend) return '';
+
+  let markdown = `### Jev quality trend\n\n`;
+  if (!trend.comparable) {
+    markdown += `Trend comparison is unavailable because the Jev model changed from ${formatMarkdownCodeSpan(trend.baselineModel)} to ${formatMarkdownCodeSpan(trend.currentModel)}.\n\n`;
+    return markdown;
+  }
+  if (trend.baselineCaptured) {
+    const revision = trend.baselineHeadSha
+      ? ` at ${formatMarkdownCodeSpan(formatShortSha(trend.baselineHeadSha))}`
+      : '';
+    markdown += `PR trend baseline captured${revision}. Future successful Jev runs will compare against this first run.\n\n`;
+    return markdown;
+  }
+
+  markdown += `Scores compare the first successful Jev run with the current run. Deltas remain advisory because the changed context can evolve as fixes are made.\n\n`;
+  markdown += `| Metric | First run | Current | Delta | Trend |\n`;
+  markdown += `| --- | ---: | ---: | ---: | --- |\n`;
+  for (const entry of trend.entries) {
+    const baseline = entry.baselineScore?.toFixed(1) ?? 'N/A';
+    const current = entry.currentScore?.toFixed(1) ?? 'N/A';
+    const delta =
+      entry.delta === undefined ? 'N/A' : `${entry.delta > 0 ? '+' : ''}${entry.delta.toFixed(1)}`;
+    const direction = entry.direction.replaceAll('-', ' ');
+    markdown += `| ${escapeMarkdown(metricLabel(entry.metric))} | ${baseline} | ${current} | ${delta} | ${direction} |\n`;
+  }
+  markdown += `\n`;
+  return markdown;
 }
 
 function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
@@ -205,6 +238,8 @@ function formatJevScorecard(options?: ReviewEvaluationRenderOptions): string {
     }
     markdown += `\n`;
   }
+
+  markdown += formatJevPrTrend(options?.jevTrend);
 
   const meaningfulDeltas = jev.evaluation.comparison?.filter(
     (entry) => entry.direction !== 'unchanged'

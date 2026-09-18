@@ -63,7 +63,7 @@ DRS deliberately excludes:
 - the full repository unless content is explicitly present in the selected diff;
 - previous Jev evaluations from the upstream request.
 
-Previous scorecards are used only for local comparison when a prior review artifact is explicitly supplied. DRS does not silently load the latest artifact for comparison.
+Previous scorecards are never sent to TypeSafe. Local artifact comparisons require an explicitly supplied prior artifact. Hosted PR/MR trend baselines are recovered from DRS's canonical summary comment and compared locally after the current evaluation returns.
 
 DRS does not proxy Jev calls through a hosted DRS service, persist the key, or add Jev telemetry. Normal TypeSafe service handling applies to data sent to its API.
 
@@ -95,6 +95,26 @@ Jev evaluates 19 engineering dimensions. Each applicable dimension includes an i
 DRS does not calculate an overall quality grade. A high Jev score does not override failing tests, unresolved agent findings, or project requirements. Jev scores are not merge gates in v1.
 
 In Jev-only mode, `issues` is empty because no file-level issue-producing reviewer ran. It does **not** mean that the code is defect-free.
+
+## Pull request and merge request trends
+
+On GitHub and GitLab, the first successful Jev evaluation recorded in the canonical DRS summary becomes the stable baseline for that pull or merge request. Later successful runs compare each dimension with that first run and render a `Jev quality trend` table. Updating the summary does not replace the baseline.
+
+The baseline is encoded as versioned machine-readable metadata in the canonical comment. DRS only accepts baseline metadata from a comment whose author matches the provider identity represented by the posting token; lookalike markers from other commenters are ignored. The state contains only the resolved Jev model, head revision, and per-dimension applicability and scores. It does not contain source code, task text, summaries, weakness text, confidence values, credentials, or provider tokens. No extra Jev request is made for trend calculation.
+
+Trend rules are deliberately conservative:
+
+- exact resolved Jev model versions must match; otherwise DRS labels the runs not comparable;
+- dimensions applicable in both runs receive a numeric delta;
+- dimensions that become applicable are labeled `newly applicable`, not compared with zero;
+- dimensions that cease to be applicable are labeled `no longer applicable`;
+- movements smaller than 0.75 points are labeled unchanged;
+- the trend is advisory because a PR's selected diff/context can evolve as fixes are pushed;
+- no overall score is calculated, and score movement does not change tests, findings, severity gates, fix loops, or merge policy.
+
+The baseline starts with the first successful Jev run after trend support is installed; existing comments without baseline metadata are initialized by their next successful run. A failed or skipped Jev evaluation cannot replace an existing baseline.
+
+Local workflows do not have a canonical provider comment, so they do not automatically select a first-run baseline. They continue to support explicit prior-artifact comparison. Automatic branch-scoped local baseline persistence is a separate file-backed extension.
 
 ## Retries, limits, and failures
 

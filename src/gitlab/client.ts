@@ -46,6 +46,11 @@ export class GitLabClient {
     return this.commitEmailDomain;
   }
 
+  /** Get the user represented by the configured token. */
+  async getAuthenticatedUser() {
+    return await this.client.Users.current();
+  }
+
   /**
    * Get merge request details
    */
