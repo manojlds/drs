@@ -742,6 +742,26 @@ describe('review-orchestrator', () => {
       expect(result.filesReviewed).toBe(2);
     });
 
+    it('keeps filtered files that do not have an inline patch', async () => {
+      const { prepareDiffsForAgent } = await import('./context-compression.js');
+      const source: ReviewSource = {
+        name: 'PR #123',
+        files: ['src/app.ts', 'src/app.test.ts', 'assets/logo.png'],
+        filesWithDiffs: [
+          { filename: 'src/app.ts', patch: '+ new code' },
+          { filename: 'src/app.test.ts', patch: '+ ignored test' },
+        ],
+        context: {},
+      };
+
+      await executeReview(mockConfig, source);
+
+      expect(prepareDiffsForAgent).toHaveBeenCalledWith(
+        [{ filename: 'src/app.ts', patch: '+ new code' }, { filename: 'assets/logo.png' }],
+        expect.anything()
+      );
+    });
+
     it('should filter filesWithDiffs to match filtered files', async () => {
       const source: ReviewSource = {
         name: 'PR #123',
