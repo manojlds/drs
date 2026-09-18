@@ -290,17 +290,16 @@ export async function executeReview(
     // Build instructions - use provided diffs if available, otherwise fall back to git command
     const diffCommand = source.staged ? 'git diff --cached -- <file>' : 'git diff -- <file>';
 
-    // Use provided diffs if available (filtered to match filteredFiles)
-    let filesForInstructions: FileWithDiff[];
-    if (source.filesWithDiffs && source.filesWithDiffs.length > 0) {
-      // Filter to only include files that passed ignore patterns
-      filesForInstructions = source.filesWithDiffs.filter((f) =>
-        filteredFiles.includes(f.filename)
-      );
-    } else {
-      // No diffs provided - agents will need to run git diff
-      filesForInstructions = filteredFiles.map((f) => ({ filename: f }));
-    }
+    // Keep the authoritative file list even when a provider omits an inline
+    // patch for a binary, oversized, or collapsed file.
+    const patchesByFilename = new Map(
+      (source.filesWithDiffs ?? []).map((file) => [file.filename, file.patch])
+    );
+    const filesForInstructions: FileWithDiff[] = filteredFiles.map((filename) =>
+      patchesByFilename.has(filename)
+        ? { filename, patch: patchesByFilename.get(filename)! }
+        : { filename }
+    );
 
     // ── Compress diffs once ──────────────────────────────────────────────
     // Both the describe and review passes consume the same diff content.

@@ -4,6 +4,7 @@ export interface JevSourceDescription {
   platform?: unknown;
   repository?: unknown;
   project?: unknown;
+  projectId?: unknown;
   pullRequest?: unknown;
   mergeRequest?: unknown;
   title?: unknown;
@@ -96,7 +97,40 @@ function buildRepositoryContext(
   addScalar(context, 'pullRequest', description.pullRequest);
   addScalar(context, 'mergeRequest', description.mergeRequest);
 
+  if (context.repository === undefined) {
+    const repository = boundedString(description.projectId, STRING_LIMITS.repository);
+    if (repository !== undefined) context.repository = repository;
+  }
+
+  const platformChange = asRecord(description.pullRequest);
+  if (platformChange !== undefined) {
+    const changeNumberKey = context.platform === 'gitlab' ? 'mergeRequest' : 'pullRequest';
+    if (context[changeNumberKey] === undefined) {
+      addScalar(context, changeNumberKey, platformChange.number);
+    }
+    addBoundedAlias(context, 'title', platformChange.title);
+    addBoundedAlias(context, 'body', platformChange.description);
+    addBoundedAlias(context, 'baseRef', platformChange.targetBranch);
+    addBoundedAlias(context, 'headRef', platformChange.sourceBranch);
+  }
+
   return context;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function addBoundedAlias(
+  target: Record<string, string | number | boolean | null>,
+  key: keyof typeof STRING_LIMITS,
+  value: unknown
+): void {
+  if (target[key] !== undefined) return;
+  const bounded = boundedString(value, STRING_LIMITS[key]);
+  if (bounded !== undefined) target[key] = bounded;
 }
 
 function boundedString(value: unknown, limit: number): string | undefined {

@@ -48,6 +48,48 @@ describe('buildJevReviewState', () => {
     expect(serialized).not.toContain('apiKey');
   });
 
+  it.each([
+    ['github', 'pullRequest'],
+    ['gitlab', 'mergeRequest'],
+  ] as const)(
+    'maps nested %s change metadata into bounded repository context',
+    (platform, idKey) => {
+      const state = buildJevReviewState({
+        label: 'Hosted change',
+        files: [{ filename: 'src/a.ts', patch: '+ok' }],
+        sourceDescription: {
+          platform,
+          projectId: 'org/repo',
+          pullRequest: {
+            number: 42,
+            title: 'Fix metadata',
+            description: 'Preserve bounded change context.',
+            sourceBranch: 'fix/metadata',
+            targetBranch: 'main',
+            authorEmail: 'private@example.com',
+            platformData: { token: 'provider-secret' },
+          },
+          changedFiles: [{ filename: 'secret-context.ts' }],
+          traceCollector: { apiKey: 'trace-secret' },
+        },
+      });
+
+      expect(JSON.parse(state.repositoryContext)).toEqual({
+        platform,
+        repository: 'org/repo',
+        [idKey]: 42,
+        title: 'Fix metadata',
+        body: 'Preserve bounded change context.',
+        baseRef: 'main',
+        headRef: 'fix/metadata',
+      });
+      expect(state.repositoryContext).not.toContain('private@example.com');
+      expect(state.repositoryContext).not.toContain('provider-secret');
+      expect(state.repositoryContext).not.toContain('secret-context.ts');
+      expect(state.repositoryContext).not.toContain('trace-secret');
+    }
+  );
+
   it('includes compression summary and omitted/deleted file context without prior evaluation', () => {
     const state = buildJevReviewState({
       label: 'MR !2',

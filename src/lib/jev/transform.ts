@@ -54,7 +54,7 @@ export function toJevEvaluation(response: JevResponse, previous?: JevEvaluation)
     },
   };
 
-  if (previous !== undefined) addComparison(result, previous);
+  if (previous?.model === result.model) addComparison(result, previous);
   return result;
 }
 

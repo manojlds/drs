@@ -89,6 +89,18 @@ describe('Jev evaluation transform', () => {
     });
   });
 
+  it('does not compare evaluations from different resolved models', () => {
+    const previous = toJevEvaluation(responseWithScores({ correctness: 7 }));
+    const response = responseWithScores({ correctness: 9 });
+    response.model = 'jev-next';
+
+    const current = toJevEvaluation(response, previous);
+
+    expect(current).not.toHaveProperty('comparison');
+    expect(current).not.toHaveProperty('improvements');
+    expect(current).not.toHaveProperty('regressions');
+  });
+
   it('fails closed when Jev omits a required decision', () => {
     const response = responseWithScores();
     delete response.answers.correctness_score;
