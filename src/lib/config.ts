@@ -38,6 +38,7 @@ export const SUPPORTED_WORKFLOW_ACTIONS = [
   'create-mr',
   'change-source',
   'review',
+  'guidance-evaluate',
   'review-context',
   'describe',
   'code-quality-report',

@@ -45,6 +45,62 @@ jobs:
             echo "has-review-label=false" >> $GITHUB_OUTPUT
           fi
 
+  guidance-compliance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    needs: verify-contributor
+    if: >-
+      vars.DRS_GUIDANCE_COMPLIANCE == 'true' &&
+      needs.verify-contributor.outputs.is-trusted == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout trusted base code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.19.0'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build DRS
+        run: npm run build
+
+      - name: Check repository guidance
+        env:
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRS_GITHUB_DEFAULT_ACTIONS_TOKEN: "true"
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          OPENCODE_API_KEY: ""
+          ZHIPU_API_KEY: ""
+        run: |
+          node dist/cli/index.js workflow run github-pr-guidance-compliance \
+            --input owner="${{ github.event.repository.owner.login }}" \
+            --input repo="${{ github.event.repository.name }}" \
+            --input pr="${{ github.event.pull_request.number }}" \
+            --input requireCompleteDiff=true \
+            --input post=true
+
+      - name: Upload guidance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drs-guidance-compliance
+          path: .drs/artifacts/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+
   # Auto-review for trusted contributors (repository members/collaborators)
   review-trusted:
     runs-on: ubuntu-latest

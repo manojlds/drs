@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "compiledAt": "2026-09-19T00:00:00.000Z",
+  "compiledBy": "task/guidance-compiler",
+  "sources": [
+    {
+      "path": "CLAUDE.md",
+      "sha256": "81d50ec11ad6d34da6e8cbd3a35aff7fc1d3465ba504b345291d984a46ad47c3",
+      "scope": "**/*"
+    }
+  ],
+  "thresholds": {
+    "act": 0.8,
+    "flag": 0.5
+  },
+  "rules": [
+    {
+      "id": "guidance-separate-from-quality-review",
+      "text": "Keep repository-guidance compliance separate from the fixed Jev quality scorecard. Guidance verdicts must not be stored as fixed quality metrics or converted into file-and-line review findings without location evidence.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 58
+      },
+      "scope": [
+        "src/**/*.ts",
+        ".pi/workflows/**/*"
+      ],
+      "when": "change",
+      "check": {
+        "type": "model",
+        "question": {
+          "type": "boolean",
+          "instructions": "Does this change mix repository-guidance verdicts into the fixed Jev quality metrics, or turn a scalar guidance verdict into a file-and-line review finding without concrete location evidence?",
+          "violating": true
+        }
+      },
+      "status": "active"
+    },
+    {
+      "id": "validate-trust-boundaries",
+      "text": "Validate persisted artifacts, model responses, and external workflow inputs at their trust boundary before using them.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 59
+      },
+      "scope": [
+        "src/**/*.ts"
+      ],
+      "when": "change",
+      "check": {
+        "type": "model",
+        "question": {
+          "type": "boolean",
+          "instructions": "Does this change consume a persisted artifact, model response, or external workflow input without validating its structure and allowed values at the boundary?",
+          "violating": true
+        }
+      },
+      "status": "active"
+    },
+    {
+      "id": "workflow-action-registration",
+      "text": "A workflow action must be registered consistently in the supported-action list, option validation, runtime dispatch, and retry-policy tests.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 60
+      },
+      "scope": [
+        "src/lib/config.ts",
+        "src/lib/workflow/planning.ts",
+        "src/cli/workflow.ts",
+        "src/temporal/retry-policy.ts",
+        "src/temporal/retry-policy.test.ts"
+      ],
+      "when": "change",
+      "check": {
+        "type": "deferred",
+        "reason": "Requires repository-wide comparison across the action registries and tests."
+      },
+      "status": "active"
+    },
+    {
+      "id": "run-quality-gate",
+      "text": "Mandatory Quality Gate (after every code change): npm run check:all.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 49
+      },
+      "scope": [
+        "**/*"
+      ],
+      "when": "change",
+      "check": {
+        "type": "unenforceable",
+        "reason": "Requires observing the development process rather than the completed diff."
+      },
+      "status": "active"
+    }
+  ]
+}

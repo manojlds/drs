@@ -144,6 +144,7 @@ vite.config.ts.timestamp-*
 
 # DRS generated runtime state
 .drs/*
+!.drs/guidance-rubric.json
 !.drs/agents/
 !.drs/skills/
 !.drs/workflows/

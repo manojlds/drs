@@ -114,6 +114,10 @@ import type {
   WorkflowTemplateContext,
 } from '../lib/workflow/types.js';
 import type { NodeExecutor } from '../lib/workflow/node-executor.js';
+import { discoverGuidanceSources, assertGuidanceRubricCurrent } from '../lib/guidance/discovery.js';
+import { loadGuidanceRubric } from '../lib/guidance/rubric-file.js';
+import { evaluateGuidanceCompliance } from '../lib/guidance/evaluator.js';
+import { createJevClientFromEnvironment } from '../lib/jev/client.js';
 
 export type {
   WorkflowRunOptions,
@@ -658,6 +662,9 @@ async function runActionWorkflowNode(
       context,
       executionContext
     );
+  }
+  if (node.action === 'guidance-evaluate') {
+    return runGuidanceEvaluateWorkflowNode(nodeId, node, workingDir, context);
   }
   if (node.action === 'review-context') {
     return runReviewContextWorkflowNode(config, nodeId, node, workingDir, context);
@@ -2863,11 +2870,26 @@ async function runPostCommentWorkflowNode(
       ? configuredMarker
       : options.idempotencyContext?.idempotencyKey;
   const body = formatMarkedComment(rawBody, marker);
+  const expectedHeadSha = getStringActionOption(node, 'expectedHeadSha', context)?.trim();
+  const assertExpectedHead = async (): Promise<void> => {
+    if (!expectedHeadSha) return;
+    const pullRequest = await target.platformClient.getPullRequest(
+      target.projectId,
+      target.prNumber
+    );
+    if (pullRequest.headSha !== expectedHeadSha) {
+      throw new Error('Change request head changed before comment could be posted.');
+    }
+  };
   let operation = 'created';
 
   if (marker) {
     const comments = await target.platformClient.getComments(target.projectId, target.prNumber);
-    const existingComment = findExistingCommentById(comments, marker);
+    await assertExpectedHead();
+    const existingComment = findExistingCommentById(
+      comments.filter((comment) => comment.authoredByCurrentUser === true),
+      marker
+    );
     if (existingComment) {
       await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
         target.platformClient.updateComment(
@@ -2884,6 +2906,7 @@ async function runPostCommentWorkflowNode(
       );
     }
   } else {
+    await assertExpectedHead();
     await withWorkflowConsoleSuppressed(executionContext, options.jsonOutput === true, () =>
       target.platformClient.createComment(target.projectId, target.prNumber, body)
     );
@@ -3404,6 +3427,32 @@ function isReviewSource(value: unknown): value is ReviewSource {
     typeof candidate.context === 'object' &&
     candidate.context !== null
   );
+}
+
+async function runGuidanceEvaluateWorkflowNode(
+  nodeId: string,
+  node: WorkflowNodeConfig,
+  workingDir: string,
+  context: WorkflowTemplateContext
+): Promise<WorkflowNodeResult> {
+  const sourceArtifact = getStringActionOption(node, 'source', context) ?? 'change';
+  const source = context.artifacts[sourceArtifact];
+  if (!isReviewSource(source)) {
+    throw new Error(`Workflow guidance-evaluate node "${nodeId}" needs a ReviewSource artifact.`);
+  }
+  const rubricPath =
+    getStringActionOption(node, 'rubricPath', context)?.trim() ?? '.drs/guidance-rubric.json';
+  const rubric = await loadGuidanceRubric(workingDir, rubricPath);
+  assertGuidanceRubricCurrent(rubric, discoverGuidanceSources(workingDir));
+  const result = await evaluateGuidanceCompliance(rubric, source, createJevClientFromEnvironment());
+
+  return {
+    id: nodeId,
+    type: 'action',
+    action: node.action,
+    response: result.report,
+    output: result,
+  };
 }
 
 async function runReviewWorkflowNode(

@@ -3320,7 +3320,11 @@ describe('workflow runner', () => {
 
   it('updates an existing marked platform comment', async () => {
     mocks.githubAdapter.getComments.mockResolvedValue([
-      { id: 9, body: '<!-- drs-comment-id: release-notes -->\nold body' },
+      {
+        id: 9,
+        body: '<!-- drs-comment-id: release-notes -->\nold body',
+        authoredByCurrentUser: true,
+      },
     ]);
     const config = {
       ...baseConfig,
@@ -3362,9 +3366,56 @@ describe('workflow runner', () => {
     });
   });
 
+  it('checks the expected head after finding a marked comment and before updating it', async () => {
+    mocks.githubAdapter.getComments.mockResolvedValue([
+      {
+        id: 9,
+        body: '<!-- drs-comment-id: guidance -->\nold body',
+        authoredByCurrentUser: true,
+      },
+    ]);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        postComment: {
+          nodes: {
+            comment: {
+              action: 'post-comment',
+              input: 'new body',
+              with: {
+                platform: 'github',
+                owner: 'octocat',
+                repo: 'hello-world',
+                pr: 7,
+                marker: 'guidance',
+                expectedHeadSha: 'abc123',
+              },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await runWorkflow(config, 'postComment', { workingDir: process.cwd() });
+
+    expect(mocks.githubAdapter.getComments).toHaveBeenCalledOnce();
+    expect(mocks.githubAdapter.getPullRequest).toHaveBeenCalledOnce();
+    expect(mocks.githubAdapter.updateComment).toHaveBeenCalledOnce();
+    expect(mocks.githubAdapter.getComments.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.githubAdapter.getPullRequest.mock.invocationCallOrder[0]
+    );
+    expect(mocks.githubAdapter.getPullRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.githubAdapter.updateComment.mock.invocationCallOrder[0]
+    );
+  });
+
   it('uses idempotency context as a fallback post-comment marker', async () => {
     mocks.githubAdapter.getComments.mockResolvedValue([
-      { id: 10, body: '<!-- drs-comment-id: workflow-1:run-1:comment -->\nold body' },
+      {
+        id: 10,
+        body: '<!-- drs-comment-id: workflow-1:run-1:comment -->\nold body',
+        authoredByCurrentUser: true,
+      },
     ]);
     const config = {
       ...baseConfig,
