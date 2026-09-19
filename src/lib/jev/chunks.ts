@@ -14,6 +14,7 @@ const TOKEN_ESTIMATE_BYTES_PER_TOKEN = 3;
 export interface JevReviewChunk {
   files: FileWithDiff[];
   fileNames: string[];
+  coverageOnlyFileNames?: string[];
 }
 
 export interface JevChunkEvaluation {
@@ -56,7 +57,7 @@ export async function evaluateJevChunks(
   const chunkInputs = reviewable.length > 0 ? reviewable : options.files;
   const chunks = createJevReviewChunks({ ...options, files: chunkInputs }, requestBudget);
   if (reviewable.length > 0 && emptyFileNames.length > 0 && chunks.length > 0) {
-    chunks[0].fileNames.push(...emptyFileNames);
+    chunks[0].coverageOnlyFileNames = emptyFileNames;
   }
 
   const completed: JevChunkEvaluation[] = [];
@@ -141,7 +142,7 @@ async function evaluateWithAdaptiveSplit(
     const response = await options.evaluate(state, options.questions);
     completed.push({
       response,
-      fileNames: chunk.fileNames,
+      fileNames: [...chunk.fileNames, ...(chunk.coverageOnlyFileNames ?? [])],
       weight: Math.max(
         1,
         chunk.files.reduce((bytes, file) => bytes + Buffer.byteLength(file.patch ?? '', 'utf8'), 0)
@@ -158,14 +159,11 @@ async function evaluateWithAdaptiveSplit(
     for (const half of halves) {
       if (estimatedTokens(options, half.files) > requestBudget && half.files.length === 1) {
         const splitFiles = splitOversizedFile(options, half.files[0], requestBudget);
+        let coverageOnlyFileNames = half.coverageOnlyFileNames;
         for (const file of splitFiles) {
-          await evaluateWithAdaptiveSplit(
-            options,
-            toChunk([file]),
-            requestBudget,
-            completed,
-            position
-          );
+          const chunk = toChunk([file], coverageOnlyFileNames);
+          coverageOnlyFileNames = undefined;
+          await evaluateWithAdaptiveSplit(options, chunk, requestBudget, completed, position);
         }
       } else {
         await evaluateWithAdaptiveSplit(options, half, requestBudget, completed, position);
@@ -175,16 +173,23 @@ async function evaluateWithAdaptiveSplit(
 }
 
 function splitChunk(chunk: JevReviewChunk): [JevReviewChunk, JevReviewChunk] | undefined {
+  const coverageOnlyFileNames = chunk.coverageOnlyFileNames;
   if (chunk.files.length > 1) {
     const midpoint = Math.ceil(chunk.files.length / 2);
-    return [toChunk(chunk.files.slice(0, midpoint)), toChunk(chunk.files.slice(midpoint))];
+    return [
+      toChunk(chunk.files.slice(0, midpoint), coverageOnlyFileNames),
+      toChunk(chunk.files.slice(midpoint)),
+    ];
   }
   const file = chunk.files[0];
   const characters = Array.from(file.patch ?? '');
   if (characters.length < 2) return undefined;
   const midpoint = Math.ceil(characters.length / 2);
   return [
-    toChunk([{ filename: file.filename, patch: characters.slice(0, midpoint).join('') }]),
+    toChunk(
+      [{ filename: file.filename, patch: characters.slice(0, midpoint).join('') }],
+      coverageOnlyFileNames
+    ),
     toChunk([{ filename: file.filename, patch: characters.slice(midpoint).join('') }]),
   ];
 }
@@ -215,9 +220,13 @@ function stateFor(
   });
 }
 
-function toChunk(files: FileWithDiff[]): JevReviewChunk {
-  return {
+function toChunk(files: FileWithDiff[], coverageOnlyFileNames?: string[]): JevReviewChunk {
+  const chunk: JevReviewChunk = {
     files,
     fileNames: [...new Set(files.map((file) => file.filename))],
   };
+  if (coverageOnlyFileNames !== undefined && coverageOnlyFileNames.length > 0) {
+    chunk.coverageOnlyFileNames = coverageOnlyFileNames;
+  }
+  return chunk;
 }

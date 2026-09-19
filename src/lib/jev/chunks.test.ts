@@ -141,6 +141,30 @@ describe('evaluateJevChunks', () => {
     expect(state.changeManifest).toEqual(['src/a.ts', 'assets/logo.png', 'src/script.sh']);
   });
 
+  it('keeps empty-patch files in coverage after adaptive splitting', async () => {
+    let calls = 0;
+    const evaluate = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new JevClientError('token_limit', 'too large', 400);
+      return response();
+    });
+    const chunks = await evaluateJevChunks({
+      label: 'Adaptive mixed change',
+      files: [
+        { filename: 'src/app.ts', patch: '+line ending\n' },
+        { filename: 'assets/logo.png', patch: '' },
+      ],
+      contextWindow: 10_000,
+      questions,
+      evaluate,
+    });
+
+    expect(evaluate).toHaveBeenCalledTimes(3);
+    expect(chunks).toHaveLength(2);
+    const evaluatedFileNames = [...new Set(chunks.flatMap((chunk) => chunk.fileNames))].sort();
+    expect(evaluatedFileNames).toEqual(['assets/logo.png', 'src/app.ts']);
+  });
+
   it('evaluates a change with only empty patches as a no-content review', async () => {
     const evaluate = vi.fn(async (_state: JevReviewState, _questions: JevQuestions) => response());
     const chunks = await evaluateJevChunks({
