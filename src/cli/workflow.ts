@@ -664,7 +664,7 @@ async function runActionWorkflowNode(
     );
   }
   if (node.action === 'guidance-evaluate') {
-    return runGuidanceEvaluateWorkflowNode(nodeId, node, workingDir, context);
+    return runGuidanceEvaluateWorkflowNode(config, nodeId, node, workingDir, context);
   }
   if (node.action === 'review-context') {
     return runReviewContextWorkflowNode(config, nodeId, node, workingDir, context);
@@ -3434,6 +3434,7 @@ function isReviewSource(value: unknown): value is ReviewSource {
 }
 
 async function runGuidanceEvaluateWorkflowNode(
+  config: DRSConfig,
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
@@ -3451,7 +3452,12 @@ async function runGuidanceEvaluateWorkflowNode(
       : '.drs/guidance-rubric.json';
   const rubric = await loadGuidanceRubric(workingDir, rubricPath);
   assertGuidanceRubricCurrent(rubric, discoverGuidanceSources(workingDir));
-  const result = await evaluateGuidanceCompliance(rubric, source, createJevClientFromEnvironment());
+  const result = await evaluateGuidanceCompliance(
+    rubric,
+    source,
+    createJevClientFromEnvironment(),
+    { pricing: config.pricing?.models }
+  );
 
   return {
     id: nodeId,

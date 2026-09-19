@@ -163,6 +163,7 @@ describe('evaluateGuidanceCompliance', () => {
       { evaluate: evaluate as never },
       {
         now: () => new Date('2026-09-19T13:00:00.000Z'),
+        pricing: { 'jev-latest': { input: 1, output: 2 } },
       }
     );
 
@@ -181,7 +182,7 @@ describe('evaluateGuidanceCompliance', () => {
         suppressed: 1,
         unsupported: 1,
       },
-      usage: { inputTokens: 50, outputTokens: 0 },
+      usage: { inputTokens: 50, outputTokens: 0, requests: 2, cost: 0.00005 },
     });
     expect(result.rules.find((rule) => rule.id === 'boolean-rule')).toMatchObject({
       probability: 0.85,
@@ -199,6 +200,12 @@ describe('evaluateGuidanceCompliance', () => {
     expect(result.report).toContain('DRS Guidance Compliance');
     expect(result.report).toContain('not a merge gate');
     expect(result.report).toContain('3 evaluated · 1 out of scope · 1 suppressed · 1 unsupported');
+    expect(result.report).toContain('# 🧭 DRS Guidance Compliance');
+    expect(result.report).toContain('## 💰 Model Usage');
+    expect(result.report).toContain('<summary>View token and cost breakdown</summary>');
+    expect(result.report).toContain('**Estimated Cost**: $0.0001');
+    expect(result.report).toContain('<summary>View all guidance rule outcomes</summary>');
+    expect(result.report).toContain('⏭️ Unsupported');
   });
 
   it('does not call Jev when no active model rule is in scope', async () => {
