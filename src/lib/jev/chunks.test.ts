@@ -119,6 +119,44 @@ describe('evaluateJevChunks', () => {
     ).rejects.toThrow('requires complete patches');
   });
 
+  it('accepts complete-but-empty patches and counts them as evaluated coverage', async () => {
+    const evaluate = vi.fn(async (_state: JevReviewState, _questions: JevQuestions) => response());
+    const chunks = await evaluateJevChunks({
+      label: 'Mixed change',
+      files: [
+        { filename: 'src/a.ts', patch: '+const a = 1;' },
+        { filename: 'assets/logo.png', patch: '' },
+        { filename: 'src/script.sh', patch: '   ' },
+      ],
+      contextWindow: 10_000,
+      questions,
+      evaluate,
+    });
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].fileNames.sort()).toEqual(['assets/logo.png', 'src/a.ts', 'src/script.sh']);
+    const [state] = evaluate.mock.calls[0];
+    expect(state.diff).toContain('src/a.ts');
+    expect(state.diff).not.toContain('assets/logo.png');
+    expect(state.changeManifest).toEqual(['src/a.ts', 'assets/logo.png', 'src/script.sh']);
+  });
+
+  it('evaluates a change with only empty patches as a no-content review', async () => {
+    const evaluate = vi.fn(async (_state: JevReviewState, _questions: JevQuestions) => response());
+    const chunks = await evaluateJevChunks({
+      label: 'Mode-only change',
+      files: [{ filename: 'src/script.sh', patch: '' }],
+      contextWindow: 10_000,
+      questions,
+      evaluate,
+    });
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].fileNames).toEqual(['src/script.sh']);
+    const [state] = evaluate.mock.calls[0];
+    expect(state.diff).toContain('No inline patch');
+  });
+
   it('estimates the entire serialized request using UTF-8 bytes', () => {
     const state = {
       task: 'Evaluate.',

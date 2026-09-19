@@ -35,17 +35,31 @@ export interface EvaluateJevChunksOptions extends Omit<
 export async function evaluateJevChunks(
   options: EvaluateJevChunksOptions
 ): Promise<JevChunkEvaluation[]> {
-  const missing = options.files.filter((file) => !file.patch?.trim()).map((file) => file.filename);
+  const missing = options.files
+    .filter((file) => file.patch === undefined)
+    .map((file) => file.filename);
   if (missing.length > 0) {
     throw new Error(
       `Jev evaluation requires complete patches for every reviewed file. Missing: ${missing.join(', ')}`
     );
   }
 
-  const requestBudget = Math.floor(options.contextWindow * REQUEST_BUDGET_RATIO);
-  const chunks = createJevReviewChunks(options, requestBudget);
-  const completed: JevChunkEvaluation[] = [];
+  const reviewable = options.files.filter((file) => (file.patch ?? '').trim().length > 0);
+  const emptyFileNames = options.files
+    .filter((file) => (file.patch ?? '').trim().length === 0)
+    .map((file) => file.filename);
 
+  const requestBudget = Math.floor(options.contextWindow * REQUEST_BUDGET_RATIO);
+  // Empty patches have no reviewable content, so exclude them from the evaluated payload while
+  // still counting them in coverage. If every patch is empty, fall back to a single no-content
+  // review so the evaluation does not fail.
+  const chunkInputs = reviewable.length > 0 ? reviewable : options.files;
+  const chunks = createJevReviewChunks({ ...options, files: chunkInputs }, requestBudget);
+  if (reviewable.length > 0 && emptyFileNames.length > 0 && chunks.length > 0) {
+    chunks[0].fileNames.push(...emptyFileNames);
+  }
+
+  const completed: JevChunkEvaluation[] = [];
   for (let index = 0; index < chunks.length; index += 1) {
     await evaluateWithAdaptiveSplit(options, chunks[index], requestBudget, completed, {
       index,
