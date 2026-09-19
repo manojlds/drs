@@ -39,6 +39,7 @@ const JEV_EVALUATION = {
     },
   ],
   usage: { inputTokens: 10, outputTokens: 5 },
+  coverage: { requests: 2, files: 3, evaluatedFiles: 3, complete: true },
 } as unknown as JevEvaluation;
 
 describe('comment-formatter', () => {
@@ -253,6 +254,7 @@ describe('comment-formatter', () => {
 
       expect(formatted).toContain('Jev quality review');
       expect(formatted).toContain('Model**: `jev-latest`');
+      expect(formatted).toContain('3/3 files across 2 requests (complete)');
       expect(formatted).toContain('Priority areas');
       expect(formatted).toContain('Quality dimensions');
       expect(formatted).toContain('Correctness');

@@ -4,6 +4,7 @@ import type { JevResponse } from './schema.js';
 import type { JevEvaluation, JevMetricEvaluation, MetricKey } from './types.js';
 
 const MEANINGFUL_DELTA = 0.75;
+const MIN_ACTIONABLE_CONFIDENCE = 0.5;
 
 export class JevEvaluationError extends Error {
   constructor(message: string) {
@@ -27,7 +28,10 @@ export function toJevEvaluation(response: JevResponse, previous?: JevEvaluation)
       ): entry is {
         definition: MetricDefinition;
         evaluation: JevMetricEvaluation & { applicable: true; score: number };
-      } => entry.evaluation.applicable && entry.evaluation.score < 8
+      } =>
+        entry.evaluation.applicable &&
+        entry.evaluation.score < 8 &&
+        entry.evaluation.confidence >= MIN_ACTIONABLE_CONFIDENCE
     )
     .sort((left, right) => {
       const leftRank = left.evaluation.score - left.definition.priorityWeight * 0.35;
@@ -86,8 +90,12 @@ function transformMetric(response: JevResponse, definition: MetricDefinition): J
   const score = round(scoreAnswer.score + 1, 1);
   const applicabilityCertainty = definition.conditional ? applicability.noul : 1;
   const confidence = round(Math.min(scoreAnswer.confidence, applicabilityCertainty), 2);
-  const summary = `${definition.label} is ${scoreBand(score)} based on the supplied change context.`;
-  const hasIssue = score < 8 && weakness.choice !== 'no_material_issue';
+  const summary =
+    confidence < MIN_ACTIONABLE_CONFIDENCE
+      ? `${definition.label} is inconclusive because Jev confidence is low.`
+      : `${definition.label} is ${scoreBand(score)} based on the supplied change context.`;
+  const hasIssue =
+    confidence >= MIN_ACTIONABLE_CONFIDENCE && score < 8 && weakness.choice !== 'no_material_issue';
 
   const evaluation: JevMetricEvaluation = {
     applicable: true,

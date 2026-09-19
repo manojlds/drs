@@ -48,12 +48,13 @@ import type { ReviewFinding } from './review-artifact.js';
 import type { TraceCollector } from './trace-collector.js';
 import type { AgentPermissions } from './agent-permissions.js';
 import type { ReviewIssueParserDiagnostics } from './issue-parser.js';
-import { buildJevReviewState } from './jev/review.js';
 import { buildJevAgentGuidance } from './jev/guidance.js';
 import { createJevClientFromEnvironment, JEV_MODEL, JevClientError } from './jev/client.js';
 import { buildJevQuestions } from './jev/questions.js';
 import { toJevEvaluation } from './jev/transform.js';
 import type { JevEvaluation } from './jev/types.js';
+import { evaluateJevChunks } from './jev/chunks.js';
+import { aggregateJevResponses } from './jev/aggregate.js';
 
 /**
  * Source information for a review (platform-agnostic)
@@ -232,7 +233,6 @@ export async function executeReview(
 ): Promise<ReviewResult> {
   const mode = resolveReviewMode(config, options.mode);
   const includesAgent = mode === 'agent' || mode === 'parallel' || mode === 'combined';
-  const includesJev = mode === 'jev' || mode === 'parallel' || mode === 'combined';
   const jevConfig = getJevReviewConfig(config);
 
   if (includesAgent && !getDefaultModel(config)) {
@@ -302,10 +302,8 @@ export async function executeReview(
         : { filename }
     );
 
-    // ── Compress diffs once ──────────────────────────────────────────────
-    // Both the describe and review passes consume the same diff content.
-    // We compress once using the tightest budget across all models involved
-    // (describe + review) so neither pass exceeds any model's context window.
+    // ── Compress agent diffs once ────────────────────────────────────────
+    // Jev receives authoritative patches through its own chunking path.
     const reviewModelIds = getReviewBudgetModelIds(
       config,
       agentModelOverrides,
@@ -318,18 +316,15 @@ export async function executeReview(
       : [];
     const allModelIds = [...reviewModelIds, ...describeModelIds];
     const runtimeContextWindow = runtimeClient?.getMinContextWindow(allModelIds);
-    const contextWindow =
-      includesJev && runtimeContextWindow !== undefined
-        ? Math.min(runtimeContextWindow, jevConfig.contextWindow)
-        : includesJev
-          ? jevConfig.contextWindow
-          : runtimeContextWindow;
-    const compressionOptions = resolveCompressionBudget(contextWindow, config.contextCompression);
+    const compressionOptions = resolveCompressionBudget(
+      runtimeContextWindow,
+      config.contextCompression
+    );
 
     const compression = prepareDiffsForAgent(filesForInstructions, compressionOptions);
     const compressionSummary = formatCompressionSummary(compression);
 
-    if (compressionSummary) {
+    if (compressionSummary && includesAgent) {
       console.log(chalk.yellow('⚠ Diff content trimmed to fit token budget.\n'));
     }
 
@@ -386,8 +381,7 @@ export async function executeReview(
     const jevArgs = {
       config,
       source,
-      compressionFiles: compression.files,
-      compressionSummary,
+      files: filesForInstructions,
       describeSummary: mode === 'combined' ? describeSummary : undefined,
       previousEvaluation: getPreviousJevEvaluation(verificationContext),
     };
@@ -496,8 +490,7 @@ async function runAgentReviewComponent(args: {
 async function runJevReviewComponent(args: {
   config: DRSConfig;
   source: ReviewSource;
-  compressionFiles: FileWithDiff[];
-  compressionSummary: string | null;
+  files: FileWithDiff[];
   describeSummary?: string;
   previousEvaluation?: JevEvaluation;
 }): Promise<{
@@ -509,17 +502,27 @@ async function runJevReviewComponent(args: {
     timeoutMs: jevConfig.timeoutMs,
     maxRetries: jevConfig.maxRetries,
   });
-  const state = buildJevReviewState({
+  const questions = buildJevQuestions();
+  const chunks = await evaluateJevChunks({
     label: args.source.name,
-    files: args.compressionFiles,
-    compressionSummary: args.compressionSummary ?? undefined,
+    files: args.files,
+    contextWindow: jevConfig.contextWindow,
+    questions,
+    evaluate: (state, chunkQuestions) => client.evaluate(state, chunkQuestions),
     changeSummary: args.describeSummary,
     sourceDescription: args.source.context,
   });
-  const evaluation = toJevEvaluation(
-    await client.evaluate(state, buildJevQuestions()),
-    args.previousEvaluation
-  );
+  const evaluation = toJevEvaluation(aggregateJevResponses(chunks), args.previousEvaluation);
+  const evaluatedFiles = new Set(chunks.flatMap((chunk) => chunk.fileNames));
+  const complete =
+    args.source.context.diffComplete !== false &&
+    args.files.every((file) => evaluatedFiles.has(file.filename));
+  evaluation.coverage = {
+    requests: chunks.length,
+    files: args.files.length,
+    evaluatedFiles: evaluatedFiles.size,
+    complete,
+  };
   const pricing =
     args.config.pricing?.models?.[evaluation.model] ?? args.config.pricing?.models?.[JEV_MODEL];
   return {
@@ -529,6 +532,7 @@ async function runJevReviewComponent(args: {
       outputTokens: evaluation.usage.outputTokens,
       model: evaluation.model,
       success: true,
+      turns: chunks.length,
       pricing,
     }),
   };

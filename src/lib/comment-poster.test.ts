@@ -286,6 +286,37 @@ describe('comment-poster', () => {
       expect(bodies[1]).not.toContain('drs-jev-pr-baseline-v1');
     });
 
+    it('does not capture an incomplete Jev evaluation as the trend baseline', async () => {
+      const incomplete = jevEvaluation(8);
+      incomplete.coverage = { requests: 1, files: 1, evaluatedFiles: 1, complete: false };
+
+      await postReviewComments(
+        mockPlatformClient,
+        'owner/repo',
+        123,
+        mockSummary,
+        [],
+        undefined,
+        undefined,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        { headSha: 'current-head' },
+        undefined,
+        undefined,
+        {
+          mode: 'jev',
+          evaluations: { jev: { status: 'completed', evaluation: incomplete } },
+        }
+      );
+
+      const bodies = vi.mocked(mockPlatformClient.createComment).mock.calls.map((call) => call[2]);
+      expect(bodies.join('\n')).not.toContain('drs-jev-pr-baseline-v1');
+      const reportOptions = vi.mocked(formatJevReportComment).mock.calls.at(-1)?.[0];
+      expect(reportOptions).not.toHaveProperty('jevTrend');
+    });
+
     it('updates only the canonical Jev comment in Jev-only mode', async () => {
       mockPlatformClient.getComments = vi.fn().mockResolvedValue([
         {

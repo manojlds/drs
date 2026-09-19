@@ -51,8 +51,8 @@ Agent-only mode does not read or require `JEV_API_KEY`.
 Jev evaluation is remote. When `jev`, `parallel`, or `combined` mode runs, DRS sends focused review state directly to TypeSafe's API. This may include:
 
 - the review task/label;
-- filtered, context-window-compressed diff patches;
-- a bounded compression summary;
+- complete diff patches, split into context-window-bounded requests;
+- a full `changeManifest` listing every changed filename in each request;
 - in combined mode, a bounded agent-generated change summary labeled as untrusted orientation, with the diff remaining authoritative;
 - allow-listed, bounded repository/change metadata such as platform, repository, title, body, and refs.
 
@@ -110,6 +110,8 @@ pricing:
 
 The `jev-latest` pricing entry also applies when the API returns a resolved version such as `jev-1.13.0`; an exact resolved-model entry takes precedence. See [Introducing System One Models & Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) for the published price. DRS does not embed the rate in code because provider pricing can change. Without an explicit matching entry, it reports the tokens and a zero estimated cost, consistent with other models whose pricing is unknown.
 
+The scorecard also reports a `coverage` object: the number of Jev API requests (`requests`), the total number of changed files (`files`), how many of those files were included in an evaluated chunk (`evaluatedFiles`), and whether the evaluation is considered complete (`complete`). Incomplete evaluations occur when patches are unavailable or when some files could not be placed in any chunk. Incomplete scorecards are not used as trend baselines.
+
 DRS does not calculate an overall quality grade. A high Jev score does not override failing tests, unresolved agent findings, or project requirements. Jev scores are not merge gates in v1.
 
 In Jev-only mode, `issues` is empty because no file-level issue-producing reviewer ran. It does **not** mean that the code is defect-free.
@@ -130,7 +132,7 @@ Trend rules are deliberately conservative:
 - the trend is advisory because a PR's selected diff/context can evolve as fixes are pushed;
 - no overall score is calculated, and score movement does not change tests, findings, severity gates, fix loops, or merge policy.
 
-The baseline starts with the first successful Jev run after trend support is installed; existing comments without baseline metadata are initialized by their next successful run. A failed or skipped Jev evaluation cannot replace an existing baseline.
+The baseline starts with the first successful Jev run after trend support is installed; existing comments without baseline metadata are initialized by their next successful run. A failed, skipped, or incomplete Jev evaluation (`coverage.complete === false`) cannot capture or replace an existing baseline.
 
 Local workflows do not have a canonical provider comment, so they do not automatically select a first-run baseline. They continue to support explicit prior-artifact comparison. Automatic branch-scoped local baseline persistence is a separate file-backed extension.
 
@@ -138,7 +140,7 @@ Local workflows do not have a canonical provider comment, so they do not automat
 
 DRS retries documented transient HTTP failures (`429`, `529`, and `5xx`) with bounded backoff and honors bounded `Retry-After` values. `timeoutMs` and `maxRetries` control the request bounds.
 
-If Jev reports that its token limit was exceeded, reduce the selected context or split the change. DRS does not retry by blindly dropping contracts or tests after a failed request. `contextWindow` controls proactive diff compression; in `parallel` and `combined` modes DRS uses the tighter of the agent and Jev context budgets.
+If Jev reports that its token limit was exceeded, DRS automatically splits the offending chunk and retries the smaller pieces. `contextWindow` controls the Jev request budget used for chunking. Agent compression uses only the runtime agent context window; the two budgets are no longer combined.
 
 Errors saved in artifacts or rendered in comments use stable, sanitized codes and messages. Raw upstream response bodies and credentials are not included.
 

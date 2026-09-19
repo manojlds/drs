@@ -1,6 +1,8 @@
 import { minimatch } from 'minimatch';
+import type { ModelPricingConfig } from '../config.js';
+import { formatCost, formatCount } from '../format-utils.js';
 import type { ReviewSource } from '../review-orchestrator.js';
-import type { JevClient } from '../jev/client.js';
+import { JEV_MODEL, type JevClient } from '../jev/client.js';
 import type { JevAnswer } from '../jev/schema.js';
 import type { JevQuestion, JevQuestions } from '../jev/questions.js';
 import type { GuidanceBand, GuidanceQuestion, GuidanceRubric, GuidanceRule } from './rubric.js';
@@ -52,12 +54,15 @@ export interface GuidanceComplianceResult {
   usage: {
     inputTokens: number;
     outputTokens: number;
+    requests: number;
+    cost: number;
   };
   report: string;
 }
 
 export interface EvaluateGuidanceOptions {
   now?: () => Date;
+  pricing?: Record<string, ModelPricingConfig>;
 }
 
 type EvaluationClient = Pick<JevClient, 'evaluate'>;
@@ -189,6 +194,10 @@ export async function evaluateGuidanceCompliance(
     suppressed: outcomes.filter((rule) => rule.status === 'suppressed').length,
     unsupported: outcomes.filter((rule) => rule.status === 'unsupported').length,
   };
+  const pricing = model ? (options.pricing?.[model] ?? options.pricing?.[JEV_MODEL]) : undefined;
+  const cost = pricing
+    ? (pricing.input * inputTokens + pricing.output * outputTokens) / 1_000_000
+    : 0;
   const partial = {
     schemaVersion: 1 as const,
     evaluatedAt: (options.now ?? (() => new Date()))().toISOString(),
@@ -203,7 +212,7 @@ export async function evaluateGuidanceCompliance(
     thresholds: rubric.thresholds,
     summary,
     rules: outcomes,
-    usage: { inputTokens, outputTokens },
+    usage: { inputTokens, outputTokens, requests: evaluatedGroups.length, cost },
   };
 
   return { ...partial, report: formatGuidanceComplianceReport(partial) };
@@ -212,33 +221,102 @@ export async function evaluateGuidanceCompliance(
 type ReportInput = Omit<GuidanceComplianceResult, 'report'>;
 
 export function formatGuidanceComplianceReport(result: ReportInput): string {
+  const status =
+    result.summary.act > 0
+      ? '❌ Repair recommended'
+      : result.summary.flag > 0
+        ? '⚠️ Attention recommended'
+        : '✅ Clear';
   const lines = [
-    '## DRS Guidance Compliance',
+    '# 🧭 DRS Guidance Compliance',
     '',
     '> Advisory check against the repository’s compiled guidance rubric. This is separate from the JEV quality scorecard and is not a merge gate.',
     '',
-    `**Results:** ${result.summary.act} repair · ${result.summary.flag} attention · ${result.summary.clear} clear`,
-    `**Coverage:** ${result.summary.evaluated} evaluated · ${result.summary.outOfScope} out of scope · ${result.summary.suppressed} suppressed · ${result.summary.unsupported} unsupported`,
-    `**Rubric:** compiled ${result.rubric.compiledAt}${result.model ? ` · Model: ${escapeMarkdown(result.model)}` : ''}`,
+    '## 📊 Compliance Summary',
+    '',
+    `- **Status**: ${status}`,
+    `- **Results**: ❌ ${result.summary.act} repair · ⚠️ ${result.summary.flag} attention · ✅ ${result.summary.clear} clear`,
+    `- **Coverage**: ${result.summary.evaluated} evaluated · ${result.summary.outOfScope} out of scope · ${result.summary.suppressed} suppressed · ${result.summary.unsupported} unsupported`,
+    `- **Rubric compiled**: ${result.rubric.compiledAt}`,
   ];
-  if (result.reviewedSha) lines.push(`**Reviewed SHA:** ${inlineCode(result.reviewedSha)}`);
+  if (result.reviewedSha) lines.push(`- **Reviewed SHA**: ${inlineCode(result.reviewedSha)}`);
 
   const visible = result.rules.filter((rule) => rule.band === 'act' || rule.band === 'flag');
   if (visible.length === 0) {
-    lines.push('', 'No high-confidence or advisory guidance violations were identified.');
+    lines.push(
+      '',
+      '## ✅ Guidance Findings',
+      '',
+      'No high-confidence or advisory guidance violations were identified.'
+    );
   } else {
-    lines.push('', '| Band | Rule | Probability | Source | Files |', '|---|---|---:|---|---|');
+    lines.push(
+      '',
+      '## ⚠️ Guidance Findings',
+      '',
+      '| Band | Rule | Probability | Source | Files |',
+      '|---|---|---:|---|---|'
+    );
     for (const rule of visible) {
       lines.push(
-        `| ${rule.band} | ${escapeMarkdown(rule.text)} | ${rule.probability?.toFixed(2)} | ${inlineCode(`${rule.source.path}:${rule.source.line}`)} | ${rule.applicableFiles.map(inlineCode).join(', ')} |`
+        `| ${rule.band === 'act' ? '❌ repair' : '⚠️ attention'} | ${escapeMarkdown(rule.text)} | ${rule.probability?.toFixed(2)} | ${inlineCode(`${rule.source.path}:${rule.source.line}`)} | ${rule.applicableFiles.map(inlineCode).join(', ')} |`
       );
     }
   }
+
   lines.push(
     '',
-    `<sub>${result.usage.inputTokens} input tokens · ${result.usage.outputTokens} output tokens</sub>`
+    '## 📚 Rule Results',
+    '',
+    '<details>',
+    '<summary>View all guidance rule outcomes</summary>',
+    '',
+    '| Outcome | Rule | Source |',
+    '|---|---|---|'
+  );
+  for (const rule of result.rules) {
+    lines.push(
+      `| ${formatRuleOutcome(rule)} | ${escapeMarkdown(rule.text)} | ${inlineCode(`${rule.source.path}:${rule.source.line}`)} |`
+    );
+  }
+  lines.push(
+    '',
+    '</details>',
+    '',
+    '## 💰 Model Usage',
+    '',
+    '<details>',
+    '<summary>View token and cost breakdown</summary>',
+    '',
+    '### Run Totals',
+    '',
+    `- **Input Tokens**: ${formatCount(result.usage.inputTokens)}`,
+    `- **Output Tokens**: ${formatCount(result.usage.outputTokens)}`,
+    `- **Total Tokens**: ${formatCount(result.usage.inputTokens + result.usage.outputTokens)}`,
+    `- **Estimated Cost**: ${formatCost(result.usage.cost)}`,
+    '',
+    '### By Evaluator',
+    '',
+    '| Evaluator | Model | Requests | Input | Output | Total Tokens | Cost | Status |',
+    '| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |',
+    `| evaluator/guidance | ${result.model ? inlineCode(result.model) : 'n/a'} | ${formatCount(result.usage.requests)} | ${formatCount(result.usage.inputTokens)} | ${formatCount(result.usage.outputTokens)} | ${formatCount(result.usage.inputTokens + result.usage.outputTokens)} | ${formatCost(result.usage.cost)} | ok |`,
+    '',
+    '</details>',
+    '',
+    '---',
+    '',
+    '*Evaluated by **Jev** via **DRS***'
   );
   return lines.join('\n');
+}
+
+function formatRuleOutcome(rule: GuidanceRuleEvaluation): string {
+  if (rule.band === 'act') return `❌ Repair (${rule.probability?.toFixed(2)})`;
+  if (rule.band === 'flag') return `⚠️ Attention (${rule.probability?.toFixed(2)})`;
+  if (rule.band === 'clear') return `✅ Clear (${rule.probability?.toFixed(2)})`;
+  if (rule.status === 'unsupported') return '⏭️ Unsupported';
+  if (rule.status === 'suppressed') return '⏸️ Suppressed';
+  return '➖ Out of scope';
 }
 
 function buildQuestions(rules: readonly GuidanceRule[]): JevQuestions {

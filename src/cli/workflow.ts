@@ -664,7 +664,7 @@ async function runActionWorkflowNode(
     );
   }
   if (node.action === 'guidance-evaluate') {
-    return runGuidanceEvaluateWorkflowNode(nodeId, node, workingDir, context);
+    return runGuidanceEvaluateWorkflowNode(config, nodeId, node, workingDir, context);
   }
   if (node.action === 'review-context') {
     return runReviewContextWorkflowNode(config, nodeId, node, workingDir, context);
@@ -1798,7 +1798,8 @@ function createPlatformChangeSource(
   projectId: string,
   pullRequest: PullRequest,
   changedFiles: FileChange[],
-  workingDir: string
+  workingDir: string,
+  diffComplete: boolean
 ): ReviewSource {
   return {
     name,
@@ -1811,6 +1812,7 @@ function createPlatformChangeSource(
       projectId,
       pullRequest,
       changedFiles,
+      diffComplete,
     },
     workingDir,
   };
@@ -1888,7 +1890,8 @@ async function loadGitHubChangeSource(
     projectId,
     pullRequest,
     changedFiles,
-    workingDir
+    workingDir,
+    requireCompleteDiff
   );
 }
 
@@ -1965,7 +1968,8 @@ async function loadGitLabChangeSource(
     projectId,
     pullRequest,
     changedFiles,
-    workingDir
+    workingDir,
+    requireCompleteDiff
   );
 }
 
@@ -3430,6 +3434,7 @@ function isReviewSource(value: unknown): value is ReviewSource {
 }
 
 async function runGuidanceEvaluateWorkflowNode(
+  config: DRSConfig,
   nodeId: string,
   node: WorkflowNodeConfig,
   workingDir: string,
@@ -3447,7 +3452,12 @@ async function runGuidanceEvaluateWorkflowNode(
       : '.drs/guidance-rubric.json';
   const rubric = await loadGuidanceRubric(workingDir, rubricPath);
   assertGuidanceRubricCurrent(rubric, discoverGuidanceSources(workingDir));
-  const result = await evaluateGuidanceCompliance(rubric, source, createJevClientFromEnvironment());
+  const result = await evaluateGuidanceCompliance(
+    rubric,
+    source,
+    createJevClientFromEnvironment(),
+    { pricing: config.pricing?.models }
+  );
 
   return {
     id: nodeId,

@@ -478,11 +478,37 @@ describe('review-orchestrator', () => {
         issues: [],
         filesReviewed: 1,
         summary: { issuesFound: 0 },
-        evaluations: { jev: { status: 'completed' } },
+        evaluations: {
+          jev: {
+            status: 'completed',
+            evaluation: { coverage: { requests: 1, files: 1, evaluatedFiles: 1, complete: true } },
+          },
+        },
       });
     });
 
-    it('runs independent parallel agent and Jev components over the same compressed slice', async () => {
+    it('marks an unverified remote diff as incomplete', async () => {
+      const result = await executeReview(
+        {
+          ...mockConfig,
+          agents: { default: { skills: [] } },
+          review: { ...mockConfig.review, mode: 'jev' },
+        },
+        {
+          name: 'Remote diff',
+          files: ['src/app.ts'],
+          filesWithDiffs: [{ filename: 'src/app.ts', patch: '+ potentially truncated' }],
+          context: { platform: 'github', diffComplete: false },
+        }
+      );
+
+      expect(result.evaluations?.jev).toMatchObject({
+        status: 'completed',
+        evaluation: { coverage: { complete: false } },
+      });
+    });
+
+    it('runs the agent on compressed context and Jev on complete patches', async () => {
       const { runReviewPipeline, buildBaseInstructions } = await import('./review-core.js');
       const { buildJevReviewState } = await import('./jev/review.js');
       const { createJevClientFromEnvironment } = await import('./jev/client.js');
@@ -515,7 +541,7 @@ describe('review-orchestrator', () => {
         undefined
       );
       expect(buildJevReviewState).toHaveBeenCalledWith(
-        expect.objectContaining({ files: compressed })
+        expect.objectContaining({ files: [{ filename: 'src/app.ts', patch: '+ full code' }] })
       );
       expect(result).toMatchObject({
         mode: 'parallel',

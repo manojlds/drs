@@ -66,4 +66,10 @@ export interface JevEvaluation {
   improvements?: string[];
   regressions?: string[];
   comparison?: JevComparisonEntry[];
+  coverage?: {
+    requests: number;
+    files: number;
+    evaluatedFiles: number;
+    complete: boolean;
+  };
 }

@@ -20,6 +20,8 @@ export interface BuildJevReviewStateOptions {
   compressionSummary?: string;
   changeSummary?: string;
   sourceDescription?: JevSourceDescription;
+  changeManifest?: string[];
+  chunk?: { index: number; total: number; files: string[] };
 }
 
 export interface JevReviewState {
@@ -27,6 +29,8 @@ export interface JevReviewState {
   diff: string;
   repositoryContext: string;
   changeSummary?: string;
+  changeManifest?: string[];
+  chunk?: { index: number; total: number; files: string[] };
 }
 
 const CHANGE_SUMMARY_LIMIT = 6000;
@@ -53,10 +57,17 @@ export function buildJevReviewState(options: BuildJevReviewStateOptions): JevRev
           ]
         : []),
       'Return scalar quality decisions only; do not create file-level review findings.',
+      ...(options.chunk
+        ? [
+            `This request evaluates an API-sized segment of planned chunk ${options.chunk.index} of ${options.chunk.total}. Judge only the visible patch while using the manifest for whole-change orientation.`,
+          ]
+        : []),
     ].join(' '),
     diff: buildDiff(options.files, options.compressionSummary),
     repositoryContext: JSON.stringify(buildRepositoryContext(options.sourceDescription ?? {})),
     ...(changeSummary ? { changeSummary } : {}),
+    ...(options.changeManifest ? { changeManifest: options.changeManifest } : {}),
+    ...(options.chunk ? { chunk: options.chunk } : {}),
   };
 }
 
