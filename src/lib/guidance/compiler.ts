@@ -108,7 +108,11 @@ function parseCompilerResponse(response: string): GuidanceRule[] {
 
 function validateRuleSourceLines(rubric: GuidanceRubric, sources: readonly GuidanceSource[]): void {
   const linesByPath = new Map(
-    sources.map((source) => [source.path, source.content.split(/\r?\n/).length])
+    sources.map((source) => {
+      const lines = source.content.split(/\r?\n/);
+      if (lines.at(-1) === '') lines.pop();
+      return [source.path, lines.length] as const;
+    })
   );
   for (const rule of rubric.rules) {
     const lineCount = linesByPath.get(rule.source.path);

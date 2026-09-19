@@ -3440,8 +3440,11 @@ async function runGuidanceEvaluateWorkflowNode(
   if (!isReviewSource(source)) {
     throw new Error(`Workflow guidance-evaluate node "${nodeId}" needs a ReviewSource artifact.`);
   }
+  const configuredRubricPath = getStringActionOption(node, 'rubricPath', context)?.trim();
   const rubricPath =
-    getStringActionOption(node, 'rubricPath', context)?.trim() ?? '.drs/guidance-rubric.json';
+    configuredRubricPath && configuredRubricPath.length > 0
+      ? configuredRubricPath
+      : '.drs/guidance-rubric.json';
   const rubric = await loadGuidanceRubric(workingDir, rubricPath);
   assertGuidanceRubricCurrent(rubric, discoverGuidanceSources(workingDir));
   const result = await evaluateGuidanceCompliance(rubric, source, createJevClientFromEnvironment());

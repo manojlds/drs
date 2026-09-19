@@ -140,10 +140,10 @@ describe('compileGuidanceRubric', () => {
   it('rejects source lines outside the supplied file', async () => {
     const root = project();
     writeFileSync(join(root, 'AGENTS.md'), 'One line\n');
-    const runAgent = vi.fn(async () => ({ response: response([modelRule('AGENTS.md', 3)]) }));
+    const runAgent = vi.fn(async () => ({ response: response([modelRule('AGENTS.md', 2)]) }));
 
     await expect(
       compileGuidanceRubric(config, { projectRoot: root }, { runAgent: runAgent as never })
-    ).rejects.toThrow('references line 3 outside AGENTS.md');
+    ).rejects.toThrow('references line 2 outside AGENTS.md');
   });
 });
