@@ -274,6 +274,7 @@ export const ACTION_OPTION_FIELDS: Partial<
     'requireCompleteDiff',
   ]),
   review: new Set(['source', 'reviewArtifact', 'severity', 'artifact', 'mode']),
+  'guidance-evaluate': new Set(['source', 'rubricPath']),
   'review-context': new Set(['source', 'file', 'baseBranch']),
   describe: new Set(['source', 'post', 'postDescription']),
   'code-quality-report': new Set(['review', 'path']),
@@ -297,6 +298,7 @@ export const ACTION_OPTION_FIELDS: Partial<
     'mrIid',
     'body',
     'marker',
+    'expectedHeadSha',
   ]),
   'post-review-comments': new Set(['source', 'review', 'removeErrorComment', 'expectedHeadSha']),
   'post-fix-status': new Set([

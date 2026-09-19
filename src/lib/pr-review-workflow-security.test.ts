@@ -13,6 +13,8 @@ interface ActionStep {
 
 interface ActionJob {
   needs?: string;
+  if?: string;
+  'continue-on-error'?: boolean;
   permissions?: Record<string, string>;
   steps: ActionStep[];
 }
@@ -23,6 +25,27 @@ function loadReviewJobs(): Record<string, ActionJob> {
 }
 
 describe('external PR review workflow security', () => {
+  it('runs guidance compliance non-blocking from trusted base code', () => {
+    const job = loadReviewJobs()['guidance-compliance'];
+    const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))!;
+    const guidance = job.steps.find((step) => step.name === 'Check repository guidance')!;
+    const serialized = JSON.stringify(job);
+
+    expect(job['continue-on-error']).toBe(true);
+    expect(job.if).toContain("vars.DRS_GUIDANCE_COMPLIANCE == 'true'");
+    expect(job.if).toContain("needs.verify-contributor.outputs.is-trusted == 'true'");
+    expect(job.if).not.toContain('has-review-label');
+    expect(checkout.with).toMatchObject({
+      ref: '${{ github.event.pull_request.base.sha }}',
+      'persist-credentials': false,
+    });
+    expect(guidance.run).toContain('workflow run github-pr-guidance-compliance');
+    expect(guidance.run).toContain('--input requireCompleteDiff=true');
+    expect(guidance.env?.JEV_API_KEY).toContain('secrets.JEV_API_KEY');
+    expect(guidance.env?.OPENCODE_API_KEY).toBe('');
+    expect(serialized).not.toContain('secrets.DRS_PROVIDER_API_KEY');
+  });
+
   it('runs the model from trusted base code with read-only GitHub permissions', () => {
     const job = loadReviewJobs()['review-external'];
     const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))!;

@@ -187,10 +187,18 @@ drs wiki check-site https://example.github.io/project/
 | Post or update a PR comment | `drs workflow run github-pr-post-comment --input owner=<owner> --input repo=<repo> --input pr=<number> --input body="..." --input marker=<id>` |
 | Post or update an MR comment | `drs workflow run gitlab-mr-post-comment --input project=<group/repo> --input mr=<number> --input body="..." --input marker=<id>` |
 | Run any configured agent | `drs run-agent task/docs-updater --prompt "Update release notes"` |
+| Compile repository guidance rubric | `drs guidance compile` |
+| Check a GitHub PR against repository guidance | `drs workflow run github-pr-guidance-compliance --input owner=<owner> --input repo=<repo> --input pr=<number>` |
 | Run a configured workflow | `drs workflow run release-notes --input-file diff=.drs/diff.md` |
 | Run the default project workflow | `drs workflow run` |
 | List available workflows | `drs workflow list` |
 | Show workflow inputs and steps | `drs workflow show github-pr-review` |
+
+### Repository Guidance Compliance
+
+Run `drs guidance compile` after changing `AGENTS.md`, `CLAUDE.md`, or repository Copilot instructions. The command writes the source-linked `.drs/guidance-rubric.json`; commit the updated rubric with the guidance change.
+
+The packaged `github-pr-guidance-compliance` workflow evaluates complete PR patches against active model-checkable rules and produces a separate advisory report. The bundled GitHub Actions job runs only for trusted same-repository contributors, is non-blocking, and requires the `DRS_GUIDANCE_COMPLIANCE` repository variable to be `true` plus a `JEV_API_KEY` secret.
 
 ## Deployment Modes
 

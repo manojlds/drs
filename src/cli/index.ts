@@ -16,6 +16,7 @@ import { config as loadDotenv } from 'dotenv';
 import { getProjectSetupStatus } from '../lib/project-setup.js';
 import { createWikiCommand } from './wiki.js';
 import { createBenchmarkCommand } from './benchmark.js';
+import { createGuidanceCommand } from './guidance.js';
 
 // Load environment variables from .env in current working directory (if present)
 loadDotenv();
@@ -74,6 +75,7 @@ program
   .version(version);
 
 program.addCommand(createBenchmarkCommand());
+program.addCommand(createGuidanceCommand());
 
 program
   .command('run-agent <agentId>')

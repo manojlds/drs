@@ -1,0 +1,63 @@
+name: github-pr-guidance-compliance
+description: Check a GitHub pull request against the repository guidance rubric
+metadata:
+  kind: guidance-compliance
+  tags: [github, pull-request, guidance, jev]
+inputs:
+  owner:
+    type: string
+    required: true
+  repo:
+    type: string
+    required: true
+  pr:
+    type: number
+    required: true
+  rubricPath:
+    type: string
+    default: .drs/guidance-rubric.json
+  post:
+    type: boolean
+    default: false
+  requireCompleteDiff:
+    type: boolean
+    default: true
+output: guidance
+nodes:
+  change:
+    action: change-source
+    with:
+      type: github-pr
+      owner: '{{inputs.owner}}'
+      repo: '{{inputs.repo}}'
+      pr: '{{inputs.pr}}'
+      requireCompleteDiff: '{{inputs.requireCompleteDiff}}'
+    output: change
+
+  guidance:
+    action: guidance-evaluate
+    needs: [change]
+    with:
+      source: change
+      rubricPath: '{{inputs.rubricPath}}'
+    output: guidance
+
+  save-guidance:
+    action: save-artifact
+    needs: [guidance]
+    with:
+      kind: guidance-compliance
+      source: change
+      artifact: guidance
+    output: guidanceArtifact
+
+  post-guidance:
+    action: post-comment
+    needs: [guidance, save-guidance]
+    if: inputs.post == true
+    input: '{{artifacts.guidance.report}}'
+    with:
+      source: change
+      marker: drs-guidance-compliance
+      expectedHeadSha: '{{artifacts.guidance.reviewedSha}}'
+    output: postedGuidance

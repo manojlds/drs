@@ -52,3 +52,9 @@ npm run check:all
 ```
 
 This runs format + lint + build + test + verification checks.
+
+## Architecture Rules
+
+- Keep repository-guidance compliance separate from the fixed Jev quality scorecard. Guidance verdicts must not be stored as fixed quality metrics or converted into file-and-line review findings without location evidence.
+- Validate persisted artifacts, model responses, and external workflow inputs at their trust boundary before using them.
+- A workflow action must be registered consistently in the supported-action list, option validation, runtime dispatch, and retry-policy tests.

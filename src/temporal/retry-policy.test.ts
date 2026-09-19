@@ -51,6 +51,7 @@ describe('getTemporalNodeRetryMode', () => {
       'summarize-wiki-run',
       'check-wiki-clean',
       'check-wiki-state',
+      'guidance-evaluate',
       'verify-fix',
     ];
 

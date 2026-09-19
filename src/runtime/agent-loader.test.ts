@@ -145,6 +145,15 @@ describe('agent-loader path resolution', () => {
     expect(wikiAgent?.tools?.Write).toBe(true);
   });
 
+  it('loads the packaged guidance compiler without mutation tools', () => {
+    const compiler = getAgent(process.cwd(), 'task/guidance-compiler');
+
+    expect(compiler?.prompt).toContain('structured guidance rubric');
+    expect(compiler?.tools?.Bash).toBe(false);
+    expect(compiler?.tools?.Edit).toBe(false);
+    expect(compiler?.tools?.Write).toBe(false);
+  });
+
   it('throws actionable error when configured agent path is invalid', () => {
     const projectRoot = createTempDir('drs-agent-loader-invalid-');
 
