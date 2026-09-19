@@ -1798,7 +1798,8 @@ function createPlatformChangeSource(
   projectId: string,
   pullRequest: PullRequest,
   changedFiles: FileChange[],
-  workingDir: string
+  workingDir: string,
+  diffComplete: boolean
 ): ReviewSource {
   return {
     name,
@@ -1811,6 +1812,7 @@ function createPlatformChangeSource(
       projectId,
       pullRequest,
       changedFiles,
+      diffComplete,
     },
     workingDir,
   };
@@ -1888,7 +1890,8 @@ async function loadGitHubChangeSource(
     projectId,
     pullRequest,
     changedFiles,
-    workingDir
+    workingDir,
+    requireCompleteDiff
   );
 }
 
@@ -1965,7 +1968,8 @@ async function loadGitLabChangeSource(
     projectId,
     pullRequest,
     changedFiles,
-    workingDir
+    workingDir,
+    requireCompleteDiff
   );
 }
 

@@ -22,7 +22,7 @@ inputs:
     description: Post a summary scorecard to the MR
   requireCompleteDiff:
     type: boolean
-    default: false
+    default: true
     description: Fail when GitLab cannot provide a stable, complete file and patch snapshot
 output: review
 nodes:

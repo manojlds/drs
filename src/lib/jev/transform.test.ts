@@ -132,4 +132,23 @@ describe('Jev evaluation transform', () => {
 
     expect(() => toJevEvaluation(response)).toThrow(JevEvaluationError);
   });
+
+  it('does not promote low-confidence weak scores into priorities', () => {
+    const response = responseWithScores({ correctness: 4 });
+    const score = response.answers.correctness_score;
+    if (score?.type !== 'score') throw new Error('Expected correctness score.');
+    score.confidence = 0.2;
+
+    const evaluation = toJevEvaluation(response);
+
+    expect(evaluation.metrics.correctness).toMatchObject({
+      applicable: true,
+      score: 4,
+      confidence: 0.2,
+      summary: expect.stringContaining('inconclusive'),
+    });
+    expect(evaluation.priorities).not.toContainEqual(
+      expect.objectContaining({ metric: 'correctness' })
+    );
+  });
 });

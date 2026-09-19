@@ -226,6 +226,10 @@ function formatJevScorecard(
   }
 
   markdown += `- **Model**: ${formatMarkdownCodeSpan(jev.evaluation.model)}\n`;
+  if (jev.evaluation.coverage) {
+    const coverage = jev.evaluation.coverage;
+    markdown += `- **Diff coverage**: ${coverage.evaluatedFiles}/${coverage.files} files across ${coverage.requests} request${coverage.requests === 1 ? '' : 's'} (${coverage.complete ? 'complete' : 'incomplete'})\n`;
+  }
   markdown += `\n`;
 
   if (jev.evaluation.priorities.length > 0) {

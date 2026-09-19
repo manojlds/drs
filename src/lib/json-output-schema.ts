@@ -161,6 +161,17 @@ const jevEvaluationSchema = {
         outputTokens: { type: 'integer', minimum: 0 },
       },
     },
+    coverage: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['requests', 'files', 'evaluatedFiles', 'complete'],
+      properties: {
+        requests: { type: 'integer', minimum: 1 },
+        files: { type: 'integer', minimum: 0 },
+        evaluatedFiles: { type: 'integer', minimum: 0 },
+        complete: { type: 'boolean' },
+      },
+    },
     improvements: { type: 'array', items: { type: 'string' } },
     regressions: { type: 'array', items: { type: 'string' } },
     comparison: {

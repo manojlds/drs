@@ -131,21 +131,23 @@ export async function postReviewComments(
 
   const currentJev = evaluationOptions?.evaluations?.jev;
   const currentEvaluation = currentJev?.status === 'completed' ? currentJev.evaluation : undefined;
+  const comparableEvaluation =
+    currentEvaluation?.coverage?.complete === false ? undefined : currentEvaluation;
   const existingBaseline =
     (existingJev ? extractJevPrBaseline(existingJev.body) : undefined) ??
     (existingSummary ? extractJevPrBaseline(existingSummary.body) : undefined);
   const baseline =
     existingBaseline ??
-    (currentEvaluation
-      ? createJevPrBaseline(currentEvaluation, reviewMetadata?.headSha)
+    (comparableEvaluation
+      ? createJevPrBaseline(comparableEvaluation, reviewMetadata?.headSha)
       : undefined);
   let jevComment = hasJev
     ? formatJevReportComment(evaluationOptions, jevUsage, reviewMetadata, JEV_COMMENT_ID)
     : undefined;
   if (baseline && jevComment) {
-    const baselineCaptured = existingBaseline === undefined && currentEvaluation !== undefined;
-    const jevTrend = currentEvaluation
-      ? createJevPrTrend(baseline, currentEvaluation, reviewMetadata?.headSha, baselineCaptured)
+    const baselineCaptured = existingBaseline === undefined && comparableEvaluation !== undefined;
+    const jevTrend = comparableEvaluation
+      ? createJevPrTrend(baseline, comparableEvaluation, reviewMetadata?.headSha, baselineCaptured)
       : undefined;
     jevComment = formatJevReportComment(
       jevTrend ? { ...evaluationOptions, jevTrend } : evaluationOptions!,

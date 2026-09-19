@@ -120,6 +120,7 @@ describe('json-output schemas', () => {
             ),
             priorities: [{ metric: 'correctness', severity: 'low', reason: 'Boundary behavior.' }],
             usage: { inputTokens: 100, outputTokens: 20 },
+            coverage: { requests: 2, files: 3, evaluatedFiles: 3, complete: true },
           },
         },
       },

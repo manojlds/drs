@@ -23,6 +23,7 @@ export interface EvaluatorUsageOptions {
   outputTokens: number;
   model?: string;
   success?: boolean;
+  turns?: number;
   pricing?: {
     input: number;
     output: number;
@@ -104,7 +105,7 @@ export function createEvaluatorUsageSummary(
     agentType: evaluatorType,
     ...(options.model ? { model: options.model } : {}),
     ...(options.success !== undefined ? { success: options.success } : {}),
-    turns: 1,
+    turns: options.turns ?? 1,
     usage: {
       input: options.inputTokens,
       output: options.outputTokens,
