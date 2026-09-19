@@ -221,7 +221,7 @@ export function formatGuidanceComplianceReport(result: ReportInput): string {
     `**Coverage:** ${result.summary.evaluated} evaluated · ${result.summary.outOfScope} out of scope · ${result.summary.suppressed} suppressed · ${result.summary.unsupported} unsupported`,
     `**Rubric:** compiled ${result.rubric.compiledAt}${result.model ? ` · Model: ${escapeMarkdown(result.model)}` : ''}`,
   ];
-  if (result.reviewedSha) lines.push(`**Reviewed SHA:** \`${escapeMarkdown(result.reviewedSha)}\``);
+  if (result.reviewedSha) lines.push(`**Reviewed SHA:** ${inlineCode(result.reviewedSha)}`);
 
   const visible = result.rules.filter((rule) => rule.band === 'act' || rule.band === 'flag');
   if (visible.length === 0) {
@@ -230,7 +230,7 @@ export function formatGuidanceComplianceReport(result: ReportInput): string {
     lines.push('', '| Band | Rule | Probability | Source | Files |', '|---|---|---:|---|---|');
     for (const rule of visible) {
       lines.push(
-        `| ${rule.band} | ${escapeMarkdown(rule.text)} | ${rule.probability?.toFixed(2)} | \`${escapeMarkdown(rule.source.path)}:${rule.source.line}\` | ${rule.applicableFiles.map((file) => `\`${escapeMarkdown(file)}\``).join(', ')} |`
+        `| ${rule.band} | ${escapeMarkdown(rule.text)} | ${rule.probability?.toFixed(2)} | ${inlineCode(`${rule.source.path}:${rule.source.line}`)} | ${rule.applicableFiles.map(inlineCode).join(', ')} |`
       );
     }
   }
@@ -361,7 +361,20 @@ function reviewedSha(source: ReviewSource): string | undefined {
 }
 
 function escapeMarkdown(value: string): string {
-  return value.replaceAll('|', '\\|').replaceAll('`', '\\`').replaceAll('\n', ' ');
+  return value
+    .replaceAll('\n', ' ')
+    .replaceAll('\\', '\\\\')
+    .replace(/([`*_[\]{}()<>#+.!|~-])/g, '\\$1');
+}
+
+function inlineCode(value: string): string {
+  return `<code>${[...value.replaceAll('\n', ' ')].map(encodeUnsafeCodeCharacter).join('')}</code>`;
+}
+
+function encodeUnsafeCodeCharacter(character: string): string {
+  return /[A-Za-z0-9 ./_:-]/.test(character)
+    ? character
+    : `&#x${character.codePointAt(0)?.toString(16)};`;
 }
 
 function round(value: number): number {

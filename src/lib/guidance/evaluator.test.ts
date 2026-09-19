@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ReviewSource } from '../review-orchestrator.js';
-import { evaluateGuidanceCompliance } from './evaluator.js';
+import { evaluateGuidanceCompliance, formatGuidanceComplianceReport } from './evaluator.js';
 import { parseGuidanceRubric, type GuidanceRubric } from './rubric.js';
 
 const SHA = 'a'.repeat(64);
@@ -303,5 +303,47 @@ describe('evaluateGuidanceCompliance', () => {
     await expect(
       evaluateGuidanceCompliance(rubric(), source(), { evaluate: evaluate as never })
     ).rejects.toThrow('invalid score probabilities');
+  });
+
+  it('renders untrusted filenames as inert inline code', async () => {
+    const result = await evaluateGuidanceCompliance(rubric(), source(), {
+      evaluate: vi.fn(async (_state: unknown, questions: unknown) => {
+        const answers = Object.fromEntries(
+          Object.keys(questions as Record<string, unknown>).map((id) => [
+            id,
+            id === 'guidance_score-rule'
+              ? {
+                  type: 'score',
+                  score: 0,
+                  legend: {},
+                  probabilities: { '0': 1, '1': 0, '2': 0 },
+                  confidence: 1,
+                }
+              : id === 'guidance_choice-rule'
+                ? {
+                    type: 'choice',
+                    choice: 'raw',
+                    probabilities: { typed: 0, raw: 1 },
+                    confidence: 1,
+                  }
+                : { type: 'noul', noul: 1 },
+          ])
+        );
+        return {
+          model: 'jev-latest',
+          answers,
+          usage: { input_tokens: 1, output_tokens: 0 },
+        };
+      }) as never,
+    });
+    const choice = result.rules.find((rule) => rule.id === 'choice-rule');
+    if (!choice) throw new Error('Expected choice-rule evaluation.');
+    choice.applicableFiles = ['a`[click](https://example.com)|x.ts'];
+    const report = formatGuidanceComplianceReport(result);
+
+    expect(report).toContain(
+      '<code>a&#x60;&#x5b;click&#x5d;&#x28;https://example.com&#x29;&#x7c;x.ts</code>'
+    );
+    expect(report).not.toContain('[click](https://example.com)');
   });
 });
