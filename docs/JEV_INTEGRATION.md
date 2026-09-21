@@ -42,7 +42,7 @@ Jev-containing modes require the fixed environment variable:
 export JEV_API_KEY="..."
 ```
 
-DRS does not accept a Jev key, key-variable name, endpoint, custom header, or model in repository configuration. The endpoint and model are fixed in DRS v1. Do not commit the key or write it to workflow artifacts.
+DRS does not accept a Jev key, key-variable name, endpoint, custom header, or model in repository configuration. The endpoint and model are fixed in DRS v1. DRS pins `jev-1.13.0` so rubric behavior does not change when the `jev-latest` alias moves. Upgrade the pin only after benchmark validation. Do not commit the key or write it to workflow artifacts.
 
 Agent-only mode does not read or require `JEV_API_KEY`.
 
@@ -112,9 +112,35 @@ The `jev-latest` pricing entry also applies when the API returns a resolved vers
 
 The scorecard also reports a `coverage` object: the number of Jev API requests (`requests`), the total number of changed files (`files`), how many of those files were included in an evaluated chunk (`evaluatedFiles`), and whether the evaluation is considered complete (`complete`). Incomplete evaluations occur when patches are unavailable or when some files could not be placed in any chunk. Incomplete scorecards are not used as trend baselines.
 
+DRS sends a structured `change` object and uses path-specific, structured questions. The production
+protocol retains separate applicability, Score, and weakness decisions for each dimension. A direct
+categorical `weak | acceptable | not_applicable` protocol remains experimental: development results
+improved class-balanced agreement but reduced weak-label recall, so it has not replaced the scorecard.
+
 DRS does not calculate an overall quality grade. A high Jev score does not override failing tests, unresolved agent findings, or project requirements. Jev scores are not merge gates in v1.
 
 In Jev-only mode, `issues` is empty because no file-level issue-producing reviewer ran. It does **not** mean that the code is defect-free.
+
+## Appropriate use in other workflows
+
+Jev is a bounded decision model, not a prose generator or code-review agent. DRS therefore keeps
+these responsibilities separate:
+
+- repository guidance (`AGENTS.md`, `CLAUDE.md`, and equivalents) is inspected and written by the
+  guidance task agent; Jev quality-scorecard signals may only be treated as inspection hints and do
+  not supply guidance prose;
+- the separate guidance-compliance workflow may evaluate repository-authored, compiled rules with
+  narrow typed Jev questions and code-owned probability thresholds; it reports rule outcomes rather
+  than generating guidance or file-level review findings;
+- GitLab Code Quality reports contain only evidence-grounded DRS agent findings with file and line
+  locations; Jev priorities are never converted into Code Quality entries;
+- a Jev-only review cannot produce a Code Quality report, because an empty report would misleadingly
+  resemble a clean file-level review;
+- Jev does not generate descriptions, changelog entries, guidance prose, fixes, or source locations.
+
+Future Jev routing or quality-gate uses should ask narrow typed questions, combine answers in code,
+route uncertain results to an agent or person, and be validated on labeled development data before
+becoming workflow defaults.
 
 ## Pull request and merge request trends
 

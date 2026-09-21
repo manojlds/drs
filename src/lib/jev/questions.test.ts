@@ -21,9 +21,45 @@ describe('Jev questions', () => {
 
     expect(weakness.type).toBe('choice');
     if (weakness.type !== 'choice') throw new Error('Expected weakness question');
-    expect(weakness.instructions).toContain('single most consequential');
-    expect(weakness.instructions).toContain('Do not speculate');
-    expect(weakness.criteria.no_material_issue).toContain('No material issue');
+    expect(weakness.instructions).toMatchObject({
+      question: expect.stringContaining('most strongly evidenced'),
+      inspect: [
+        '`change.diff`',
+        '`change.repository`',
+        '`change.summary`',
+        '`change.manifest`',
+        '`change.segment`',
+      ],
+      boundary: expect.stringContaining('Do not speculate'),
+    });
+    expect(weakness.criteria.no_material_issue).toMatchObject({
+      what: expect.stringContaining('No material issue'),
+    });
+  });
+
+  it('uses structured, path-specific instructions and non-numeric score levels', () => {
+    const questions = buildJevQuestions();
+    const score = questions.correctness_score;
+    const applicable = questions.correctness_applicable;
+    if (score.type !== 'score' || applicable.type !== 'noul') {
+      throw new Error('Expected score and applicability questions');
+    }
+
+    expect(score.instructions).toMatchObject({
+      question: expect.stringContaining('`change.diff`'),
+      inspect: [
+        '`change.diff`',
+        '`change.repository`',
+        '`change.summary`',
+        '`change.manifest`',
+        '`change.segment`',
+      ],
+    });
+    expect(applicable.criteria.true).toMatchObject({
+      requires: expect.stringContaining('`change.diff`'),
+    });
+    expect(score.criteria).toHaveLength(10);
+    expect(score.criteria[0]).not.toMatch(/^\d/);
   });
 
   it('distinguishes core dimensions from conditionally relevant dimensions', () => {

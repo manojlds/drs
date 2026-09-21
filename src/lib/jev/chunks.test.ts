@@ -51,9 +51,9 @@ describe('evaluateJevChunks', () => {
       'src/b.ts',
     ]);
     for (const [state] of evaluate.mock.calls) {
-      expect(state.diff).toContain('```diff');
-      expect(state.diff).not.toContain('No inline patch');
-      expect(state.changeManifest).toEqual(['src/a.ts', 'src/b.ts']);
+      expect(state.change.diff).toContain('```diff');
+      expect(state.change.diff).not.toContain('No inline patch');
+      expect(state.change.manifest).toEqual(['src/a.ts', 'src/b.ts']);
       expect(estimateJevRequestTokens(state, questions)).toBeLessThanOrEqual(800);
     }
   });
@@ -73,7 +73,7 @@ describe('evaluateJevChunks', () => {
     });
 
     const reconstructed = states
-      .map((state) => state.diff.match(/```diff\n([\s\S]*?)\n```/)?.[1] ?? '')
+      .map((state) => state.change.diff.match(/```diff\n([\s\S]*?)\n```/)?.[1] ?? '')
       .join('');
     expect(states.length).toBeGreaterThan(1);
     expect(reconstructed).toBe(patch);
@@ -136,9 +136,9 @@ describe('evaluateJevChunks', () => {
     expect(chunks.length).toBe(1);
     expect(chunks[0].fileNames.sort()).toEqual(['assets/logo.png', 'src/a.ts', 'src/script.sh']);
     const [state] = evaluate.mock.calls[0];
-    expect(state.diff).toContain('src/a.ts');
-    expect(state.diff).not.toContain('assets/logo.png');
-    expect(state.changeManifest).toEqual(['src/a.ts', 'assets/logo.png', 'src/script.sh']);
+    expect(state.change.diff).toContain('src/a.ts');
+    expect(state.change.diff).not.toContain('assets/logo.png');
+    expect(state.change.manifest).toEqual(['src/a.ts', 'assets/logo.png', 'src/script.sh']);
   });
 
   it('keeps empty-patch files in coverage after adaptive splitting', async () => {
@@ -178,16 +178,18 @@ describe('evaluateJevChunks', () => {
     expect(chunks.length).toBe(1);
     expect(chunks[0].fileNames).toEqual(['src/script.sh']);
     const [state] = evaluate.mock.calls[0];
-    expect(state.diff).toContain('No inline patch');
+    expect(state.change.diff).toContain('No inline patch');
   });
 
   it('estimates the entire serialized request using UTF-8 bytes', () => {
-    const state = {
-      task: 'Evaluate.',
-      diff: '+ const message = "こんにちは";',
-      repositoryContext: '{}',
+    const state: JevReviewState = {
+      change: {
+        label: 'Unicode change',
+        diff: '+ const message = "こんにちは";',
+        repository: {},
+      },
     };
-    const serialized = JSON.stringify({ state, model: 'jev-latest', questions });
+    const serialized = JSON.stringify({ state, model: 'jev-1.13.0', questions });
 
     expect(estimateJevRequestTokens(state, questions)).toBe(
       Math.ceil(Buffer.byteLength(serialized, 'utf8') / 3)

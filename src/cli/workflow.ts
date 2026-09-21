@@ -2497,6 +2497,11 @@ async function runCodeQualityReportWorkflowNode(
   if (!isReviewResult(reviewResult)) {
     throw new Error(`Workflow code-quality-report node "${nodeId}" needs a ReviewResult artifact.`);
   }
+  if (reviewResult.mode === 'jev') {
+    throw new Error(
+      `Workflow code-quality-report node "${nodeId}" cannot create file-level findings from a Jev-only review. Use agent or combined review mode.`
+    );
+  }
 
   const reportPath = hasActionOption(node, 'path')
     ? requireStringActionOption(nodeId, node, 'path', context)

@@ -21,6 +21,8 @@ Read the existing guidance and the provided change source, then make only guidan
 - Remove or update stale instructions when the change source clearly makes them incorrect.
 - Treat AGENTS.md changes as repository memory, not a changelog. Do not document temporary implementation details, one-off bug fixes, or behavior that is obvious from normal code review.
 - Do not add generic AI-agent advice that is not specific to this repository.
+- Treat scalar quality scores or rubric categories (including Jev signals) only as hints about where to inspect. They do not prove that guidance is warranted and must not supply prose for the guidance file.
+- Base every guidance edit on durable, concrete repository evidence such as commands, architecture boundaries, configuration, or conventions visible in the change and repository.
 - Do not modify CI configuration (`.github/workflows/*`, `.gitlab-ci.yml`, etc.), code-style config (`.eslintrc*`, `.prettierrc*`, `tsconfig.json`), or test framework setup unless the change source directly requires it. These are project infrastructure and out of scope for an agent-guidance update.
 - Do not rewrite the whole file unless it is very small and clearly outdated.
 - Return a concise summary of changed guidance and skipped areas.

@@ -36,6 +36,10 @@ function validBody() {
 }
 
 describe('JevClient', () => {
+  it('pins the benchmarked Jev model version', () => {
+    expect(JEV_MODEL).toBe('jev-1.13.0');
+  });
+
   it('sends the expected request shape and isolates the bearer key to Authorization', async () => {
     const fetch = vi.fn(
       async (_input: string | URL | Request, _init?: RequestInit): Promise<Response> =>

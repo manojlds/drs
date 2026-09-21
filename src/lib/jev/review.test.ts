@@ -3,7 +3,7 @@ import { prepareDiffsForAgent } from '../context-compression.js';
 import { buildJevReviewState } from './review.js';
 
 describe('buildJevReviewState', () => {
-  it('builds deterministic task, diff, and repository context from compressed diffs', () => {
+  it('builds deterministic structured change state from compressed diffs', () => {
     const compression = prepareDiffsForAgent([
       { filename: 'src/b.ts', patch: '@@ -1,0 +1,1 @@\n+export const b = 1;' },
       { filename: 'src/a.ts', patch: '@@ -1,0 +1,1 @@\n+export const a = 1;' },
@@ -16,11 +16,12 @@ describe('buildJevReviewState', () => {
       sourceDescription: { platform: 'local', repository: 'demo' },
     });
 
-    expect(state.task).toContain('Local diff');
-    expect(state.diff).toContain('### src/a.ts');
-    expect(state.diff.indexOf('### src/a.ts')).toBeLessThan(state.diff.indexOf('### src/b.ts'));
-    expect(typeof state.repositoryContext).toBe('string');
-    expect(JSON.parse(state.repositoryContext)).toEqual({
+    expect(state.change.label).toBe('Local diff');
+    expect(state.change.diff).toContain('### src/a.ts');
+    expect(state.change.diff.indexOf('### src/a.ts')).toBeLessThan(
+      state.change.diff.indexOf('### src/b.ts')
+    );
+    expect(state.change.repository).toEqual({
       platform: 'local',
       repository: 'demo',
     });
@@ -74,7 +75,7 @@ describe('buildJevReviewState', () => {
         },
       });
 
-      expect(JSON.parse(state.repositoryContext)).toEqual({
+      expect(state.change.repository).toEqual({
         platform,
         repository: 'org/repo',
         [idKey]: 42,
@@ -83,10 +84,11 @@ describe('buildJevReviewState', () => {
         baseRef: 'main',
         headRef: 'fix/metadata',
       });
-      expect(state.repositoryContext).not.toContain('private@example.com');
-      expect(state.repositoryContext).not.toContain('provider-secret');
-      expect(state.repositoryContext).not.toContain('secret-context.ts');
-      expect(state.repositoryContext).not.toContain('trace-secret');
+      const repository = JSON.stringify(state.change.repository);
+      expect(repository).not.toContain('private@example.com');
+      expect(repository).not.toContain('provider-secret');
+      expect(repository).not.toContain('secret-context.ts');
+      expect(repository).not.toContain('trace-secret');
     }
   );
 
@@ -104,9 +106,9 @@ describe('buildJevReviewState', () => {
       sourceDescription: { platform: 'gitlab', priorEvaluation: { should: 'stay local' } },
     });
 
-    expect(state.diff).toContain('src/deleted.ts');
-    expect(state.diff).toContain('-export const old = true');
-    expect(state.diff).toContain('Omitted due to token budget');
+    expect(state.change.diff).toContain('src/deleted.ts');
+    expect(state.change.diff).toContain('-export const old = true');
+    expect(state.change.diff).toContain('Omitted due to token budget');
     expect(JSON.stringify(state)).not.toContain('priorEvaluation');
   });
 
@@ -119,9 +121,9 @@ describe('buildJevReviewState', () => {
       sourceDescription: {},
     });
 
-    expect(state.diff).toContain('large diff summarized only');
-    expect(state.diff).not.toContain('git_diff');
-    expect(state.diff).not.toContain('tool');
+    expect(state.change.diff).toContain('large diff summarized only');
+    expect(state.change.diff).not.toContain('git_diff');
+    expect(state.change.diff).not.toContain('tool');
   });
 
   it('handles empty or ignored changes with explicit no-inline-diff text', () => {
@@ -132,7 +134,7 @@ describe('buildJevReviewState', () => {
       sourceDescription: {},
     });
 
-    expect(state.diff).toContain('No inline diff content');
+    expect(state.change.diff).toContain('No inline diff content');
   });
 
   it('bounds untrusted title and body fields', () => {
@@ -146,7 +148,7 @@ describe('buildJevReviewState', () => {
       },
     });
 
-    const repositoryContext = JSON.parse(state.repositoryContext) as {
+    const repositoryContext = state.change.repository as {
       title: string;
       body: string;
     };
@@ -162,8 +164,7 @@ describe('buildJevReviewState', () => {
       sourceDescription: {},
     });
 
-    expect(state.changeSummary).toHaveLength(6000);
-    expect(state.task).toContain('agent-generated change summary');
-    expect(state.task).toContain('diff is authoritative');
+    expect(state.change.summary).toHaveLength(6000);
+    expect(state).not.toHaveProperty('task');
   });
 });
