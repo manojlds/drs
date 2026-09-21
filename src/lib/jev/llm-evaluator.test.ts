@@ -65,7 +65,8 @@ describe('LLM quality evaluator', () => {
       score: 3,
       confidence: 1,
     });
-    expect(result.evaluation.metrics.security).toEqual({ applicable: false });
+    expect(result.evaluation.metrics.performance).toEqual({ applicable: false });
+    expect(result.evaluation.metrics.security).toMatchObject({ applicable: true, score: 8 });
     expect(result.evaluation.priorities[0]).toMatchObject({ metric: 'correctness' });
     expect(result.evaluation.usage).toEqual({ inputTokens: 400, outputTokens: 80 });
   });
