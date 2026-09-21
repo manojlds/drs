@@ -188,7 +188,9 @@ export async function evaluateGuidanceCompliance(
     suppressed: outcomes.filter((rule) => rule.status === 'suppressed').length,
     unsupported: outcomes.filter((rule) => rule.status === 'unsupported').length,
   };
-  const pricing = model ? (options.pricing?.[model] ?? options.pricing?.[JEV_MODEL]) : undefined;
+  const pricing = model
+    ? (options.pricing?.[model] ?? options.pricing?.[JEV_MODEL] ?? options.pricing?.['jev-latest'])
+    : undefined;
   const cost = pricing
     ? (pricing.input * inputTokens + pricing.output * outputTokens) / 1_000_000
     : 0;
