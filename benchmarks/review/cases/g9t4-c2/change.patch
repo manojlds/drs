@@ -1,0 +1,10 @@
+diff --git a/src/retry.ts b/src/retry.ts
+index 5555555..6666666 100644
+--- a/src/retry.ts
++++ b/src/retry.ts
+@@ -1,4 +1,4 @@
+-const RETRYABLE_DELIVERY_CODES = new Set([7400, 7407]);
++const RETRYABLE_DELIVERY_CODES = new Set([7400, 7403, 7407]);
+ 
+ export function shouldRetryDelivery(code: number): boolean {
+   return RETRYABLE_DELIVERY_CODES.has(code);

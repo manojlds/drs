@@ -1,0 +1,9 @@
+id: d5m8-q6
+description: Charge calculation changes the ordering of tax and account adjustments.
+comparison: { group: pricing-order, variant: skill }
+capabilities:
+  requiredSkills: [billing-policy-review]
+  expectedNotLoadedSkills: [css-layout]
+  requiredInspectionPaths: [rules/R-17.md]
+expected:
+  - { id: D5-1, description: Subtracting the account adjustment before tax incorrectly treats it as a reduction in taxable usage., severity: HIGH, category: QUALITY, file: src/pricing.ts, line: 3 }

@@ -3,6 +3,8 @@ description: Loop control changes active-node computation when jumping back to i
 dimensions:
   - workflow-semantics
   - state-machine
+jev:
+  expectedWeakDimensions: [correctness, reliability]
 expected:
   - id: HIST-LOOP-001
     description: A loop back-edge reruns already completed prerequisites of the loop target.

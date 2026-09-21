@@ -1,0 +1,9 @@
+id: g9t4-v7
+description: Delivery retry classification includes an additional wire response code.
+comparison: { group: delivery-status, variant: skill }
+capabilities:
+  requiredSkills: [delivery-status-review]
+  expectedNotLoadedSkills: [css-layout]
+  requiredInspectionPaths: [protocol/S-4.csv]
+expected:
+  - { id: G9-1, description: Treating wire code 1CEB as retryable can repeat a delivery the receiver already accepted., severity: HIGH, category: QUALITY, file: src/retry.ts, line: 1 }

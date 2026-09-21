@@ -15,6 +15,21 @@ function createRuntime(
       close: vi.fn(),
     },
     client: {
+      completeSimple: vi.fn(async () => ({
+        text: 'completed',
+        provider: 'provider',
+        requestedModel: 'requested',
+        resolvedModel: 'resolved',
+        stopReason: 'stop',
+        usage: {
+          input: 1,
+          output: 2,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 3,
+          cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0, total: 0.3 },
+        },
+      })),
       session: {
         create: vi.fn(async () => ({ data: { id: 'session-123' } })),
         prompt: vi.fn(async () => {}),
@@ -610,6 +625,60 @@ describe('RuntimeClient', () => {
           message: 'Review this code',
         })
       ).resolves.toMatchObject({ id: 'session-123', agent: 'review/security' });
+
+      await client.shutdown();
+    });
+  });
+
+  describe('completeSimple', () => {
+    it('delegates a direct completion request to Pi', async () => {
+      const runtime = createRuntime();
+      mocks.createPiInProcessServer.mockResolvedValueOnce(runtime);
+      const client = await createRuntimeClientInstance({ directory: process.cwd() });
+      const options = {
+        model: 'provider/requested',
+        systemPrompt: 'System',
+        userPrompt: 'User',
+        maxTokens: 100,
+        temperature: 0.5,
+      };
+
+      await expect(client.completeSimple(options)).resolves.toMatchObject({
+        text: 'completed',
+        provider: 'provider',
+        requestedModel: 'requested',
+        resolvedModel: 'resolved',
+        usage: { cost: { total: 0.3 } },
+      });
+      expect(runtime.client.completeSimple).toHaveBeenCalledWith(options);
+
+      await client.shutdown();
+    });
+
+    it('maps model resolution and provider API errors consistently', async () => {
+      const runtime = createRuntime();
+      mocks.createPiInProcessServer.mockResolvedValueOnce(runtime);
+      const client = await createRuntimeClientInstance({ directory: process.cwd() });
+      runtime.client.completeSimple.mockRejectedValueOnce(
+        new Error('Failed to resolve model "provider/missing"')
+      );
+
+      await expect(
+        client.completeSimple({
+          model: 'provider/missing',
+          systemPrompt: 'System',
+          userPrompt: 'User',
+        })
+      ).rejects.toThrow('Model configuration is invalid or unavailable');
+
+      runtime.client.completeSimple.mockRejectedValueOnce(new Error('401 Unauthorized'));
+      await expect(
+        client.completeSimple({
+          model: 'provider/requested',
+          systemPrompt: 'System',
+          userPrompt: 'User',
+        })
+      ).rejects.toThrow('Authentication failed with the configured model provider');
 
       await client.shutdown();
     });

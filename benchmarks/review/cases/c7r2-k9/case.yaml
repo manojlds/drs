@@ -1,0 +1,9 @@
+id: c7r2-k9
+description: A key encoder adopts structured serialization.
+comparison: { group: stable-key-contract, variant: skill }
+capabilities:
+  requiredSkills: [stable-key-review]
+  expectedNotLoadedSkills: [css-layout]
+  requiredInspectionPaths: [.compat/key-vectors.txt]
+expected:
+  - { id: C7-1, description: The new encoding cannot resolve keys persisted in the established byte format., severity: HIGH, category: QUALITY, file: src/token.ts, line: 2 }

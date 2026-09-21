@@ -93,6 +93,35 @@ describe('review benchmark fixtures', () => {
     expect((await loadBenchmarkCase(root, 'inverted-condition')).expected).toHaveLength(1);
     expect((await loadBenchmarkCase(root, 'safe-refactor')).expected).toEqual([]);
   });
+  it('keeps skill-utility comparisons behaviorally paired', async () => {
+    const loaded = await loadBenchmarkSuite(root, 'capabilities-v1');
+    expect(loaded.suite.cases).toHaveLength(11);
+    const pairs = [
+      ['c7r2-a5', 'c7r2-k9', 'stable-key-review', '.compat/key-vectors.txt'],
+      ['d5m8-b3', 'd5m8-q6', 'billing-policy-review', 'rules/R-17.md'],
+      ['g9t4-c2', 'g9t4-v7', 'delivery-status-review', 'protocol/S-4.csv'],
+    ] as const;
+    for (const [baselineId, skillId, skill, inspectionPath] of pairs) {
+      const baseline = await loadBenchmarkCase(root, baselineId);
+      const skilled = await loadBenchmarkCase(root, skillId);
+      expect(baseline.comparison).toMatchObject({ variant: 'baseline' });
+      expect(skilled.comparison).toEqual({
+        group: baseline.comparison?.group,
+        variant: 'skill',
+      });
+      expect(skilled.expected).toEqual(baseline.expected);
+      expect(skilled.capabilities).toMatchObject({
+        requiredSkills: [skill],
+        expectedNotLoadedSkills: ['css-layout'],
+        requiredInspectionPaths: [inspectionPath],
+      });
+      await expect(
+        readFile(join(root, 'benchmarks/review/cases', skillId, 'change.patch'), 'utf8')
+      ).resolves.toBe(
+        await readFile(join(root, 'benchmarks/review/cases', baselineId, 'change.patch'), 'utf8')
+      );
+    }
+  });
   it('preserves the review-relevant contracts in reduced historical fixtures', async () => {
     const fixture = (id: string, file: string) =>
       readFile(join(root, 'benchmarks/review/cases', id, file), 'utf8');
@@ -501,7 +530,7 @@ describe('review benchmark fixtures', () => {
     );
     expect(seen).toHaveLength(20);
     const report = result.report as any;
-    expect(report.schemaVersion).toBe(3);
+    expect(report.schemaVersion).toBe(4);
     expect(report.systemUnderTest).toMatchObject({
       name: 'DRS review system',
       focus: 'drs-review-system',
