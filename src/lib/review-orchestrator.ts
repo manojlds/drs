@@ -524,7 +524,9 @@ async function runJevReviewComponent(args: {
     complete,
   };
   const pricing =
-    args.config.pricing?.models?.[evaluation.model] ?? args.config.pricing?.models?.[JEV_MODEL];
+    args.config.pricing?.models?.[evaluation.model] ??
+    args.config.pricing?.models?.[JEV_MODEL] ??
+    args.config.pricing?.models?.['jev-latest'];
   return {
     evaluation,
     usage: createEvaluatorUsageSummary('evaluator/jev', {

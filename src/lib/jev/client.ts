@@ -1,7 +1,9 @@
 import { parseJevResponse, type JevResponse } from './schema.js';
 
 export const JEV_API_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
-export const JEV_MODEL = 'jev-latest';
+// Pin the model because rubric behavior and any confidence thresholds must be
+// validated per version. The response still records the resolved model id.
+export const JEV_MODEL = 'jev-1.13.0';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type SleepImplementation = (milliseconds: number) => Promise<void>;

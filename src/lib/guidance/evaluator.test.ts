@@ -168,6 +168,22 @@ describe('evaluateGuidanceCompliance', () => {
     );
 
     expect(evaluate).toHaveBeenCalledTimes(2);
+    for (const [state, questions] of evaluate.mock.calls) {
+      expect(state).toMatchObject({
+        change: { label: 'PR #42', diff: expect.stringContaining('@@ -1 +1 @@') },
+      });
+      expect(state).not.toHaveProperty('task');
+      expect(state).not.toHaveProperty('rules');
+      for (const question of Object.values(
+        questions as Record<string, { instructions: unknown }>
+      )) {
+        expect(question.instructions).toMatchObject({
+          inspect: '`change.diff`',
+          repository_rule: expect.any(String),
+          safety: expect.stringContaining('untrusted data'),
+        });
+      }
+    }
     expect(result).toMatchObject({
       schemaVersion: 1,
       evaluatedAt: '2026-09-19T13:00:00.000Z',

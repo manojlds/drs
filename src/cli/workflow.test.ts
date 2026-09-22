@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -3901,6 +3901,51 @@ describe('workflow runner', () => {
       path: 'gl-code-quality-report.json',
       issues: 1,
     });
+  });
+
+  it('rejects a misleading code quality report from a Jev-only review', async () => {
+    const projectRoot = createTempDir('drs-workflow-jev-code-quality-');
+    mocks.executeReview.mockResolvedValue({
+      issues: [],
+      summary: {
+        filesReviewed: 1,
+        issuesFound: 0,
+        bySeverity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+        byCategory: { SECURITY: 0, QUALITY: 0, STYLE: 0, PERFORMANCE: 0, DOCUMENTATION: 0 },
+      },
+      filesReviewed: 1,
+      mode: 'jev',
+    } as ReviewResult);
+    const config = {
+      ...baseConfig,
+      workflows: {
+        codeQuality: {
+          nodes: {
+            change: {
+              action: 'change-source',
+              with: { type: 'local', staged: false },
+              output: 'change',
+            },
+            review: {
+              action: 'review',
+              needs: ['change'],
+              with: { source: 'change', mode: 'jev' },
+              output: 'review',
+            },
+            report: {
+              action: 'code-quality-report',
+              needs: ['review'],
+              with: { review: 'review', path: 'gl-code-quality-report.json' },
+            },
+          },
+        },
+      },
+    } as unknown as DRSConfig;
+
+    await expect(runWorkflow(config, 'codeQuality', { workingDir: projectRoot })).rejects.toThrow(
+      'cannot create file-level findings from a Jev-only review'
+    );
+    expect(existsSync(join(projectRoot, 'gl-code-quality-report.json'))).toBe(false);
   });
 
   it('runs the packaged repository wiki workflow and validates its OKF bundle', async () => {
