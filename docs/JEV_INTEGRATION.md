@@ -50,9 +50,9 @@ Agent-only mode does not read or require `JEV_API_KEY`.
 
 Jev evaluation is remote. When `jev`, `parallel`, or `combined` mode runs, DRS sends focused review state directly to TypeSafe's API. This may include:
 
-- the review task/label;
+- the change label (`change.label`);
 - complete diff patches, split into context-window-bounded requests;
-- a full `changeManifest` listing every changed filename in each request;
+- a full `change.manifest` listing every changed filename in each request;
 - in combined mode, a bounded agent-generated change summary labeled as untrusted orientation, with the diff remaining authoritative;
 - allow-listed, bounded repository/change metadata such as platform, repository, title, body, and refs.
 

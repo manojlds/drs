@@ -67,7 +67,13 @@ describe('Jev questions', () => {
     const correctness = questions.correctness_applicable;
     const performance = questions.performance_applicable;
 
-    expect(correctness.instructions).toContain('core software-change dimension');
-    expect(performance.instructions).toContain('Answer yes only when');
+    expect(correctness.instructions).toMatchObject({
+      question: expect.stringContaining('enough evidence to assess'),
+      boundary: expect.stringContaining('Answer no when'),
+    });
+    expect(performance.instructions).toMatchObject({
+      question: expect.stringContaining('relevant to the implementation'),
+      boundary: expect.stringContaining('Answer yes only when'),
+    });
   });
 });
