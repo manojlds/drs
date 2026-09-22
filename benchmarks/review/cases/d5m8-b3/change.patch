@@ -1,0 +1,10 @@
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 3333333..4444444 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,4 +1,4 @@
+ export function calculateCharge(units: number, rate: number, taxRate: number, adjustment: number): number {
+   const subtotal = units * rate;
+-  return subtotal * (1 + taxRate) - adjustment;
++  return (subtotal - adjustment) * (1 + taxRate);
+ }

@@ -4,6 +4,8 @@ dimensions:
   - cross-file-context
   - distributed-boundary
   - prompt-reasoning
+jev:
+  expectedWeakDimensions: [correctness, reliability]
 expected:
   - id: HIST-TEMPORAL-001
     description: Mutating an activity input cannot update workflow-owned context across serialization.

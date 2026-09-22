@@ -87,4 +87,41 @@ describe('benchmark command', () => {
     ).rejects.toThrow();
     expect(run).not.toHaveBeenCalled();
   });
+
+  it('passes repeatable models to the apples-to-apples quality benchmark', async () => {
+    const runReview = vi.fn();
+    const runQuality = vi.fn(async () => ({
+      jsonPath: 'quality.json',
+      markdownPath: 'quality.md',
+      report: {},
+    }));
+    const command = createBenchmarkCommand(runReview, runQuality);
+    command.exitOverride();
+
+    await command.parseAsync(
+      [
+        'quality',
+        '--suite',
+        'jev-historical-pilot-v1',
+        '--model',
+        'a/one',
+        '--model',
+        'b/two',
+        '--repeat',
+        '3',
+        '--live',
+      ],
+      { from: 'user' }
+    );
+
+    expect(runReview).not.toHaveBeenCalled();
+    expect(runQuality).toHaveBeenCalledWith(
+      expect.objectContaining({
+        models: ['a/one', 'b/two'],
+        repeat: 3,
+        live: true,
+        profile: 'isolated',
+      })
+    );
+  });
 });

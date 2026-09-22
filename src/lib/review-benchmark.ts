@@ -60,6 +60,9 @@ export type BenchmarkCase = {
   dimensions?: string[];
   expected: ExpectedFinding[];
   comparison?: { group: string; variant: string };
+  jev?: {
+    expectedWeakDimensions?: MetricKey[];
+  };
   capabilities?: {
     contextSources?: string[];
     requiredSkills?: string[];
@@ -208,6 +211,18 @@ export async function loadBenchmarkCase(root: string, id: string): Promise<Bench
       !SLUG.test(String(parsed.comparison.variant))
     )
       throw new Error(`Invalid comparison in ${id}.`);
+  }
+  if (parsed.jev !== undefined) {
+    assertObject(parsed.jev, `Jev expectations in ${id}`);
+    const expected = parsed.jev.expectedWeakDimensions;
+    if (
+      expected !== undefined &&
+      (!Array.isArray(expected) ||
+        expected.length === 0 ||
+        expected.some((metric) => !metricKeys.includes(metric as MetricKey)) ||
+        new Set(expected).size !== expected.length)
+    )
+      throw new Error(`Invalid or duplicate expected Jev dimensions in ${id}.`);
   }
   if (parsed.capabilities !== undefined) {
     assertObject(parsed.capabilities, `Capabilities in ${id}`);
@@ -646,6 +661,7 @@ export type JevPairRun = {
   repeat: number;
   model?: string | null;
   comparison?: BenchmarkCase['comparison'];
+  expectedWeakDimensions?: MetricKey[];
   evaluation?: JevEvaluation;
 };
 
@@ -658,6 +674,22 @@ export type JevPairDimensionAnalysis = {
 };
 
 const MEANINGFUL_JEV_DELTA = 0.75;
+
+export type JevExpectedSignalAnalysis = {
+  checkCount: number;
+  applicableRate: number | null;
+  priorityHitRate: number | null;
+  medianScore: number | null;
+  observations: Array<{
+    caseId: string;
+    repeat: number;
+    model: string | null;
+    metric: MetricKey;
+    applicable: boolean;
+    priority: boolean;
+    score: number | null;
+  }>;
+};
 const rounded = (value: number): number => Number(value.toFixed(6));
 const median = (values: number[]): number | null => {
   if (!values.length) return null;
@@ -732,8 +764,67 @@ export function analyzeJevPairs(runs: JevPairRun[]) {
         ];
       })
     ) as Record<MetricKey, JevPairDimensionAnalysis>;
-    return [{ group, fromVariant, toVariant, dimensions }];
+    const expectedDimensions = [
+      ...new Set(selected.flatMap((run) => run.expectedWeakDimensions ?? [])),
+    ].sort();
+    const expectedDirections = Object.fromEntries(
+      expectedDimensions.map((metric) => [metric, dimensions[metric].direction])
+    ) as Partial<Record<MetricKey, JevPairDimensionAnalysis['direction']>>;
+    const improvedCount = Object.values(expectedDirections).filter(
+      (direction) => direction === 'improved'
+    ).length;
+    return [
+      {
+        group,
+        fromVariant,
+        toVariant,
+        expectedDimensions,
+        expectedDimensionImprovementRate: expectedDimensions.length
+          ? rounded(improvedCount / expectedDimensions.length)
+          : null,
+        expectedDirections,
+        dimensions,
+      },
+    ];
   });
+}
+
+export function analyzeJevExpectedSignals(runs: JevPairRun[]): JevExpectedSignalAnalysis {
+  const observations = runs.flatMap((run) =>
+    (run.expectedWeakDimensions ?? []).flatMap((metric) => {
+      const evaluation = run.evaluation;
+      if (!evaluation) return [];
+      const result = evaluation.metrics[metric];
+      return [
+        {
+          caseId: run.caseId,
+          repeat: run.repeat,
+          model: run.model ?? null,
+          metric,
+          applicable: result.applicable,
+          priority: evaluation.priorities.some((priority) => priority.metric === metric),
+          score: result.applicable ? result.score : null,
+        },
+      ];
+    })
+  );
+  return {
+    checkCount: observations.length,
+    applicableRate: observations.length
+      ? rounded(
+          observations.filter((observation) => observation.applicable).length / observations.length
+        )
+      : null,
+    priorityHitRate: observations.length
+      ? rounded(
+          observations.filter((observation) => observation.priority).length / observations.length
+        )
+      : null,
+    medianScore: median(
+      observations.flatMap((observation) => (observation.score === null ? [] : [observation.score]))
+    ),
+    observations,
+  };
 }
 
 function validateOptions(options: BenchmarkOptions): void {
@@ -946,6 +1037,7 @@ export async function runReviewBenchmark(
               repeat,
               model: requestedModel,
               comparison: fixture.comparison,
+              expectedWeakDimensions: fixture.jev?.expectedWeakDimensions,
               evaluation: jevEvaluation,
             });
           const jevFailure = includesJev && (!jevResult || jevResult.status === 'failed');
@@ -1054,6 +1146,7 @@ export async function runReviewBenchmark(
                         : null),
                     metrics: jevEvaluation?.metrics ?? null,
                     priorities: jevEvaluation?.priorities ?? [],
+                    expectedWeakDimensions: fixture.jev?.expectedWeakDimensions ?? [],
                     ...(jevResult?.status === 'failed' ? { error: jevResult.error } : {}),
                   }
                 : {
@@ -1063,6 +1156,7 @@ export async function runReviewBenchmark(
                     usage: null,
                     metrics: null,
                     priorities: [],
+                    expectedWeakDimensions: [],
                   },
             },
           });
@@ -1146,6 +1240,9 @@ export async function runReviewBenchmark(
     throw new Error('DRS source or benchmark suite changed during execution; discarding report.');
   const { revision, dirty, agentHash, sourceSnapshotHash, suiteHash } = initialIdentity;
   const jevPairAnalysis = includesJev ? analyzeJevPairs(jevPairRuns) : [];
+  const jevExpectedSignalAnalysis = includesJev
+    ? analyzeJevExpectedSignals(jevPairRuns)
+    : undefined;
   const combinedMetrics =
     reviewMode === 'combined'
       ? {
@@ -1171,7 +1268,7 @@ export async function runReviewBenchmark(
         }
       : undefined;
   const report = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     suite: loaded.suite.name,
     suiteHash,
     systemUnderTest: {
@@ -1196,7 +1293,7 @@ export async function runReviewBenchmark(
     ...(includesAgent
       ? { drsMetrics, metricsByModel: metrics, capabilityMetrics, capabilityMetricsByModel }
       : {}),
-    ...(includesJev ? { jevPairAnalysis } : {}),
+    ...(includesJev ? { jevPairAnalysis, jevExpectedSignalAnalysis } : {}),
     ...(parallelMetrics ? { parallelMetrics } : {}),
     ...(combinedMetrics ? { combinedMetrics } : {}),
     runs,
@@ -1236,10 +1333,28 @@ export async function runReviewBenchmark(
               ).length
             : 0;
         const jevModel = typeof jev.model === 'string' ? jev.model : 'n/a';
-        return `| ${run.caseId} | ${run.repeat} | ${String(jev.status)} | ${jevModel} | ${applicable} |`;
+        const agentIssues = includesAgent ? ` | ${run.issues.length}` : '';
+        return `| ${run.caseId} | ${run.repeat}${agentIssues} | ${String(jev.status)} | ${jevModel} | ${applicable} |`;
       })
       .join('\n');
-    const jevMarkdown = `# Review evaluator benchmark: ${loaded.suite.name}\n\nReview mode: \`${reviewMode}\`  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nAgent issue findings: ${includesAgent ? 'reported separately; adjudication applies only to these findings' : 'not requested'}  \nNo overall quality score is calculated.\n\n## Jev dimension signals\n\nApplicable and non-applicable dimensions, score confidence, priorities, status, latency, and usage are recorded per run in the JSON report. Paired analysis reports per-dimension direction, median delta, applicability consistency, and confidence; inconclusive dimensions remain explicit.\n\n| Case | Repeat | Jev status | Jev model | Applicable dimensions |\n|---|---:|---|---|---:|\n${jevRows}\n${parallelMetrics ? `\n## Parallel overhead\n\nExecution: concurrent and independent\n\n- Median wall-clock latency: ${parallelMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${parallelMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${parallelMetrics.medianCost ?? 'n/a'}\n` : ''}${combinedMetrics ? `\n## Combined overhead\n\nExecution: sequential Jev-guided agent review\n\n- Median wall-clock latency: ${combinedMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${combinedMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${combinedMetrics.medianCost ?? 'n/a'}\n` : ''}`;
+    const expectedSignalRows = (jevExpectedSignalAnalysis?.observations ?? [])
+      .map(
+        (observation) =>
+          `| ${observation.caseId} | ${observation.repeat} | ${observation.metric} | ${observation.applicable ? 'yes' : 'no'} | ${observation.priority ? 'yes' : 'no'} | ${observation.score ?? 'n/a'} |`
+      )
+      .join('\n');
+    const expectedPairRows = jevPairAnalysis
+      .flatMap((pair) =>
+        pair.expectedDimensions.map((metric) => {
+          const dimension = pair.dimensions[metric];
+          return `| ${pair.group} | ${metric} | ${dimension.direction} | ${dimension.medianDelta ?? 'n/a'} | ${dimension.pairCount} |`;
+        })
+      )
+      .join('\n');
+    const runHeader = includesAgent
+      ? '| Case | Repeat | Agent issues | Jev status | Jev model | Applicable dimensions |\n|---|---:|---:|---|---|---:|'
+      : '| Case | Repeat | Jev status | Jev model | Applicable dimensions |\n|---|---:|---|---|---:|';
+    const jevMarkdown = `# Review evaluator benchmark: ${loaded.suite.name}\n\nReview mode: \`${reviewMode}\`  \nRevision: \`${revision}${dirty ? ' (dirty)' : ''}\`  \nSource snapshot: \`${sourceSnapshotHash}\`  \nAgent issue findings: ${includesAgent ? 'reported separately; adjudication applies only to these findings' : 'not requested'}  \nNo overall quality score is calculated.\n\n## Jev dimension signals\n\nApplicable and non-applicable dimensions, score confidence, priorities, status, latency, and usage are recorded per run in the JSON report. Paired analysis reports per-dimension direction, median delta, applicability consistency, and confidence; inconclusive dimensions remain explicit.\n\n- Expected-dimension checks: ${jevExpectedSignalAnalysis?.checkCount ?? 0}\n- Expected dimensions marked applicable: ${displayRate(jevExpectedSignalAnalysis?.applicableRate ?? null)}\n- Expected dimensions present in priorities: ${displayRate(jevExpectedSignalAnalysis?.priorityHitRate ?? null)}\n- Median expected-dimension score: ${jevExpectedSignalAnalysis?.medianScore ?? 'n/a'}\n\n${runHeader}\n${jevRows}\n${expectedSignalRows ? `\n## Expected weak-dimension signals\n\n| Case | Repeat | Dimension | Applicable | Priority | Score |\n|---|---:|---|---|---|---:|\n${expectedSignalRows}\n` : ''}${expectedPairRows ? `\n## Expected defect-to-fixed movement\n\n| Pair | Dimension | Direction | Median delta | Paired runs |\n|---|---|---|---:|---:|\n${expectedPairRows}\n` : ''}${parallelMetrics ? `\n## Parallel overhead\n\nExecution: concurrent and independent\n\n- Median wall-clock latency: ${parallelMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${parallelMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${parallelMetrics.medianCost ?? 'n/a'}\n` : ''}${combinedMetrics ? `\n## Combined overhead\n\nExecution: sequential Jev-guided agent review\n\n- Median wall-clock latency: ${combinedMetrics.medianLatencyMs ?? 'n/a'} ms\n- Median total tokens: ${combinedMetrics.medianTotalTokens ?? 'n/a'}\n- Median cost: ${combinedMetrics.medianCost ?? 'n/a'}\n` : ''}`;
     await writeFile(markdownPath, includesJev ? jevMarkdown : agentMarkdown, { flag: 'wx' });
   } catch (error) {
     await rm(jsonPath, { force: true });

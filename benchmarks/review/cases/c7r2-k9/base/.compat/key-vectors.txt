@@ -1,0 +1,2 @@
+acme,create,3 => acme:create:3
+beta,delete,1 => beta:delete:1

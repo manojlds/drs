@@ -1,0 +1,4 @@
+wire_code_hex,action,meaning
+1CE8,retry,delivery lease expired
+1CEB,acknowledge,duplicate delivery already accepted
+1CEF,retry,receiver busy

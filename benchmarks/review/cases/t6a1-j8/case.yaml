@@ -3,6 +3,8 @@ description: A workflow artifact identifier is allowed to come from templated in
 dimensions:
   - security-boundary
   - path-handling
+jev:
+  expectedWeakDimensions: [security]
 expected:
   - id: HIST-ARTIFACT-001
     description: Joining an unvalidated artifact ID permits traversal outside the artifact directory.

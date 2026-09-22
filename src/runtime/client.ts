@@ -16,7 +16,11 @@ import {
 import { getLogger } from '../lib/logger.js';
 import { loadAgents, type AgentDefinition } from './agent-loader.js';
 import { resolveAgentPaths } from './path-config.js';
-import { createPiInProcessServer, type PiClient } from '../pi/sdk.js';
+import {
+  createPiInProcessServer,
+  type PiClient,
+  type PiSimpleCompletionResult,
+} from '../pi/sdk.js';
 import type { TraceCollector } from '../lib/trace-collector.js';
 import type { AgentPermissions, AgentValidation } from '../lib/agent-permissions.js';
 
@@ -44,6 +48,17 @@ export interface SessionCreateOptions {
   agent: string;
   message: string;
 }
+
+export interface SimpleCompletionOptions {
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  headers?: Record<string, string>;
+}
+
+export type SimpleCompletionResult = PiSimpleCompletionResult;
 
 export interface SessionUsage {
   input: number;
@@ -518,6 +533,22 @@ export class RuntimeClient {
       };
     } catch (error) {
       throw mapPiRuntimeError('create session', error);
+    }
+  }
+
+  async completeSimple(options: SimpleCompletionOptions): Promise<SimpleCompletionResult> {
+    if (!this.client) {
+      throw new Error('Runtime client not initialized. Call initialize() first.');
+    }
+
+    try {
+      return await this.withTimeout(
+        'Complete model request',
+        this.streamTimeoutMs,
+        this.client.completeSimple(options)
+      );
+    } catch (error) {
+      throw mapPiRuntimeError('complete model request', error);
     }
   }
 

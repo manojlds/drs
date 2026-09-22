@@ -1,0 +1,5 @@
+id: c7r2-a5
+description: A key encoder adopts structured serialization.
+comparison: { group: stable-key-contract, variant: baseline }
+expected:
+  - { id: C7-1, description: The new encoding cannot resolve keys persisted in the established byte format., severity: HIGH, category: QUALITY, file: src/token.ts, line: 2 }

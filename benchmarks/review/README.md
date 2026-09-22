@@ -12,6 +12,8 @@ preserve the review-relevant behavior while removing unrelated repository contex
 `capabilities-v1` evaluates the review system holistically with paired baseline/capability
 fixtures: global and reviewer-specific project context, skill discovery and selective activation,
 repository inspection (including unchanged supporting files), tool behavior, and final outcomes.
+Its skill-utility pairs cover persisted identifier compatibility, billing policy ordering, and
+delivery retry semantics; each compares the same patch with and without a relevant project skill.
 Capability telemetry contains only safe observables (paths/hashes, skill names, tool counts, and
 application/coverage booleans), never prompts, thinking, tool arguments, or full tool results. The
 benchmark report still includes reviewer findings and adjudication candidates and should be treated

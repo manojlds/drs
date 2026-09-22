@@ -67,6 +67,41 @@ interface PiUsage {
   };
 }
 
+export interface PiSimpleCompletionOptions {
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  headers?: Record<string, string>;
+}
+
+export interface PiSimpleCompletionUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h?: number;
+  reasoning?: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
+export interface PiSimpleCompletionResult {
+  text: string;
+  provider: string;
+  requestedModel: string;
+  resolvedModel: string;
+  stopReason: 'stop' | 'length' | 'toolUse' | 'error' | 'aborted';
+  usage: PiSimpleCompletionUsage;
+}
+
 export interface PiSessionMessage {
   info?: {
     id?: string;
@@ -96,6 +131,7 @@ export interface PiSessionApi {
 
 export interface PiClient {
   session: PiSessionApi;
+  completeSimple: (options: PiSimpleCompletionOptions) => Promise<PiSimpleCompletionResult>;
   getModelContextWindow?: (modelId: string) => number | undefined;
 }
 
@@ -1086,6 +1122,52 @@ class PiSessionRuntime {
     return model?.contextWindow;
   }
 
+  async completeSimple(options: PiSimpleCompletionOptions): Promise<PiSimpleCompletionResult> {
+    const model = this.resolveModel(options.model);
+    if (!model) {
+      throw new Error(`Failed to resolve model "${options.model}"`);
+    }
+
+    const response = await this.modelRuntime.completeSimple(
+      model,
+      {
+        systemPrompt: options.systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: options.userPrompt,
+            timestamp: Date.now(),
+          },
+        ],
+        tools: [],
+      },
+      {
+        maxTokens: options.maxTokens,
+        temperature: options.temperature,
+        ...(options.headers ? { headers: options.headers } : {}),
+      }
+    );
+
+    if (response.stopReason === 'error' || response.stopReason === 'aborted') {
+      throw new Error(response.errorMessage ?? `Model completion ${response.stopReason}`);
+    }
+
+    return {
+      text: response.content
+        .filter(
+          (part): part is Extract<(typeof response.content)[number], { type: 'text' }> =>
+            part.type === 'text'
+        )
+        .map((part) => part.text)
+        .join(''),
+      provider: response.provider,
+      requestedModel: response.model,
+      resolvedModel: response.responseModel ?? response.model,
+      stopReason: response.stopReason,
+      usage: response.usage,
+    };
+  }
+
   private isToolEnabled(
     toolName: string,
     defaultValue: boolean,
@@ -1885,6 +1967,7 @@ export async function createPiInProcessServer(options: {
     },
     client: {
       session: runtime.sessionApi,
+      completeSimple: (options) => runtime.completeSimple(options),
       getModelContextWindow: (modelId: string) => runtime.getModelContextWindow(modelId),
     },
   };

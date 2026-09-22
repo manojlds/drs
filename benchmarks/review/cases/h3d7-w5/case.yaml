@@ -3,6 +3,8 @@ description: Compiled workflow execution changes handling for an unknown workflo
 dimensions:
   - api-contract
   - validation
+jev:
+  expectedWeakDimensions: [correctness, compatibility]
 expected:
   - id: HIST-WORKFLOW-001
     description: Synthesizing a fallback workflow bypasses unknown-workflow and input validation.

@@ -28,7 +28,11 @@ const mocks = vi.hoisted(() => {
       reload: any;
       getSkills: any;
     }>,
-    modelRuntimeInstances: [] as Array<{ registerProvider: any }>,
+    modelRuntimeInstances: [] as Array<{
+      registerProvider: any;
+      getModel: any;
+      completeSimple: any;
+    }>,
   };
 });
 
@@ -52,9 +56,14 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
   class ModelRuntime {
     registerProvider = vi.fn(() => undefined);
     getModel = vi.fn(() => undefined);
+    completeSimple = vi.fn();
 
     constructor() {
-      mocks.modelRuntimeInstances.push({ registerProvider: this.registerProvider });
+      mocks.modelRuntimeInstances.push({
+        registerProvider: this.registerProvider,
+        getModel: this.getModel,
+        completeSimple: this.completeSimple,
+      });
     }
 
     static async create() {
@@ -184,7 +193,95 @@ describe('pi/sdk', () => {
     expect(runtime.client.session.create).toBeDefined();
     expect(runtime.client.session.prompt).toBeDefined();
     expect(runtime.client.session.messages).toBeDefined();
+    expect(runtime.client.completeSimple).toBeDefined();
 
+    runtime.server.close();
+  });
+
+  it('completes a direct no-tool model request and returns authoritative metadata', async () => {
+    const runtime = await createPiInProcessServer({ config: {} });
+    const modelRuntime = mocks.modelRuntimeInstances[0];
+    const model = { provider: 'custom', id: 'requested-model' };
+    modelRuntime.getModel.mockReturnValue(model);
+    modelRuntime.completeSimple.mockResolvedValue({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'first ' },
+        { type: 'thinking', thinking: 'hidden' },
+        { type: 'text', text: 'second' },
+      ],
+      api: 'openai-completions',
+      provider: 'authoritative-provider',
+      model: 'requested-model',
+      responseModel: 'resolved-model',
+      stopReason: 'stop',
+      usage: {
+        input: 10,
+        output: 4,
+        cacheRead: 2,
+        cacheWrite: 1,
+        reasoning: 1,
+        totalTokens: 17,
+        cost: { input: 0.1, output: 0.2, cacheRead: 0.01, cacheWrite: 0.02, total: 0.33 },
+      },
+      timestamp: 1,
+    });
+
+    const result = await runtime.client.completeSimple({
+      model: 'custom/requested-model',
+      systemPrompt: 'Be concise.',
+      userPrompt: 'Answer this.',
+      maxTokens: 128,
+      temperature: 0.2,
+      headers: { 'x-test-session': 'session-1' },
+    });
+
+    expect(modelRuntime.getModel).toHaveBeenCalledWith('custom', 'requested-model');
+    expect(modelRuntime.completeSimple).toHaveBeenCalledWith(
+      model,
+      {
+        systemPrompt: 'Be concise.',
+        messages: [expect.objectContaining({ role: 'user', content: 'Answer this.' })],
+        tools: [],
+      },
+      {
+        maxTokens: 128,
+        temperature: 0.2,
+        headers: { 'x-test-session': 'session-1' },
+      }
+    );
+    expect(result).toEqual({
+      text: 'first second',
+      provider: 'authoritative-provider',
+      requestedModel: 'requested-model',
+      resolvedModel: 'resolved-model',
+      stopReason: 'stop',
+      usage: {
+        input: 10,
+        output: 4,
+        cacheRead: 2,
+        cacheWrite: 1,
+        reasoning: 1,
+        totalTokens: 17,
+        cost: { input: 0.1, output: 0.2, cacheRead: 0.01, cacheWrite: 0.02, total: 0.33 },
+      },
+    });
+
+    runtime.server.close();
+  });
+
+  it('rejects direct completions when the requested model cannot be resolved', async () => {
+    const runtime = await createPiInProcessServer({ config: {} });
+
+    await expect(
+      runtime.client.completeSimple({
+        model: 'custom/missing',
+        systemPrompt: 'System',
+        userPrompt: 'User',
+      })
+    ).rejects.toThrow('Failed to resolve model "custom/missing"');
+
+    expect(mocks.modelRuntimeInstances[0].completeSimple).not.toHaveBeenCalled();
     runtime.server.close();
   });
 
